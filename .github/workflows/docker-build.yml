@@ -25,11 +25,20 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
         if: github.event_name != 'pull_request'
 
-      - name: Build and push Docker image
+      - name: Build Docker image (PR)
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: ${{ github.event_name != 'pull_request' }}
+          push: false
+          tags: ${{ github.repository_owner }}/cve-tracker:${{ github.sha }}
+        if: github.event_name == 'pull_request'
+
+      - name: Build and push Docker image (Push)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/cve-tracker:latest,${{ secrets.DOCKERHUB_USERNAME }}/cve-tracker:${{ github.sha }}
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/cve-tracker:buildcache
           cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/cve-tracker:buildcache,mode=max
+        if: github.event_name != 'pull_request'
