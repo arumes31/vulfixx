@@ -18,6 +18,7 @@ import (
 func StartWorker() {
 	go fetchCVEsPeriodically()
 	go processAlerts()
+	go processEmailVerification()
 }
 
 func fetchCVEsPeriodically() {
@@ -84,6 +85,7 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		SELECT s.id, s.user_id, s.keyword, s.min_severity, s.webhook_url, u.email
 		FROM user_subscriptions s
 		JOIN users u ON s.user_id = u.id
+		WHERE u.is_email_verified = TRUE
 	`)
 	if err != nil {
 		log.Println("Error fetching subscriptions:", err)
@@ -166,5 +168,57 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) {
 				log.Printf("Failed to send email to %s: %v", email, err)
 			}
 		}()
+	}
+}
+
+
+func processEmailVerification() {
+	ctx := context.Background()
+	for {
+		result, err := db.RedisClient.BRPop(ctx, 0, "email_verification_queue").Result()
+		if err != nil {
+			log.Println("Error reading from verification queue:", err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		var payload map[string]string
+		json.Unmarshal([]byte(result[1]), &payload)
+
+		email := payload["email"]
+		token := payload["token"]
+
+		sendVerificationEmail(email, token)
+	}
+}
+
+func sendVerificationEmail(email, token string) {
+	log.Printf("Sending verification email to %s\n", email)
+	smtpHost := os.Getenv("SMTP_HOST")
+	smtpPort := os.Getenv("SMTP_PORT")
+	smtpUser := os.Getenv("SMTP_USER")
+	smtpPass := os.Getenv("SMTP_PASS")
+
+	if smtpHost != "" && smtpPort != "" {
+		auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
+		to := []string{email}
+		// In production, BASE_URL should be configured.
+		baseURL := os.Getenv("BASE_URL")
+		if baseURL == "" {
+			baseURL = "http://localhost:8080"
+		}
+
+		msg := []byte(fmt.Sprintf("To: %s\r\n"+
+			"Subject: Verify Your Email - CVE Tracker\r\n"+
+			"\r\n"+
+			"Please verify your email address by clicking the link below:\r\n\r\n"+
+			"%s/verify-email?token=%s\r\n", email, baseURL, token))
+
+		err := smtp.SendMail(smtpHost+":"+smtpPort, auth, smtpUser, to, msg)
+		if err != nil {
+			log.Printf("Failed to send verification email to %s: %v", email, err)
+		}
+	} else {
+		log.Printf("SMTP not configured. Verification link for %s: http://localhost:8080/verify-email?token=%s\n", email, token)
 	}
 }

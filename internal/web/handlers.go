@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 
 	"html/template"
+	"log"
 	"net/http"
+	"github.com/pquerna/otp/totp"
 	"strconv"
 )
 
@@ -20,11 +22,20 @@ func InitTemplates() {
 
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, ok := GetUserID(r)
+		userID, ok := GetUserID(r)
 		if !ok {
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
+
+		// Check if email is verified
+		var isVerified bool
+		err := db.Pool.QueryRow(r.Context(), "SELECT is_email_verified FROM users WHERE id = $1", userID).Scan(&isVerified)
+		if err != nil || !isVerified {
+			http.Error(w, "Please verify your email address to access this page.", http.StatusForbidden)
+			return
+		}
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -51,11 +62,33 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	email := r.FormValue("email")
 	password := r.FormValue("password")
+	totpCode := r.FormValue("totp_code")
 
-	user, err := auth.Login(context.Background(), email, password)
+	user, err := auth.Login(r.Context(), email, password)
 	if err != nil {
 		templates.ExecuteTemplate(w, "login.html", map[string]interface{}{"Error": "Invalid credentials"})
 		return
+	}
+
+	if user.IsTOTPEnabled {
+		if totpCode == "" {
+			templates.ExecuteTemplate(w, "login.html", map[string]interface{}{
+				"RequireTOTP": true,
+				"Email":       email,
+				"Password":    password,
+			})
+			return
+		}
+
+		if !totp.Validate(totpCode, user.TOTPSecret) {
+			templates.ExecuteTemplate(w, "login.html", map[string]interface{}{
+				"Error":       "Invalid TOTP code",
+				"RequireTOTP": true,
+				"Email":       email,
+				"Password":    password,
+			})
+			return
+		}
 	}
 
 	session, _ := store.Get(r, "session-name")
@@ -75,13 +108,21 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	email := r.FormValue("email")
 	password := r.FormValue("password")
 
-	err := auth.Register(context.Background(), email, password)
+	token, err := auth.Register(context.Background(), email, password)
 	if err != nil {
 		templates.ExecuteTemplate(w, "register.html", map[string]interface{}{"Error": "Registration failed"})
 		return
 	}
 
-	http.Redirect(w, r, "/login", http.StatusFound)
+	// Push email verification payload to redis queue
+	payload, _ := json.Marshal(map[string]string{
+		"email": email,
+		"token": token,
+	})
+	db.RedisClient.LPush(r.Context(), "email_verification_queue", payload)
+	log.Printf("Verification queued for %s\n", email)
+
+	templates.ExecuteTemplate(w, "login.html", map[string]interface{}{"Message": "Registration successful. Please check your email to verify your account."})
 }
 
 func LogoutHandler(w http.ResponseWriter, r *http.Request) {
@@ -214,4 +255,21 @@ func DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
     http.Redirect(w, r, "/subscriptions", http.StatusFound)
+}
+
+
+func VerifyEmailHandler(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "Missing token", http.StatusBadRequest)
+		return
+	}
+
+	err := auth.VerifyEmail(r.Context(), token)
+	if err != nil {
+		http.Error(w, "Invalid or expired token", http.StatusBadRequest)
+		return
+	}
+
+	templates.ExecuteTemplate(w, "login.html", map[string]interface{}{"Message": "Email verified successfully! You can now login."})
 }

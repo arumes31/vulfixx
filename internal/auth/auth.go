@@ -2,27 +2,55 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
 	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
+	"encoding/hex"
 	"errors"
 
 	"golang.org/x/crypto/bcrypt"
+	"github.com/pquerna/otp/totp"
 )
 
-func Register(ctx context.Context, email, password string) error {
+func GenerateToken() (string, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
+}
+
+func Register(ctx context.Context, email, password string) (string, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+
+	token, err := GenerateToken()
+	if err != nil {
+		return "", err
+	}
+
+	_, err = db.Pool.Exec(ctx, "INSERT INTO users (email, password_hash, email_verify_token) VALUES ($1, $2, $3)", email, string(hashedPassword), token)
+	return token, err
+}
+
+func VerifyEmail(ctx context.Context, token string) error {
+	res, err := db.Pool.Exec(ctx, "UPDATE users SET is_email_verified = TRUE, email_verify_token = NULL WHERE email_verify_token = $1", token)
 	if err != nil {
 		return err
 	}
-
-	_, err = db.Pool.Exec(ctx, "INSERT INTO users (email, password_hash) VALUES ($1, $2)", email, string(hashedPassword))
-	return err
+	if res.RowsAffected() == 0 {
+		return errors.New("invalid or expired token")
+	}
+	return nil
 }
 
 func Login(ctx context.Context, email, password string) (*models.User, error) {
 	var user models.User
-	err := db.Pool.QueryRow(ctx, "SELECT id, email, password_hash FROM users WHERE email = $1", email).
-		Scan(&user.ID, &user.Email, &user.PasswordHash)
+	// Make sure we scan all relevant fields needed
+	err := db.Pool.QueryRow(ctx, "SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE(totp_secret, '') FROM users WHERE email = $1", email).
+		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsEmailVerified, &user.IsTOTPEnabled, &user.TOTPSecret)
 	if err != nil {
 		return nil, errors.New("invalid credentials")
 	}
@@ -33,4 +61,34 @@ func Login(ctx context.Context, email, password string) (*models.User, error) {
 	}
 
 	return &user, nil
+}
+
+
+func ChangePassword(ctx context.Context, userID int, currentPassword, newPassword, totpCode string) error {
+	var hash string
+	var isTOTPEnabled bool
+	var secret string
+	err := db.Pool.QueryRow(ctx, "SELECT password_hash, is_totp_enabled, COALESCE(totp_secret, '') FROM users WHERE id = $1", userID).Scan(&hash, &isTOTPEnabled, &secret)
+	if err != nil {
+		return errors.New("user not found")
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(hash), []byte(currentPassword))
+	if err != nil {
+		return errors.New("invalid current password")
+	}
+
+	if isTOTPEnabled {
+		if !totp.Validate(totpCode, secret) {
+			return errors.New("invalid TOTP code")
+		}
+	}
+
+	newHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Pool.Exec(ctx, "UPDATE users SET password_hash = $1 WHERE id = $2", string(newHash), userID)
+	return err
 }

@@ -3,10 +3,14 @@ package models
 import "time"
 
 type User struct {
-	ID           int
-	Email        string
-	PasswordHash string
-	CreatedAt    time.Time
+	ID               int
+	Email            string
+	PasswordHash     string
+	IsEmailVerified  bool
+	EmailVerifyToken string
+	TOTPSecret       string
+	IsTOTPEnabled    bool
+	CreatedAt        time.Time
 }
 
 type CVE struct {

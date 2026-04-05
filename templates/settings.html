@@ -1,0 +1,64 @@
+{{template "base" map "UserLoggedIn" true}}
+
+{{define "content"}}
+<h2>User Settings</h2>
+<div class="card">
+    <h3>Account Info</h3>
+    <p><strong>Email:</strong> {{.Email}}</p>
+</div>
+
+<div class="card">
+    <h3>Two-Factor Authentication (TOTP)</h3>
+    {{if .IsTOTPEnabled}}
+        <p style="color: green;">TOTP is currently <strong>ENABLED</strong>.</p>
+    {{else}}
+        <p>TOTP is currently <strong>DISABLED</strong>.</p>
+
+        {{if .QRBase64}}
+            <p>1. Scan this QR code with your authenticator app (e.g., Google Authenticator, Authy):</p>
+            <img src="data:image/png;base64,{{.QRBase64}}" alt="QR Code">
+            <p>Or manually enter this secret: <strong>{{.Secret}}</strong></p>
+
+            <p>2. Enter the 6-digit code from your app to enable TOTP:</p>
+            <form action="/settings/totp/verify" method="POST">
+                <div class="form-group" style="max-width: 200px;">
+                    <input type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456">
+                </div>
+                <button type="submit" class="btn">Enable TOTP</button>
+            </form>
+        {{else}}
+            <form action="/settings/totp/generate" method="POST">
+                <button type="submit" class="btn">Setup TOTP</button>
+            </form>
+        {{end}}
+    {{end}}
+</div>
+
+<div class="card">
+    <h3>Change Password</h3>
+    {{if .PasswordError}}<p class="error">{{.PasswordError}}</p>{{end}}
+    {{if .PasswordSuccess}}<p style="color:green;">{{.PasswordSuccess}}</p>{{end}}
+
+    <form action="/settings/password" method="POST" style="max-width: 400px;">
+        <div class="form-group">
+            <label>Current Password</label>
+            <input type="password" name="current_password" required>
+        </div>
+        <div class="form-group">
+            <label>New Password</label>
+            <input type="password" name="new_password" required>
+        </div>
+        <div class="form-group">
+            <label>Confirm New Password</label>
+            <input type="password" name="confirm_password" required>
+        </div>
+        {{if .IsTOTPEnabled}}
+        <div class="form-group">
+            <label>Current TOTP Code</label>
+            <input type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456">
+        </div>
+        {{end}}
+        <button type="submit" class="btn">Update Password</button>
+    </form>
+</div>
+{{end}}

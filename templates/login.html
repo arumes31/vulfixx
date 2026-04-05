@@ -3,10 +3,21 @@
 {{define "content"}}
 <div class="card" style="max-width: 400px; margin: auto;">
     <h2>Login</h2>
+    {{if .Message}}
+        <p style="color: green;">{{.Message}}</p>
+    {{end}}
     {{if .Error}}
         <p class="error">{{.Error}}</p>
     {{end}}
     <form action="/login" method="POST">
+    {{if .RequireTOTP}}
+        <input type="hidden" name="email" value="{{.Email}}">
+        <input type="hidden" name="password" value="{{.Password}}">
+        <div class="form-group">
+            <label>TOTP Code</label>
+            <input type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456">
+        </div>
+    {{else}}
         <div class="form-group">
             <label>Email</label>
             <input type="email" name="email" required>
@@ -15,6 +26,7 @@
             <label>Password</label>
             <input type="password" name="password" required>
         </div>
+    {{end}}
         <button type="submit" class="btn">Login</button>
     </form>
     <p>Don't have an account? <a href="/register">Register here</a></p>
