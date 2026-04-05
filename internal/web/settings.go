@@ -9,6 +9,7 @@ import (
 	"github.com/pquerna/otp/totp"
 	"rsc.io/qr"
 	"encoding/base64"
+	"log"
 )
 
 func SettingsHandler(w http.ResponseWriter, r *http.Request) {
@@ -32,7 +33,10 @@ func GenerateTOTPHandler(w http.ResponseWriter, r *http.Request) {
 	userID, _ := GetUserID(r)
 
 	var email string
-	db.Pool.QueryRow(context.Background(), "SELECT email FROM users WHERE id = $1", userID).Scan(&email)
+	if err := db.Pool.QueryRow(context.Background(), "SELECT email FROM users WHERE id = $1", userID).Scan(&email); err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
 
 	key, err := totp.Generate(totp.GenerateOpts{
 		Issuer:      "CVETacker",
@@ -70,7 +74,10 @@ func GenerateTOTPHandler(w http.ResponseWriter, r *http.Request) {
 func VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
 	userID, _ := GetUserID(r)
 
-	r.ParseForm()
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/settings", http.StatusFound)
+		return
+	}
 	code := r.FormValue("totp_code")
 
 	var secret string
@@ -82,7 +89,9 @@ func VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
 
 	valid := totp.Validate(code, secret)
 	if valid {
-		db.Pool.Exec(context.Background(), "UPDATE users SET is_totp_enabled = TRUE WHERE id = $1", userID)
+		if _, err := db.Pool.Exec(context.Background(), "UPDATE users SET is_totp_enabled = TRUE WHERE id = $1", userID); err != nil {
+			log.Printf("Error enabling TOTP: %v", err)
+		}
 	}
 
 	http.Redirect(w, r, "/settings", http.StatusFound)
@@ -91,7 +100,10 @@ func VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
 
 func ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 	userID, _ := GetUserID(r)
-	r.ParseForm()
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/settings", http.StatusFound)
+		return
+	}
 
 	currentPassword := r.FormValue("current_password")
 	newPassword := r.FormValue("new_password")

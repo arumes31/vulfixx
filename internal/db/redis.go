@@ -24,6 +24,6 @@ func InitRedis() error {
 
 func CloseRedis() {
 	if RedisClient != nil {
-		RedisClient.Close()
+		_ = RedisClient.Close()
 	}
 }

@@ -83,7 +83,7 @@ func fetchFromNVD() {
 		log.Println("Error fetching from NVD:", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("NVD API returned status: %d", resp.StatusCode)
@@ -158,7 +158,10 @@ func processAlerts() {
 		}
 
 		var cve models.CVE
-		json.Unmarshal([]byte(result[1]), &cve)
+		if err := json.Unmarshal([]byte(result[1]), &cve); err != nil {
+			log.Printf("Error unmarshaling CVE from queue: %v", err)
+			continue
+		}
 
 		evaluateSubscriptions(ctx, &cve)
 	}
@@ -181,7 +184,10 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 	for rows.Next() {
 		var sub models.UserSubscription
 		var email string
-		rows.Scan(&sub.ID, &sub.UserID, &sub.Keyword, &sub.MinSeverity, &sub.WebhookURL, &email)
+		if err := rows.Scan(&sub.ID, &sub.UserID, &sub.Keyword, &sub.MinSeverity, &sub.WebhookURL, &email); err != nil {
+			log.Printf("Error scanning subscription row: %v", err)
+			continue
+		}
 
 		// Basic matching
 		match := true
@@ -195,12 +201,17 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		if match {
 			// Check if already alerted
 			var exists bool
-			db.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM alert_history WHERE user_id=$1 AND cve_id=$2)", sub.UserID, cve.ID).Scan(&exists)
+			if err := db.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM alert_history WHERE user_id=$1 AND cve_id=$2)", sub.UserID, cve.ID).Scan(&exists); err != nil {
+				log.Printf("Error checking alert history: %v", err)
+				continue
+			}
 			if !exists {
 				// Send alert
 				sendAlert(sub, cve, email)
 				// Record history
-				db.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id) VALUES ($1, $2)", sub.UserID, cve.ID)
+				if _, err := db.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id) VALUES ($1, $2)", sub.UserID, cve.ID); err != nil {
+					log.Printf("Error recording alert history: %v", err)
+				}
 			}
 		}
 	}
@@ -266,7 +277,7 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) {
 					}
 					resp, err := client.Post(sub.WebhookURL, "application/json", bytes.NewBuffer(payload))
 					if err == nil {
-						defer resp.Body.Close()
+						defer func() { _ = resp.Body.Close() }()
 					} else {
 						log.Printf("Failed to send webhook to %s: %v", sub.WebhookURL, err)
 					}
@@ -313,7 +324,10 @@ func processEmailVerification() {
 		}
 
 		var payload map[string]string
-		json.Unmarshal([]byte(result[1]), &payload)
+		if err := json.Unmarshal([]byte(result[1]), &payload); err != nil {
+			log.Printf("Error unmarshaling email verification payload: %v", err)
+			continue
+		}
 
 		email := payload["email"]
 		token := payload["token"]

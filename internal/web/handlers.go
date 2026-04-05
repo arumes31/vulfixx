@@ -60,13 +60,19 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.ParseForm()
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Error parsing form", http.StatusBadRequest)
+		return
+	}
 	email := r.FormValue("email")
 	password := r.FormValue("password")
 	totpCode := r.FormValue("totp_code")
 
 
-	session, _ := store.Get(r, "session-name")
+	session, err := store.Get(r, "session-name")
+	if err != nil {
+		log.Printf("Error getting session: %v", err)
+	}
 
 	// Check if this is a TOTP submission for a pre-authenticated user
 	preAuthUserID, hasPreAuth := session.Values["pre_auth_user_id"].(int)
@@ -87,7 +93,9 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		// Success! Clear pre-auth and set full auth
 		delete(session.Values, "pre_auth_user_id")
 		session.Values["user_id"] = preAuthUserID
-		session.Save(r, w)
+		if err := session.Save(r, w); err != nil {
+			log.Printf("Error saving session: %v", err)
+		}
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
 		return
 	}
@@ -100,7 +108,9 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	if user.IsTOTPEnabled {
 		session.Values["pre_auth_user_id"] = user.ID
-		session.Save(r, w)
+		if err := session.Save(r, w); err != nil {
+			log.Printf("Error saving session: %v", err)
+		}
 
 		RenderTemplate(w, r, "login.html", map[string]interface{}{
 			"RequireTOTP": true,
@@ -109,7 +119,9 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	session.Values["user_id"] = user.ID
-	session.Save(r, w)
+	if err := session.Save(r, w); err != nil {
+		log.Printf("Error saving session: %v", err)
+	}
 
 	http.Redirect(w, r, "/dashboard", http.StatusFound)
 }
@@ -120,7 +132,10 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.ParseForm()
+	if err := r.ParseForm(); err != nil {
+		RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Invalid form"})
+		return
+	}
 	email := r.FormValue("email")
 	password := r.FormValue("password")
 
@@ -131,10 +146,15 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Push email verification payload to redis queue
-	payload, _ := json.Marshal(map[string]string{
+	payload, err := json.Marshal(map[string]string{
 		"email": email,
 		"token": token,
 	})
+	if err != nil {
+		log.Printf("Error marshaling verification payload: %v", err)
+		RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
+		return
+	}
 	db.RedisClient.LPush(r.Context(), "email_verification_queue", payload)
 	log.Printf("Verification queued for %s\n", email)
 
@@ -142,14 +162,23 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func LogoutHandler(w http.ResponseWriter, r *http.Request) {
-	session, _ := store.Get(r, "session-name")
+	session, err := store.Get(r, "session-name")
+	if err != nil {
+		log.Printf("Error getting session: %v", err)
+	}
 	session.Options.MaxAge = -1
-	session.Save(r, w)
+	if err := session.Save(r, w); err != nil {
+		log.Printf("Error saving session: %v", err)
+	}
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
 func DashboardHandler(w http.ResponseWriter, r *http.Request) {
-	userID, _ := GetUserID(r)
+	userID, ok := GetUserID(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
 
 	// Fetch CVEs not resolved/ignored by user, filtered by their subscriptions
 	query := `
@@ -190,7 +219,11 @@ func UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := GetUserID(r)
+	userID, ok := GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	var req struct {
 		CVEID  int    `json:"cve_id"`
@@ -219,26 +252,41 @@ func UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"success":true}`))
+	_, _ = w.Write([]byte(`{"success":true}`))
 }
 
 func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
-	userID, _ := GetUserID(r)
+	userID, ok := GetUserID(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
 	if r.Method == "GET" {
 		query := `SELECT id, keyword, min_severity, webhook_url FROM user_subscriptions WHERE user_id = $1`
-		rows, _ := db.Pool.Query(context.Background(), query, userID)
+		rows, err := db.Pool.Query(context.Background(), query, userID)
+		if err != nil {
+			log.Printf("Error fetching subscriptions: %v", err)
+			RenderTemplate(w, r, "subscriptions.html", map[string]interface{}{"Error": "Error fetching subscriptions"})
+			return
+		}
 		defer rows.Close()
 		var subs []models.UserSubscription
 		for rows.Next() {
 			var s models.UserSubscription
-			rows.Scan(&s.ID, &s.Keyword, &s.MinSeverity, &s.WebhookURL)
+			if err := rows.Scan(&s.ID, &s.Keyword, &s.MinSeverity, &s.WebhookURL); err != nil {
+				log.Printf("Error scanning subscription: %v", err)
+				continue
+			}
 			subs = append(subs, s)
 		}
 		RenderTemplate(w, r, "subscriptions.html", map[string]interface{}{"Subscriptions": subs})
 		return
 	}
 	if r.Method == "POST" {
-		r.ParseForm()
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Error parsing form", http.StatusBadRequest)
+			return
+		}
 		keyword := r.FormValue("keyword")
 		minSeverityStr := r.FormValue("min_severity")
 		webhookUrl := r.FormValue("webhook_url")
@@ -261,12 +309,19 @@ func DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
         return
     }
-    userID, _ := GetUserID(r)
+    userID, ok := GetUserID(r)
+    if !ok {
+        http.Redirect(w, r, "/login", http.StatusFound)
+        return
+    }
     subIDStr := r.FormValue("id")
-    subID, _ := strconv.Atoi(subIDStr)
-
-    _, err := db.Pool.Exec(context.Background(), "DELETE FROM user_subscriptions WHERE id = $1 AND user_id = $2", subID, userID)
+    subID, err := strconv.Atoi(subIDStr)
     if err != nil {
+        http.Error(w, "Invalid subscription ID", http.StatusBadRequest)
+        return
+    }
+
+    if _, err = db.Pool.Exec(context.Background(), "DELETE FROM user_subscriptions WHERE id = $1 AND user_id = $2", subID, userID); err != nil {
         http.Error(w, "Error deleting subscription", http.StatusInternalServerError)
         return
     }
@@ -301,5 +356,8 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 	}
 	data["csrfField"] = csrf.TemplateField(r)
 	data["csrfToken"] = csrf.Token(r)
-	templates.ExecuteTemplate(w, name, data)
+	if err := templates.ExecuteTemplate(w, name, data); err != nil {
+		log.Printf("Error executing template %s: %v", name, err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }
