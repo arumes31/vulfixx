@@ -22,7 +22,7 @@ func SettingsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	templates.ExecuteTemplate(w, "settings.html", map[string]interface{}{
+	RenderTemplate(w, r, "settings.html", map[string]interface{}{
 		"Email":         email,
 		"IsTOTPEnabled": isTOTPEnabled,
 	})
@@ -59,7 +59,7 @@ func GenerateTOTPHandler(w http.ResponseWriter, r *http.Request) {
 
 	qrBase64 := base64.StdEncoding.EncodeToString(code.PNG())
 
-	templates.ExecuteTemplate(w, "settings.html", map[string]interface{}{
+	RenderTemplate(w, r, "settings.html", map[string]interface{}{
 		"Email":         email,
 		"IsTOTPEnabled": false,
 		"QRBase64":      qrBase64,
@@ -109,7 +109,7 @@ func ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	renderError := func(msg string) {
-		templates.ExecuteTemplate(w, "settings.html", map[string]interface{}{
+		RenderTemplate(w, r, "settings.html", map[string]interface{}{
 			"Email":         email,
 			"IsTOTPEnabled": isTOTPEnabled,
 			"PasswordError": msg,
@@ -130,7 +130,7 @@ func ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	templates.ExecuteTemplate(w, "settings.html", map[string]interface{}{
+	RenderTemplate(w, r, "settings.html", map[string]interface{}{
 		"Email":         email,
 		"IsTOTPEnabled": isTOTPEnabled,
 		"PasswordSuccess": "Password updated successfully.",

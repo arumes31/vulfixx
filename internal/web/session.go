@@ -12,6 +12,9 @@ var store *sessions.CookieStore
 func InitSession() {
 	key := os.Getenv("SESSION_KEY")
 	if key == "" {
+		if os.Getenv("ENV") != "development" {
+			panic("SESSION_KEY environment variable is required in production")
+		}
 		key = "default-secret-key"
 	}
 	store = sessions.NewCookieStore([]byte(key))
@@ -19,7 +22,7 @@ func InitSession() {
 		Path:     "/",
 		MaxAge:   86400 * 7,
 		HttpOnly: true,
-		Secure:   false, // Set to true in prod with HTTPS
+		Secure:   os.Getenv("ENV") != "development", // Set to true in prod with HTTPS
 	}
 }
 

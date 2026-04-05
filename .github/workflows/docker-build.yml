@@ -30,7 +30,7 @@ jobs:
         with:
           context: .
           push: false
-          tags: ${{ github.repository_owner }}/cve-tracker:${{ github.sha }}
+          tags: cve-tracker:pr-${{ github.sha }}
         if: github.event_name == 'pull_request'
 
       - name: Build and push Docker image (Push)

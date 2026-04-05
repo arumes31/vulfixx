@@ -1,27 +1,52 @@
 package web
 
 import (
+	"time"
 	"net/http"
 	"sync"
 
 	"golang.org/x/time/rate"
 )
 
-var visitors = make(map[string]*rate.Limiter)
+type visitor struct {
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
+
+var visitors = make(map[string]*visitor)
 var mtx sync.Mutex
+
+func init() {
+	go cleanupVisitors()
+}
+
+func cleanupVisitors() {
+	for {
+		time.Sleep(1 * time.Minute)
+		mtx.Lock()
+		for ip, v := range visitors {
+			if time.Since(v.lastSeen) > 3*time.Minute {
+				delete(visitors, ip)
+			}
+		}
+		mtx.Unlock()
+	}
+}
 
 func getVisitor(ip string) *rate.Limiter {
 	mtx.Lock()
 	defer mtx.Unlock()
 
-	limiter, exists := visitors[ip]
+	v, exists := visitors[ip]
 	if !exists {
 		// Allow 5 requests per second, burst of 10
-		limiter = rate.NewLimiter(5, 10)
-		visitors[ip] = limiter
+		limiter := rate.NewLimiter(5, 10)
+		visitors[ip] = &visitor{limiter, time.Now()}
+		return limiter
 	}
 
-	return limiter
+	v.lastSeen = time.Now()
+	return v.limiter
 }
 
 func RateLimitMiddleware(next http.Handler) http.Handler {
