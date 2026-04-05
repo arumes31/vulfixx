@@ -1,10 +1,11 @@
-{{template "base" map "UserLoggedIn" true}}
+{{template "base" .}}
 
 {{define "content"}}
 <h2>Your Alert Subscriptions</h2>
 <div class="card">
     <h3>Add New Subscription</h3>
     <form action="/subscriptions" method="POST">
+        {{ .csrfField }}
         <div class="form-group">
             <label>Keyword (e.g., Fortigate, Windows)</label>
             <input type="text" name="keyword">
@@ -41,6 +42,7 @@
                 <td>{{if .WebhookURL}}{{.WebhookURL}}{{else}}<em>None</em>{{end}}</td>
                 <td>
                     <form action="/subscriptions/delete" method="POST" style="display:inline;">
+        {{ .csrfField }}
                         <input type="hidden" name="id" value="{{.ID}}">
                         <button type="submit" class="btn" style="background:#d9534f; padding: 4px 8px;">Delete</button>
                     </form>

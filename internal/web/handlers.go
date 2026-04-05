@@ -1,6 +1,7 @@
 package web
 
 import (
+	"github.com/gorilla/csrf"
 	"context"
 	"cve-tracker/internal/auth"
 	"cve-tracker/internal/db"
@@ -55,7 +56,7 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
-		templates.ExecuteTemplate(w, "login.html", nil)
+		RenderTemplate(w, r, "login.html", nil)
 		return
 	}
 
@@ -76,7 +77,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		var secret string
 		err := db.Pool.QueryRow(r.Context(), "SELECT is_totp_enabled, COALESCE(totp_secret, '') FROM users WHERE id = $1", preAuthUserID).Scan(&isTOTPEnabled, &secret)
 		if err != nil || !isTOTPEnabled || !totp.Validate(totpCode, secret) {
-			templates.ExecuteTemplate(w, "login.html", map[string]interface{}{
+			RenderTemplate(w, r, "login.html", map[string]interface{}{
 				"Error":       "Invalid TOTP code",
 				"RequireTOTP": true,
 			})
@@ -93,7 +94,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	user, err := auth.Login(r.Context(), email, password)
 	if err != nil {
-		templates.ExecuteTemplate(w, "login.html", map[string]interface{}{"Error": "Invalid credentials"})
+		RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Invalid credentials"})
 		return
 	}
 
@@ -101,7 +102,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		session.Values["pre_auth_user_id"] = user.ID
 		session.Save(r, w)
 
-		templates.ExecuteTemplate(w, "login.html", map[string]interface{}{
+		RenderTemplate(w, r, "login.html", map[string]interface{}{
 			"RequireTOTP": true,
 		})
 		return
@@ -115,7 +116,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
-		templates.ExecuteTemplate(w, "register.html", nil)
+		RenderTemplate(w, r, "register.html", nil)
 		return
 	}
 
@@ -125,7 +126,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	token, err := auth.Register(context.Background(), email, password)
 	if err != nil {
-		templates.ExecuteTemplate(w, "register.html", map[string]interface{}{"Error": "Registration failed"})
+		RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
 		return
 	}
 
@@ -137,7 +138,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	db.RedisClient.LPush(r.Context(), "email_verification_queue", payload)
 	log.Printf("Verification queued for %s\n", email)
 
-	templates.ExecuteTemplate(w, "login.html", map[string]interface{}{"Message": "Registration successful. Please check your email to verify your account."})
+	RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Registration successful. Please check your email to verify your account."})
 }
 
 func LogoutHandler(w http.ResponseWriter, r *http.Request) {
@@ -178,7 +179,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		cves = append(cves, cve)
 	}
 
-	templates.ExecuteTemplate(w, "dashboard.html", map[string]interface{}{
+	RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
 		"CVEs": cves,
 	})
 }
@@ -233,7 +234,7 @@ func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 			rows.Scan(&s.ID, &s.Keyword, &s.MinSeverity, &s.WebhookURL)
 			subs = append(subs, s)
 		}
-		templates.ExecuteTemplate(w, "subscriptions.html", map[string]interface{}{"Subscriptions": subs})
+		RenderTemplate(w, r, "subscriptions.html", map[string]interface{}{"Subscriptions": subs})
 		return
 	}
 	if r.Method == "POST" {
@@ -286,5 +287,19 @@ func VerifyEmailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	templates.ExecuteTemplate(w, "login.html", map[string]interface{}{"Message": "Email verified successfully! You can now login."})
+	RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Email verified successfully! You can now login."})
+}
+
+func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data map[string]interface{}) {
+	if data == nil {
+		data = make(map[string]interface{})
+	}
+	userID, ok := GetUserID(r)
+	data["UserLoggedIn"] = ok
+	if ok {
+		data["UserID"] = userID
+	}
+	data["csrfField"] = csrf.TemplateField(r)
+	data["csrfToken"] = csrf.Token(r)
+	templates.ExecuteTemplate(w, name, data)
 }
