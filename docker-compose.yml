@@ -13,6 +13,11 @@ services:
       - DB_PORT=5432
       - REDIS_URL=redis:6379
       - SESSION_KEY=supersecretkey-change-me-in-prod
+      - SMTP_HOST=${SMTP_HOST:-smtp.example.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-user@example.com}
+      - SMTP_PASS=${SMTP_PASS:-password}
+      - BASE_URL=http://localhost:8080
     depends_on:
       - db
       - redis
