@@ -1,0 +1,35 @@
+{{define "base"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CVE Tracker</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div id="branding">
+                <h1>CVE Tracker</h1>
+            </div>
+            <nav>
+                <ul>
+                    {{if .UserLoggedIn}}
+                        <li><a href="/dashboard">Dashboard</a></li>
+                        <li><a href="/subscriptions">Subscriptions</a></li>
+                        <li><a href="/logout">Logout</a></li>
+                    {{else}}
+                        <li><a href="/login">Login</a></li>
+                        <li><a href="/register">Register</a></li>
+                    {{end}}
+                </ul>
+            </nav>
+        </div>
+    </header>
+    <div class="container">
+        {{template "content" .}}
+    </div>
+</body>
+</html>
+{{end}}
