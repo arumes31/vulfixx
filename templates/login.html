@@ -12,17 +12,17 @@
     <form action="/login" method="POST">
     {{if .RequireTOTP}}
         <div class="form-group">
-            <label>TOTP Code</label>
-            <input type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456">
+            <label for="totp_code">TOTP Code</label>
+            <input type="text" id="totp_code" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456" autocomplete="one-time-code" autofocus>
         </div>
     {{else}}
         <div class="form-group">
-            <label>Email</label>
-            <input type="email" name="email" required>
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" required autocomplete="email" autofocus>
         </div>
         <div class="form-group">
-            <label>Password</label>
-            <input type="password" name="password" required>
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required autocomplete="current-password">
         </div>
     {{end}}
         <button type="submit" class="btn">Login</button>
