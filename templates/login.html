@@ -10,19 +10,20 @@
         <p class="error">{{.Error}}</p>
     {{end}}
     <form action="/login" method="POST">
+        {{ .csrfField }}
     {{if .RequireTOTP}}
         <div class="form-group">
-            <label for="totp_code">TOTP Code</label>
-            <input type="text" id="totp_code" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456" autocomplete="one-time-code" autofocus>
+            <label>TOTP Code</label>
+            <input type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456">
         </div>
     {{else}}
         <div class="form-group">
-            <label for="email">Email</label>
-            <input type="email" id="email" name="email" required autocomplete="email" autofocus>
+            <label>Email</label>
+            <input type="email" name="email" required>
         </div>
         <div class="form-group">
-            <label for="password">Password</label>
-            <input type="password" id="password" name="password" required autocomplete="current-password">
+            <label>Password</label>
+            <input type="password" name="password" required>
         </div>
     {{end}}
         <button type="submit" class="btn">Login</button>

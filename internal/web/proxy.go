@@ -1,6 +1,8 @@
 package web
 
 import (
+	"sync"
+	"log"
 	"net/netip"
 	"net"
 	"context"
@@ -13,17 +15,33 @@ type contextKey string
 
 const clientIPKey contextKey = "ClientIP"
 
+var (
+	trustedProxiesLogged bool
+	trustedProxiesMutex  sync.Mutex
+)
+
 func isTrustedProxy(ip string) bool {
 	trustedProxiesEnv := os.Getenv("TRUSTED_PROXIES")
-	if trustedProxiesEnv == "" {
-		return false
+
+	trustedProxiesMutex.Lock()
+	if !trustedProxiesLogged {
+		if trustedProxiesEnv == "" {
+			log.Println("WARNING: TRUSTED_PROXIES is not set. Defaulting to trusting only loopback addresses (127.0.0.1, ::1). If you are behind a reverse proxy, you MUST set TRUSTED_PROXIES to avoid rate-limiting all users based on the proxy IP.")
+		}
+		trustedProxiesLogged = true
 	}
-	proxies := strings.Split(trustedProxiesEnv, ",")
+	trustedProxiesMutex.Unlock()
 
 	addr, err := netip.ParseAddr(ip)
 	if err != nil {
 		return false
 	}
+
+	if trustedProxiesEnv == "" {
+		return addr.IsLoopback()
+	}
+
+	proxies := strings.Split(trustedProxiesEnv, ",")
 
 	for _, proxyStr := range proxies {
 		proxyStr = strings.TrimSpace(proxyStr)

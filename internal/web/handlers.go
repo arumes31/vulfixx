@@ -300,5 +300,6 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 		data["UserID"] = userID
 	}
 	data["csrfField"] = csrf.TemplateField(r)
+	data["csrfToken"] = csrf.Token(r)
 	templates.ExecuteTemplate(w, name, data)
 }

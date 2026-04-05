@@ -213,13 +213,18 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) {
 		if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
 			log.Printf("Skipping invalid webhook URL scheme: %s", sub.WebhookURL)
 		} else {
-			ips, err := net.LookupIP(parsedURL.Hostname())
-			if err != nil {
-				log.Printf("Failed to resolve webhook host: %s", sub.WebhookURL)
-			} else {
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+				ips, err := net.DefaultResolver.LookupIPAddr(ctx, parsedURL.Hostname())
+				if err != nil {
+					log.Printf("Failed to resolve webhook host: %s, err: %v", sub.WebhookURL, err)
+					return
+				}
 				isSafe := true
 				var safeIP net.IP
-				for _, ip := range ips {
+				for _, ipAddr := range ips {
+					ip := ipAddr.IP
 					if addr, ok := netip.AddrFromSlice(ip); ok {
 						if addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified() || addr.IsMulticast() {
 							isSafe = false
@@ -239,36 +244,34 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) {
 						"cvss_score": cve.CVSSScore,
 						"user_email": email,
 					})
-					go func() {
-						dialer := &net.Dialer{
-							Timeout:   5 * time.Second,
-							KeepAlive: 5 * time.Second,
-						}
-						client := &http.Client{
-							Timeout: 10 * time.Second,
-							Transport: &http.Transport{
-								DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-									port := parsedURL.Port()
-									if port == "" {
-										if parsedURL.Scheme == "https" {
-											port = "443"
-										} else {
-											port = "80"
-										}
+					dialer := &net.Dialer{
+						Timeout:   5 * time.Second,
+						KeepAlive: 5 * time.Second,
+					}
+					client := &http.Client{
+						Timeout: 10 * time.Second,
+						Transport: &http.Transport{
+							DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+								port := parsedURL.Port()
+								if port == "" {
+									if parsedURL.Scheme == "https" {
+										port = "443"
+									} else {
+										port = "80"
 									}
-									return dialer.DialContext(ctx, network, net.JoinHostPort(safeIP.String(), port))
-								},
+								}
+								return dialer.DialContext(ctx, network, net.JoinHostPort(safeIP.String(), port))
 							},
-						}
-						resp, err := client.Post(sub.WebhookURL, "application/json", bytes.NewBuffer(payload))
-						if err == nil {
-							defer resp.Body.Close()
-						} else {
-							log.Printf("Failed to send webhook to %s: %v", sub.WebhookURL, err)
-						}
-					}()
+						},
+					}
+					resp, err := client.Post(sub.WebhookURL, "application/json", bytes.NewBuffer(payload))
+					if err == nil {
+						defer resp.Body.Close()
+					} else {
+						log.Printf("Failed to send webhook to %s: %v", sub.WebhookURL, err)
+					}
 				}
-			}
+			}()
 		}
 	}
 
