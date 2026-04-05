@@ -1,0 +1,53 @@
+{{template "base" map "UserLoggedIn" true}}
+
+{{define "content"}}
+<h2>Latest Active CVEs</h2>
+<p>Showing CVEs that match your subscriptions and haven't been resolved/ignored.</p>
+
+<div id="cve-list">
+    {{range .CVEs}}
+    <div class="cve-item {{if .CISAKEV}}kev{{end}}" id="cve-{{.ID}}">
+        <div class="cve-header">
+            <h3>{{.CVEID}} {{if .CISAKEV}}<span style="color:#e8491d; font-size: 0.8em;">[CISA KEV]</span>{{end}}</h3>
+            <span class="cve-score {{if ge .CVSSScore 7.0}}score-high{{else if ge .CVSSScore 4.0}}score-med{{else}}score-low{{end}}">
+                CVSS: {{.CVSSScore}}
+            </span>
+        </div>
+        <p><strong>Published:</strong> {{.PublishedDate.Format "2006-01-02"}}</p>
+        <p>{{.Description}}</p>
+        <div>
+            <button class="btn" onclick="updateStatus({{.ID}}, 'resolved')">Mark Resolved</button>
+            <button class="btn" onclick="updateStatus({{.ID}}, 'ignored')" style="background: #777;">Ignore</button>
+        </div>
+    </div>
+    {{else}}
+    <p>No active CVEs to display.</p>
+    {{end}}
+</div>
+
+<script>
+function updateStatus(cveId, status) {
+    fetch('/api/status', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ cve_id: cveId, status: status })
+    })
+    .then(response => {
+        if (response.ok) {
+            const el = document.getElementById('cve-' + cveId);
+            if(el) {
+                el.style.display = 'none';
+            }
+        } else {
+            alert("Failed to update status.");
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert("An error occurred.");
+    });
+}
+</script>
+{{end}}

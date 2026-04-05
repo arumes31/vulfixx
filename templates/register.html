@@ -1,0 +1,22 @@
+{{template "base" .}}
+
+{{define "content"}}
+<div class="card" style="max-width: 400px; margin: auto;">
+    <h2>Register</h2>
+    {{if .Error}}
+        <p class="error">{{.Error}}</p>
+    {{end}}
+    <form action="/register" method="POST">
+        <div class="form-group">
+            <label>Email</label>
+            <input type="email" name="email" required>
+        </div>
+        <div class="form-group">
+            <label>Password</label>
+            <input type="password" name="password" required>
+        </div>
+        <button type="submit" class="btn">Register</button>
+    </form>
+    <p>Already have an account? <a href="/login">Login here</a></p>
+</div>
+{{end}}
