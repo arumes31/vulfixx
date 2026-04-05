@@ -1,5 +1,7 @@
 # CVE Tracker & Alerting System
 
+![CVE Tracker Banner](https://dummyimage.com/800x200/00ADD8/fff&text=CVE+Tracker+%26+Alerting+System)
+
 [![Build and Publish Docker Image](https://github.com/your-username/cve-tracker/actions/workflows/docker.yml/badge.svg)](https://github.com/your-username/cve-tracker/actions)
 [![Go Version](https://img.shields.io/badge/Go-1.24-00ADD8?style=flat&logo=go)](https://golang.org)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-316192?style=flat&logo=postgresql)](https://www.postgresql.org/)
