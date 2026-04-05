@@ -64,6 +64,33 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 	totpCode := r.FormValue("totp_code")
 
+
+	session, _ := store.Get(r, "session-name")
+
+	// Check if this is a TOTP submission for a pre-authenticated user
+	preAuthUserID, hasPreAuth := session.Values["pre_auth_user_id"].(int)
+
+	if hasPreAuth && totpCode != "" {
+		// User is submitting TOTP after providing valid password
+		var isTOTPEnabled bool
+		var secret string
+		err := db.Pool.QueryRow(r.Context(), "SELECT is_totp_enabled, COALESCE(totp_secret, '') FROM users WHERE id = $1", preAuthUserID).Scan(&isTOTPEnabled, &secret)
+		if err != nil || !isTOTPEnabled || !totp.Validate(totpCode, secret) {
+			templates.ExecuteTemplate(w, "login.html", map[string]interface{}{
+				"Error":       "Invalid TOTP code",
+				"RequireTOTP": true,
+			})
+			return
+		}
+
+		// Success! Clear pre-auth and set full auth
+		delete(session.Values, "pre_auth_user_id")
+		session.Values["user_id"] = preAuthUserID
+		session.Save(r, w)
+		http.Redirect(w, r, "/dashboard", http.StatusFound)
+		return
+	}
+
 	user, err := auth.Login(r.Context(), email, password)
 	if err != nil {
 		templates.ExecuteTemplate(w, "login.html", map[string]interface{}{"Error": "Invalid credentials"})
@@ -71,27 +98,15 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if user.IsTOTPEnabled {
-		if totpCode == "" {
-			templates.ExecuteTemplate(w, "login.html", map[string]interface{}{
-				"RequireTOTP": true,
-				"Email":       email,
-				"Password":    password,
-			})
-			return
-		}
+		session.Values["pre_auth_user_id"] = user.ID
+		session.Save(r, w)
 
-		if !totp.Validate(totpCode, user.TOTPSecret) {
-			templates.ExecuteTemplate(w, "login.html", map[string]interface{}{
-				"Error":       "Invalid TOTP code",
-				"RequireTOTP": true,
-				"Email":       email,
-				"Password":    password,
-			})
-			return
-		}
+		templates.ExecuteTemplate(w, "login.html", map[string]interface{}{
+			"RequireTOTP": true,
+		})
+		return
 	}
 
-	session, _ := store.Get(r, "session-name")
 	session.Values["user_id"] = user.ID
 	session.Save(r, w)
 

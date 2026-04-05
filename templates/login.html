@@ -11,8 +11,6 @@
     {{end}}
     <form action="/login" method="POST">
     {{if .RequireTOTP}}
-        <input type="hidden" name="email" value="{{.Email}}">
-        <input type="hidden" name="password" value="{{.Password}}">
         <div class="form-group">
             <label>TOTP Code</label>
             <input type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456">

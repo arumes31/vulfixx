@@ -21,45 +21,127 @@ func StartWorker() {
 	go processEmailVerification()
 }
 
+type NVDResponse struct {
+	Vulnerabilities []struct {
+		CVE struct {
+			ID          string `json:"id"`
+			Published   string `json:"published"`
+			LastModified string `json:"lastModified"`
+			Descriptions []struct {
+				Lang  string `json:"lang"`
+				Value string `json:"value"`
+			} `json:"descriptions"`
+			Metrics struct {
+				CvssMetricV31 []struct {
+					CvssData struct {
+						BaseScore float64 `json:"baseScore"`
+					} `json:"cvssData"`
+				} `json:"cvssMetricV31"`
+			} `json:"metrics"`
+		} `json:"cve"`
+	} `json:"vulnerabilities"`
+}
+
 func fetchCVEsPeriodically() {
-	ticker := time.NewTicker(1 * time.Minute) // In prod, maybe every hour
+	// NIST NVD rate limit is strict. Using 1 hour here for real usage.
+	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 
+	// Fetch immediately on startup
+	fetchFromNVD()
+
 	for {
-		log.Println("Worker: Fetching CVEs...")
-		// Simulated NVD fetch (stub)
-		// In a real app, make HTTP GET to https://services.nvd.nist.gov/rest/json/cves/2.0
-		cves := []models.CVE{
-			{CVEID: fmt.Sprintf("CVE-2024-%d", time.Now().Unix()%10000), Description: "A simulated vulnerability in Fortigate firewalls allowing RCE.", CVSSScore: 9.8, CISAKEV: true, PublishedDate: time.Now(), UpdatedDate: time.Now()},
-			{CVEID: fmt.Sprintf("CVE-2024-%d", (time.Now().Unix()+1)%10000), Description: "A simulated vulnerability in Spring Boot.", CVSSScore: 7.5, CISAKEV: false, PublishedDate: time.Now(), UpdatedDate: time.Now()},
-		}
-
-		ctx := context.Background()
-		for _, cve := range cves {
-			var id int
-			err := db.Pool.QueryRow(ctx, `
-				INSERT INTO cves (cve_id, description, cvss_score, cisa_kev, published_date, updated_date)
-				VALUES ($1, $2, $3, $4, $5, $6)
-				ON CONFLICT (cve_id) DO UPDATE SET
-					description = EXCLUDED.description,
-					cvss_score = EXCLUDED.cvss_score,
-					cisa_kev = EXCLUDED.cisa_kev,
-					updated_date = EXCLUDED.updated_date
-				RETURNING id
-			`, cve.CVEID, cve.Description, cve.CVSSScore, cve.CISAKEV, cve.PublishedDate, cve.UpdatedDate).Scan(&id)
-
-			if err != nil {
-				log.Println("Error upserting CVE:", err)
-				continue
-			}
-			cve.ID = id
-			// Queue alert processing
-			alertJob, _ := json.Marshal(cve)
-			db.RedisClient.LPush(ctx, "cve_alerts_queue", alertJob)
-		}
-
 		<-ticker.C
+		fetchFromNVD()
 	}
+}
+
+func fetchFromNVD() {
+	log.Println("Worker: Fetching CVEs from NVD...")
+	// We'll fetch the latest modified CVEs from the last hour or so.
+	// For simplicity, we just fetch a recent chunk without date parameters,
+	// but normally you'd use 'pubStartDate' and 'pubEndDate'.
+
+	url := "https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=50"
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Println("Error creating NVD request:", err)
+		return
+	}
+	// Add API key if available to avoid rate limits
+	if apiKey := os.Getenv("NVD_API_KEY"); apiKey != "" {
+		req.Header.Set("apiKey", apiKey)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("Error fetching from NVD:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("NVD API returned status: %d", resp.StatusCode)
+		return
+	}
+
+	var nvdResp NVDResponse
+	if err := json.NewDecoder(resp.Body).Decode(&nvdResp); err != nil {
+		log.Println("Error decoding NVD response:", err)
+		return
+	}
+
+	ctx := context.Background()
+	for _, v := range nvdResp.Vulnerabilities {
+		cveData := v.CVE
+
+		desc := ""
+		for _, d := range cveData.Descriptions {
+			if d.Lang == "en" {
+				desc = d.Value
+				break
+			}
+		}
+
+		score := 0.0
+		if len(cveData.Metrics.CvssMetricV31) > 0 {
+			score = cveData.Metrics.CvssMetricV31[0].CvssData.BaseScore
+		}
+
+		pubDate, _ := time.Parse(time.RFC3339, cveData.Published)
+		modDate, _ := time.Parse(time.RFC3339, cveData.LastModified)
+
+		cve := models.CVE{
+			CVEID:         cveData.ID,
+			Description:   desc,
+			CVSSScore:     score,
+			PublishedDate: pubDate,
+			UpdatedDate:   modDate,
+		}
+
+		var id int
+		err := db.Pool.QueryRow(ctx, `
+			INSERT INTO cves (cve_id, description, cvss_score, published_date, updated_date)
+			VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (cve_id) DO UPDATE SET
+				description = EXCLUDED.description,
+				cvss_score = EXCLUDED.cvss_score,
+				updated_date = EXCLUDED.updated_date
+			RETURNING id
+		`, cve.CVEID, cve.Description, cve.CVSSScore, cve.PublishedDate, cve.UpdatedDate).Scan(&id)
+
+		if err != nil {
+			// Row may exist but unchanged or other err, ignore
+			continue
+		}
+		cve.ID = id
+
+		alertJob, _ := json.Marshal(cve)
+		db.RedisClient.LPush(ctx, "cve_alerts_queue", alertJob)
+	}
+	log.Println("Worker: NVD fetch complete.")
 }
 
 func processAlerts() {
@@ -125,7 +207,8 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) {
 	log.Printf("ALERT: Sending to %s for %s\n", email, cve.CVEID)
 	// If webhook URL is set, send POST request
 	if sub.WebhookURL != "" {
-		if !strings.HasPrefix(sub.WebhookURL, "http://") && !strings.HasPrefix(sub.WebhookURL, "https://") {
+		// Basic SSRF mitigation
+		if !strings.HasPrefix(sub.WebhookURL, "http://") && !strings.HasPrefix(sub.WebhookURL, "https://") || strings.Contains(sub.WebhookURL, "localhost") || strings.Contains(sub.WebhookURL, "127.0.0.1") || strings.Contains(sub.WebhookURL, "169.254.") {
 			log.Printf("Skipping invalid webhook URL: %s", sub.WebhookURL)
 		} else {
 			payload, _ := json.Marshal(map[string]interface{}{

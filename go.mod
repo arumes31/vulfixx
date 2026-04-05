@@ -11,6 +11,7 @@ require (
 	github.com/pquerna/otp v1.5.0
 	github.com/redis/go-redis/v9 v9.18.0
 	golang.org/x/crypto v0.22.0
+	golang.org/x/time v0.5.0
 	rsc.io/qr v0.2.0
 )
 
