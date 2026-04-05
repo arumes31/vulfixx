@@ -16,6 +16,8 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 
 - [Docker](https://www.docker.com/get-started)
 - [Docker Compose](https://docs.docker.com/compose/install/)
+- [Go 1.26](https://golang.org/dl/) (optional, for local development)
+- [act](https://github.com/nektos/act) (optional, for running GitHub Actions locally)
 
 ### Installation
 
@@ -60,11 +62,22 @@ go test ./...
 
 ### CI/CD Pipeline
 
-This project uses GitHub Actions for continuous integration, covering:
-- **Unit Testing**: Automated Go tests.
-- **Linting**: Consistent code style with `golangci-lint`.
+This project uses a modern GitHub Actions pipeline (`.github/workflows/docker-build.yml`) for continuous integration:
+- **Environment**: All CI jobs run in a **Go 1.26** containerized environment.
+- **Unit Testing**: Automated Go tests to ensure logic correctness.
+- **Linting**: Strict code quality checks with `golangci-lint` (v2.x).
 - **Security Scanning**: Vulnerability detection with `gosec`.
-- **Container Publishing**: Automated builds pushed to GitHub Container Registry (GHCR).
+- **Container Publishing**: Images are automatically built and pushed to **GitHub Container Registry (GHCR)**.
+
+To run the entire CI pipeline locally using `act`:
+```bash
+act
+```
+Or run specific jobs:
+```bash
+act -j test
+act -j lint
+```
 
 ## License
 

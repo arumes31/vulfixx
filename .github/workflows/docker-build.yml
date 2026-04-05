@@ -15,24 +15,20 @@ jobs:
   test:
     name: Run Go Tests
     runs-on: ubuntu-latest
+    container: golang:1.26-alpine
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.26'
-          cache: true
       - name: Run tests
         run: go test -v ./...
 
   lint:
     name: Lint Code base
     runs-on: ubuntu-latest
+    container: golang:1.26-alpine
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.26'
-          cache: true
+      - name: Install dependencies
+        run: apk add --no-cache git
       - name: Run golangci-lint
         run: go run github.com/golangci/golangci-lint/cmd/golangci-lint@latest run --timeout=10m
 
