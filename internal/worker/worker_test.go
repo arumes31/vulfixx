@@ -1,7 +1,6 @@
 package worker
 
 import (
-	"cve-tracker/internal/models"
 	"testing"
 )
 
