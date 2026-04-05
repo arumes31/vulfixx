@@ -1,6 +1,6 @@
 module cve-tracker
 
-go 1.24
+go 1.25.0
 
 require (
 	github.com/gorilla/csrf v1.7.3
