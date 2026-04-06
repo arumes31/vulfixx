@@ -44,6 +44,16 @@ func AuthMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func AdminMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !IsAdmin(r) {
+			http.Error(w, "Forbidden: Admin access required", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func LogActivity(ctx context.Context, userID int, activityType, description, ipAddress, userAgent string) {
 	host, _, err := net.SplitHostPort(ipAddress)
 	if err == nil {
@@ -114,6 +124,11 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		// Success! Clear pre-auth and set full auth
 		delete(session.Values, "pre_auth_user_id")
 		session.Values["user_id"] = preAuthUserID
+		
+		var isAdmin bool
+		_ = db.Pool.QueryRow(r.Context(), "SELECT is_admin FROM users WHERE id = $1", preAuthUserID).Scan(&isAdmin)
+		session.Values["is_admin"] = isAdmin
+
 		if err := session.Save(r, w); err != nil {
 			log.Printf("Error saving session: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -146,6 +161,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	session.Values["user_id"] = user.ID
+	session.Values["is_admin"] = user.IsAdmin
 	if err := session.Save(r, w); err != nil {
 		log.Printf("Error saving session: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -728,6 +744,7 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 	data["UserLoggedIn"] = ok
 	if ok {
 		data["UserID"] = userID
+		data["IsAdmin"] = IsAdmin(r)
 	}
 	data["csrfField"] = csrf.TemplateField(r)
 	data["csrfToken"] = csrf.Token(r)
@@ -736,3 +753,56 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }
+
+func AdminUserManagementHandler(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Pool.Query(r.Context(), "SELECT id, email, is_email_verified, is_admin, created_at FROM users ORDER BY created_at DESC")
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var users []models.User
+	for rows.Next() {
+		var u models.User
+		if err := rows.Scan(&u.ID, &u.Email, &u.IsEmailVerified, &u.IsAdmin, &u.CreatedAt); err != nil {
+			continue
+		}
+		users = append(users, u)
+	}
+
+	RenderTemplate(w, r, "admin_users.html", map[string]interface{}{
+		"Users": users,
+	})
+}
+
+func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form", http.StatusBadRequest)
+		return
+	}
+
+	idStr := r.FormValue("id")
+	id, _ := strconv.Atoi(idStr)
+
+	// Prevent admin from deleting themselves
+	currentUserID, _ := GetUserID(r)
+	if id == currentUserID {
+		http.Error(w, "Cannot delete yourself", http.StatusBadRequest)
+		return
+	}
+
+	_, err := db.Pool.Exec(r.Context(), "DELETE FROM users WHERE id = $1 AND is_admin = FALSE", id)
+	if err != nil {
+		http.Error(w, "Failed to delete user", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/admin/users", http.StatusFound)
+}
+

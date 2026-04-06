@@ -18,6 +18,9 @@
                 <ul>
                     {{if .UserLoggedIn}}
                         <li><a href="/dashboard">Dashboard</a></li>
+                        {{if .IsAdmin}}
+                        <li><a href="/admin/users">Admin</a></li>
+                        {{end}}
                         <li><a href="/subscriptions">Subscriptions</a></li>
                         <li><a href="/alerts">Alerts</a></li>
                         <li><a href="/activity">Activity</a></li>

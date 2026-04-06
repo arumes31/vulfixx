@@ -10,6 +10,7 @@ type User struct {
 	EmailVerifyToken string
 	TOTPSecret       string
 	IsTOTPEnabled    bool
+	IsAdmin          bool
 	CreatedAt        time.Time
 }
 

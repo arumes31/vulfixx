@@ -53,8 +53,8 @@ func VerifyEmail(ctx context.Context, token string) error {
 func Login(ctx context.Context, email, password string) (*models.User, error) {
 	var user models.User
 	// Make sure we scan all relevant fields needed
-	err := db.Pool.QueryRow(ctx, "SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE(totp_secret, '') FROM users WHERE email = $1", email).
-		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsEmailVerified, &user.IsTOTPEnabled, &user.TOTPSecret)
+	err := db.Pool.QueryRow(ctx, "SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE(totp_secret, ''), is_admin FROM users WHERE email = $1", email).
+		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsEmailVerified, &user.IsTOTPEnabled, &user.TOTPSecret, &user.IsAdmin)
 	if err != nil {
 		return nil, errors.New("invalid credentials")
 	}
@@ -65,6 +65,35 @@ func Login(ctx context.Context, email, password string) (*models.User, error) {
 	}
 
 	return &user, nil
+}
+
+// InitAdmin initializes an admin user from environment variables.
+func InitAdmin(ctx context.Context, email, password, totpSecret string) error {
+	if email == "" || password == "" {
+		return nil // No admin config provided
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	rssToken, err := GenerateToken()
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Pool.Exec(ctx, `
+		INSERT INTO users (email, password_hash, is_email_verified, is_admin, totp_secret, is_totp_enabled, rss_feed_token)
+		VALUES ($1, $2, TRUE, TRUE, $3, $4, $5)
+		ON CONFLICT (email) DO UPDATE SET
+			password_hash = EXCLUDED.password_hash,
+			is_admin = TRUE,
+			totp_secret = EXCLUDED.totp_secret,
+			is_totp_enabled = EXCLUDED.is_totp_enabled
+	`, email, string(hashedPassword), totpSecret, totpSecret != "", rssToken)
+
+	return err
 }
 
 

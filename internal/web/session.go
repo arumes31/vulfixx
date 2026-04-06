@@ -36,3 +36,9 @@ func GetUserID(r *http.Request) (int, bool) {
 	userID, ok := session.Values["user_id"].(int)
 	return userID, ok
 }
+
+func IsAdmin(r *http.Request) bool {
+	session, _ := store.Get(r, "session-name")
+	isAdmin, ok := session.Values["is_admin"].(bool)
+	return ok && isAdmin
+}

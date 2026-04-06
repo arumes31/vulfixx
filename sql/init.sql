@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
     email_verify_token VARCHAR(255),
     totp_secret VARCHAR(255),
     is_totp_enabled BOOLEAN DEFAULT FALSE,
+    is_admin BOOLEAN DEFAULT FALSE,
     rss_feed_token VARCHAR(255) UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
