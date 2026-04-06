@@ -7,15 +7,10 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/hex"
 	"errors"
-	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"github.com/pquerna/otp/totp"
 )
-
-// tokenTTL is the maximum age for email change request tokens.
-const tokenTTL = 24 * time.Hour
-
 func GenerateToken() (string, error) {
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {

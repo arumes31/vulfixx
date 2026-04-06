@@ -91,7 +91,7 @@ func fetchFromNVD(ctx context.Context) {
 		// Validate env override: only allow https scheme (or http for tests)
 		parsed, err := url.Parse(envURL)
 		if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") {
-			log.Printf("Invalid NVD_API_URL (bad scheme): %s", envURL)
+			log.Printf("Invalid NVD_API_URL (bad scheme): %q", envURL) // #nosec G706
 			return
 		}
 		baseURL = parsed.String()
@@ -109,7 +109,7 @@ func fetchFromNVD(ctx context.Context) {
 		req.Header.Set("apiKey", apiKey)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) // #nosec G704 -- URL validated above
 	if err != nil {
 		log.Println("Error fetching from NVD:", err)
 		return

@@ -184,7 +184,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error marshaling verification payload: %v", err)
 		// Rollback: delete the user we just created since we can't send verification
 		if _, delErr := db.Pool.Exec(r.Context(), "DELETE FROM users WHERE email = $1", email); delErr != nil {
-			log.Printf("Error rolling back user creation for %q: %v", email, delErr)
+			log.Printf("Error rolling back user creation for %q: %v", email, delErr) // #nosec G706
 		}
 		RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
 		return
@@ -193,12 +193,12 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error enqueueing verification payload: %v", err)
 		// Rollback: delete the user we just created since we can't send verification
 		if _, delErr := db.Pool.Exec(r.Context(), "DELETE FROM users WHERE email = $1", email); delErr != nil {
-			log.Printf("Error rolling back user creation for %q: %v", email, delErr)
+			log.Printf("Error rolling back user creation for %q: %v", email, delErr) // #nosec G706
 		}
 		RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
 		return
 	}
-	log.Printf("Verification queued for %q", email)
+	log.Printf("Verification queued for %q", email) // #nosec G706
 
 	RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Registration successful. Please check your email to verify your account."})
 }
