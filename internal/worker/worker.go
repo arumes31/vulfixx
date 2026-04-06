@@ -19,9 +19,10 @@ import (
 )
 
 func StartWorker() {
+	ctx := context.Background()
 	go fetchCVEsPeriodically()
-	go processAlerts()
-	go processEmailVerification()
+	go processAlerts(ctx)
+	go processEmailVerification(ctx)
 }
 
 type NVDResponse struct {
@@ -65,7 +66,11 @@ func fetchFromNVD() {
 	// For simplicity, we just fetch a recent chunk without date parameters,
 	// but normally you'd use 'pubStartDate' and 'pubEndDate'.
 
-	url := "https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=50"
+	baseURL := os.Getenv("NVD_API_URL")
+	if baseURL == "" {
+		baseURL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+	}
+	url := baseURL + "?resultsPerPage=50"
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	req, err := http.NewRequest("GET", url, nil)
@@ -147,23 +152,27 @@ func fetchFromNVD() {
 	log.Println("Worker: NVD fetch complete.")
 }
 
-func processAlerts() {
-	ctx := context.Background()
+func processAlerts(ctx context.Context) {
 	for {
-		result, err := db.RedisClient.BRPop(ctx, 0, "cve_alerts_queue").Result()
-		if err != nil {
-			log.Println("Error reading from queue:", err)
-			time.Sleep(5 * time.Second)
-			continue
-		}
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			result, err := db.RedisClient.BRPop(ctx, 0, "cve_alerts_queue").Result()
+			if err != nil {
+				log.Println("Error reading from queue:", err)
+				time.Sleep(1 * time.Second)
+				continue
+			}
 
-		var cve models.CVE
-		if err := json.Unmarshal([]byte(result[1]), &cve); err != nil {
-			log.Printf("Error unmarshaling CVE from queue: %v", err)
-			continue
-		}
+			var cve models.CVE
+			if err := json.Unmarshal([]byte(result[1]), &cve); err != nil {
+				log.Printf("Error unmarshaling CVE from queue: %v", err)
+				continue
+			}
 
-		evaluateSubscriptions(ctx, &cve)
+			evaluateSubscriptions(ctx, &cve)
+		}
 	}
 }
 
@@ -313,26 +322,30 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) {
 }
 
 
-func processEmailVerification() {
-	ctx := context.Background()
+func processEmailVerification(ctx context.Context) {
 	for {
-		result, err := db.RedisClient.BRPop(ctx, 0, "email_verification_queue").Result()
-		if err != nil {
-			log.Println("Error reading from verification queue:", err)
-			time.Sleep(5 * time.Second)
-			continue
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			result, err := db.RedisClient.BRPop(ctx, 0, "email_verification_queue").Result()
+			if err != nil {
+				log.Println("Error reading from verification queue:", err)
+				time.Sleep(1 * time.Second)
+				continue
+			}
+
+			var payload map[string]string
+			if err := json.Unmarshal([]byte(result[1]), &payload); err != nil {
+				log.Printf("Error unmarshaling email verification payload: %v", err)
+				continue
+			}
+
+			email := payload["email"]
+			token := payload["token"]
+
+			sendVerificationEmail(email, token)
 		}
-
-		var payload map[string]string
-		if err := json.Unmarshal([]byte(result[1]), &payload); err != nil {
-			log.Printf("Error unmarshaling email verification payload: %v", err)
-			continue
-		}
-
-		email := payload["email"]
-		token := payload["token"]
-
-		sendVerificationEmail(email, token)
 	}
 }
 

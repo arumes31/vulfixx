@@ -1,0 +1,38 @@
+{{template "base" .}}
+
+{{define "content"}}
+<h2>User Activity Log</h2>
+<p>Recent actions performed on your account.</p>
+
+<div class="card">
+    <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Activity</th>
+                <th>Description</th>
+                <th>IP Address</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Logs}}
+            <tr>
+                <td>{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+                <td><span class="btn" style="padding: 2px 8px; cursor: default; background: #5bc85c;">{{.ActivityType}}</span></td>
+                <td>{{.Description}}</td>
+                <td><code>{{.IPAddress}}</code></td>
+            </tr>
+            {{else}}
+            <tr>
+                <td colspan="4" style="text-align: center;">No activity recorded yet.</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+
+<style>
+    th, td { padding: 12px; border-bottom: 1px solid #eee; }
+    body.dark-mode th, body.dark-mode td { border-bottom-color: #444; }
+</style>
+{{end}}

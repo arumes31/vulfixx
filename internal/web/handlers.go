@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"github.com/pquerna/otp/totp"
 	"strconv"
+	"time"
 )
 
 var templates *template.Template
@@ -39,6 +40,16 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func LogActivity(ctx context.Context, userID int, activityType, description, ipAddress, userAgent string) {
+	_, err := db.Pool.Exec(ctx, `
+		INSERT INTO user_activity_logs (user_id, activity_type, description, ip_address, user_agent)
+		VALUES ($1, $2, $3, $4, $5)
+	`, userID, activityType, description, ipAddress, userAgent)
+	if err != nil {
+		log.Printf("Error logging activity: %v", err)
+	}
 }
 
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
@@ -96,6 +107,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		if err := session.Save(r, w); err != nil {
 			log.Printf("Error saving session: %v", err)
 		}
+		LogActivity(r.Context(), preAuthUserID, "login", "Successful 2FA login", r.RemoteAddr, r.UserAgent())
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
 		return
 	}
@@ -111,6 +123,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		if err := session.Save(r, w); err != nil {
 			log.Printf("Error saving session: %v", err)
 		}
+		LogActivity(r.Context(), user.ID, "login_attempt", "Password correct, awaiting 2FA", r.RemoteAddr, r.UserAgent())
 
 		RenderTemplate(w, r, "login.html", map[string]interface{}{
 			"RequireTOTP": true,
@@ -122,6 +135,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	if err := session.Save(r, w); err != nil {
 		log.Printf("Error saving session: %v", err)
 	}
+	LogActivity(r.Context(), user.ID, "login", "Successful login", r.RemoteAddr, r.UserAgent())
 
 	http.Redirect(w, r, "/dashboard", http.StatusFound)
 }
@@ -199,6 +213,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	var cves []models.CVE
+	var kevCount, highCount int
 	for rows.Next() {
 		var cve models.CVE
 		err := rows.Scan(&cve.ID, &cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.CISAKEV, &cve.PublishedDate)
@@ -206,10 +221,19 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		cves = append(cves, cve)
+		if cve.CISAKEV {
+			kevCount++
+		}
+		if cve.CVSSScore >= 7.0 {
+			highCount++
+		}
 	}
 
 	RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
-		"CVEs": cves,
+		"CVEs":      cves,
+		"Total":     len(cves),
+		"KevCount":  kevCount,
+		"HighCount": highCount,
 	})
 }
 
@@ -253,6 +277,52 @@ func UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"success":true}`))
+}
+
+func ActivityLogHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := GetUserID(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	query := `
+		SELECT id, activity_type, description, ip_address, created_at
+		FROM user_activity_logs
+		WHERE user_id = $1
+		ORDER BY created_at DESC LIMIT 100
+	`
+	rows, err := db.Pool.Query(context.Background(), query, userID)
+	if err != nil {
+		http.Error(w, "Error fetching activity logs", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var logs []map[string]interface{}
+	for rows.Next() {
+		var l struct {
+			ID           int
+			ActivityType string
+			Description  string
+			IPAddress    string
+			CreatedAt    time.Time
+		}
+		if err := rows.Scan(&l.ID, &l.ActivityType, &l.Description, &l.IPAddress, &l.CreatedAt); err != nil {
+			continue
+		}
+		logs = append(logs, map[string]interface{}{
+			"ID":           l.ID,
+			"ActivityType": l.ActivityType,
+			"Description":  l.Description,
+			"IPAddress":    l.IPAddress,
+			"CreatedAt":    l.CreatedAt,
+		})
+	}
+
+	RenderTemplate(w, r, "activity_log.html", map[string]interface{}{
+		"Logs": logs,
+	})
 }
 
 func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
@@ -300,6 +370,7 @@ func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Error saving subscription", http.StatusInternalServerError)
 			return
 		}
+		LogActivity(r.Context(), userID, "subscription_added", "Added keyword: "+keyword, r.RemoteAddr, r.UserAgent())
 		http.Redirect(w, r, "/subscriptions", http.StatusFound)
 	}
 }
@@ -325,6 +396,7 @@ func DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "Error deleting subscription", http.StatusInternalServerError)
         return
     }
+    LogActivity(r.Context(), userID, "subscription_deleted", "Deleted subscription ID: "+subIDStr, r.RemoteAddr, r.UserAgent())
     http.Redirect(w, r, "/subscriptions", http.StatusFound)
 }
 

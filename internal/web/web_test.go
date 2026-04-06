@@ -157,8 +157,29 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	pwForm := url.Values{}
 	pwForm.Add("current_password", "password123")
 	pwForm.Add("new_password", "password456")
+	pwForm.Add("confirm_password", "password456")
 	doAuthReqForm("POST", "/settings/password", pwForm)
 
-	// 7. Logout
+	// 7. Activity Log
+	doAuthReq("GET", "/activity", nil)
+
+	// 8. Delete Subscription
+	delForm := url.Values{}
+	delForm.Add("id", "1")
+	doAuthReqForm("POST", "/subscriptions/delete", delForm)
+
+	// 9. Public Routes Error cases
+	// Register with existing email
+	formErr := url.Values{}
+	formErr.Add("email", "web_test2@example.com")
+	formErr.Add("password", "password123")
+	reqRegErr, _ := http.NewRequest("POST", ts.URL+"/register", strings.NewReader(formErr.Encode()))
+	reqRegErr.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	_, _ = client.Do(reqRegErr)
+
+	// Verify with invalid token
+	doAuthReq("GET", "/verify-email?token=invalid", nil)
+
+	// 10. Logout
 	doAuthReq("POST", "/logout", nil)
 }

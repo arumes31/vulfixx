@@ -139,3 +139,33 @@ body.dark-mode input {
     border: 1px solid #555;
 }
 
+@media (max-width: 900px) {
+    .container {
+        width: 95%;
+        padding: 10px;
+    }
+    header #branding, header nav {
+        float: none;
+        text-align: center;
+    }
+    header nav {
+        margin-top: 20px;
+    }
+    header li {
+        float: none;
+        display: inline-block;
+        padding: 5px 10px;
+    }
+    .cve-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .cve-score {
+        margin-top: 10px;
+        align-self: flex-start;
+    }
+    .container > div[style*="flex"] {
+        flex-direction: column;
+    }
+}
+
