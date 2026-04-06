@@ -3,6 +3,7 @@ package worker
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
 	"encoding/json"
@@ -46,6 +47,19 @@ func redactToken(token string) string {
 	return token[:n] + "..."
 }
 
+// redactURL redacts a URL for logging by removing Userinfo, Query, and Path.
+func redactURL(u string) string {
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return "[invalid-url]"
+	}
+	parsed.User = nil
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	parsed.Path = "/"
+	return parsed.String()
+}
+
 // sendMailWithTimeout is a replacement for smtp.SendMail that supports deadlines.
 func sendMailWithTimeout(host, port, user, password string, to []string, msg []byte) error {
 	addr := net.JoinHostPort(host, port)
@@ -64,6 +78,17 @@ func sendMailWithTimeout(host, port, user, password string, to []string, msg []b
 		return fmt.Errorf("new client: %w", err)
 	}
 	defer func() { _ = client.Quit() }()
+
+	// Negotiate STARTTLS if supported (G706 hardening)
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		config := &tls.Config{
+			ServerName: host,
+			// Note: We don't use InsecureSkipVerify: true here for security.
+		}
+		if err := client.StartTLS(config); err != nil {
+			return fmt.Errorf("starttls: %w", err)
+		}
+	}
 
 	if user != "" && password != "" {
 		auth := smtp.PlainAuth("", user, password, host)
@@ -151,12 +176,24 @@ func fetchFromNVD(ctx context.Context) {
 
 	baseURL := defaultNVDBaseURL
 	if envURL := os.Getenv("NVD_API_URL"); envURL != "" {
-		// Validate env override: only allow https scheme (or http for tests)
+		// Validate env override: only allow https scheme and restricted hosts (G706 hardening)
 		parsed, err := url.Parse(envURL)
 		if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") {
 			log.Printf("Invalid NVD_API_URL (bad scheme): %q", envURL) // #nosec G706
 			return
 		}
+		
+		// Allowlist NVD hosts
+		allowedHosts := map[string]bool{
+			"services.nvd.nist.gov": true,
+			"localhost":             true, // for local testing
+			"127.0.0.1":             true, // for local testing
+		}
+		if !allowedHosts[parsed.Hostname()] {
+			log.Printf("Invalid NVD_API_URL (unauthorized host): %q", parsed.Host)
+			return
+		}
+
 		baseURL = parsed.String()
 	}
 	nvdURL := baseURL + "?resultsPerPage=50"
@@ -328,15 +365,16 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) bool 
 		go func() {
 			defer wg.Done()
 			parsedURL, err := url.Parse(sub.WebhookURL)
+			redacted := redactURL(sub.WebhookURL)
 			if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
-				log.Printf("Skipping invalid webhook URL scheme: %s", sub.WebhookURL)
+				log.Printf("Skipping invalid webhook URL scheme: %s", redacted)
 				return
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
 			ips, err := net.DefaultResolver.LookupIPAddr(ctx, parsedURL.Hostname())
 			if err != nil {
-				log.Printf("Failed to resolve webhook host: %s, err: %v", sub.WebhookURL, err)
+				log.Printf("Failed to resolve webhook host: %s, err: %v", redacted, err)
 				return
 			}
 			isSafe := true
@@ -354,7 +392,7 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) bool 
 				}
 			}
 			if !isSafe || safeIP == nil {
-				log.Printf("Skipping unsafe webhook URL IP: %s", sub.WebhookURL)
+				log.Printf("Skipping unsafe webhook URL IP: %s", redacted)
 				return
 			}
 			payloadMap := map[string]interface{}{
@@ -388,14 +426,14 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) bool 
 			}
 			resp, err := client.Post(sub.WebhookURL, "application/json", bytes.NewBuffer(payload))
 			if err != nil {
-				log.Printf("Failed to send webhook to %s: %v", sub.WebhookURL, err)
+				log.Printf("Failed to send webhook to %s: %v", redacted, err)
 				return
 			}
 			_ = resp.Body.Close()
 			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 				successChan <- true
 			} else {
-				log.Printf("Webhook to %s returned non-2xx status: %d", sub.WebhookURL, resp.StatusCode)
+				log.Printf("Webhook to %s returned non-2xx status: %d", redacted, resp.StatusCode)
 			}
 		}()
 	}

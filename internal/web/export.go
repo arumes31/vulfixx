@@ -19,7 +19,7 @@ func ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch CVEs filtered by user subscriptions (same as dashboard but all of them)
 	query := `
-		SELECT DISTINCT c.id, c.cve_id, c.description, c.cvss_score, c.cisa_kev, c.published_date
+		SELECT DISTINCT c.cve_id, c.description, c.cvss_score, c.cisa_kev, c.published_date
 		FROM cves c
 		INNER JOIN user_subscriptions us ON us.user_id = $1
 		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
@@ -67,13 +67,12 @@ func ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 	var skipped int
 	var total int
 	for rows.Next() {
-		var id int
 		var cveID, description string
 		var cvssScore float64
 		var cisaKEV bool
 		var publishedDate time.Time
 
-		if err := rows.Scan(&id, &cveID, &description, &cvssScore, &cisaKEV, &publishedDate); err != nil {
+		if err := rows.Scan(&cveID, &description, &cvssScore, &cisaKEV, &publishedDate); err != nil {
 			skipped++
 			log.Printf("Warning: skipping row during CVE export (scan error): %v", err)
 			continue

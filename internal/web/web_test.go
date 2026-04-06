@@ -218,7 +218,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 		} else if res.StatusCode >= 400 {
 			t.Errorf("Form request %s %s returned error status: %d", method, path, res.StatusCode)
 		}
-		t.Cleanup(func() { res.Body.Close() })
+		t.Cleanup(func() { _ = res.Body.Close() })
 		return res
 	}
 
