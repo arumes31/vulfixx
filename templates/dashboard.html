@@ -18,7 +18,11 @@
 
 <h2>Latest Active CVEs</h2>
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-    <p>Showing CVEs that match your subscriptions and haven't been resolved/ignored.</p>
+    <div>
+        <button class="btn" onclick="bulkUpdate('resolved')" style="background: #5bc85c;">✅ Resolve Selected</button>
+        <button class="btn" onclick="bulkUpdate('ignored')" style="background: #777;">❌ Ignore Selected</button>
+        <button class="btn" onclick="markAllVisibleAs('resolved')" style="background: #4a90e2;">✨ Mark All Visible</button>
+    </div>
     <div style="display: flex; gap: 10px; align-items: center;">
         <input type="text" id="cve-search" placeholder="Search CVEs..." style="padding: 8px; border-radius: 4px; border: 1px solid #ccc; width: 250px;">
         <button class="btn" title="Export to CSV" onclick="window.location.href='/export'" style="padding: 5px 10px; font-size: 1.2em;">📥</button>
@@ -26,10 +30,16 @@
 </div>
 
 <div id="cve-list">
+    <div style="margin-bottom: 10px;">
+        <input type="checkbox" id="select-all" onclick="toggleSelectAll(this)"> <label for="select-all">Select All</label>
+    </div>
     {{range .CVEs}}
     <div class="cve-item {{if .CISAKEV}}kev{{end}}" id="cve-{{.ID}}" data-search="{{.CVEID}} {{.Description}}">
         <div class="cve-header">
-            <h3>{{.CVEID}} {{if .CISAKEV}}<span style="color:#e8491d; font-size: 0.8em;">[CISA KEV]</span>{{end}}</h3>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <input type="checkbox" class="cve-checkbox" value="{{.ID}}">
+                <h3>{{.CVEID}} {{if .CISAKEV}}<span style="color:#e8491d; font-size: 0.8em;">[CISA KEV]</span>{{end}}</h3>
+            </div>
             <span class="cve-score {{if ge .CVSSScore 7.0}}score-high{{else if ge .CVSSScore 4.0}}score-med{{else}}score-low{{end}}">
                 CVSS: {{.CVSSScore}}
             </span>
@@ -43,6 +53,18 @@
     </div>
     {{else}}
     <p>No active CVEs to display.</p>
+    {{end}}
+</div>
+
+<div class="pagination" style="margin-top: 20px; display: flex; justify-content: center; gap: 10px; align-items: center;">
+    {{if .HasPrev}}
+    <a href="/dashboard?page={{.PrevPage}}" class="btn" style="padding: 5px 15px;">&laquo; Previous</a>
+    {{end}}
+    
+    <span>Page {{.CurrentPage}} of {{.TotalPages}}</span>
+    
+    {{if .HasNext}}
+    <a href="/dashboard?page={{.NextPage}}" class="btn" style="padding: 5px 15px;">Next &raquo;</a>
     {{end}}
 </div>
 
@@ -72,6 +94,84 @@ function updateStatus(cveId, status) {
             if(el) {
                 el.style.display = 'none';
             }
+        } else {
+            alert("Failed to update status.");
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert("An error occurred.");
+    });
+}
+
+function toggleSelectAll(source) {
+    const checkboxes = document.querySelectorAll('.cve-checkbox');
+    checkboxes.forEach(cb => {
+        if (cb.closest('.cve-item').style.display !== 'none') {
+            cb.checked = source.checked;
+        }
+    });
+}
+
+function bulkUpdate(status) {
+    const selected = Array.from(document.querySelectorAll('.cve-checkbox:checked')).map(cb => parseInt(cb.value));
+    if (selected.length === 0) {
+        alert("No CVEs selected.");
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to mark ${selected.length} CVEs as ${status}?`)) {
+        return;
+    }
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    fetch('/api/status/bulk', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken
+        },
+        body: JSON.stringify({ cve_ids: selected, status: status })
+    })
+    .then(response => {
+        if (response.ok) {
+            location.reload();
+        } else {
+            alert("Failed to update status.");
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert("An error occurred.");
+    });
+}
+
+function markAllVisibleAs(status) {
+    const visibleCheckboxes = Array.from(document.querySelectorAll('.cve-item'))
+        .filter(item => item.style.display !== 'none')
+        .map(item => parseInt(item.id.replace('cve-', '')));
+    
+    if (visibleCheckboxes.length === 0) {
+        alert("No visible CVEs to update.");
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to mark ALL ${visibleCheckboxes.length} visible CVEs as ${status}?`)) {
+        return;
+    }
+
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    fetch('/api/status/bulk', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken
+        },
+        body: JSON.stringify({ cve_ids: visibleCheckboxes, status: status })
+    })
+    .then(response => {
+        if (response.ok) {
+            location.reload();
         } else {
             alert("Failed to update status.");
         }

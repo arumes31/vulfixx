@@ -7,6 +7,7 @@ import (
 	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
 	"encoding/json"
+	"fmt"
 
 	"html/template"
 	"log"
@@ -194,6 +195,30 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	pageStr := r.URL.Query().Get("page")
+	page, _ := strconv.Atoi(pageStr)
+	if page < 1 {
+		page = 1
+	}
+	pageSize := 20
+	offset := (page - 1) * pageSize
+
+	// Fetch total count for pagination
+	countQuery := `
+		SELECT COUNT(DISTINCT c.id)
+		FROM cves c
+		INNER JOIN user_subscriptions us ON us.user_id = $1
+		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
+		WHERE (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored'))
+		  AND c.cvss_score >= us.min_severity
+		  AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%')
+	`
+	var totalItems int
+	err := db.Pool.QueryRow(context.Background(), countQuery, userID).Scan(&totalItems)
+	if err != nil {
+		log.Printf("Error counting CVEs: %v", err)
+	}
+
 	// Fetch CVEs not resolved/ignored by user, filtered by their subscriptions
 	query := `
 		SELECT DISTINCT c.id, c.cve_id, c.description, c.cvss_score, c.cisa_kev, c.published_date
@@ -203,9 +228,9 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		WHERE (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored'))
 		  AND c.cvss_score >= us.min_severity
 		  AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%')
-		ORDER BY c.published_date DESC LIMIT 50
+		ORDER BY c.published_date DESC LIMIT $2 OFFSET $3
 	`
-	rows, err := db.Pool.Query(context.Background(), query, userID)
+	rows, err := db.Pool.Query(context.Background(), query, userID, pageSize, offset)
 	if err != nil {
 		http.Error(w, "Error fetching CVEs", http.StatusInternalServerError)
 		return
@@ -229,11 +254,19 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	totalPages := (totalItems + pageSize - 1) / pageSize
+
 	RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
-		"CVEs":      cves,
-		"Total":     len(cves),
-		"KevCount":  kevCount,
-		"HighCount": highCount,
+		"CVEs":        cves,
+		"Total":       totalItems,
+		"KevCount":    kevCount,
+		"HighCount":   highCount,
+		"CurrentPage": page,
+		"TotalPages":  totalPages,
+		"HasPrev":     page > 1,
+		"HasNext":     page < totalPages,
+		"PrevPage":    page - 1,
+		"NextPage":    page + 1,
 	})
 }
 
@@ -272,6 +305,70 @@ func UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		http.Error(w, "Failed to update status", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"success":true}`))
+}
+
+func BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		CVEIDs []int  `json:"cve_ids"`
+		Status string `json:"status"`
+	}
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Status != "resolved" && req.Status != "ignored" {
+		http.Error(w, "Invalid status", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.CVEIDs) == 0 {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"success":true}`))
+		return
+	}
+
+	// Use a transaction for bulk update
+	tx, err := db.Pool.Begin(context.Background())
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+	defer func() {
+		_ = tx.Rollback(context.Background())
+	}()
+
+	for _, id := range req.CVEIDs {
+		_, err = tx.Exec(context.Background(), `
+			INSERT INTO user_cve_status (user_id, cve_id, status)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (user_id, cve_id) DO UPDATE SET status = $3, updated_at = CURRENT_TIMESTAMP
+		`, userID, id, req.Status)
+		if err != nil {
+			http.Error(w, "Failed to update status", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if err := tx.Commit(context.Background()); err != nil {
+		http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
 		return
 	}
 
@@ -323,6 +420,162 @@ func ActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 	RenderTemplate(w, r, "activity_log.html", map[string]interface{}{
 		"Logs": logs,
 	})
+}
+
+func ExportActivityLogHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := GetUserID(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	query := `
+		SELECT id, activity_type, description, ip_address, created_at
+		FROM user_activity_logs
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+	`
+	rows, err := db.Pool.Query(context.Background(), query, userID)
+	if err != nil {
+		http.Error(w, "Error fetching activity logs", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var logs []map[string]interface{}
+	for rows.Next() {
+		var l struct {
+			ID           int
+			ActivityType string
+			Description  string
+			IPAddress    string
+			CreatedAt    time.Time
+		}
+		if err := rows.Scan(&l.ID, &l.ActivityType, &l.Description, &l.IPAddress, &l.CreatedAt); err != nil {
+			continue
+		}
+		logs = append(logs, map[string]interface{}{
+			"id":            l.ID,
+			"activity_type": l.ActivityType,
+			"description":   l.Description,
+			"ip_address":    l.IPAddress,
+			"created_at":    l.CreatedAt,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", "attachment;filename=activity_log.json")
+	_ = json.NewEncoder(w).Encode(logs)
+}
+
+func AlertHistoryHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := GetUserID(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	query := `
+		SELECT ah.sent_at, c.cve_id, c.description, c.cvss_score
+		FROM alert_history ah
+		JOIN cves c ON ah.cve_id = c.id
+		WHERE ah.user_id = $1
+		ORDER BY ah.sent_at DESC LIMIT 100
+	`
+	rows, err := db.Pool.Query(context.Background(), query, userID)
+	if err != nil {
+		http.Error(w, "Error fetching alert history", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var alerts []map[string]interface{}
+	for rows.Next() {
+		var a struct {
+			SentAt      time.Time
+			CVEID       string
+			Description string
+			CVSSScore   float64
+		}
+		if err := rows.Scan(&a.SentAt, &a.CVEID, &a.Description, &a.CVSSScore); err != nil {
+			continue
+		}
+		alerts = append(alerts, map[string]interface{}{
+			"SentAt":      a.SentAt,
+			"CVEID":       a.CVEID,
+			"Description": a.Description,
+			"CVSSScore":   a.CVSSScore,
+		})
+	}
+
+	RenderTemplate(w, r, "alert_history.html", map[string]interface{}{
+		"Alerts": alerts,
+	})
+}
+
+func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
+	// Simple RSS feed for CVEs matching a user's subscription
+	// Can be accessed via /feed?token=...
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "Missing token", http.StatusUnauthorized)
+		return
+	}
+
+	var userID int
+	err := db.Pool.QueryRow(context.Background(), "SELECT id FROM users WHERE email_verify_token = $1", token).Scan(&userID)
+	if err != nil {
+		http.Error(w, "Invalid token", http.StatusUnauthorized)
+		return
+	}
+
+	query := `
+		SELECT DISTINCT c.cve_id, c.description, c.cvss_score, c.published_date
+		FROM cves c
+		INNER JOIN user_subscriptions us ON us.user_id = $1
+		WHERE c.cvss_score >= us.min_severity
+		  AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%')
+		ORDER BY c.published_date DESC LIMIT 50
+	`
+	rows, err := db.Pool.Query(context.Background(), query, userID)
+	if err != nil {
+		http.Error(w, "Error fetching CVEs", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	w.Header().Set("Content-Type", "application/rss+xml")
+	fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0">
+<channel>
+  <title>CVE Tracker Feed</title>
+  <link>http://localhost:8080</link>
+  <description>Latest CVEs matching your subscriptions</description>
+`)
+
+	for rows.Next() {
+		var cve struct {
+			CVEID       string
+			Description string
+			CVSSScore   float64
+			PublishedAt time.Time
+		}
+		if err := rows.Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.PublishedAt); err != nil {
+			continue
+		}
+		fmt.Fprintf(w, `
+  <item>
+    <title>%s (CVSS: %.1f)</title>
+    <link>https://nvd.nist.gov/vuln/detail/%s</link>
+    <description>%s</description>
+    <pubDate>%s</pubDate>
+    <guid>%s</pubDate>
+  </item>`, cve.CVEID, cve.CVSSScore, cve.CVEID, template.HTMLEscapeString(cve.Description), cve.PublishedAt.Format(time.RFC1123Z), cve.CVEID)
+	}
+
+	fmt.Fprintf(w, `
+</channel>
+</rss>`)
 }
 
 func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {

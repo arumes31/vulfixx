@@ -55,13 +55,19 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	protected.Use(AuthMiddleware)
 	protected.HandleFunc("/dashboard", DashboardHandler).Methods("GET")
 	protected.HandleFunc("/api/status", UpdateCVEStatusHandler).Methods("POST")
+	protected.HandleFunc("/api/status/bulk", BulkUpdateCVEStatusHandler).Methods("POST")
 	protected.HandleFunc("/subscriptions", SubscriptionsHandler).Methods("GET", "POST")
 	protected.HandleFunc("/subscriptions/delete", DeleteSubscriptionHandler).Methods("POST")
 	protected.HandleFunc("/export", ExportCVEsHandler).Methods("GET")
+	protected.HandleFunc("/activity", ActivityLogHandler).Methods("GET")
+	protected.HandleFunc("/activity/export", ExportActivityLogHandler).Methods("GET")
+	protected.HandleFunc("/alerts", AlertHistoryHandler).Methods("GET")
 	protected.HandleFunc("/settings", SettingsHandler).Methods("GET")
 	protected.HandleFunc("/settings/totp/generate", GenerateTOTPHandler).Methods("POST")
 	protected.Handle("/settings/totp/verify", RateLimitMiddleware(http.HandlerFunc(VerifyTOTPHandler))).Methods("POST")
 	protected.HandleFunc("/settings/password", ChangePasswordHandler).Methods("POST")
+	protected.HandleFunc("/settings/email", ChangeEmailHandler).Methods("POST")
+	protected.HandleFunc("/settings/delete", DeleteAccountHandler).Methods("POST")
 
 	ts := httptest.NewServer(r)
 	defer ts.Close()
@@ -162,13 +168,41 @@ func TestWebEndpointsCoverage(t *testing.T) {
 
 	// 7. Activity Log
 	doAuthReq("GET", "/activity", nil)
+	doAuthReq("GET", "/activity/export", nil)
 
-	// 8. Delete Subscription
+	// 8. Alert History
+	doAuthReq("GET", "/alerts", nil)
+
+	// 9. Bulk Update
+	bulkBody, _ := json.Marshal(map[string]interface{}{
+		"cve_ids": []int{1, 2, 3},
+		"status":  "resolved",
+	})
+	doAuthReq("POST", "/api/status/bulk", bulkBody)
+
+	// 10. Change Email
+	emailForm := url.Values{}
+	emailForm.Add("new_email", "new_web_test@example.com")
+	emailForm.Add("password", "password456")
+	doAuthReqForm("POST", "/settings/email", emailForm)
+
+	// 10. TOTP Handlers
+	doAuthReq("POST", "/settings/totp/generate", nil)
+	totpForm := url.Values{}
+	totpForm.Add("totp_code", "123456")
+	doAuthReqForm("POST", "/settings/totp/verify", totpForm)
+
+	// 11. Delete Subscription
 	delForm := url.Values{}
 	delForm.Add("id", "1")
 	doAuthReqForm("POST", "/subscriptions/delete", delForm)
 
-	// 9. Public Routes Error cases
+	// 12. RSS Feed
+	var token string
+	_ = db.Pool.QueryRow(ctx, "SELECT email_verify_token FROM users WHERE email = 'web_test2@example.com'").Scan(&token)
+	doAuthReq("GET", "/feed?token="+token, nil)
+
+	// 13. Public Routes Error cases
 	// Register with existing email
 	formErr := url.Values{}
 	formErr.Add("email", "web_test2@example.com")
@@ -180,6 +214,19 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	// Verify with invalid token
 	doAuthReq("GET", "/verify-email?token=invalid", nil)
 
-	// 10. Logout
+	// 13. Logout
 	doAuthReq("POST", "/logout", nil)
+
+	// 14. Delete Account
+	// Login again to delete
+	resLogDel, _ := client.Do(reqLog)
+	for _, cookie := range resLogDel.Cookies() {
+		if cookie.Name == "session-name" {
+			sessionCookie = cookie
+			break
+		}
+	}
+	delAccForm := url.Values{}
+	delAccForm.Add("password", "password123")
+	doAuthReqForm("POST", "/settings/delete", delAccForm)
 }

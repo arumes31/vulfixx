@@ -1,7 +1,10 @@
 {{template "base" .}}
 
 {{define "content"}}
-<h2>User Activity Log</h2>
+<div style="display: flex; justify-content: space-between; align-items: center;">
+    <h2>User Activity Log</h2>
+    <button class="btn" title="Export to JSON" onclick="window.location.href='/activity/export'" style="padding: 5px 10px; font-size: 1.2em;">📥</button>
+</div>
 <p>Recent actions performed on your account.</p>
 
 <div class="card">

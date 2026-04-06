@@ -7,12 +7,14 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 - **Automated CVE Fetching**: Periodically synchronizes with the NIST NVD API.
 - **Custom Subscriptions**: Users can subscribe to alerts based on keywords and CVSS severity scores.
 - **Multi-Channel Alerts**: Supports both Email (SMTP) and Webhook notifications.
-- **Export to CSV**: Easily export active CVEs to a CSV file from the dashboard.
-- **Search & Filter**: Real-time client-side search on the dashboard.
+- **Export Data**: Easily export active CVEs to CSV or account activity to JSON.
+- **Search & Filter**: Real-time client-side search and pagination on the dashboard.
+- **Bulk Actions**: Batch mark CVEs as resolved or ignored directly from the dashboard.
+- **RSS Feed**: Personalized CVE feed accessible via a unique token.
 - **Statistics Summary**: At-a-glance view of total, KEV, and high-severity CVEs.
-- **User Activity Log**: Track important account actions for security auditing.
-- **Dark Mode**: Toggle between light and dark themes for better accessibility.
-- **Secure Authentication**: Includes 2FA (TOTP) support and email verification.
+- **User Activity Log**: Detailed audit trail of all important account actions.
+- **Secure Account Management**: Support for email changes, password updates, 2FA (TOTP), and account deletion.
+- **Dark Mode**: Native light/dark theme support.
 - **Modern Infrastructure**: Containerized with Docker and orchestrated via Docker Compose.
 
 ## Getting Started

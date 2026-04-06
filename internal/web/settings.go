@@ -148,3 +148,93 @@ func ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 		"PasswordSuccess": "Password updated successfully.",
 	})
 }
+
+func ChangeEmailHandler(w http.ResponseWriter, r *http.Request) {
+	userID, _ := GetUserID(r)
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/settings", http.StatusFound)
+		return
+	}
+
+	newEmail := r.FormValue("new_email")
+	password := r.FormValue("password")
+
+	var email string
+	var isTOTPEnabled bool
+	if err := db.Pool.QueryRow(r.Context(), "SELECT email, is_totp_enabled FROM users WHERE id = $1", userID).Scan(&email, &isTOTPEnabled); err != nil {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	renderError := func(msg string) {
+		RenderTemplate(w, r, "settings.html", map[string]interface{}{
+			"Email":         email,
+			"IsTOTPEnabled": isTOTPEnabled,
+			"EmailError":    msg,
+		})
+	}
+
+	// Verify password
+	_, err := auth.Login(r.Context(), email, password)
+	if err != nil {
+		renderError("Invalid password")
+		return
+	}
+
+	// Update email
+	_, err = db.Pool.Exec(r.Context(), "UPDATE users SET email = $1, is_email_verified = FALSE WHERE id = $2", newEmail, userID)
+	if err != nil {
+		renderError("Error updating email (maybe it's already in use?)")
+		return
+	}
+
+	LogActivity(r.Context(), userID, "email_change", "Changed email from "+email+" to "+newEmail, r.RemoteAddr, r.UserAgent())
+
+	RenderTemplate(w, r, "settings.html", map[string]interface{}{
+		"Email":         newEmail,
+		"IsTOTPEnabled": isTOTPEnabled,
+		"EmailSuccess":  "Email updated successfully. Please re-verify your account.",
+	})
+}
+
+func DeleteAccountHandler(w http.ResponseWriter, r *http.Request) {
+	userID, _ := GetUserID(r)
+	if r.Method != "POST" {
+		http.Redirect(w, r, "/settings", http.StatusFound)
+		return
+	}
+
+	password := r.FormValue("password")
+
+	var email string
+	if err := db.Pool.QueryRow(r.Context(), "SELECT email FROM users WHERE id = $1", userID).Scan(&email); err != nil {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	// Verify password
+	_, err := auth.Login(r.Context(), email, password)
+	if err != nil {
+		RenderTemplate(w, r, "settings.html", map[string]interface{}{
+			"Email":         email,
+			"DeleteError":   "Invalid password",
+		})
+		return
+	}
+
+	// Delete user
+	_, err = db.Pool.Exec(r.Context(), "DELETE FROM users WHERE id = $1", userID)
+	if err != nil {
+		http.Error(w, "Error deleting account", http.StatusInternalServerError)
+		return
+	}
+
+	// Clear session
+	session, _ := store.Get(r, "session-name")
+	session.Options.MaxAge = -1
+	if err := session.Save(r, w); err != nil {
+		log.Printf("Error saving session: %v", err)
+	}
+
+	http.Redirect(w, r, "/register", http.StatusFound)
+}

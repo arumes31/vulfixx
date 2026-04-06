@@ -5,6 +5,25 @@
 <div class="card">
     <h3>Account Info</h3>
     <p><strong>Email:</strong> {{.Email}}</p>
+    
+    <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
+    
+    <h4>Change Email</h4>
+    {{if .EmailError}}<p class="error">{{.EmailError}}</p>{{end}}
+    {{if .EmailSuccess}}<p style="color:green;">{{.EmailSuccess}}</p>{{end}}
+    
+    <form action="/settings/email" method="POST" style="max-width: 400px;">
+        {{ .csrfField }}
+        <div class="form-group">
+            <label>New Email Address</label>
+            <input type="email" name="new_email" required>
+        </div>
+        <div class="form-group">
+            <label>Confirm Password</label>
+            <input type="password" name="password" required>
+        </div>
+        <button type="submit" class="btn">Update Email</button>
+    </form>
 </div>
 
 <div class="card">
@@ -62,6 +81,21 @@
         </div>
         {{end}}
         <button type="submit" class="btn">Update Password</button>
+    </form>
+</div>
+
+<div class="card" style="border: 1px solid #d9534f;">
+    <h3 style="color: #d9534f;">Danger Zone</h3>
+    <p>Once you delete your account, there is no going back. Please be certain.</p>
+    {{if .DeleteError}}<p class="error">{{.DeleteError}}</p>{{end}}
+    
+    <form action="/settings/delete" method="POST" style="max-width: 400px;" onsubmit="return confirm('ARE YOU ABSOLUTELY SURE? This will permanently delete your account and all subscriptions.');">
+        {{ .csrfField }}
+        <div class="form-group">
+            <label>Confirm Password to Delete Account</label>
+            <input type="password" name="password" required>
+        </div>
+        <button type="submit" class="btn" style="background: #d9534f;">Delete My Account</button>
     </form>
 </div>
 {{end}}
