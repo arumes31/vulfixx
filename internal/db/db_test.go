@@ -4,17 +4,25 @@ import (
 	"context"
 	"os"
 	"testing"
+	"strings"
 )
 
 func TestInitDB(t *testing.T) {
-	os.Setenv("DB_HOST", "localhost")
-	os.Setenv("DB_PORT", "5432")
-	os.Setenv("DB_USER", "cveuser")
-	os.Setenv("DB_PASSWORD", "cvepass")
-	os.Setenv("DB_NAME", "cvetracker")
+	if os.Getenv("CI") == "true" {
+		t.Skip("skipping integration test in CI")
+	}
+
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_PORT", "5432")
+	t.Setenv("DB_USER", "cveuser")
+	t.Setenv("DB_PASSWORD", "cvepass")
+	t.Setenv("DB_NAME", "cvetracker")
 
 	err := InitDB()
 	if err != nil {
+		if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "timeout") {
+			t.Skipf("skipping integration test: DB not available: %v", err)
+		}
 		t.Fatalf("Failed to init DB: %v", err)
 	}
 
@@ -27,12 +35,11 @@ func TestInitDB(t *testing.T) {
 }
 
 func TestInitDBWithInvalidDSN(t *testing.T) {
-	// Set dummy env for invalid DSN test
-	os.Setenv("DB_HOST", "invalid_host")
-	os.Setenv("DB_PORT", "abc")
-	os.Setenv("DB_USER", "user")
-	os.Setenv("DB_PASSWORD", "pass")
-	os.Setenv("DB_NAME", "db")
+	t.Setenv("DB_HOST", "invalid_host")
+	t.Setenv("DB_PORT", "abc")
+	t.Setenv("DB_USER", "user")
+	t.Setenv("DB_PASSWORD", "pass")
+	t.Setenv("DB_NAME", "db")
 
 	err := InitDB()
 	if err == nil {
@@ -42,10 +49,17 @@ func TestInitDBWithInvalidDSN(t *testing.T) {
 }
 
 func TestRedis(t *testing.T) {
-	os.Setenv("REDIS_URL", "localhost:6379")
+	if os.Getenv("CI") == "true" {
+		t.Skip("skipping integration test in CI")
+	}
+
+	t.Setenv("REDIS_URL", "localhost:6379")
 
 	err := InitRedis()
 	if err != nil {
+		if strings.Contains(err.Error(), "connection refused") {
+			t.Skipf("skipping integration test: Redis not available: %v", err)
+		}
 		t.Fatalf("Failed to init redis: %v", err)
 	}
 
@@ -58,7 +72,7 @@ func TestRedis(t *testing.T) {
 }
 
 func TestRedisInvalid(t *testing.T) {
-	os.Setenv("REDIS_URL", "invalid_host:1234")
+	t.Setenv("REDIS_URL", "invalid_host:1234")
 
 	err := InitRedis()
 	if err == nil {

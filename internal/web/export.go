@@ -1,12 +1,14 @@
 package web
 
 import (
+	"bytes"
 	"context"
-	"encoding/csv"
-	"fmt"
-	"net/http"
 	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
+	"encoding/csv"
+	"fmt"
+	"log"
+	"net/http"
 )
 
 func ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
@@ -16,6 +18,7 @@ func ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Fetch CVEs filtered by user subscriptions (same as dashboard but all of them)
 	query := `
 		SELECT DISTINCT c.id, c.cve_id, c.description, c.cvss_score, c.cisa_kev, c.published_date
 		FROM cves c
@@ -28,37 +31,52 @@ func ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 	`
 	rows, err := db.Pool.Query(context.Background(), query, userID)
 	if err != nil {
+		log.Printf("Error fetching CVEs for export: %v", err)
 		http.Error(w, "Error fetching CVEs", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	w.Header().Set("Content-Type", "text/csv")
-	w.Header().Set("Content-Disposition", "attachment;filename=cves_export.csv")
-
-	writer := csv.NewWriter(w)
-	defer writer.Flush()
-
-	if err := writer.Write([]string{"CVE ID", "Description", "CVSS Score", "CISA KEV", "Published Date"}); err != nil {
-		http.Error(w, "Error writing CSV header", http.StatusInternalServerError)
+	// Write CSV to a buffer first to catch errors before sending headers
+	var buf bytes.Buffer
+	csvWriter := csv.NewWriter(&buf)
+	header := []string{"CVE ID", "Description", "CVSS Score", "CISA KEV", "Published Date"}
+	if err := csvWriter.Write(header); err != nil {
+		log.Printf("Error writing CSV header: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
+	var cves []models.CVE
 	for rows.Next() {
 		var cve models.CVE
-		err := rows.Scan(&cve.ID, &cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.CISAKEV, &cve.PublishedDate)
-		if err != nil {
+		if err := rows.Scan(&cve.ID, &cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.CISAKEV, &cve.PublishedDate); err != nil {
 			continue
 		}
-		if err := writer.Write([]string{
+		cves = append(cves, cve)
+	}
+
+	for _, cve := range cves {
+		row := []string{
 			cve.CVEID,
 			cve.Description,
 			fmt.Sprintf("%.1f", cve.CVSSScore),
 			fmt.Sprintf("%t", cve.CISAKEV),
 			cve.PublishedDate.Format("2006-01-02"),
-		}); err != nil {
-			// Stop writing on error
-			break
+		}
+		if err := csvWriter.Write(row); err != nil {
+			log.Printf("Error writing CSV row: %v", err)
+			continue
 		}
 	}
+	csvWriter.Flush()
+	if err := csvWriter.Error(); err != nil {
+		log.Printf("CSV writer error: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment;filename=cves_export.csv")
+	_, _ = w.Write(buf.Bytes())
 }

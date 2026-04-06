@@ -10,16 +10,33 @@ import (
 )
 
 func TestWebErrorPaths(t *testing.T) {
-	os.Setenv("SESSION_KEY", "testkey")
-	os.Setenv("CSRF_KEY", "0123456789abcdef0123456789abcdef")
-	if err := db.InitDB(); err != nil {
-		t.Fatalf("InitDB failed: %v", err)
-	}
-	if err := db.InitRedis(); err != nil {
-		t.Fatalf("InitRedis failed: %v", err)
-	}
-	InitSession()
+	t.Setenv("SESSION_KEY", "testkey")
+	t.Setenv("CSRF_KEY", "0123456789abcdef0123456789abcdef")
 	
+	if os.Getenv("CI") == "true" {
+		t.Skip("skipping integration test in CI")
+	}
+
+	if err := db.InitDB(); err != nil {
+		if strings.Contains(err.Error(), "connection refused") {
+			t.Skipf("InitDB failed (skipping): %v", err)
+		} else {
+			t.Fatalf("InitDB failed: %v", err)
+		}
+	}
+	defer db.CloseDB()
+
+	if err := db.InitRedis(); err != nil {
+		if strings.Contains(err.Error(), "connection refused") {
+			t.Skipf("InitRedis failed (skipping): %v", err)
+		} else {
+			t.Fatalf("InitRedis failed: %v", err)
+		}
+	}
+	defer db.CloseRedis()
+
+	InitSession()
+
 	// Test IndexHandler Not Found
 	req := httptest.NewRequest("GET", "/invalid", nil)
 	rr := httptest.NewRecorder()

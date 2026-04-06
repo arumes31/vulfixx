@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
     email_verify_token VARCHAR(255),
     totp_secret VARCHAR(255),
     is_totp_enabled BOOLEAN DEFAULT FALSE,
+    rss_feed_token VARCHAR(255) UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -64,3 +65,6 @@ CREATE TABLE IF NOT EXISTS email_change_requests (
     new_email_confirmed BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_user_activity_logs_user_id_created_at ON user_activity_logs (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_activity_logs_created_at ON user_activity_logs (created_at DESC);

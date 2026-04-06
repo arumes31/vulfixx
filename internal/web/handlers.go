@@ -8,6 +8,7 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
+	"net"
 
 	"html/template"
 	"log"
@@ -44,7 +45,15 @@ func AuthMiddleware(next http.Handler) http.Handler {
 }
 
 func LogActivity(ctx context.Context, userID int, activityType, description, ipAddress, userAgent string) {
-	_, err := db.Pool.Exec(ctx, `
+	host, _, err := net.SplitHostPort(ipAddress)
+	if err == nil {
+		ipAddress = host
+	}
+	if len(ipAddress) > 45 {
+		ipAddress = ipAddress[:45]
+	}
+
+	_, err = db.Pool.Exec(ctx, `
 		INSERT INTO user_activity_logs (user_id, activity_type, description, ip_address, user_agent)
 		VALUES ($1, $2, $3, $4, $5)
 	`, userID, activityType, description, ipAddress, userAgent)
@@ -107,6 +116,8 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		session.Values["user_id"] = preAuthUserID
 		if err := session.Save(r, w); err != nil {
 			log.Printf("Error saving session: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
 		}
 		LogActivity(r.Context(), preAuthUserID, "login", "Successful 2FA login", r.RemoteAddr, r.UserAgent())
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
@@ -123,6 +134,8 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		session.Values["pre_auth_user_id"] = user.ID
 		if err := session.Save(r, w); err != nil {
 			log.Printf("Error saving session: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
 		}
 		LogActivity(r.Context(), user.ID, "login_attempt", "Password correct, awaiting 2FA", r.RemoteAddr, r.UserAgent())
 
@@ -135,6 +148,8 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	session.Values["user_id"] = user.ID
 	if err := session.Save(r, w); err != nil {
 		log.Printf("Error saving session: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
 	}
 	LogActivity(r.Context(), user.ID, "login", "Successful login", r.RemoteAddr, r.UserAgent())
 
@@ -171,6 +186,11 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	db.RedisClient.LPush(r.Context(), "email_verification_queue", payload)
+	if err := db.RedisClient.LPush(r.Context(), "email_verification_queue", payload).Err(); err != nil {
+		log.Printf("Error enqueueing verification payload: %v", err)
+		RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
+		return
+	}
 	log.Printf("Verification queued for %s\n", email)
 
 	RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Registration successful. Please check your email to verify your account."})
@@ -184,6 +204,8 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	session.Options.MaxAge = -1
 	if err := session.Save(r, w); err != nil {
 		log.Printf("Error saving session: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
 	}
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
@@ -523,7 +545,7 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var userID int
-	err := db.Pool.QueryRow(context.Background(), "SELECT id FROM users WHERE email_verify_token = $1", token).Scan(&userID)
+	err := db.Pool.QueryRow(context.Background(), "SELECT id FROM users WHERE rss_feed_token = $1", token).Scan(&userID)
 	if err != nil {
 		http.Error(w, "Invalid token", http.StatusUnauthorized)
 		return
@@ -569,7 +591,7 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
     <link>https://nvd.nist.gov/vuln/detail/%s</link>
     <description>%s</description>
     <pubDate>%s</pubDate>
-    <guid>%s</pubDate>
+    <guid>%s</guid>
   </item>`, cve.CVEID, cve.CVSSScore, cve.CVEID, template.HTMLEscapeString(cve.Description), cve.PublishedAt.Format(time.RFC1123Z), cve.CVEID)
 	}
 

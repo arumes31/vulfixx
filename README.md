@@ -40,24 +40,36 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
    - `SMTP_USER`: SMTP username.
    - `SMTP_PASS`: SMTP password.
    - `SESSION_KEY`: A secure random string for session signing.
+   - `CSRF_KEY`: A secure random string for CSRF protection (exactly 32 bytes).
 
-3. Start the application:
+   3. Start the application:
    ```bash
    docker-compose up --build
    ```
 
-The application will be available at `http://localhost:8080`.
+   The application will be available at `http://localhost:8080`.
 
-## Configuration
+   ## Configuration
 
-The application is configured via environment variables in the `docker-compose.yml` file:
+   The application is configured via environment variables in the `docker-compose.yml` file:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DB_HOST` | PostgreSQL host | `db` |
-| `SMTP_HOST`| External SMTP server | `smtp.example.com` |
-| `BASE_URL` | Application base URL | `http://localhost:8080` |
+   | Variable | Description | Default |
+   |----------|-------------|---------|
+   | `DB_HOST` | PostgreSQL host | `db` |
+   | `DB_PORT` | PostgreSQL port | `5432` |
+   | `DB_USER` | PostgreSQL user | `cveuser` |
+   | `DB_PASSWORD`| PostgreSQL password | `cvepass` |
+   | `DB_NAME` | PostgreSQL database name | `cvetracker` |
+   | `REDIS_URL`| Redis connection URL | `redis:6379` |
+   | `SMTP_HOST`| External SMTP server | `smtp.example.com` |
+   | `SMTP_PORT`| SMTP server port | `587` |
+   | `SMTP_USER`| SMTP username | `user@example.com` |
+   | `SMTP_PASS`| SMTP password | `password` |
+   | `SESSION_KEY`| Session signing key | `supersecretkey...` |
+   | `CSRF_KEY` | CSRF protection key (32 bytes) | `0123456789...` |
+   | `BASE_URL` | Application base URL | `http://localhost:8080` |
 
+   *Note: The above is a partial list of key configurations. See `docker-compose.yml` for all available options.*
 ## Development
 
 ### Running Tests

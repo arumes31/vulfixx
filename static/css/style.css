@@ -112,6 +112,13 @@ th, td {
     padding: 10px;
     text-align: left;
 }
+table th, table td {
+    padding: 12px;
+    border-bottom: 1px solid #eee;
+}
+body.dark-mode table th, body.dark-mode table td {
+    border-bottom-color: #444;
+}
 body.dark-mode {
     background-color: #1e1e1e;
     color: #e0e0e0;
@@ -164,7 +171,7 @@ body.dark-mode input {
         margin-top: 10px;
         align-self: flex-start;
     }
-    .container > div[style*="flex"] {
+    .container > .flex-container {
         flex-direction: column;
     }
 }

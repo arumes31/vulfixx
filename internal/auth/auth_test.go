@@ -5,18 +5,26 @@ import (
 	"cve-tracker/internal/db"
 	"os"
 	"testing"
+	"strings"
 )
 
 func TestAuthIntegration(t *testing.T) {
+	if os.Getenv("CI") == "true" {
+		t.Skip("skipping integration test in CI")
+	}
+
 	// Setup DB
-	os.Setenv("DB_HOST", "localhost")
-	os.Setenv("DB_PORT", "5432")
-	os.Setenv("DB_USER", "cveuser")
-	os.Setenv("DB_PASSWORD", "cvepass")
-	os.Setenv("DB_NAME", "cvetracker")
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_PORT", "5432")
+	t.Setenv("DB_USER", "cveuser")
+	t.Setenv("DB_PASSWORD", "cvepass")
+	t.Setenv("DB_NAME", "cvetracker")
 
 	err := db.InitDB()
 	if err != nil {
+		if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "timeout") {
+			t.Skipf("skipping integration test: DB not available: %v", err)
+		}
 		t.Fatalf("Failed to init db: %v", err)
 	}
 	defer db.CloseDB()

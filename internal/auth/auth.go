@@ -31,7 +31,12 @@ func Register(ctx context.Context, email, password string) (string, error) {
 		return "", err
 	}
 
-	_, err = db.Pool.Exec(ctx, "INSERT INTO users (email, password_hash, email_verify_token) VALUES ($1, $2, $3)", email, string(hashedPassword), token)
+	rssToken, err := GenerateToken()
+	if err != nil {
+		return "", err
+	}
+
+	_, err = db.Pool.Exec(ctx, "INSERT INTO users (email, password_hash, email_verify_token, rss_feed_token) VALUES ($1, $2, $3, $4)", email, string(hashedPassword), token, rssToken)
 	return token, err
 }
 

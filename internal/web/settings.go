@@ -5,16 +5,20 @@ import (
 	"cve-tracker/internal/auth"
 	"cve-tracker/internal/db"
 	"net/http"
+	"encoding/json"
 
 	"github.com/pquerna/otp/totp"
 	"rsc.io/qr"
 	"encoding/base64"
-	"encoding/json"
 	"log"
 )
 
 func SettingsHandler(w http.ResponseWriter, r *http.Request) {
-	userID, _ := GetUserID(r)
+	userID, ok := GetUserID(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
 
 	var email string
 	var isTOTPEnabled bool
@@ -31,7 +35,11 @@ func SettingsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func GenerateTOTPHandler(w http.ResponseWriter, r *http.Request) {
-	userID, _ := GetUserID(r)
+	userID, ok := GetUserID(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
 
 	var email string
 	if err := db.Pool.QueryRow(context.Background(), "SELECT email FROM users WHERE id = $1", userID).Scan(&email); err != nil {
@@ -73,7 +81,11 @@ func GenerateTOTPHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
-	userID, _ := GetUserID(r)
+	userID, ok := GetUserID(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
 
 	if err := r.ParseForm(); err != nil {
 		http.Redirect(w, r, "/settings", http.StatusFound)
@@ -100,7 +112,11 @@ func VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
 
 
 func ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
-	userID, _ := GetUserID(r)
+	userID, ok := GetUserID(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		http.Redirect(w, r, "/settings", http.StatusFound)
 		return
@@ -134,9 +150,6 @@ func ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	importAuth := "cve-tracker/internal/auth" // dummy import check below handles actual call
-	_ = importAuth
-
 	err = auth.ChangePassword(r.Context(), userID, currentPassword, newPassword, totpCode)
 	if err != nil {
 		renderError(err.Error())
@@ -151,7 +164,11 @@ func ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func ChangeEmailHandler(w http.ResponseWriter, r *http.Request) {
-	userID, _ := GetUserID(r)
+	userID, ok := GetUserID(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		http.Redirect(w, r, "/settings", http.StatusFound)
 		return
@@ -199,8 +216,16 @@ func ChangeEmailHandler(w http.ResponseWriter, r *http.Request) {
 		"token": newToken,
 		"type":  "new",
 	})
-	db.RedisClient.LPush(r.Context(), "email_change_queue", oldPayload)
-	db.RedisClient.LPush(r.Context(), "email_change_queue", newPayload)
+	if err := db.RedisClient.LPush(r.Context(), "email_change_queue", oldPayload).Err(); err != nil {
+		log.Printf("Error enqueueing email change payload: %v", err)
+		renderError("Error requesting email change")
+		return
+	}
+	if err := db.RedisClient.LPush(r.Context(), "email_change_queue", newPayload).Err(); err != nil {
+		log.Printf("Error enqueueing email change payload: %v", err)
+		renderError("Error requesting email change")
+		return
+	}
 
 	RenderTemplate(w, r, "settings.html", map[string]interface{}{
 		"Email":         email,
@@ -210,7 +235,11 @@ func ChangeEmailHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func DeleteAccountHandler(w http.ResponseWriter, r *http.Request) {
-	userID, _ := GetUserID(r)
+	userID, ok := GetUserID(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
 	if r.Method != "POST" {
 		http.Redirect(w, r, "/settings", http.StatusFound)
 		return

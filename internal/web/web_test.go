@@ -16,22 +16,35 @@ import (
 )
 
 func TestWebEndpointsCoverage(t *testing.T) {
-	os.Setenv("DB_HOST", "localhost")
-	os.Setenv("DB_PORT", "5432")
-	os.Setenv("DB_USER", "cveuser")
-	os.Setenv("DB_PASSWORD", "cvepass")
-	os.Setenv("DB_NAME", "cvetracker")
-	os.Setenv("REDIS_URL", "localhost:6379")
-	os.Setenv("SESSION_KEY", "supersecretkey")
-	os.Setenv("CSRF_KEY", "0123456789abcdef0123456789abcdef")
+	if os.Getenv("CI") == "true" {
+		t.Skip("skipping integration test in CI")
+	}
+
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_PORT", "5432")
+	t.Setenv("DB_USER", "cveuser")
+	t.Setenv("DB_PASSWORD", "cvepass")
+	t.Setenv("DB_NAME", "cvetracker")
+	t.Setenv("REDIS_URL", "localhost:6379")
+	t.Setenv("SESSION_KEY", "supersecretkey")
+	t.Setenv("CSRF_KEY", "0123456789abcdef0123456789abcdef")
 
 	if err := db.InitDB(); err != nil {
-		t.Fatalf("Failed to init DB: %v", err)
-	}
-	if err := db.InitRedis(); err != nil {
-		t.Fatalf("Failed to init Redis: %v", err)
+		if strings.Contains(err.Error(), "connection refused") {
+			t.Skipf("InitDB failed (skipping): %v", err)
+		} else {
+			t.Fatalf("InitDB failed: %v", err)
+		}
 	}
 	defer db.CloseDB()
+
+	if err := db.InitRedis(); err != nil {
+		if strings.Contains(err.Error(), "connection refused") {
+			t.Skipf("InitRedis failed (skipping): %v", err)
+		} else {
+			t.Fatalf("InitRedis failed: %v", err)
+		}
+	}
 	defer db.CloseRedis()
 
 	InitSession()
@@ -46,9 +59,11 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	r := mux.NewRouter()
 	r.Use(ProxyMiddleware)
 	r.HandleFunc("/", IndexHandler).Methods("GET")
+	r.HandleFunc("/feed", RSSFeedHandler).Methods("GET")
 	r.Handle("/login", RateLimitMiddleware(http.HandlerFunc(LoginHandler))).Methods("GET", "POST")
 	r.Handle("/register", RateLimitMiddleware(http.HandlerFunc(RegisterHandler))).Methods("GET", "POST")
 	r.HandleFunc("/verify-email", VerifyEmailHandler).Methods("GET")
+	r.HandleFunc("/confirm-email-change", ConfirmEmailChangeHandler).Methods("GET")
 	r.HandleFunc("/logout", LogoutHandler).Methods("POST")
 
 	protected := r.PathPrefix("").Subrouter()
@@ -67,22 +82,16 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	protected.Handle("/settings/totp/verify", RateLimitMiddleware(http.HandlerFunc(VerifyTOTPHandler))).Methods("POST")
 	protected.HandleFunc("/settings/password", ChangePasswordHandler).Methods("POST")
 	protected.HandleFunc("/settings/email", ChangeEmailHandler).Methods("POST")
-	protected.HandleFunc("/settings/delete", DeleteAccountHandler).Methods("POST")
+	protected.Handle("/settings/delete", RateLimitMiddleware(http.HandlerFunc(DeleteAccountHandler))).Methods("POST")
 
 	ts := httptest.NewServer(r)
 	defer ts.Close()
 
 	// Seed user
 	ctx := context.Background()
-	_, _ = db.Pool.Exec(ctx, "DELETE FROM users WHERE email = 'web_test@example.com'")
-	_, _ = db.Pool.Exec(ctx, "INSERT INTO users (email, password_hash, is_email_verified) VALUES ('web_test@example.com', '$2a$10$xyz', TRUE)")
-	var userID int
-	_ = db.Pool.QueryRow(ctx, "SELECT id FROM users WHERE email = 'web_test@example.com'").Scan(&userID)
-
-	// Mock a session cookie to bypass login for protected routes
-	// Actually, gorilla sessions need a real cookie. Let's just login to get it if we can't forge easily.
-	// But we don't know the hash of password since we inserted dummy hash.
-	// Let's create a real user using Register
+	_, _ = db.Pool.Exec(ctx, "DELETE FROM users WHERE email = 'web_test2@example.com'")
+	
+	// Create a real user using Register
 	form := url.Values{}
 	form.Add("email", "web_test2@example.com")
 	form.Add("password", "password123")
@@ -97,6 +106,8 @@ func TestWebEndpointsCoverage(t *testing.T) {
 
 	// Verify email manually
 	_, _ = db.Pool.Exec(ctx, "UPDATE users SET is_email_verified = TRUE WHERE email = 'web_test2@example.com'")
+	var userID int
+	_ = db.Pool.QueryRow(ctx, "SELECT id FROM users WHERE email = 'web_test2@example.com'").Scan(&userID)
 
 	// Login to get session cookie
 	loginForm := url.Values{}
@@ -208,7 +219,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 
 	// 12. RSS Feed
 	var token string
-	_ = db.Pool.QueryRow(ctx, "SELECT email_verify_token FROM users WHERE email = 'web_test2@example.com'").Scan(&token)
+	_ = db.Pool.QueryRow(ctx, "SELECT rss_feed_token FROM users WHERE email = 'web_test2@example.com'").Scan(&token)
 	doAuthReq("GET", "/feed?token="+token, nil)
 
 	// 13. Public Routes Error cases
@@ -236,6 +247,6 @@ func TestWebEndpointsCoverage(t *testing.T) {
 		}
 	}
 	delAccForm := url.Values{}
-	delAccForm.Add("password", "password123")
+	delAccForm.Add("password", "password456")
 	doAuthReqForm("POST", "/settings/delete", delAccForm)
 }
