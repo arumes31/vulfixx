@@ -2,7 +2,10 @@
 
 {{define "content"}}
 <h2>Latest Active CVEs</h2>
-<p>Showing CVEs that match your subscriptions and haven't been resolved/ignored.</p>
+<div style="display: flex; justify-content: space-between; align-items: center;">
+    <p>Showing CVEs that match your subscriptions and haven't been resolved/ignored.</p>
+    <button class="btn" title="Export to CSV" onclick="window.location.href='/export'" style="padding: 5px 10px; font-size: 1.2em;">📥</button>
+</div>
 
 <div id="cve-list">
     {{range .CVEs}}
