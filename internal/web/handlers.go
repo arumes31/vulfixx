@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"github.com/pquerna/otp/totp"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -190,7 +191,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
 		return
 	}
-	log.Printf("Verification queued for %s\n", email)
+	log.Printf("Verification queued for %s\n", strings.ReplaceAll(strings.ReplaceAll(email, "\r", ""), "\n", ""))
 
 	RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Registration successful. Please check your email to verify your account."})
 }
