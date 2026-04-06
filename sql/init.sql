@@ -54,3 +54,13 @@ CREATE TABLE IF NOT EXISTS user_activity_logs (
     user_agent TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS email_change_requests (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    new_email VARCHAR(255) NOT NULL,
+    old_email_token VARCHAR(255) NOT NULL,
+    new_email_token VARCHAR(255) NOT NULL,
+    old_email_confirmed BOOLEAN DEFAULT FALSE,
+    new_email_confirmed BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);

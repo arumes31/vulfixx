@@ -23,6 +23,7 @@ func StartWorker() {
 	go fetchCVEsPeriodically()
 	go processAlerts(ctx)
 	go processEmailVerification(ctx)
+	go processEmailChange(ctx)
 }
 
 type NVDResponse struct {
@@ -346,6 +347,73 @@ func processEmailVerification(ctx context.Context) {
 
 			sendVerificationEmail(email, token)
 		}
+	}
+}
+
+func processEmailChange(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			result, err := db.RedisClient.BRPop(ctx, 0, "email_change_queue").Result()
+			if err != nil {
+				log.Println("Error reading from email change queue:", err)
+				time.Sleep(1 * time.Second)
+				continue
+			}
+
+			var payload map[string]string
+			if err := json.Unmarshal([]byte(result[1]), &payload); err != nil {
+				log.Printf("Error unmarshaling email change payload: %v", err)
+				continue
+			}
+
+			email := payload["email"]
+			token := payload["token"]
+			emailType := payload["type"]
+
+			sendEmailChangeNotification(email, token, emailType)
+		}
+	}
+}
+
+func sendEmailChangeNotification(email, token, emailType string) {
+	log.Printf("Sending email change notification (%s) to %s\n", emailType, email)
+	smtpHost := os.Getenv("SMTP_HOST")
+	smtpPort := os.Getenv("SMTP_PORT")
+	smtpUser := os.Getenv("SMTP_USER")
+	smtpPass := os.Getenv("SMTP_PASS")
+
+	if smtpHost != "" && smtpPort != "" {
+		auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
+		to := []string{email}
+		baseURL := os.Getenv("BASE_URL")
+		if baseURL == "" {
+			baseURL = "http://localhost:8080"
+		}
+
+		subject := "Confirm Email Change - CVE Tracker"
+		body := fmt.Sprintf("Please confirm your email change request by clicking the link below:\r\n\r\n"+
+			"%s/confirm-email-change?token=%s\r\n", baseURL, token)
+
+		if emailType == "old" {
+			body = "You have requested to change your email address. " + body
+		} else {
+			body = "You have been set as the new email address for a CVE Tracker account. " + body
+		}
+
+		msg := []byte(fmt.Sprintf("To: %s\r\n"+
+			"Subject: %s\r\n"+
+			"\r\n"+
+			"%s", email, subject, body))
+
+		err := smtp.SendMail(smtpHost+":"+smtpPort, auth, smtpUser, to, msg)
+		if err != nil {
+			log.Printf("Failed to send email change notification to %s: %v", email, err)
+		}
+	} else {
+		log.Printf("SMTP not configured. Confirmation link for %s (%s): http://localhost:8080/confirm-email-change?token=%s\n", email, emailType, token)
 	}
 }
 

@@ -92,3 +92,77 @@ func ChangePassword(ctx context.Context, userID int, currentPassword, newPasswor
 	_, err = db.Pool.Exec(ctx, "UPDATE users SET password_hash = $1 WHERE id = $2", string(newHash), userID)
 	return err
 }
+
+func RequestEmailChange(ctx context.Context, userID int, newEmail string) (string, string, error) {
+	oldToken, err := GenerateToken()
+	if err != nil {
+		return "", "", err
+	}
+	newToken, err := GenerateToken()
+	if err != nil {
+		return "", "", err
+	}
+
+	_, err = db.Pool.Exec(ctx, `
+		INSERT INTO email_change_requests (user_id, new_email, old_email_token, new_email_token)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (user_id) DO UPDATE SET
+			new_email = EXCLUDED.new_email,
+			old_email_token = EXCLUDED.old_email_token,
+			new_email_token = EXCLUDED.new_email_token,
+			old_email_confirmed = FALSE,
+			new_email_confirmed = FALSE,
+			created_at = CURRENT_TIMESTAMP
+	`, userID, newEmail, oldToken, newToken)
+
+	return oldToken, newToken, err
+}
+
+func ConfirmEmailChange(ctx context.Context, token string) (bool, string, error) {
+	// Check if it's an old email token
+	var userID int
+	var newEmail string
+	var oldConfirmed, newConfirmed bool
+
+	err := db.Pool.QueryRow(ctx, `
+		SELECT user_id, new_email, old_email_confirmed, new_email_confirmed
+		FROM email_change_requests
+		WHERE old_email_token = $1 OR new_email_token = $1
+	`, token).Scan(&userID, &newEmail, &oldConfirmed, &newConfirmed)
+
+	if err != nil {
+		return false, "", errors.New("invalid or expired token")
+	}
+
+	// Determine which token was used
+	var isOldToken bool
+	err = db.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM email_change_requests WHERE old_email_token = $1)", token).Scan(&isOldToken)
+	if err != nil {
+		return false, "", err
+	}
+
+	if isOldToken {
+		oldConfirmed = true
+		_, err = db.Pool.Exec(ctx, "UPDATE email_change_requests SET old_email_confirmed = TRUE WHERE user_id = $1", userID)
+	} else {
+		newConfirmed = true
+		_, err = db.Pool.Exec(ctx, "UPDATE email_change_requests SET new_email_confirmed = TRUE WHERE user_id = $1", userID)
+	}
+
+	if err != nil {
+		return false, "", err
+	}
+
+	if oldConfirmed && newConfirmed {
+		// Both confirmed! Update user email
+		_, err = db.Pool.Exec(ctx, "UPDATE users SET email = $1, is_email_verified = TRUE WHERE id = $2", newEmail, userID)
+		if err != nil {
+			return false, "", err
+		}
+		// Delete request
+		_, _ = db.Pool.Exec(ctx, "DELETE FROM email_change_requests WHERE user_id = $1", userID)
+		return true, newEmail, nil
+	}
+
+	return false, "", nil
+}

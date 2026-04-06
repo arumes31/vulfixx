@@ -9,6 +9,7 @@ import (
 	"github.com/pquerna/otp/totp"
 	"rsc.io/qr"
 	"encoding/base64"
+	"encoding/json"
 	"log"
 )
 
@@ -181,19 +182,30 @@ func ChangeEmailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update email
-	_, err = db.Pool.Exec(r.Context(), "UPDATE users SET email = $1, is_email_verified = FALSE WHERE id = $2", newEmail, userID)
+	oldToken, newToken, err := auth.RequestEmailChange(r.Context(), userID, newEmail)
 	if err != nil {
-		renderError("Error updating email (maybe it's already in use?)")
+		renderError("Error requesting email change")
 		return
 	}
 
-	LogActivity(r.Context(), userID, "email_change", "Changed email from "+email+" to "+newEmail, r.RemoteAddr, r.UserAgent())
+	// Push email change notification payloads to redis queue
+	oldPayload, _ := json.Marshal(map[string]string{
+		"email": email,
+		"token": oldToken,
+		"type":  "old",
+	})
+	newPayload, _ := json.Marshal(map[string]string{
+		"email": newEmail,
+		"token": newToken,
+		"type":  "new",
+	})
+	db.RedisClient.LPush(r.Context(), "email_change_queue", oldPayload)
+	db.RedisClient.LPush(r.Context(), "email_change_queue", newPayload)
 
 	RenderTemplate(w, r, "settings.html", map[string]interface{}{
-		"Email":         newEmail,
+		"Email":         email,
 		"IsTOTPEnabled": isTOTPEnabled,
-		"EmailSuccess":  "Email updated successfully. Please re-verify your account.",
+		"EmailSuccess":  "Email change requested. Please confirm on BOTH your old and new email addresses.",
 	})
 }
 

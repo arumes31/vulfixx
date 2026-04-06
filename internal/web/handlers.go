@@ -670,6 +670,28 @@ func VerifyEmailHandler(w http.ResponseWriter, r *http.Request) {
 	RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Email verified successfully! You can now login."})
 }
 
+func ConfirmEmailChangeHandler(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "Missing token", http.StatusBadRequest)
+		return
+	}
+
+	confirmed, newEmail, err := auth.ConfirmEmailChange(r.Context(), token)
+	if err != nil {
+		http.Error(w, "Invalid or expired token", http.StatusBadRequest)
+		return
+	}
+
+	if confirmed {
+		userID, _ := GetUserID(r)
+		LogActivity(r.Context(), userID, "email_change", "Successfully changed email to "+newEmail, r.RemoteAddr, r.UserAgent())
+		RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Email changed successfully! Please login with your new email."})
+	} else {
+		RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Email change half-confirmed. Please confirm on the other email address as well."})
+	}
+}
+
 func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data map[string]interface{}) {
 	if data == nil {
 		data = make(map[string]interface{})

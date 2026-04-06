@@ -180,11 +180,20 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	})
 	doAuthReq("POST", "/api/status/bulk", bulkBody)
 
-	// 10. Change Email
+	// 9. Change Email (Initial request)
 	emailForm := url.Values{}
 	emailForm.Add("new_email", "new_web_test@example.com")
 	emailForm.Add("password", "password456")
 	doAuthReqForm("POST", "/settings/email", emailForm)
+
+	// Confirm email change (simulating both links clicked)
+	var oldToken, newToken string
+	_ = db.Pool.QueryRow(ctx, "SELECT old_email_token, new_email_token FROM email_change_requests WHERE user_id = $1", userID).Scan(&oldToken, &newToken)
+
+	// Confirm old
+	doAuthReq("GET", "/confirm-email-change?token="+oldToken, nil)
+	// Confirm new
+	doAuthReq("GET", "/confirm-email-change?token="+newToken, nil)
 
 	// 10. TOTP Handlers
 	doAuthReq("POST", "/settings/totp/generate", nil)
