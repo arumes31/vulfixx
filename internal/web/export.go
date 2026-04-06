@@ -1,14 +1,12 @@
 package web
 
 import (
-	"bytes"
-	"context"
 	"cve-tracker/internal/db"
-	"cve-tracker/internal/models"
 	"encoding/csv"
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 )
 
 func ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
@@ -29,7 +27,7 @@ func ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 		  AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%')
 		ORDER BY c.published_date DESC
 	`
-	rows, err := db.Pool.Query(context.Background(), query, userID)
+	rows, err := db.Pool.Query(r.Context(), query, userID)
 	if err != nil {
 		log.Printf("Error fetching CVEs for export: %v", err)
 		http.Error(w, "Error fetching CVEs", http.StatusInternalServerError)
@@ -37,52 +35,55 @@ func ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	// Write CSV to a buffer first to catch errors before sending headers
-	var buf bytes.Buffer
-	csvWriter := csv.NewWriter(&buf)
+	// Set response headers before writing body (streaming)
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment;filename=cves_export.csv")
+
+	csvWriter := csv.NewWriter(w)
 	header := []string{"CVE ID", "Description", "CVSS Score", "CISA KEV", "Published Date"}
 	if err := csvWriter.Write(header); err != nil {
 		log.Printf("Error writing CSV header: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	var cves []models.CVE
 	var skipped int
+	var total int
 	for rows.Next() {
-		var cve models.CVE
-		if err := rows.Scan(&cve.ID, &cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.CISAKEV, &cve.PublishedDate); err != nil {
+		var id int
+		var cveID, description string
+		var cvssScore float64
+		var cisaKEV bool
+		var publishedDate time.Time
+
+		if err := rows.Scan(&id, &cveID, &description, &cvssScore, &cisaKEV, &publishedDate); err != nil {
 			skipped++
 			log.Printf("Warning: skipping row during CVE export (scan error): %v", err)
 			continue
 		}
-		cves = append(cves, cve)
-	}
-	if skipped > 0 {
-		log.Printf("CVE export: %d row(s) skipped due to scan errors, %d row(s) exported", skipped, len(cves))
-	}
-
-	for _, cve := range cves {
+		total++
 		row := []string{
-			cve.CVEID,
-			cve.Description,
-			fmt.Sprintf("%.1f", cve.CVSSScore),
-			fmt.Sprintf("%t", cve.CISAKEV),
-			cve.PublishedDate.Format("2006-01-02"),
+			cveID,
+			description,
+			fmt.Sprintf("%.1f", cvssScore),
+			fmt.Sprintf("%t", cisaKEV),
+			publishedDate.Format("2006-01-02"),
 		}
 		if err := csvWriter.Write(row); err != nil {
-			log.Printf("Error writing CSV row: %v", err)
-			continue
+			log.Printf("Error writing CSV row for %s: %v", cveID, err)
+			return
 		}
 	}
-	csvWriter.Flush()
-	if err := csvWriter.Error(); err != nil {
-		log.Printf("CSV writer error: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
+
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating CVE export rows: %v", err)
 	}
 
-	w.Header().Set("Content-Type", "text/csv")
-	w.Header().Set("Content-Disposition", "attachment;filename=cves_export.csv")
-	_, _ = w.Write(buf.Bytes())
+	if skipped > 0 {
+		log.Printf("CVE export: %d row(s) skipped due to scan errors, %d row(s) exported", skipped, total)
+	}
+
+	csvWriter.Flush()
+	if err := csvWriter.Error(); err != nil {
+		log.Printf("CSV writer flush error: %v", err)
+	}
 }

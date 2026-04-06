@@ -50,9 +50,18 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	InitSession()
 
 	// Need to be at project root or templates/ won't load
+	origWD, wdErr := os.Getwd()
+	if wdErr != nil {
+		t.Fatalf("Failed to get working directory: %v", wdErr)
+	}
 	if err := os.Chdir("../.."); err != nil {
 		t.Fatalf("Failed to chdir: %v", err)
 	}
+	t.Cleanup(func() {
+		if err := os.Chdir(origWD); err != nil {
+			t.Errorf("Failed to restore working directory: %v", err)
+		}
+	})
 	InitTemplatesWithFuncs()
 
 	// Setup a router
@@ -89,7 +98,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 
 	// Seed user
 	ctx := context.Background()
-	_, _ = db.Pool.Exec(ctx, "DELETE FROM users WHERE email = 'web_test2@example.com'")
+	_, _ = db.Pool.Exec(ctx, "DELETE FROM users WHERE email IN ('web_test2@example.com', 'new_web_test@example.com')")
 	
 	// Create a real user using Register
 	form := url.Values{}
@@ -223,9 +232,9 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	doAuthReq("GET", "/feed?token="+token, nil)
 
 	// 13. Public Routes Error cases
-	// Register with existing email
+	// Register with existing email (email was changed to new_web_test@example.com)
 	formErr := url.Values{}
-	formErr.Add("email", "web_test2@example.com")
+	formErr.Add("email", "new_web_test@example.com")
 	formErr.Add("password", "password123")
 	reqRegErr, _ := http.NewRequest("POST", ts.URL+"/register", strings.NewReader(formErr.Encode()))
 	reqRegErr.Header.Set("Content-Type", "application/x-www-form-urlencoded")

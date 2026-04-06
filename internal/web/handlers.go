@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"github.com/pquerna/otp/totp"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -183,15 +182,23 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("Error marshaling verification payload: %v", err)
+		// Rollback: delete the user we just created since we can't send verification
+		if _, delErr := db.Pool.Exec(r.Context(), "DELETE FROM users WHERE email = $1", email); delErr != nil {
+			log.Printf("Error rolling back user creation for %q: %v", email, delErr)
+		}
 		RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
 		return
 	}
 	if err := db.RedisClient.LPush(r.Context(), "email_verification_queue", payload).Err(); err != nil {
 		log.Printf("Error enqueueing verification payload: %v", err)
+		// Rollback: delete the user we just created since we can't send verification
+		if _, delErr := db.Pool.Exec(r.Context(), "DELETE FROM users WHERE email = $1", email); delErr != nil {
+			log.Printf("Error rolling back user creation for %q: %v", email, delErr)
+		}
 		RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
 		return
 	}
-	log.Printf("Verification queued for %s\n", strings.ReplaceAll(strings.ReplaceAll(email, "\r", ""), "\n", ""))
+	log.Printf("Verification queued for %q", email)
 
 	RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Registration successful. Please check your email to verify your account."})
 }
@@ -699,15 +706,14 @@ func ConfirmEmailChangeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	confirmed, newEmail, err := auth.ConfirmEmailChange(r.Context(), token)
+	confirmed, newEmail, confirmedUserID, err := auth.ConfirmEmailChange(r.Context(), token)
 	if err != nil {
 		http.Error(w, "Invalid or expired token", http.StatusBadRequest)
 		return
 	}
 
 	if confirmed {
-		userID, _ := GetUserID(r)
-		LogActivity(r.Context(), userID, "email_change", "Successfully changed email to "+newEmail, r.RemoteAddr, r.UserAgent())
+		LogActivity(r.Context(), confirmedUserID, "email_change", "Successfully changed email to "+newEmail, r.RemoteAddr, r.UserAgent())
 		RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Email changed successfully! Please login with your new email."})
 	} else {
 		RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Email change half-confirmed. Please confirm on the other email address as well."})

@@ -1,9 +1,6 @@
 package worker
 
 import (
-	"net/netip"
-	"net/url"
-	"net"
 	"bytes"
 	"context"
 	"cve-tracker/internal/db"
@@ -11,20 +8,34 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"net/mail"
+	"net/netip"
 	"net/smtp"
+	"net/url"
 	"os"
 	"strings"
-	"time"
 	"sync"
+	"time"
 )
 
-// sanitizeEmail strips CR/LF characters to prevent SMTP header injection (gosec G707).
-func sanitizeEmail(email string) string {
+// sanitizeEmail validates and sanitizes an email address to prevent
+// SMTP header injection (gosec G707). Uses net/mail for proper parsing.
+func sanitizeEmail(email string) (string, error) {
+	// Strip any CR/LF first
 	s := strings.ReplaceAll(email, "\r", "")
 	s = strings.ReplaceAll(s, "\n", "")
-	return s
+	// Validate with net/mail
+	addr, err := mail.ParseAddress(s)
+	if err != nil {
+		return "", fmt.Errorf("invalid email address %q: %w", s, err)
+	}
+	return addr.Address, nil
 }
+
+// defaultNVDBaseURL is the NVD API base URL. Tests can override this.
+var defaultNVDBaseURL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 
 func StartWorker(ctx context.Context) {
 	go fetchCVEsPeriodically(ctx)
@@ -60,39 +71,35 @@ func fetchCVEsPeriodically(ctx context.Context) {
 	defer ticker.Stop()
 
 	// Fetch immediately on startup
-	fetchFromNVD()
+	fetchFromNVD(ctx)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			fetchFromNVD()
+			fetchFromNVD(ctx)
 		}
 	}
 }
 
-func fetchFromNVD() {
+func fetchFromNVD(ctx context.Context) {
 	log.Println("Worker: Fetching CVEs from NVD...")
-	// We'll fetch the latest modified CVEs from the last hour or so.
-	// For simplicity, we just fetch a recent chunk without date parameters,
-	// but normally you'd use 'pubStartDate' and 'pubEndDate'.
 
-	baseURL := os.Getenv("NVD_API_URL")
-	if baseURL == "" {
-		baseURL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+	baseURL := defaultNVDBaseURL
+	if envURL := os.Getenv("NVD_API_URL"); envURL != "" {
+		// Validate env override: only allow https scheme (or http for tests)
+		parsed, err := url.Parse(envURL)
+		if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") {
+			log.Printf("Invalid NVD_API_URL (bad scheme): %s", envURL)
+			return
+		}
+		baseURL = parsed.String()
 	}
-
-	// Validate URL scheme to prevent SSRF (gosec G704)
-	parsedNVD, err := url.Parse(baseURL)
-	if err != nil || (parsedNVD.Scheme != "http" && parsedNVD.Scheme != "https") {
-		log.Printf("Invalid NVD API URL scheme: %s", baseURL)
-		return
-	}
-	nvdURL := parsedNVD.String() + "?resultsPerPage=50"
+	nvdURL := baseURL + "?resultsPerPage=50"
 
 	client := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequest("GET", nvdURL, nil) // #nosec G704 -- URL is validated above
+	req, err := http.NewRequestWithContext(ctx, "GET", nvdURL, nil) // #nosec G704 -- URL validated above
 	if err != nil {
 		log.Println("Error creating NVD request:", err)
 		return
@@ -120,7 +127,6 @@ func fetchFromNVD() {
 		return
 	}
 
-	ctx := context.Background()
 	for _, v := range nvdResp.Vulnerabilities {
 		cveData := v.CVE
 
@@ -315,11 +321,15 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) bool 
 				},
 			}
 			resp, err := client.Post(sub.WebhookURL, "application/json", bytes.NewBuffer(payload))
-			if err == nil {
-				_ = resp.Body.Close()
+			if err != nil {
+				log.Printf("Failed to send webhook to %s: %v", sub.WebhookURL, err)
+				return
+			}
+			_ = resp.Body.Close()
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 				successChan <- true
 			} else {
-				log.Printf("Failed to send webhook to %s: %v", sub.WebhookURL, err)
+				log.Printf("Webhook to %s returned non-2xx status: %d", sub.WebhookURL, resp.StatusCode)
 			}
 		}()
 	}
@@ -335,7 +345,11 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) bool 
 		go func() {
 			defer wg.Done()
 			auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
-			safeEmail := sanitizeEmail(email)
+			safeEmail, emailErr := sanitizeEmail(email)
+			if emailErr != nil {
+				log.Printf("Invalid email for CVE alert: %v", emailErr)
+				return
+			}
 			to := []string{safeEmail}
 			msg := []byte(fmt.Sprintf("To: %s\r\n"+
 				"Subject: New CVE Alert: %s\r\n"+
@@ -434,7 +448,11 @@ func sendEmailChangeNotification(email, token, emailType string) {
 
 	if smtpHost != "" && smtpPort != "" {
 		auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
-		safeEmail := sanitizeEmail(email)
+		safeEmail, emailErr := sanitizeEmail(email)
+		if emailErr != nil {
+			log.Printf("Invalid email for email change notification: %v", emailErr)
+			return
+		}
 		to := []string{safeEmail}
 		baseURL := os.Getenv("BASE_URL")
 		if baseURL == "" {
@@ -456,12 +474,18 @@ func sendEmailChangeNotification(email, token, emailType string) {
 			"\r\n"+
 			"%s", safeEmail, subject, body))
 
-		err := smtp.SendMail(smtpHost+":"+smtpPort, auth, smtpUser, to, msg) // #nosec G707 -- email sanitized above
+		err := smtp.SendMail(smtpHost+":"+smtpPort, auth, smtpUser, to, msg) // #nosec G707 -- email validated above
 		if err != nil {
-			log.Printf("Failed to send email change notification to %s: %v", email, err)
+			log.Printf("Failed to send email change notification to %s: %v", safeEmail, err)
 		}
 	} else {
-		log.Printf("SMTP not configured. Confirmation link for %s (%s): http://localhost:8080/confirm-email-change?token=%s\n", email, emailType, token)
+		// Redact token in dev fallback log; show full link only if ENABLE_DEV_EMAIL_LINK_LOGGING is set
+		if os.Getenv("ENABLE_DEV_EMAIL_LINK_LOGGING") == "true" {
+			log.Printf("SMTP not configured. Confirmation link for %s (%s): http://localhost:8080/confirm-email-change?token=%s\n", email, emailType, token)
+		} else {
+			redacted := token[:8] + "..."
+			log.Printf("SMTP not configured. Confirmation link for %s (%s): token=%s (redacted)\n", email, emailType, redacted)
+		}
 	}
 }
 
@@ -474,7 +498,11 @@ func sendVerificationEmail(email, token string) {
 
 	if smtpHost != "" && smtpPort != "" {
 		auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
-		safeEmail := sanitizeEmail(email)
+		safeEmail, emailErr := sanitizeEmail(email)
+		if emailErr != nil {
+			log.Printf("Invalid email for verification: %v", emailErr)
+			return
+		}
 		to := []string{safeEmail}
 		// In production, BASE_URL should be configured.
 		baseURL := os.Getenv("BASE_URL")
@@ -488,11 +516,17 @@ func sendVerificationEmail(email, token string) {
 			"Please verify your email address by clicking the link below:\r\n\r\n"+
 			"%s/verify-email?token=%s\r\n", safeEmail, baseURL, token))
 
-		err := smtp.SendMail(smtpHost+":"+smtpPort, auth, smtpUser, to, msg) // #nosec G707 -- email sanitized above
+		err := smtp.SendMail(smtpHost+":"+smtpPort, auth, smtpUser, to, msg) // #nosec G707 -- email validated above
 		if err != nil {
-			log.Printf("Failed to send verification email to %s: %v", email, err)
+			log.Printf("Failed to send verification email to %s: %v", safeEmail, err)
 		}
 	} else {
-		log.Printf("SMTP not configured. Verification link for %s: http://localhost:8080/verify-email?token=%s\n", email, token)
+		// Redact token in dev fallback log
+		if os.Getenv("ENABLE_DEV_EMAIL_LINK_LOGGING") == "true" {
+			log.Printf("SMTP not configured. Verification link for %s: http://localhost:8080/verify-email?token=%s\n", email, token)
+		} else {
+			redacted := token[:8] + "..."
+			log.Printf("SMTP not configured. Verification link for %s: token=%s (redacted)\n", email, redacted)
+		}
 	}
 }

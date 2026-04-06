@@ -76,7 +76,6 @@ func TestWorkerFunctions(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	t.Setenv("NVD_API_URL", ts.URL)
 	t.Setenv("DB_HOST", "localhost")
 	t.Setenv("DB_PORT", "5432")
 	t.Setenv("DB_USER", "cveuser")
@@ -106,7 +105,8 @@ func TestWorkerFunctions(t *testing.T) {
 	defer db.CloseRedis()
 
 	// Calling the functions directly to increase coverage
-	fetchFromNVD()
+	defaultNVDBaseURL = ts.URL
+	fetchFromNVD(ctx)
 
 	// Test worker loops briefly
 	go processAlerts(ctx)

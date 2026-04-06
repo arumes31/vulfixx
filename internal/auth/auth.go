@@ -7,10 +7,14 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/hex"
 	"errors"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 	"github.com/pquerna/otp/totp"
 )
+
+// tokenTTL is the maximum age for email change request tokens.
+const tokenTTL = 24 * time.Hour
 
 func GenerateToken() (string, error) {
 	bytes := make([]byte, 32)
@@ -123,62 +127,70 @@ func RequestEmailChange(ctx context.Context, userID int, newEmail string) (strin
 	return oldToken, newToken, err
 }
 
-func ConfirmEmailChange(ctx context.Context, token string) (bool, string, error) {
-	// Check if it's an old email token
+// ConfirmEmailChange confirms a token from an email change flow.
+// Returns (fullyConfirmed, newEmail, userID, error).
+// The entire lookup, flag update, and final email change are done within a
+// single transaction with a row lock (FOR UPDATE) to prevent races.
+func ConfirmEmailChange(ctx context.Context, token string) (bool, string, int, error) {
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		return false, "", 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Lock the row and fetch all fields in one query, with TTL check
 	var userID int
 	var newEmail string
 	var oldConfirmed, newConfirmed bool
+	var oldEmailToken, newEmailToken string
 
-	err := db.Pool.QueryRow(ctx, `
-		SELECT user_id, new_email, old_email_confirmed, new_email_confirmed
+	err = tx.QueryRow(ctx, `
+		SELECT user_id, new_email, old_email_confirmed, new_email_confirmed,
+		       old_email_token, new_email_token
 		FROM email_change_requests
-		WHERE old_email_token = $1 OR new_email_token = $1
-	`, token).Scan(&userID, &newEmail, &oldConfirmed, &newConfirmed)
+		WHERE (old_email_token = $1 OR new_email_token = $1)
+		  AND created_at > NOW() - INTERVAL '24 hours'
+		FOR UPDATE
+	`, token).Scan(&userID, &newEmail, &oldConfirmed, &newConfirmed, &oldEmailToken, &newEmailToken)
 
 	if err != nil {
-		return false, "", errors.New("invalid or expired token")
+		return false, "", 0, errors.New("invalid or expired token")
 	}
 
 	// Determine which token was used
-	var isOldToken bool
-	err = db.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM email_change_requests WHERE old_email_token = $1)", token).Scan(&isOldToken)
-	if err != nil {
-		return false, "", err
-	}
+	isOldToken := (oldEmailToken == token)
 
 	if isOldToken {
 		oldConfirmed = true
-		_, err = db.Pool.Exec(ctx, "UPDATE email_change_requests SET old_email_confirmed = TRUE WHERE user_id = $1", userID)
+		_, err = tx.Exec(ctx, "UPDATE email_change_requests SET old_email_confirmed = TRUE WHERE user_id = $1", userID)
 	} else {
 		newConfirmed = true
-		_, err = db.Pool.Exec(ctx, "UPDATE email_change_requests SET new_email_confirmed = TRUE WHERE user_id = $1", userID)
+		_, err = tx.Exec(ctx, "UPDATE email_change_requests SET new_email_confirmed = TRUE WHERE user_id = $1", userID)
 	}
 
 	if err != nil {
-		return false, "", err
+		return false, "", 0, err
 	}
 
 	if oldConfirmed && newConfirmed {
 		// Both confirmed! Update user email and clean up request atomically
-		tx, txErr := db.Pool.Begin(ctx)
-		if txErr != nil {
-			return false, "", txErr
+		_, err = tx.Exec(ctx, "UPDATE users SET email = $1, is_email_verified = TRUE WHERE id = $2", newEmail, userID)
+		if err != nil {
+			return false, "", 0, err
 		}
-		defer func() { _ = tx.Rollback(ctx) }()
-
-		_, txErr = tx.Exec(ctx, "UPDATE users SET email = $1, is_email_verified = TRUE WHERE id = $2", newEmail, userID)
-		if txErr != nil {
-			return false, "", txErr
+		_, err = tx.Exec(ctx, "DELETE FROM email_change_requests WHERE user_id = $1", userID)
+		if err != nil {
+			return false, "", 0, err
 		}
-		_, txErr = tx.Exec(ctx, "DELETE FROM email_change_requests WHERE user_id = $1", userID)
-		if txErr != nil {
-			return false, "", txErr
-		}
-		if txErr = tx.Commit(ctx); txErr != nil {
-			return false, "", txErr
-		}
-		return true, newEmail, nil
 	}
 
-	return false, "", nil
+	if err = tx.Commit(ctx); err != nil {
+		return false, "", 0, err
+	}
+
+	if oldConfirmed && newConfirmed {
+		return true, newEmail, userID, nil
+	}
+
+	return false, "", userID, nil
 }
