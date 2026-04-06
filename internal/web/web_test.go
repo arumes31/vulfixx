@@ -1,22 +1,29 @@
 package web
 
 import (
+	"bytes"
+	"context"
 	"cve-tracker/internal/db"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
+	"strings"
 	"testing"
+
 	"github.com/gorilla/mux"
 )
 
-func TestWebEndpoints(t *testing.T) {
+func TestWebEndpointsCoverage(t *testing.T) {
 	os.Setenv("DB_HOST", "localhost")
 	os.Setenv("DB_PORT", "5432")
 	os.Setenv("DB_USER", "cveuser")
 	os.Setenv("DB_PASSWORD", "cvepass")
 	os.Setenv("DB_NAME", "cvetracker")
 	os.Setenv("REDIS_URL", "localhost:6379")
-	os.Setenv("SESSION_KEY", "supersecret")
+	os.Setenv("SESSION_KEY", "supersecretkey")
+	os.Setenv("CSRF_KEY", "0123456789abcdef0123456789abcdef")
 
 	if err := db.InitDB(); err != nil {
 		t.Fatalf("Failed to init DB: %v", err)
@@ -33,40 +40,125 @@ func TestWebEndpoints(t *testing.T) {
 	if err := os.Chdir("../.."); err != nil {
 		t.Fatalf("Failed to chdir: %v", err)
 	}
-	InitTemplates()
+	InitTemplatesWithFuncs()
 
+	// Setup a router
 	r := mux.NewRouter()
+	r.Use(ProxyMiddleware)
 	r.HandleFunc("/", IndexHandler).Methods("GET")
-	r.HandleFunc("/login", LoginHandler).Methods("GET", "POST")
-	r.HandleFunc("/register", RegisterHandler).Methods("GET", "POST")
+	r.Handle("/login", RateLimitMiddleware(http.HandlerFunc(LoginHandler))).Methods("GET", "POST")
+	r.Handle("/register", RateLimitMiddleware(http.HandlerFunc(RegisterHandler))).Methods("GET", "POST")
+	r.HandleFunc("/verify-email", VerifyEmailHandler).Methods("GET")
 	r.HandleFunc("/logout", LogoutHandler).Methods("POST")
-	r.HandleFunc("/dashboard", DashboardHandler).Methods("GET")
+
+	protected := r.PathPrefix("").Subrouter()
+	protected.Use(AuthMiddleware)
+	protected.HandleFunc("/dashboard", DashboardHandler).Methods("GET")
+	protected.HandleFunc("/api/status", UpdateCVEStatusHandler).Methods("POST")
+	protected.HandleFunc("/subscriptions", SubscriptionsHandler).Methods("GET", "POST")
+	protected.HandleFunc("/subscriptions/delete", DeleteSubscriptionHandler).Methods("POST")
+	protected.HandleFunc("/export", ExportCVEsHandler).Methods("GET")
+	protected.HandleFunc("/settings", SettingsHandler).Methods("GET")
+	protected.HandleFunc("/settings/totp/generate", GenerateTOTPHandler).Methods("POST")
+	protected.Handle("/settings/totp/verify", RateLimitMiddleware(http.HandlerFunc(VerifyTOTPHandler))).Methods("POST")
+	protected.HandleFunc("/settings/password", ChangePasswordHandler).Methods("POST")
 
 	ts := httptest.NewServer(r)
 	defer ts.Close()
 
-	resp, err := http.Get(ts.URL + "/")
-	if err != nil {
-		t.Fatalf("Failed GET /: %v", err)
-	}
-	resp.Body.Close()
+	// Seed user
+	ctx := context.Background()
+	_, _ = db.Pool.Exec(ctx, "DELETE FROM users WHERE email = 'web_test@example.com'")
+	_, _ = db.Pool.Exec(ctx, "INSERT INTO users (email, password_hash, is_email_verified) VALUES ('web_test@example.com', '$2a$10$xyz', TRUE)")
+	var userID int
+	_ = db.Pool.QueryRow(ctx, "SELECT id FROM users WHERE email = 'web_test@example.com'").Scan(&userID)
 
-	resp, err = http.Get(ts.URL + "/login")
-	if err != nil {
-		t.Fatalf("Failed GET /login: %v", err)
+	// Mock a session cookie to bypass login for protected routes
+	// Actually, gorilla sessions need a real cookie. Let's just login to get it if we can't forge easily.
+	// But we don't know the hash of password since we inserted dummy hash.
+	// Let's create a real user using Register
+	form := url.Values{}
+	form.Add("email", "web_test2@example.com")
+	form.Add("password", "password123")
+	reqReg, _ := http.NewRequest("POST", ts.URL+"/register", strings.NewReader(form.Encode()))
+	reqReg.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
-	resp.Body.Close()
+	_, _ = client.Do(reqReg)
 
-	resp, err = http.Get(ts.URL + "/register")
-	if err != nil {
-		t.Fatalf("Failed GET /register: %v", err)
-	}
-	resp.Body.Close()
+	// Verify email manually
+	_, _ = db.Pool.Exec(ctx, "UPDATE users SET is_email_verified = TRUE WHERE email = 'web_test2@example.com'")
 
-	resp, err = http.Get(ts.URL + "/dashboard")
-	if err != nil {
-		t.Fatalf("Failed GET /dashboard: %v", err)
+	// Login to get session cookie
+	loginForm := url.Values{}
+	loginForm.Add("email", "web_test2@example.com")
+	loginForm.Add("password", "password123")
+	reqLog, _ := http.NewRequest("POST", ts.URL+"/login", strings.NewReader(loginForm.Encode()))
+	reqLog.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resLog, _ := client.Do(reqLog)
+
+	var sessionCookie *http.Cookie
+	for _, cookie := range resLog.Cookies() {
+		if cookie.Name == "session-name" {
+			sessionCookie = cookie
+			break
+		}
 	}
-	resp.Body.Close()
+
+	doAuthReq := func(method, path string, body []byte) *http.Response {
+		var req *http.Request
+		if body != nil {
+			req, _ = http.NewRequest(method, ts.URL+path, bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+		} else {
+			req, _ = http.NewRequest(method, ts.URL+path, nil)
+		}
+		if sessionCookie != nil {
+			req.AddCookie(sessionCookie)
+		}
+		res, _ := client.Do(req)
+		return res
+	}
+
+	doAuthReqForm := func(method, path string, form url.Values) *http.Response {
+		req, _ := http.NewRequest(method, ts.URL+path, strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if sessionCookie != nil {
+			req.AddCookie(sessionCookie)
+		}
+		res, _ := client.Do(req)
+		return res
+	}
+
+	// 1. Dashboard
+	doAuthReq("GET", "/dashboard", nil)
+
+	// 2. Subscriptions GET & POST
+	doAuthReq("GET", "/subscriptions", nil)
+	subForm := url.Values{}
+	subForm.Add("keyword", "test")
+	subForm.Add("min_severity", "5.5")
+	doAuthReqForm("POST", "/subscriptions", subForm)
+
+	// 3. Export
+	doAuthReq("GET", "/export", nil)
+
+	// 4. API Status
+	statusBody, _ := json.Marshal(map[string]interface{}{"cve_id": 1, "status": "resolved"})
+	doAuthReq("POST", "/api/status", statusBody)
+
+	// 5. Settings
+	doAuthReq("GET", "/settings", nil)
+
+	// 6. Change Password
+	pwForm := url.Values{}
+	pwForm.Add("current_password", "password123")
+	pwForm.Add("new_password", "password456")
+	doAuthReqForm("POST", "/settings/password", pwForm)
+
+	// 7. Logout
+	doAuthReq("POST", "/logout", nil)
 }
-

@@ -25,6 +25,7 @@
                         <li><a href="/login">Login</a></li>
                         <li><a href="/register">Register</a></li>
                     {{end}}
+                    <li><button id="theme-toggle" class="btn" title="Toggle Dark Mode" style="padding: 2px 8px; margin-left: 10px; font-size: 1.2em;">🌙</button></li>
                 </ul>
             </nav>
         </div>
@@ -32,6 +33,24 @@
     <div class="container">
         {{template "content" .}}
     </div>
+    <script>
+        const toggleBtn = document.getElementById('theme-toggle');
+        const body = document.body;
+        if (localStorage.getItem('theme') === 'dark') {
+            body.classList.add('dark-mode');
+            toggleBtn.textContent = '☀️';
+        }
+        toggleBtn.addEventListener('click', () => {
+            body.classList.toggle('dark-mode');
+            if (body.classList.contains('dark-mode')) {
+                localStorage.setItem('theme', 'dark');
+                toggleBtn.textContent = '☀️';
+            } else {
+                localStorage.setItem('theme', 'light');
+                toggleBtn.textContent = '🌙';
+            }
+        });
+    </script>
 </body>
 </html>
 {{end}}

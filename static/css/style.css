@@ -112,4 +112,30 @@ th, td {
     padding: 10px;
     text-align: left;
 }
-.error { color: red; }
+body.dark-mode {
+    background-color: #1e1e1e;
+    color: #e0e0e0;
+}
+body.dark-mode .card, body.dark-mode .cve-item {
+    background-color: #2d2d2d;
+    box-shadow: 0 1px 3px rgba(255,255,255,0.05);
+}
+body.dark-mode table, body.dark-mode th, body.dark-mode td {
+    border-color: #444;
+}
+body.dark-mode header {
+    background: #111;
+}
+body.dark-mode .btn {
+    background: #444;
+    color: #fff;
+}
+body.dark-mode .btn:hover {
+    background: #e8491d;
+}
+body.dark-mode input {
+    background-color: #333;
+    color: #fff;
+    border: 1px solid #555;
+}
+
