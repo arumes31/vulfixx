@@ -68,3 +68,5 @@ CREATE TABLE IF NOT EXISTS email_change_requests (
 
 CREATE INDEX IF NOT EXISTS idx_user_activity_logs_user_id_created_at ON user_activity_logs (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_user_activity_logs_created_at ON user_activity_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_email_change_requests_old_token ON email_change_requests (old_email_token);
+CREATE INDEX IF NOT EXISTS idx_email_change_requests_new_token ON email_change_requests (new_email_token);

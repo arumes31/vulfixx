@@ -220,11 +220,14 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 				continue
 			}
 			if !exists {
-				// Send alert
-				sendAlert(sub, cve, email)
-				// Record history
-				if _, err := db.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id) VALUES ($1, $2)", sub.UserID, cve.ID); err != nil {
-					log.Printf("Error recording alert history: %v", err)
+				// Send alert and only record history on success
+				success := sendAlert(sub, cve, email)
+				if success {
+					if _, err := db.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id) VALUES ($1, $2)", sub.UserID, cve.ID); err != nil {
+						log.Printf("Error recording alert history: %v", err)
+					}
+				} else {
+					log.Printf("Warning: all alert deliveries failed for user %d, CVE %s — not recording history", sub.UserID, cve.CVEID)
 				}
 			}
 		}

@@ -159,13 +159,24 @@ func ConfirmEmailChange(ctx context.Context, token string) (bool, string, error)
 	}
 
 	if oldConfirmed && newConfirmed {
-		// Both confirmed! Update user email
-		_, err = db.Pool.Exec(ctx, "UPDATE users SET email = $1, is_email_verified = TRUE WHERE id = $2", newEmail, userID)
-		if err != nil {
-			return false, "", err
+		// Both confirmed! Update user email and clean up request atomically
+		tx, txErr := db.Pool.Begin(ctx)
+		if txErr != nil {
+			return false, "", txErr
 		}
-		// Delete request
-		_, _ = db.Pool.Exec(ctx, "DELETE FROM email_change_requests WHERE user_id = $1", userID)
+		defer func() { _ = tx.Rollback(ctx) }()
+
+		_, txErr = tx.Exec(ctx, "UPDATE users SET email = $1, is_email_verified = TRUE WHERE id = $2", newEmail, userID)
+		if txErr != nil {
+			return false, "", txErr
+		}
+		_, txErr = tx.Exec(ctx, "DELETE FROM email_change_requests WHERE user_id = $1", userID)
+		if txErr != nil {
+			return false, "", txErr
+		}
+		if txErr = tx.Commit(ctx); txErr != nil {
+			return false, "", txErr
+		}
 		return true, newEmail, nil
 	}
 

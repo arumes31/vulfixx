@@ -185,7 +185,6 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
 		return
 	}
-	db.RedisClient.LPush(r.Context(), "email_verification_queue", payload)
 	if err := db.RedisClient.LPush(r.Context(), "email_verification_queue", payload).Err(); err != nil {
 		log.Printf("Error enqueueing verification payload: %v", err)
 		RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})

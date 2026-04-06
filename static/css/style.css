@@ -6,6 +6,14 @@ body {
     background-color: #f4f7f6;
     color: #333;
 }
+.error {
+    color: #d9534f;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+body.dark-mode .error {
+    color: #ff6b6b;
+}
 .container {
     width: 80%;
     margin: auto;
@@ -109,11 +117,8 @@ table, th, td {
     border: 1px solid #ccc;
 }
 th, td {
-    padding: 10px;
-    text-align: left;
-}
-table th, table td {
     padding: 12px;
+    text-align: left;
     border-bottom: 1px solid #eee;
 }
 body.dark-mode table th, body.dark-mode table td {

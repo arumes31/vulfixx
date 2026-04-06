@@ -16,8 +16,8 @@ import (
 )
 
 func TestWebEndpointsCoverage(t *testing.T) {
-	if os.Getenv("CI") == "true" {
-		t.Skip("skipping integration test in CI")
+	if os.Getenv("SKIP_INTEGRATION") == "true" {
+		t.Skip("skipping integration test (SKIP_INTEGRATION=true)")
 	}
 
 	t.Setenv("DB_HOST", "localhost")
@@ -217,9 +217,9 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	delForm.Add("id", "1")
 	doAuthReqForm("POST", "/subscriptions/delete", delForm)
 
-	// 12. RSS Feed
+	// 12. RSS Feed (use updated email after email change)
 	var token string
-	_ = db.Pool.QueryRow(ctx, "SELECT rss_feed_token FROM users WHERE email = 'web_test2@example.com'").Scan(&token)
+	_ = db.Pool.QueryRow(ctx, "SELECT rss_feed_token FROM users WHERE email = 'new_web_test@example.com'").Scan(&token)
 	doAuthReq("GET", "/feed?token="+token, nil)
 
 	// 13. Public Routes Error cases
@@ -238,8 +238,13 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	doAuthReq("POST", "/logout", nil)
 
 	// 14. Delete Account
-	// Login again to delete
-	resLogDel, _ := client.Do(reqLog)
+	// Login again with updated credentials (email changed to new_web_test@example.com, password changed to password456)
+	reLoginForm := url.Values{}
+	reLoginForm.Add("email", "new_web_test@example.com")
+	reLoginForm.Add("password", "password456")
+	reqLogNew, _ := http.NewRequest("POST", ts.URL+"/login", strings.NewReader(reLoginForm.Encode()))
+	reqLogNew.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resLogDel, _ := client.Do(reqLogNew)
 	for _, cookie := range resLogDel.Cookies() {
 		if cookie.Name == "session-name" {
 			sessionCookie = cookie

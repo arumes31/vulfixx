@@ -14,8 +14,8 @@ import (
 )
 
 func TestWorkerFunctions(t *testing.T) {
-	if os.Getenv("CI") == "true" {
-		t.Skip("skipping integration test in CI")
+	if os.Getenv("SKIP_INTEGRATION") == "true" {
+		t.Skip("skipping integration test (SKIP_INTEGRATION=true)")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -116,7 +116,7 @@ func TestWorkerFunctions(t *testing.T) {
 	db.RedisClient.LPush(ctx, "cve_alerts_queue", "{\"cve_id\":\"CVE-123\", \"description\":\"test\"}")
 	db.RedisClient.LPush(ctx, "email_verification_queue", "{\"email\":\"test@example.com\", \"token\":\"token\"}")
 
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 	cancel()
 
 	// Direct calls

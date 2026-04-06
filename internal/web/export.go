@@ -48,12 +48,18 @@ func ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var cves []models.CVE
+	var skipped int
 	for rows.Next() {
 		var cve models.CVE
 		if err := rows.Scan(&cve.ID, &cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.CISAKEV, &cve.PublishedDate); err != nil {
+			skipped++
+			log.Printf("Warning: skipping row during CVE export (scan error): %v", err)
 			continue
 		}
 		cves = append(cves, cve)
+	}
+	if skipped > 0 {
+		log.Printf("CVE export: %d row(s) skipped due to scan errors, %d row(s) exported", skipped, len(cves))
 	}
 
 	for _, cve := range cves {
