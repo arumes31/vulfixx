@@ -6,6 +6,14 @@ body {
     background-color: #f4f7f6;
     color: #333;
 }
+.error {
+    color: #d9534f;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+body.dark-mode .error {
+    color: #ff6b6b;
+}
 .container {
     width: 80%;
     margin: auto;
@@ -109,7 +117,67 @@ table, th, td {
     border: 1px solid #ccc;
 }
 th, td {
-    padding: 10px;
+    padding: 12px;
     text-align: left;
+    border-bottom: 1px solid #eee;
 }
-.error { color: red; }
+body.dark-mode table th, body.dark-mode table td {
+    border-bottom-color: #444;
+}
+body.dark-mode {
+    background-color: #1e1e1e;
+    color: #e0e0e0;
+}
+body.dark-mode .card, body.dark-mode .cve-item {
+    background-color: #2d2d2d;
+    box-shadow: 0 1px 3px rgba(255,255,255,0.05);
+}
+body.dark-mode table, body.dark-mode th, body.dark-mode td {
+    border-color: #444;
+}
+body.dark-mode header {
+    background: #111;
+}
+body.dark-mode .btn {
+    background: #444;
+    color: #fff;
+}
+body.dark-mode .btn:hover {
+    background: #e8491d;
+}
+body.dark-mode input {
+    background-color: #333;
+    color: #fff;
+    border: 1px solid #555;
+}
+
+@media (max-width: 900px) {
+    .container {
+        width: 95%;
+        padding: 10px;
+    }
+    header #branding, header nav {
+        float: none;
+        text-align: center;
+    }
+    header nav {
+        margin-top: 20px;
+    }
+    header li {
+        float: none;
+        display: inline-block;
+        padding: 5px 10px;
+    }
+    .cve-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .cve-score {
+        margin-top: 10px;
+        align-self: flex-start;
+    }
+    .container > .flex-container {
+        flex-direction: column;
+    }
+}
+

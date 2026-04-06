@@ -1,27 +1,137 @@
 package worker
 
 import (
-	"net/netip"
-	"net/url"
-	"net"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"net/mail"
+	"net/netip"
 	"net/smtp"
+	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
-func StartWorker() {
-	go fetchCVEsPeriodically()
-	go processAlerts()
-	go processEmailVerification()
+// sanitizeEmail validates and sanitizes an email address to prevent
+// SMTP header injection (gosec G707). Uses net/mail for proper parsing.
+func sanitizeEmail(email string) (string, error) {
+	// Strip any CR/LF first
+	s := strings.ReplaceAll(email, "\r", "")
+	s = strings.ReplaceAll(s, "\n", "")
+	// Validate with net/mail
+	addr, err := mail.ParseAddress(s)
+	if err != nil {
+		return "", fmt.Errorf("invalid email address %q: %w", s, err)
+	}
+	return addr.Address, nil
+}
+
+// redactToken safely redacts a token for logging.
+func redactToken(token string) string {
+	n := 8
+	if len(token) < n {
+		n = len(token)
+	}
+	if n == 0 {
+		return "<empty>"
+	}
+	return token[:n] + "..."
+}
+
+// redactURL redacts a URL for logging by removing Userinfo, Query, and Path.
+func redactURL(u string) string {
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return "[invalid-url]"
+	}
+	parsed.User = nil
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	parsed.Path = "/"
+	return parsed.String()
+}
+
+// sendMailWithTimeout is a replacement for smtp.SendMail that supports deadlines.
+func sendMailWithTimeout(host, port, user, password string, to []string, msg []byte) error {
+	addr := net.JoinHostPort(host, port)
+	// #nosec G704 -- Host and port are from controlled environment variables
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	if err != nil {
+		return fmt.Errorf("dial timeout: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	if err := conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		return fmt.Errorf("set deadline: %w", err)
+	}
+
+	client, err := smtp.NewClient(conn, host)
+	if err != nil {
+		return fmt.Errorf("new client: %w", err)
+	}
+	defer func() { _ = client.Quit() }()
+
+	// Negotiate STARTTLS if supported (G706 hardening)
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		config := &tls.Config{
+			ServerName: host,
+			// Note: We don't use InsecureSkipVerify: true here for security.
+		}
+		if err := client.StartTLS(config); err != nil {
+			return fmt.Errorf("starttls: %w", err)
+		}
+	}
+
+	if user != "" && password != "" {
+		auth := smtp.PlainAuth("", user, password, host)
+		if err := client.Auth(auth); err != nil {
+			return fmt.Errorf("auth: %w", err)
+		}
+	}
+
+	// #nosec G707 -- User is from controlled environment variable
+	if err := client.Mail(user); err != nil {
+		return fmt.Errorf("mail from: %w", err)
+	}
+	for _, recipient := range to {
+		if err := client.Rcpt(recipient); err != nil {
+			return fmt.Errorf("rcpt to %s: %w", recipient, err)
+		}
+	}
+
+	w, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("data: %w", err)
+	}
+	_, err = w.Write(msg)
+	if err != nil {
+		_ = w.Close()
+		return fmt.Errorf("write msg: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("close data writer: %w", err)
+	}
+
+	return client.Quit()
+}
+
+// defaultNVDBaseURL is the NVD API base URL. Tests can override this.
+var defaultNVDBaseURL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+
+func StartWorker(ctx context.Context) {
+	go fetchCVEsPeriodically(ctx)
+	go processAlerts(ctx)
+	go processEmailVerification(ctx)
+	go processEmailChange(ctx)
 }
 
 type NVDResponse struct {
@@ -45,30 +155,53 @@ type NVDResponse struct {
 	} `json:"vulnerabilities"`
 }
 
-func fetchCVEsPeriodically() {
+func fetchCVEsPeriodically(ctx context.Context) {
 	// NIST NVD rate limit is strict. Using 1 hour here for real usage.
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 
 	// Fetch immediately on startup
-	fetchFromNVD()
+	fetchFromNVD(ctx)
 
 	for {
-		<-ticker.C
-		fetchFromNVD()
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			fetchFromNVD(ctx)
+		}
 	}
 }
 
-func fetchFromNVD() {
+func fetchFromNVD(ctx context.Context) {
 	log.Println("Worker: Fetching CVEs from NVD...")
-	// We'll fetch the latest modified CVEs from the last hour or so.
-	// For simplicity, we just fetch a recent chunk without date parameters,
-	// but normally you'd use 'pubStartDate' and 'pubEndDate'.
 
-	url := "https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=50"
+	baseURL := defaultNVDBaseURL
+	if envURL := os.Getenv("NVD_API_URL"); envURL != "" {
+		// Validate env override: only allow https scheme and restricted hosts (G706 hardening)
+		parsed, err := url.Parse(envURL)
+		if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") {
+			log.Printf("Invalid NVD_API_URL (bad scheme): %q", envURL) // #nosec G706
+			return
+		}
+		
+		// Allowlist NVD hosts
+		allowedHosts := map[string]bool{
+			"services.nvd.nist.gov": true,
+			"localhost":             true, // for local testing
+			"127.0.0.1":             true, // for local testing
+		}
+		if !allowedHosts[parsed.Hostname()] {
+			log.Printf("Invalid NVD_API_URL (unauthorized host): %q", parsed.Host) // #nosec G706 -- %q escapes control characters
+			return
+		}
+
+		baseURL = parsed.String()
+	}
+	nvdURL := baseURL + "?resultsPerPage=50"
 
 	client := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", nvdURL, nil) // #nosec G704 -- URL validated above
 	if err != nil {
 		log.Println("Error creating NVD request:", err)
 		return
@@ -78,12 +211,12 @@ func fetchFromNVD() {
 		req.Header.Set("apiKey", apiKey)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) // #nosec G704 -- URL validated above
 	if err != nil {
 		log.Println("Error fetching from NVD:", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("NVD API returned status: %d", resp.StatusCode)
@@ -96,7 +229,6 @@ func fetchFromNVD() {
 		return
 	}
 
-	ctx := context.Background()
 	for _, v := range nvdResp.Vulnerabilities {
 		cveData := v.CVE
 
@@ -147,20 +279,27 @@ func fetchFromNVD() {
 	log.Println("Worker: NVD fetch complete.")
 }
 
-func processAlerts() {
-	ctx := context.Background()
+func processAlerts(ctx context.Context) {
 	for {
-		result, err := db.RedisClient.BRPop(ctx, 0, "cve_alerts_queue").Result()
-		if err != nil {
-			log.Println("Error reading from queue:", err)
-			time.Sleep(5 * time.Second)
-			continue
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			result, err := db.RedisClient.BRPop(ctx, 0, "cve_alerts_queue").Result()
+			if err != nil {
+				log.Println("Error reading from queue:", err)
+				time.Sleep(1 * time.Second)
+				continue
+			}
+
+			var cve models.CVE
+			if err := json.Unmarshal([]byte(result[1]), &cve); err != nil {
+				log.Printf("Error unmarshaling CVE from queue: %v", err)
+				continue
+			}
+
+			evaluateSubscriptions(ctx, &cve)
 		}
-
-		var cve models.CVE
-		json.Unmarshal([]byte(result[1]), &cve)
-
-		evaluateSubscriptions(ctx, &cve)
 	}
 }
 
@@ -181,7 +320,10 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 	for rows.Next() {
 		var sub models.UserSubscription
 		var email string
-		rows.Scan(&sub.ID, &sub.UserID, &sub.Keyword, &sub.MinSeverity, &sub.WebhookURL, &email)
+		if err := rows.Scan(&sub.ID, &sub.UserID, &sub.Keyword, &sub.MinSeverity, &sub.WebhookURL, &email); err != nil {
+			log.Printf("Error scanning subscription row: %v", err)
+			continue
+		}
 
 		// Basic matching
 		match := true
@@ -195,84 +337,107 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		if match {
 			// Check if already alerted
 			var exists bool
-			db.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM alert_history WHERE user_id=$1 AND cve_id=$2)", sub.UserID, cve.ID).Scan(&exists)
+			if err := db.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM alert_history WHERE user_id=$1 AND cve_id=$2)", sub.UserID, cve.ID).Scan(&exists); err != nil {
+				log.Printf("Error checking alert history: %v", err)
+				continue
+			}
 			if !exists {
-				// Send alert
-				sendAlert(sub, cve, email)
-				// Record history
-				db.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id) VALUES ($1, $2)", sub.UserID, cve.ID)
+				// Send alert and only record history on success
+				success := sendAlert(sub, cve, email)
+				if success {
+					if _, err := db.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id) VALUES ($1, $2)", sub.UserID, cve.ID); err != nil {
+						log.Printf("Error recording alert history: %v", err)
+					}
+				} else {
+					log.Printf("Warning: all alert deliveries failed for user %d, CVE %s — not recording history", sub.UserID, cve.CVEID)
+				}
 			}
 		}
 	}
 }
 
-func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) {
+func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) bool {
 	log.Printf("ALERT: Sending to %s for %s\n", email, cve.CVEID)
+	
+	var wg sync.WaitGroup
+	successChan := make(chan bool, 2)
+
 	if sub.WebhookURL != "" {
-		parsedURL, err := url.Parse(sub.WebhookURL)
-		if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
-			log.Printf("Skipping invalid webhook URL scheme: %s", sub.WebhookURL)
-		} else {
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-				defer cancel()
-				ips, err := net.DefaultResolver.LookupIPAddr(ctx, parsedURL.Hostname())
-				if err != nil {
-					log.Printf("Failed to resolve webhook host: %s, err: %v", sub.WebhookURL, err)
-					return
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			parsedURL, err := url.Parse(sub.WebhookURL)
+			redacted := redactURL(sub.WebhookURL)
+			if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+				log.Printf("Skipping invalid webhook URL scheme: %s", redacted)
+				return
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			ips, err := net.DefaultResolver.LookupIPAddr(ctx, parsedURL.Hostname())
+			if err != nil {
+				log.Printf("Failed to resolve webhook host: %s, err: %v", redacted, err)
+				return
+			}
+			isSafe := true
+			var safeIP net.IP
+			for _, ipAddr := range ips {
+				ip := ipAddr.IP
+				if addr, ok := netip.AddrFromSlice(ip); ok {
+					if addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified() || addr.IsMulticast() {
+						isSafe = false
+						break
+					}
+					if safeIP == nil {
+						safeIP = ip
+					}
 				}
-				isSafe := true
-				var safeIP net.IP
-				for _, ipAddr := range ips {
-					ip := ipAddr.IP
-					if addr, ok := netip.AddrFromSlice(ip); ok {
-						if addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified() || addr.IsMulticast() {
-							isSafe = false
-							break
+			}
+			if !isSafe || safeIP == nil {
+				log.Printf("Skipping unsafe webhook URL IP: %s", redacted)
+				return
+			}
+			payloadMap := map[string]interface{}{
+				"cve_id":      cve.CVEID,
+				"description": cve.Description,
+				"cvss_score":  cve.CVSSScore,
+			}
+			if os.Getenv("WEBHOOK_INCLUDE_USER_EMAIL") == "true" {
+				payloadMap["user_email"] = email
+			}
+			payload, _ := json.Marshal(payloadMap)
+			dialer := &net.Dialer{
+				Timeout:   5 * time.Second,
+				KeepAlive: 5 * time.Second,
+			}
+			client := &http.Client{
+				Timeout: 10 * time.Second,
+				Transport: &http.Transport{
+					DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+						port := parsedURL.Port()
+						if port == "" {
+							if parsedURL.Scheme == "https" {
+								port = "443"
+							} else {
+								port = "80"
+							}
 						}
-						if safeIP == nil {
-							safeIP = ip
-						}
-					}
-				}
-				if !isSafe || safeIP == nil {
-					log.Printf("Skipping unsafe webhook URL IP: %s", sub.WebhookURL)
-				} else {
-					payload, _ := json.Marshal(map[string]interface{}{
-						"cve_id": cve.CVEID,
-						"description": cve.Description,
-						"cvss_score": cve.CVSSScore,
-						"user_email": email,
-					})
-					dialer := &net.Dialer{
-						Timeout:   5 * time.Second,
-						KeepAlive: 5 * time.Second,
-					}
-					client := &http.Client{
-						Timeout: 10 * time.Second,
-						Transport: &http.Transport{
-							DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-								port := parsedURL.Port()
-								if port == "" {
-									if parsedURL.Scheme == "https" {
-										port = "443"
-									} else {
-										port = "80"
-									}
-								}
-								return dialer.DialContext(ctx, network, net.JoinHostPort(safeIP.String(), port))
-							},
-						},
-					}
-					resp, err := client.Post(sub.WebhookURL, "application/json", bytes.NewBuffer(payload))
-					if err == nil {
-						defer resp.Body.Close()
-					} else {
-						log.Printf("Failed to send webhook to %s: %v", sub.WebhookURL, err)
-					}
-				}
-			}()
-		}
+						return dialer.DialContext(ctx, network, net.JoinHostPort(safeIP.String(), port))
+					},
+				},
+			}
+			resp, err := client.Post(sub.WebhookURL, "application/json", bytes.NewBuffer(payload))
+			if err != nil {
+				log.Printf("Failed to send webhook to %s: %v", redacted, err)
+				return
+			}
+			_ = resp.Body.Close()
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				successChan <- true
+			} else {
+				log.Printf("Webhook to %s returned non-2xx status: %d", redacted, resp.StatusCode)
+			}
+		}()
 	}
 
 	// Send Email using SMTP
@@ -282,43 +447,151 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) {
 	smtpPass := os.Getenv("SMTP_PASS")
 
 	if smtpHost != "" && smtpPort != "" {
-		auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
-		to := []string{email}
-		msg := []byte(fmt.Sprintf("To: %s\r\n"+
-			"Subject: New CVE Alert: %s\r\n"+
-			"\r\n"+
-			"A new CVE matching your subscription has been found.\r\n\r\n"+
-			"CVE ID: %s\r\n"+
-			"CVSS Score: %.1f\r\n"+
-			"Description: %s\r\n", email, cve.CVEID, cve.CVEID, cve.CVSSScore, cve.Description))
-
+		wg.Add(1)
 		go func() {
-			err := smtp.SendMail(smtpHost+":"+smtpPort, auth, smtpUser, to, msg)
+			defer wg.Done()
+			safeEmail, emailErr := sanitizeEmail(email)
+			if emailErr != nil {
+				log.Printf("Invalid email for CVE alert: %v", emailErr)
+				return
+			}
+			to := []string{safeEmail}
+			msg := []byte(fmt.Sprintf("From: %s\r\n"+
+				"To: %s\r\n"+
+				"Subject: New CVE Alert: %s\r\n"+
+				"\r\n"+
+				"A new CVE matching your subscription has been found.\r\n\r\n"+
+				"CVE ID: %s\r\n"+
+				"CVSS Score: %.1f\r\n"+
+				"Description: %s\r\n", smtpUser, safeEmail, cve.CVEID, cve.CVEID, cve.CVSSScore, cve.Description))
+
+			err := sendMailWithTimeout(smtpHost, smtpPort, smtpUser, smtpPass, to, msg) // #nosec G707 -- email sanitized above
 			if err != nil {
 				log.Printf("Failed to send email to %s: %v", email, err)
+			} else {
+				successChan <- true
 			}
 		}()
 	}
+
+	go func() {
+		wg.Wait()
+		close(successChan)
+	}()
+
+	hasSuccess := false
+	for success := range successChan {
+		if success {
+			hasSuccess = true
+		}
+	}
+
+	return hasSuccess
 }
 
 
-func processEmailVerification() {
-	ctx := context.Background()
+func processEmailVerification(ctx context.Context) {
 	for {
-		result, err := db.RedisClient.BRPop(ctx, 0, "email_verification_queue").Result()
-		if err != nil {
-			log.Println("Error reading from verification queue:", err)
-			time.Sleep(5 * time.Second)
-			continue
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			result, err := db.RedisClient.BRPop(ctx, 0, "email_verification_queue").Result()
+			if err != nil {
+				log.Println("Error reading from verification queue:", err)
+				time.Sleep(1 * time.Second)
+				continue
+			}
+
+			var payload map[string]string
+			if err := json.Unmarshal([]byte(result[1]), &payload); err != nil {
+				log.Printf("Error unmarshaling email verification payload: %v", err)
+				continue
+			}
+
+			email := payload["email"]
+			token := payload["token"]
+
+			sendVerificationEmail(email, token)
+		}
+	}
+}
+
+func processEmailChange(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			result, err := db.RedisClient.BRPop(ctx, 0, "email_change_queue").Result()
+			if err != nil {
+				log.Println("Error reading from email change queue:", err)
+				time.Sleep(1 * time.Second)
+				continue
+			}
+
+			var payload map[string]string
+			if err := json.Unmarshal([]byte(result[1]), &payload); err != nil {
+				log.Printf("Error unmarshaling email change payload: %v", err)
+				continue
+			}
+
+			email := payload["email"]
+			token := payload["token"]
+			emailType := payload["type"]
+
+			sendEmailChangeNotification(email, token, emailType)
+		}
+	}
+}
+
+func sendEmailChangeNotification(email, token, emailType string) {
+	log.Printf("Sending email change notification (%s) to %s\n", emailType, email)
+	smtpHost := os.Getenv("SMTP_HOST")
+	smtpPort := os.Getenv("SMTP_PORT")
+	smtpUser := os.Getenv("SMTP_USER")
+	smtpPass := os.Getenv("SMTP_PASS")
+
+	if smtpHost != "" && smtpPort != "" {
+		safeEmail, emailErr := sanitizeEmail(email)
+		if emailErr != nil {
+			log.Printf("Invalid email for email change notification: %v", emailErr)
+			return
+		}
+		to := []string{safeEmail}
+		baseURL := os.Getenv("BASE_URL")
+		if baseURL == "" {
+			baseURL = "http://localhost:8080"
 		}
 
-		var payload map[string]string
-		json.Unmarshal([]byte(result[1]), &payload)
+		subject := "Confirm Email Change - CVE Tracker"
+		body := fmt.Sprintf("Please confirm your email change request by clicking the link below:\r\n\r\n"+
+			"%s/confirm-email-change?token=%s\r\n", baseURL, token)
 
-		email := payload["email"]
-		token := payload["token"]
+		if emailType == "old" {
+			body = "You have requested to change your email address. " + body
+		} else {
+			body = "You have been set as the new email address for a CVE Tracker account. " + body
+		}
 
-		sendVerificationEmail(email, token)
+		msg := []byte(fmt.Sprintf("From: %s\r\n"+
+			"To: %s\r\n"+
+			"Subject: %s\r\n"+
+			"\r\n"+
+			"%s", smtpUser, safeEmail, subject, body))
+
+		err := sendMailWithTimeout(smtpHost, smtpPort, smtpUser, smtpPass, to, msg) // #nosec G707 -- email validated above
+		if err != nil {
+			log.Printf("Failed to send email change notification to %s: %v", safeEmail, err)
+		}
+	} else {
+		// Redact token in dev fallback log; show full link only if ENABLE_DEV_EMAIL_LINK_LOGGING is set
+		if os.Getenv("ENABLE_DEV_EMAIL_LINK_LOGGING") == "true" {
+			log.Printf("SMTP not configured. Confirmation link for %s (%s): http://localhost:8080/confirm-email-change?token=%s\n", email, emailType, token)
+		} else {
+			redacted := redactToken(token)
+			log.Printf("SMTP not configured. Confirmation link for %s (%s): token=%s (redacted)\n", email, emailType, redacted)
+		}
 	}
 }
 
@@ -330,25 +603,36 @@ func sendVerificationEmail(email, token string) {
 	smtpPass := os.Getenv("SMTP_PASS")
 
 	if smtpHost != "" && smtpPort != "" {
-		auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
-		to := []string{email}
+		safeEmail, emailErr := sanitizeEmail(email)
+		if emailErr != nil {
+			log.Printf("Invalid email for verification: %v", emailErr)
+			return
+		}
+		to := []string{safeEmail}
 		// In production, BASE_URL should be configured.
 		baseURL := os.Getenv("BASE_URL")
 		if baseURL == "" {
 			baseURL = "http://localhost:8080"
 		}
 
-		msg := []byte(fmt.Sprintf("To: %s\r\n"+
+		msg := []byte(fmt.Sprintf("From: %s\r\n"+
+			"To: %s\r\n"+
 			"Subject: Verify Your Email - CVE Tracker\r\n"+
 			"\r\n"+
 			"Please verify your email address by clicking the link below:\r\n\r\n"+
-			"%s/verify-email?token=%s\r\n", email, baseURL, token))
+			"%s/verify-email?token=%s\r\n", smtpUser, safeEmail, baseURL, token))
 
-		err := smtp.SendMail(smtpHost+":"+smtpPort, auth, smtpUser, to, msg)
+		err := sendMailWithTimeout(smtpHost, smtpPort, smtpUser, smtpPass, to, msg) // #nosec G707 -- email validated above
 		if err != nil {
-			log.Printf("Failed to send verification email to %s: %v", email, err)
+			log.Printf("Failed to send verification email to %s: %v", safeEmail, err)
 		}
 	} else {
-		log.Printf("SMTP not configured. Verification link for %s: http://localhost:8080/verify-email?token=%s\n", email, token)
+		// Redact token in dev fallback log
+		if os.Getenv("ENABLE_DEV_EMAIL_LINK_LOGGING") == "true" {
+			log.Printf("SMTP not configured. Verification link for %s: http://localhost:8080/verify-email?token=%s\n", email, token)
+		} else {
+			redacted := redactToken(token)
+			log.Printf("SMTP not configured. Verification link for %s: token=%s (redacted)\n", email, redacted)
+		}
 	}
 }

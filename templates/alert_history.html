@@ -1,0 +1,33 @@
+{{template "base" .}}
+
+{{define "content"}}
+<h2>Alert History</h2>
+<p>Recent alerts sent to your email or webhooks.</p>
+
+<div class="card">
+    <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>CVE ID</th>
+                <th>CVSS</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Alerts}}
+            <tr>
+                <td>{{.SentAt.Format "2006-01-02 15:04:05"}}</td>
+                <td><strong>{{.CVEID}}</strong></td>
+                <td><span class="cve-score {{if ge .CVSSScore 7.0}}score-high{{else if ge .CVSSScore 4.0}}score-med{{else}}score-low{{end}}" style="padding: 2px 8px;">{{.CVSSScore}}</span></td>
+                <td>{{.Description}}</td>
+            </tr>
+            {{else}}
+            <tr>
+                <td colspan="4" style="text-align: center;">No alerts sent yet.</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+{{end}}

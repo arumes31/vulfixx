@@ -1,1 +1,5 @@
 cve-tracker
+coverage*
+.env
+.qodo
+*.exe
