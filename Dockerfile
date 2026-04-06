@@ -10,8 +10,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o cve-tracker ./cmd/cve-tracker
 FROM ubuntu:24.04
 RUN apt-get update && apt-get install -y ca-certificates tzdata && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN groupadd -g 1000 appuser && \
+# Create non-root user (fix for ubuntu:24.04 default user conflict)
+RUN userdel -f ubuntu && \
+    groupadd -g 1000 appuser && \
     useradd -u 1000 -g appuser -m appuser
 
 WORKDIR /app
