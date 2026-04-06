@@ -27,14 +27,14 @@
                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Yes</span>
                         {{else}}
                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">No</span>
-                        {{/if}}
+                        {{end}}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {{if .IsAdmin}}
                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">Admin</span>
                         {{else}}
                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">User</span>
-                        {{/if}}
+                        {{end}}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -51,7 +51,7 @@
                 <tr>
                     <td colspan="5" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">No users found.</td>
                 </tr>
-                {{/range}}
+                {{end}}
             </tbody>
         </table>
     </div>
