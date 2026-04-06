@@ -53,7 +53,7 @@ func sendMailWithTimeout(host, port, user, password string, to []string, msg []b
 	if err != nil {
 		return fmt.Errorf("dial timeout: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if err := conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
 		return fmt.Errorf("set deadline: %w", err)
@@ -63,7 +63,7 @@ func sendMailWithTimeout(host, port, user, password string, to []string, msg []b
 	if err != nil {
 		return fmt.Errorf("new client: %w", err)
 	}
-	defer client.Quit()
+	defer func() { _ = client.Quit() }()
 
 	if user != "" && password != "" {
 		auth := smtp.PlainAuth("", user, password, host)

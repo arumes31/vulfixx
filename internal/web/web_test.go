@@ -120,7 +120,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to register: %v", err)
 	}
-	resReg.Body.Close()
+	_ = resReg.Body.Close()
 
 	// Verify email manually
 	_, _ = db.Pool.Exec(ctx, "UPDATE users SET is_email_verified = TRUE WHERE email = 'web_test2@example.com'")
@@ -139,7 +139,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to login: %v", err)
 	}
-	defer resLog.Body.Close()
+	defer func() { _ = resLog.Body.Close() }()
 
 	var sessionCookie *http.Cookie
 	for _, cookie := range resLog.Cookies() {
@@ -186,7 +186,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 		} else if res.StatusCode >= 400 {
 			t.Errorf("Request %s %s returned error status: %d", method, path, res.StatusCode)
 		}
-		t.Cleanup(func() { res.Body.Close() })
+		t.Cleanup(func() { _ = res.Body.Close() })
 		return res
 	}
 
@@ -309,7 +309,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to request register error: %v", err)
 	}
-	resRegErr.Body.Close()
+	_ = resRegErr.Body.Close()
 
 	// Verify with invalid token (expect 400 or 200 with error message)
 	doAuthReq("GET", "/verify-email?token=invalid", nil, http.StatusBadRequest, http.StatusOK)
@@ -328,7 +328,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to login post-email change: %v", err)
 	}
-	defer resLogDel.Body.Close()
+	defer func() { _ = resLogDel.Body.Close() }()
 	for _, cookie := range resLogDel.Cookies() {
 		if cookie.Name == "session-name" {
 			sessionCookie = cookie

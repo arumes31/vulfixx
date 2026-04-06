@@ -574,7 +574,7 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	w.Header().Set("Content-Type", "application/rss+xml")
-	fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8" ?>
+	_ , _ = fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0">
 <channel>
   <title>CVE Tracker Feed</title>
@@ -592,7 +592,7 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.PublishedAt); err != nil {
 			continue
 		}
-		fmt.Fprintf(w, `
+		_ , _ = fmt.Fprintf(w, `
   <item>
     <title>%s (CVSS: %.1f)</title>
     <link>https://nvd.nist.gov/vuln/detail/%s</link>
@@ -602,7 +602,7 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
   </item>`, cve.CVEID, cve.CVSSScore, cve.CVEID, template.HTMLEscapeString(cve.Description), cve.PublishedAt.Format(time.RFC1123Z), cve.CVEID)
 	}
 
-	fmt.Fprintf(w, `
+	_ , _ = fmt.Fprintf(w, `
 </channel>
 </rss>`)
 }
