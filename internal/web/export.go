@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"cve-tracker/internal/db"
 	"encoding/csv"
 	"fmt"
@@ -35,17 +36,29 @@ func ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	// Set response headers before writing body (streaming)
+	// 1. Write the header to a temporary buffer first to ensure it's successful
+	// before committing response headers.
+	var buf bytes.Buffer
+	bufWriter := csv.NewWriter(&buf)
+	header := []string{"CVE ID", "Description", "CVSS Score", "CISA KEV", "Published Date"}
+	if err := bufWriter.Write(header); err != nil {
+		log.Printf("Error preparing CSV header: %v", err)
+		http.Error(w, "Error preparing export", http.StatusInternalServerError)
+		return
+	}
+	bufWriter.Flush()
+
+	// 2. Set response headers only now that we know we can at least write the header.
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", "attachment;filename=cves_export.csv")
-
-	csvWriter := csv.NewWriter(w)
-	header := []string{"CVE ID", "Description", "CVSS Score", "CISA KEV", "Published Date"}
-	if err := csvWriter.Write(header); err != nil {
-		log.Printf("Error writing CSV header: %v", err)
+	// Write the buffered header to the response.
+	if _, err := w.Write(buf.Bytes()); err != nil {
+		log.Printf("Error writing CSV header to response: %v", err)
 		return
 	}
 
+	// 3. Stream the rest of the rows directly.
+	csvWriter := csv.NewWriter(w)
 	var skipped int
 	var total int
 	for rows.Next() {

@@ -60,7 +60,7 @@ jobs:
       - name: Install dependencies
         run: apk add --no-cache git
       - name: Run golangci-lint
-        run: go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.5 run --timeout=10m
+        run: go run github.com/golangci/golangci-lint/cmd/golangci-lint@v2.11.4 run --timeout=10m
 
   security:
     name: Security Scan
@@ -80,7 +80,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

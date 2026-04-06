@@ -99,6 +99,11 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	// Seed user
 	ctx := context.Background()
 	_, _ = db.Pool.Exec(ctx, "DELETE FROM users WHERE email IN ('web_test2@example.com', 'new_web_test@example.com')")
+	_, _ = db.Pool.Exec(ctx, "DELETE FROM cves WHERE id IN (1, 2, 3)")
+	_, _ = db.Pool.Exec(ctx, `INSERT INTO cves (id, cve_id, description, cvss_score, published_date) VALUES 
+		(1, 'CVE-2024-0001', 'Test CVE 1', 7.5, '2024-01-01'),
+		(2, 'CVE-2024-0002', 'Test CVE 2', 8.5, '2024-01-02'),
+		(3, 'CVE-2024-0003', 'Test CVE 3', 9.5, '2024-01-03')`)
 	
 	// Create a real user using Register
 	form := url.Values{}
@@ -134,28 +139,76 @@ func TestWebEndpointsCoverage(t *testing.T) {
 		}
 	}
 
-	doAuthReq := func(method, path string, body []byte) *http.Response {
+	doAuthReq := func(method, path string, body []byte, expectedCodes ...int) *http.Response {
 		var req *http.Request
+		var err error
 		if body != nil {
-			req, _ = http.NewRequest(method, ts.URL+path, bytes.NewReader(body))
+			req, err = http.NewRequest(method, ts.URL+path, bytes.NewReader(body))
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
 			req.Header.Set("Content-Type", "application/json")
 		} else {
-			req, _ = http.NewRequest(method, ts.URL+path, nil)
+			req, err = http.NewRequest(method, ts.URL+path, nil)
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
 		}
 		if sessionCookie != nil {
 			req.AddCookie(sessionCookie)
 		}
-		res, _ := client.Do(req)
+		res, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("Request failed: %v", err)
+		}
+
+		if len(expectedCodes) > 0 {
+			found := false
+			for _, code := range expectedCodes {
+				if res.StatusCode == code {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("Request %s %s returned status %d, expected one of %v", method, path, res.StatusCode, expectedCodes)
+			}
+		} else if res.StatusCode >= 400 {
+			t.Errorf("Request %s %s returned error status: %d", method, path, res.StatusCode)
+		}
+		t.Cleanup(func() { res.Body.Close() })
 		return res
 	}
 
-	doAuthReqForm := func(method, path string, form url.Values) *http.Response {
-		req, _ := http.NewRequest(method, ts.URL+path, strings.NewReader(form.Encode()))
+	doAuthReqForm := func(method, path string, form url.Values, expectedCodes ...int) *http.Response {
+		req, err := http.NewRequest(method, ts.URL+path, strings.NewReader(form.Encode()))
+		if err != nil {
+			t.Fatalf("Failed to create form request: %v", err)
+		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		if sessionCookie != nil {
 			req.AddCookie(sessionCookie)
 		}
-		res, _ := client.Do(req)
+		res, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("Form request failed: %v", err)
+		}
+		
+		if len(expectedCodes) > 0 {
+			found := false
+			for _, code := range expectedCodes {
+				if res.StatusCode == code {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("Form request %s %s returned status %d, expected one of %v", method, path, res.StatusCode, expectedCodes)
+			}
+		} else if res.StatusCode >= 400 {
+			t.Errorf("Form request %s %s returned error status: %d", method, path, res.StatusCode)
+		}
+		t.Cleanup(func() { res.Body.Close() })
 		return res
 	}
 
@@ -240,8 +293,8 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	reqRegErr.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	_, _ = client.Do(reqRegErr)
 
-	// Verify with invalid token
-	doAuthReq("GET", "/verify-email?token=invalid", nil)
+	// Verify with invalid token (expect 400 or 200 with error message)
+	doAuthReq("GET", "/verify-email?token=invalid", nil, http.StatusBadRequest, http.StatusOK)
 
 	// 13. Logout
 	doAuthReq("POST", "/logout", nil)

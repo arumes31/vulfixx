@@ -34,6 +34,18 @@ func sanitizeEmail(email string) (string, error) {
 	return addr.Address, nil
 }
 
+// redactToken safely redacts a token for logging.
+func redactToken(token string) string {
+	n := 8
+	if len(token) < n {
+		n = len(token)
+	}
+	if n == 0 {
+		return "<empty>"
+	}
+	return token[:n] + "..."
+}
+
 // defaultNVDBaseURL is the NVD API base URL. Tests can override this.
 var defaultNVDBaseURL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 
@@ -294,12 +306,15 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) bool 
 				log.Printf("Skipping unsafe webhook URL IP: %s", sub.WebhookURL)
 				return
 			}
-			payload, _ := json.Marshal(map[string]interface{}{
+			payloadMap := map[string]interface{}{
 				"cve_id":      cve.CVEID,
 				"description": cve.Description,
 				"cvss_score":  cve.CVSSScore,
-				"user_email":  email,
-			})
+			}
+			if os.Getenv("WEBHOOK_INCLUDE_USER_EMAIL") == "true" {
+				payloadMap["user_email"] = email
+			}
+			payload, _ := json.Marshal(payloadMap)
 			dialer := &net.Dialer{
 				Timeout:   5 * time.Second,
 				KeepAlive: 5 * time.Second,
@@ -483,7 +498,7 @@ func sendEmailChangeNotification(email, token, emailType string) {
 		if os.Getenv("ENABLE_DEV_EMAIL_LINK_LOGGING") == "true" {
 			log.Printf("SMTP not configured. Confirmation link for %s (%s): http://localhost:8080/confirm-email-change?token=%s\n", email, emailType, token)
 		} else {
-			redacted := token[:8] + "..."
+			redacted := redactToken(token)
 			log.Printf("SMTP not configured. Confirmation link for %s (%s): token=%s (redacted)\n", email, emailType, redacted)
 		}
 	}
@@ -525,7 +540,7 @@ func sendVerificationEmail(email, token string) {
 		if os.Getenv("ENABLE_DEV_EMAIL_LINK_LOGGING") == "true" {
 			log.Printf("SMTP not configured. Verification link for %s: http://localhost:8080/verify-email?token=%s\n", email, token)
 		} else {
-			redacted := token[:8] + "..."
+			redacted := redactToken(token)
 			log.Printf("SMTP not configured. Verification link for %s: token=%s (redacted)\n", email, redacted)
 		}
 	}
