@@ -190,7 +190,7 @@ func fetchFromNVD(ctx context.Context) {
 			"127.0.0.1":             true, // for local testing
 		}
 		if !allowedHosts[parsed.Hostname()] {
-			log.Printf("Invalid NVD_API_URL (unauthorized host): %q", parsed.Host)
+			log.Printf("Invalid NVD_API_URL (unauthorized host): %q", parsed.Host) // #nosec G706 -- %q escapes control characters
 			return
 		}
 
@@ -631,6 +631,9 @@ func sendVerificationEmail(email, token string) {
 		} else {
 			redacted := redactToken(token)
 			log.Printf("SMTP not configured. Verification link for %s: token=%s (redacted)\n", email, redacted)
+		}
+	}
+}ot configured. Verification link for %s: token=%s (redacted)\n", email, redacted)
 		}
 	}
 }
