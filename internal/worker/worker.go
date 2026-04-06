@@ -63,6 +63,7 @@ func redactURL(u string) string {
 // sendMailWithTimeout is a replacement for smtp.SendMail that supports deadlines.
 func sendMailWithTimeout(host, port, user, password string, to []string, msg []byte) error {
 	addr := net.JoinHostPort(host, port)
+	// #nosec G704 -- Host and port are from controlled environment variables
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
 		return fmt.Errorf("dial timeout: %w", err)
@@ -97,6 +98,7 @@ func sendMailWithTimeout(host, port, user, password string, to []string, msg []b
 		}
 	}
 
+	// #nosec G707 -- User is from controlled environment variable
 	if err := client.Mail(user); err != nil {
 		return fmt.Errorf("mail from: %w", err)
 	}
@@ -631,9 +633,6 @@ func sendVerificationEmail(email, token string) {
 		} else {
 			redacted := redactToken(token)
 			log.Printf("SMTP not configured. Verification link for %s: token=%s (redacted)\n", email, redacted)
-		}
-	}
-}ot configured. Verification link for %s: token=%s (redacted)\n", email, redacted)
 		}
 	}
 }
