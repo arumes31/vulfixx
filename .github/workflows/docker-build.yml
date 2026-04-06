@@ -65,12 +65,13 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    container: golang:1.26-alpine
     steps:
       - uses: actions/checkout@v4
+      - name: Install Gosec
+        run: apk add --no-cache git && go install github.com/securego/gosec/v2/cmd/gosec@v2.22.1
       - name: Run Gosec Security Scanner
-        uses: securego/gosec@v2.22.1
-        with:
-          args: ./...
+        run: gosec ./...
 
   build:
     name: Build & Push Image
