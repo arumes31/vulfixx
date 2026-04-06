@@ -46,6 +46,57 @@ func redactToken(token string) string {
 	return token[:n] + "..."
 }
 
+// sendMailWithTimeout is a replacement for smtp.SendMail that supports deadlines.
+func sendMailWithTimeout(host, port, user, password string, to []string, msg []byte) error {
+	addr := net.JoinHostPort(host, port)
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	if err != nil {
+		return fmt.Errorf("dial timeout: %w", err)
+	}
+	defer conn.Close()
+
+	if err := conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		return fmt.Errorf("set deadline: %w", err)
+	}
+
+	client, err := smtp.NewClient(conn, host)
+	if err != nil {
+		return fmt.Errorf("new client: %w", err)
+	}
+	defer client.Quit()
+
+	if user != "" && password != "" {
+		auth := smtp.PlainAuth("", user, password, host)
+		if err := client.Auth(auth); err != nil {
+			return fmt.Errorf("auth: %w", err)
+		}
+	}
+
+	if err := client.Mail(user); err != nil {
+		return fmt.Errorf("mail from: %w", err)
+	}
+	for _, recipient := range to {
+		if err := client.Rcpt(recipient); err != nil {
+			return fmt.Errorf("rcpt to %s: %w", recipient, err)
+		}
+	}
+
+	w, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("data: %w", err)
+	}
+	_, err = w.Write(msg)
+	if err != nil {
+		_ = w.Close()
+		return fmt.Errorf("write msg: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("close data writer: %w", err)
+	}
+
+	return client.Quit()
+}
+
 // defaultNVDBaseURL is the NVD API base URL. Tests can override this.
 var defaultNVDBaseURL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 
@@ -359,22 +410,22 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) bool 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
 			safeEmail, emailErr := sanitizeEmail(email)
 			if emailErr != nil {
 				log.Printf("Invalid email for CVE alert: %v", emailErr)
 				return
 			}
 			to := []string{safeEmail}
-			msg := []byte(fmt.Sprintf("To: %s\r\n"+
+			msg := []byte(fmt.Sprintf("From: %s\r\n"+
+				"To: %s\r\n"+
 				"Subject: New CVE Alert: %s\r\n"+
 				"\r\n"+
 				"A new CVE matching your subscription has been found.\r\n\r\n"+
 				"CVE ID: %s\r\n"+
 				"CVSS Score: %.1f\r\n"+
-				"Description: %s\r\n", safeEmail, cve.CVEID, cve.CVEID, cve.CVSSScore, cve.Description))
+				"Description: %s\r\n", smtpUser, safeEmail, cve.CVEID, cve.CVEID, cve.CVSSScore, cve.Description))
 
-			err := smtp.SendMail(smtpHost+":"+smtpPort, auth, smtpUser, to, msg) // #nosec G707 -- email sanitized above
+			err := sendMailWithTimeout(smtpHost, smtpPort, smtpUser, smtpPass, to, msg) // #nosec G707 -- email sanitized above
 			if err != nil {
 				log.Printf("Failed to send email to %s: %v", email, err)
 			} else {
@@ -462,7 +513,6 @@ func sendEmailChangeNotification(email, token, emailType string) {
 	smtpPass := os.Getenv("SMTP_PASS")
 
 	if smtpHost != "" && smtpPort != "" {
-		auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
 		safeEmail, emailErr := sanitizeEmail(email)
 		if emailErr != nil {
 			log.Printf("Invalid email for email change notification: %v", emailErr)
@@ -484,12 +534,13 @@ func sendEmailChangeNotification(email, token, emailType string) {
 			body = "You have been set as the new email address for a CVE Tracker account. " + body
 		}
 
-		msg := []byte(fmt.Sprintf("To: %s\r\n"+
+		msg := []byte(fmt.Sprintf("From: %s\r\n"+
+			"To: %s\r\n"+
 			"Subject: %s\r\n"+
 			"\r\n"+
-			"%s", safeEmail, subject, body))
+			"%s", smtpUser, safeEmail, subject, body))
 
-		err := smtp.SendMail(smtpHost+":"+smtpPort, auth, smtpUser, to, msg) // #nosec G707 -- email validated above
+		err := sendMailWithTimeout(smtpHost, smtpPort, smtpUser, smtpPass, to, msg) // #nosec G707 -- email validated above
 		if err != nil {
 			log.Printf("Failed to send email change notification to %s: %v", safeEmail, err)
 		}
@@ -512,7 +563,6 @@ func sendVerificationEmail(email, token string) {
 	smtpPass := os.Getenv("SMTP_PASS")
 
 	if smtpHost != "" && smtpPort != "" {
-		auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
 		safeEmail, emailErr := sanitizeEmail(email)
 		if emailErr != nil {
 			log.Printf("Invalid email for verification: %v", emailErr)
@@ -525,13 +575,14 @@ func sendVerificationEmail(email, token string) {
 			baseURL = "http://localhost:8080"
 		}
 
-		msg := []byte(fmt.Sprintf("To: %s\r\n"+
+		msg := []byte(fmt.Sprintf("From: %s\r\n"+
+			"To: %s\r\n"+
 			"Subject: Verify Your Email - CVE Tracker\r\n"+
 			"\r\n"+
 			"Please verify your email address by clicking the link below:\r\n\r\n"+
-			"%s/verify-email?token=%s\r\n", safeEmail, baseURL, token))
+			"%s/verify-email?token=%s\r\n", smtpUser, safeEmail, baseURL, token))
 
-		err := smtp.SendMail(smtpHost+":"+smtpPort, auth, smtpUser, to, msg) // #nosec G707 -- email validated above
+		err := sendMailWithTimeout(smtpHost, smtpPort, smtpUser, smtpPass, to, msg) // #nosec G707 -- email validated above
 		if err != nil {
 			log.Printf("Failed to send verification email to %s: %v", safeEmail, err)
 		}

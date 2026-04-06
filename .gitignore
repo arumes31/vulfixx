@@ -1,4 +1,4 @@
 cve-tracker
 coverage*
 .env
-.qodo
+.qodo*.exe

@@ -47,6 +47,11 @@ func ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	bufWriter.Flush()
+	if err := bufWriter.Error(); err != nil {
+		log.Printf("Error flushing CSV header: %v", err)
+		http.Error(w, "Error preparing export", http.StatusInternalServerError)
+		return
+	}
 
 	// 2. Set response headers only now that we know we can at least write the header.
 	w.Header().Set("Content-Type", "text/csv")

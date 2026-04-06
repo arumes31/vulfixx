@@ -38,7 +38,7 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-    container: golang:1.26-alpine
+    container: golang:1.24-alpine
     env:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -48,13 +48,15 @@ jobs:
       REDIS_URL: redis:6379
     steps:
       - uses: actions/checkout@v4
+      - name: Install dependencies (Git and build-base for CGO)
+        run: apk add --no-cache git build-base
       - name: Run tests
-        run: go test -v ./...
+        run: go test -v -race ./...
 
   lint:
     name: Lint Code base
     runs-on: ubuntu-latest
-    container: golang:1.26-alpine
+    container: golang:1.24-alpine
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
@@ -65,7 +67,7 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
-    container: golang:1.26-alpine
+    container: golang:1.24-alpine
     steps:
       - uses: actions/checkout@v4
       - name: Install Gosec

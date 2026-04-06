@@ -116,12 +116,18 @@ func TestWebEndpointsCoverage(t *testing.T) {
 			return http.ErrUseLastResponse
 		},
 	}
-	_, _ = client.Do(reqReg)
+	resReg, err := client.Do(reqReg)
+	if err != nil {
+		t.Fatalf("Failed to register: %v", err)
+	}
+	resReg.Body.Close()
 
 	// Verify email manually
 	_, _ = db.Pool.Exec(ctx, "UPDATE users SET is_email_verified = TRUE WHERE email = 'web_test2@example.com'")
 	var userID int
-	_ = db.Pool.QueryRow(ctx, "SELECT id FROM users WHERE email = 'web_test2@example.com'").Scan(&userID)
+	if err := db.Pool.QueryRow(ctx, "SELECT id FROM users WHERE email = 'web_test2@example.com'").Scan(&userID); err != nil {
+		t.Fatalf("Failed to scan user ID: %v", err)
+	}
 
 	// Login to get session cookie
 	loginForm := url.Values{}
@@ -129,7 +135,11 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	loginForm.Add("password", "password123")
 	reqLog, _ := http.NewRequest("POST", ts.URL+"/login", strings.NewReader(loginForm.Encode()))
 	reqLog.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resLog, _ := client.Do(reqLog)
+	resLog, err := client.Do(reqLog)
+	if err != nil {
+		t.Fatalf("Failed to login: %v", err)
+	}
+	defer resLog.Body.Close()
 
 	var sessionCookie *http.Cookie
 	for _, cookie := range resLog.Cookies() {
@@ -261,7 +271,9 @@ func TestWebEndpointsCoverage(t *testing.T) {
 
 	// Confirm email change (simulating both links clicked)
 	var oldToken, newToken string
-	_ = db.Pool.QueryRow(ctx, "SELECT old_email_token, new_email_token FROM email_change_requests WHERE user_id = $1", userID).Scan(&oldToken, &newToken)
+	if err := db.Pool.QueryRow(ctx, "SELECT old_email_token, new_email_token FROM email_change_requests WHERE user_id = $1", userID).Scan(&oldToken, &newToken); err != nil {
+		t.Fatalf("Failed to scan email change tokens: %v", err)
+	}
 
 	// Confirm old
 	doAuthReq("GET", "/confirm-email-change?token="+oldToken, nil)
@@ -281,7 +293,9 @@ func TestWebEndpointsCoverage(t *testing.T) {
 
 	// 12. RSS Feed (use updated email after email change)
 	var token string
-	_ = db.Pool.QueryRow(ctx, "SELECT rss_feed_token FROM users WHERE email = 'new_web_test@example.com'").Scan(&token)
+	if err := db.Pool.QueryRow(ctx, "SELECT rss_feed_token FROM users WHERE email = 'new_web_test@example.com'").Scan(&token); err != nil {
+		t.Fatalf("Failed to scan RSS token: %v", err)
+	}
 	doAuthReq("GET", "/feed?token="+token, nil)
 
 	// 13. Public Routes Error cases
@@ -291,7 +305,11 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	formErr.Add("password", "password123")
 	reqRegErr, _ := http.NewRequest("POST", ts.URL+"/register", strings.NewReader(formErr.Encode()))
 	reqRegErr.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	_, _ = client.Do(reqRegErr)
+	resRegErr, err := client.Do(reqRegErr)
+	if err != nil {
+		t.Fatalf("Failed to request register error: %v", err)
+	}
+	resRegErr.Body.Close()
 
 	// Verify with invalid token (expect 400 or 200 with error message)
 	doAuthReq("GET", "/verify-email?token=invalid", nil, http.StatusBadRequest, http.StatusOK)
@@ -306,7 +324,11 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	reLoginForm.Add("password", "password456")
 	reqLogNew, _ := http.NewRequest("POST", ts.URL+"/login", strings.NewReader(reLoginForm.Encode()))
 	reqLogNew.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resLogDel, _ := client.Do(reqLogNew)
+	resLogDel, err := client.Do(reqLogNew)
+	if err != nil {
+		t.Fatalf("Failed to login post-email change: %v", err)
+	}
+	defer resLogDel.Body.Close()
 	for _, cookie := range resLogDel.Cookies() {
 		if cookie.Name == "session-name" {
 			sessionCookie = cookie
