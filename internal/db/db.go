@@ -24,7 +24,16 @@ func InitDB() error {
 		return fmt.Errorf("unable to create connection pool: %w", err)
 	}
 
+	if err := migrate(context.Background()); err != nil {
+		return fmt.Errorf("migration failed: %w", err)
+	}
+
 	return nil
+}
+
+func migrate(ctx context.Context) error {
+	_, err := Pool.Exec(ctx, "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;")
+	return err
 }
 
 func CloseDB() {

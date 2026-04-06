@@ -46,10 +46,24 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 func AdminMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !IsAdmin(r) {
+		userID, ok := GetUserID(r)
+		if !ok {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		var isAdmin bool
+		err := db.Pool.QueryRow(r.Context(), "SELECT is_admin FROM users WHERE id = $1", userID).Scan(&isAdmin)
+		if err != nil || !isAdmin {
 			http.Error(w, "Forbidden: Admin access required", http.StatusForbidden)
 			return
 		}
+
+		// Optionally refresh session state to keep UI consistent
+		session, _ := store.Get(r, "session-name")
+		session.Values["is_admin"] = isAdmin
+		_ = session.Save(r, w)
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -788,7 +802,16 @@ func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	idStr := r.FormValue("id")
-	id, _ := strconv.Atoi(idStr)
+	if idStr == "" {
+		http.Error(w, "User ID is required", http.StatusBadRequest)
+		return
+	}
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
 
 	// Prevent admin from deleting themselves
 	currentUserID, _ := GetUserID(r)
@@ -797,9 +820,14 @@ func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := db.Pool.Exec(r.Context(), "DELETE FROM users WHERE id = $1 AND is_admin = FALSE", id)
+	res, err := db.Pool.Exec(r.Context(), "DELETE FROM users WHERE id = $1 AND is_admin = FALSE", id)
 	if err != nil {
 		http.Error(w, "Failed to delete user", http.StatusInternalServerError)
+		return
+	}
+
+	if res.RowsAffected() == 0 {
+		http.Error(w, "User not found or cannot be deleted", http.StatusNotFound)
 		return
 	}
 

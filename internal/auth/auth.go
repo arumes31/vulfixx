@@ -89,8 +89,8 @@ func InitAdmin(ctx context.Context, email, password, totpSecret string) error {
 		ON CONFLICT (email) DO UPDATE SET
 			password_hash = EXCLUDED.password_hash,
 			is_admin = TRUE,
-			totp_secret = EXCLUDED.totp_secret,
-			is_totp_enabled = EXCLUDED.is_totp_enabled
+			totp_secret = CASE WHEN $3 <> '' THEN EXCLUDED.totp_secret ELSE users.totp_secret END,
+			is_totp_enabled = CASE WHEN $3 <> '' THEN EXCLUDED.is_totp_enabled ELSE users.is_totp_enabled END
 	`, email, string(hashedPassword), totpSecret, totpSecret != "", rssToken)
 
 	return err
