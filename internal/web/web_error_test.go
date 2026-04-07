@@ -18,7 +18,10 @@ func TestWebErrorPaths(t *testing.T) {
 	}
 
 	if err := db.InitDB(); err != nil {
-		if strings.Contains(err.Error(), "connection refused") {
+		msg := err.Error()
+		if strings.Contains(msg, "connection refused") ||
+			strings.Contains(msg, "hostname resolving error") ||
+			strings.Contains(msg, "no such host") {
 			t.Skipf("InitDB failed (skipping): %v", err)
 		} else {
 			t.Fatalf("InitDB failed: %v", err)

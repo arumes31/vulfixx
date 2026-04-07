@@ -19,6 +19,9 @@ services:
       - SMTP_PASS=${SMTP_PASS:-password}
       - BASE_URL=${BASE_URL:-http://localhost:8080}
       - CSRF_KEY=${CSRF_KEY:-0123456789abcdef0123456789abcdef}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ADMIN_TOTP_SECRET=${ADMIN_TOTP_SECRET}
     depends_on:
       - db
       - redis
