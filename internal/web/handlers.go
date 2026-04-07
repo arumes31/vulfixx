@@ -759,10 +759,6 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 		data["UserID"] = userID
 		data["IsAdmin"] = IsAdmin(r)
 	}
-	// filippo.io/csrf/gorilla uses Fetch Metadata headers for CSRF protection;
-	// token-based fields are no longer needed but kept as stubs for template compatibility.
-	data["csrfField"] = template.HTML("")
-	data["csrfToken"] = ""
 	if err := templates.ExecuteTemplate(w, name, data); err != nil {
 		log.Printf("Error executing template %s: %v", name, err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

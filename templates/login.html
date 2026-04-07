@@ -10,7 +10,6 @@
         <p class="error">{{.Error}}</p>
     {{end}}
     <form action="/login" method="POST">
-        {{ .csrfField }}
     {{if .RequireTOTP}}
         <div class="form-group">
             <label>TOTP Code</label>

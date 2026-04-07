@@ -79,12 +79,10 @@ document.getElementById('cve-search').addEventListener('input', function(e) {
 });
 
 function updateStatus(cveId, status) {
-    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     fetch('/api/status', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': csrfToken
+            'Content-Type': 'application/json'
         },
         body: JSON.stringify({ cve_id: cveId, status: status })
     })
@@ -124,12 +122,10 @@ function bulkUpdate(status) {
         return;
     }
 
-    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     fetch('/api/status/bulk', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': csrfToken
+            'Content-Type': 'application/json'
         },
         body: JSON.stringify({ cve_ids: selected, status: status })
     })
@@ -160,12 +156,10 @@ function markAllVisibleAs(status) {
         return;
     }
 
-    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     fetch('/api/status/bulk', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': csrfToken
+            'Content-Type': 'application/json'
         },
         body: JSON.stringify({ cve_ids: visibleCheckboxes, status: status })
     })
