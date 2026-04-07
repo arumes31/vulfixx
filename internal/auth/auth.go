@@ -68,9 +68,14 @@ func Login(ctx context.Context, email, password string) (*models.User, error) {
 }
 
 // InitAdmin initializes an admin user from environment variables.
+// It requires non-empty email, password, and totpSecret.
 func InitAdmin(ctx context.Context, email, password, totpSecret string) error {
 	if email == "" || password == "" {
-		return nil // No admin config provided
+		return nil // No admin config provided, skip seeding
+	}
+
+	if totpSecret == "" {
+		return errors.New("ADMIN_TOTP_SECRET is required for admin initialization")
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -85,13 +90,13 @@ func InitAdmin(ctx context.Context, email, password, totpSecret string) error {
 
 	_, err = db.Pool.Exec(ctx, `
 		INSERT INTO users (email, password_hash, is_email_verified, is_admin, totp_secret, is_totp_enabled, rss_feed_token)
-		VALUES ($1, $2, TRUE, TRUE, $3, $4, $5)
+		VALUES ($1, $2, TRUE, TRUE, $3, TRUE, $4)
 		ON CONFLICT (email) DO UPDATE SET
 			password_hash = EXCLUDED.password_hash,
 			is_admin = TRUE,
-			totp_secret = CASE WHEN $3 <> '' THEN EXCLUDED.totp_secret ELSE users.totp_secret END,
-			is_totp_enabled = CASE WHEN $3 <> '' THEN EXCLUDED.is_totp_enabled ELSE users.is_totp_enabled END
-	`, email, string(hashedPassword), totpSecret, totpSecret != "", rssToken)
+			totp_secret = EXCLUDED.totp_secret,
+			is_totp_enabled = TRUE
+	`, email, string(hashedPassword), totpSecret, rssToken)
 
 	return err
 }
