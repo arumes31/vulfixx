@@ -1,7 +1,6 @@
 package web
 
 import (
-	"github.com/gorilla/csrf"
 	"context"
 	"cve-tracker/internal/auth"
 	"cve-tracker/internal/db"
@@ -760,8 +759,6 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 		data["UserID"] = userID
 		data["IsAdmin"] = IsAdmin(r)
 	}
-	data["csrfField"] = csrf.TemplateField(r)
-	data["csrfToken"] = csrf.Token(r)
 	if err := templates.ExecuteTemplate(w, name, data); err != nil {
 		log.Printf("Error executing template %s: %v", name, err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

@@ -7,7 +7,6 @@
         <p class="error">{{.Error}}</p>
     {{end}}
     <form action="/register" method="POST">
-        {{ .csrfField }}
         <div class="form-group">
             <label>Email</label>
             <input type="email" name="email" required>

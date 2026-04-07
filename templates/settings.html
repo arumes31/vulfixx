@@ -13,7 +13,6 @@
     {{if .EmailSuccess}}<p style="color:green;">{{.EmailSuccess}}</p>{{end}}
     
     <form action="/settings/email" method="POST" style="max-width: 400px;">
-        {{ .csrfField }}
         <div class="form-group">
             <label>New Email Address</label>
             <input type="email" name="new_email" required>
@@ -40,7 +39,6 @@
 
             <p>2. Enter the 6-digit code from your app to enable TOTP:</p>
             <form action="/settings/totp/verify" method="POST">
-        {{ .csrfField }}
                 <div class="form-group" style="max-width: 200px;">
                     <input type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456">
                 </div>
@@ -48,7 +46,6 @@
             </form>
         {{else}}
             <form action="/settings/totp/generate" method="POST">
-        {{ .csrfField }}
                 <button type="submit" class="btn">Setup TOTP</button>
             </form>
         {{end}}
@@ -61,7 +58,6 @@
     {{if .PasswordSuccess}}<p style="color:green;">{{.PasswordSuccess}}</p>{{end}}
 
     <form action="/settings/password" method="POST" style="max-width: 400px;">
-        {{ .csrfField }}
         <div class="form-group">
             <label>Current Password</label>
             <input type="password" name="current_password" required>
@@ -90,7 +86,6 @@
     {{if .DeleteError}}<p class="error">{{.DeleteError}}</p>{{end}}
     
     <form action="/settings/delete" method="POST" style="max-width: 400px;" onsubmit="return confirm('ARE YOU ABSOLUTELY SURE? This will permanently delete your account and all subscriptions.');">
-        {{ .csrfField }}
         <div class="form-group">
             <label>Confirm Password to Delete Account</label>
             <input type="password" name="password" required>
