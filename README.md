@@ -42,10 +42,18 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
    - `SESSION_KEY`: A secure random string for session signing.
    - `CSRF_KEY`: A secure random string for CSRF protection (exactly 32 bytes).
 
-   3. Start the application:
-   ```bash
-   docker-compose up --build
-   ```
+    3. Start the application:
+    ```bash
+    docker-compose up --build
+    ```
+
+    ### Running with GHCR (GitHub Container Registry)
+
+    If you prefer not to build the image locally, you can use the pre-built image from GHCR:
+
+    ```bash
+    docker-compose -f docker-compose.ghcr.yml up
+    ```
 
    The application will be available at `http://localhost:8080`.
 
