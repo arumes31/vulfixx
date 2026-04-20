@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  app:
+    image: ghcr.io/arumes31/vulfixx:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=db
+      - DB_USER=cveuser
+      - DB_PASSWORD=cvepass
+      - DB_NAME=cvetracker
+      - DB_PORT=5432
+      - REDIS_URL=redis:6379
+      - SESSION_KEY=${SESSION_KEY:-supersecretkey-change-me-in-prod}
+      - SMTP_HOST=${SMTP_HOST:-smtp.example.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-user@example.com}
+      - SMTP_PASS=${SMTP_PASS:-password}
+      - BASE_URL=${BASE_URL:-http://localhost:8080}
+      - CSRF_KEY=${CSRF_KEY:-0123456789abcdef0123456789abcdef}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ADMIN_TOTP_SECRET=${ADMIN_TOTP_SECRET}
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=cveuser
+      - POSTGRES_PASSWORD=cvepass
+      - POSTGRES_DB=cvetracker
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  db_data:
+  redis_data:
