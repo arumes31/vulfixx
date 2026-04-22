@@ -1,179 +1,144 @@
 {{template "base" .}}
 
 {{define "content"}}
-<div style="display: flex; gap: 20px; margin-bottom: 30px;">
-    <div class="card" style="flex: 1; text-align: center; margin-bottom: 0;">
-        <h3>{{.Total}}</h3>
-        <p>Active CVEs</p>
-    </div>
-    <div class="card" style="flex: 1; text-align: center; margin-bottom: 0;">
-        <h3 style="color: #e8491d;">{{.KevCount}}</h3>
-        <p>CISA KEV</p>
-    </div>
-    <div class="card" style="flex: 1; text-align: center; margin-bottom: 0;">
-        <h3 style="color: #d9534f;">{{.HighCount}}</h3>
-        <p>High Severity</p>
-    </div>
-</div>
-
-<h2>Latest Active CVEs</h2>
-<div class="flex-container" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-    <div>
-        <button class="btn" onclick="bulkUpdate('resolved')" style="background: #5bc85c;">✅ Resolve Selected</button>
-        <button class="btn" onclick="bulkUpdate('ignored')" style="background: #777;">❌ Ignore Selected</button>
-        <button class="btn" onclick="markAllVisibleAs('resolved')" style="background: #4a90e2;">✨ Mark All Visible</button>
-    </div>
-    <div style="display: flex; gap: 10px; align-items: center;">
-        <input type="text" id="cve-search" placeholder="Search CVEs..." style="padding: 8px; border-radius: 4px; border: 1px solid #ccc; width: 250px;">
-        <button class="btn" title="Export to CSV" onclick="window.location.href='/export'" style="padding: 5px 10px; font-size: 1.2em;">📥</button>
-    </div>
-</div>
-
-<div id="cve-list">
-    <div style="margin-bottom: 10px;">
-        <input type="checkbox" id="select-all" onclick="toggleSelectAll(this)"> <label for="select-all">Select All</label>
-    </div>
-    {{range .CVEs}}
-    <div class="cve-item {{if .CISAKEV}}kev{{end}}" id="cve-{{.ID}}" data-search="{{.CVEID}} {{.Description}}">
-        <div class="cve-header">
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <input type="checkbox" class="cve-checkbox" value="{{.ID}}">
-                <h3>{{.CVEID}} {{if .CISAKEV}}<span style="color:#e8491d; font-size: 0.8em;">[CISA KEV]</span>{{end}}</h3>
-            </div>
-            <span class="cve-score {{if ge .CVSSScore 7.0}}score-high{{else if ge .CVSSScore 4.0}}score-med{{else}}score-low{{end}}">
-                CVSS: {{.CVSSScore}}
-            </span>
-        </div>
-        <p><strong>Published:</strong> {{.PublishedDate.Format "2006-01-02"}}</p>
-        <p class="cve-desc">{{.Description}}</p>
+<div class="space-y-8">
+    <header class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-outline-variant/30 pb-6">
         <div>
-            <button class="btn" onclick="updateStatus({{.ID}}, 'resolved')">Mark Resolved</button>
-            <button class="btn" onclick="updateStatus({{.ID}}, 'ignored')" style="background: #777;">Ignore</button>
+            <h1 class="text-3xl font-display font-medium tracking-tight mb-2">Threat Intelligence</h1>
+            <p class="text-on-surface-variant font-label text-sm uppercase tracking-widest">Real-time vulnerability telemetry</p>
+        </div>
+        <div class="flex gap-3">
+            <a href="/export" class="flex items-center gap-2 px-4 py-2 bg-surface border border-outline-variant/50 rounded-md text-sm font-label uppercase tracking-widest hover:bg-surface-container-high transition-colors">
+                <span class="material-symbols-outlined text-sm">download</span>
+                Export Data
+            </a>
+        </div>
+    </header>
+
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- Card 1: Total CVEs -->
+        <div class="bg-surface-container p-6 rounded-xl border-l-4 border-primary transition-transform duration-200 hover:scale-[1.02]">
+            <div class="flex justify-between items-start mb-4">
+                <span class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant">Total CVEs</span>
+                <span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">security</span>
+            </div>
+            <div class="flex items-baseline gap-2">
+                <h2 class="text-5xl font-display font-bold text-on-surface">{{.Total}}</h2>
+            </div>
+        </div>
+
+        <!-- Card 2: KEV Count -->
+        <div class="bg-surface-container p-6 rounded-xl border-l-4 border-tertiary transition-transform duration-200 hover:scale-[1.02]">
+            <div class="flex justify-between items-start mb-4">
+                <span class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant">KEV Count</span>
+                <span class="material-symbols-outlined text-tertiary" style="font-variation-settings: 'FILL' 1;">warning</span>
+            </div>
+            <div class="flex items-baseline gap-2">
+                <h2 class="text-5xl font-display font-bold text-on-surface">{{.KevCount}}</h2>
+                <span class="text-xs text-tertiary font-medium tracking-tight">CISA TRACKED</span>
+            </div>
+        </div>
+
+        <!-- Card 3: High Severity -->
+        <div class="bg-surface-container p-6 rounded-xl border-l-4 border-error transition-transform duration-200 hover:scale-[1.02]">
+            <div class="flex justify-between items-start mb-4">
+                <span class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant">High Severity</span>
+                <span class="material-symbols-outlined text-error" style="font-variation-settings: 'FILL' 1;">dangerous</span>
+            </div>
+            <div class="flex items-baseline gap-2">
+                <h2 class="text-5xl font-display font-bold text-error">{{.HighCount}}</h2>
+                <span class="text-xs text-error font-medium tracking-tight">CVSS 7.0+</span>
+            </div>
         </div>
     </div>
-    {{else}}
-    <p>No active CVEs to display.</p>
-    {{end}}
+
+    <!-- Main Data Table -->
+    <div class="bg-surface rounded-xl border border-outline-variant/30 overflow-hidden shadow-2xl">
+        <div class="p-6 border-b border-outline-variant/30 flex justify-between items-center bg-surface-container-low">
+            <h3 class="font-display font-medium text-lg tracking-wide">Recent Telemetry</h3>
+
+            <form action="/dashboard" method="GET" class="relative">
+                <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
+                <input type="text" name="q" placeholder="Search ID or description..." class="bg-surface-container w-64 pl-9 pr-4 py-2 rounded-md border-b-2 border-transparent focus:border-primary focus:outline-none text-sm font-label transition-colors">
+            </form>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-surface-container-low border-b border-outline-variant/30">
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">ID Reference</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Severity</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">KEV</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Status</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Publish Date</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-outline-variant/10">
+                    {{range .CVEs}}
+                    <tr class="hover:bg-surface-container transition-colors duration-150">
+                        <td class="px-6 py-5">
+                            <div class="flex flex-col">
+                                <a href="https://nvd.nist.gov/vuln/detail/{{.ID}}" target="_blank" class="text-sm font-bold font-display text-primary hover:underline">{{.ID}}</a>
+                            </div>
+                        </td>
+                        <td class="px-6 py-5">
+                            {{if ge .CVSSScore 7.0}}
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-error-container/30 text-error border border-error/20 text-[10px] font-bold tracking-wider uppercase"><span class="w-1.5 h-1.5 rounded-full bg-error"></span> High ({{.CVSSScore}})</span>
+                            {{else if ge .CVSSScore 4.0}}
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-tertiary-container/30 text-tertiary border border-tertiary/20 text-[10px] font-bold tracking-wider uppercase"><span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span> Medium ({{.CVSSScore}})</span>
+                            {{else}}
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-surface-variant text-on-surface border border-outline-variant/30 text-[10px] font-bold tracking-wider uppercase"><span class="w-1.5 h-1.5 rounded-full bg-on-surface-variant"></span> Low ({{.CVSSScore}})</span>
+                            {{end}}
+                        </td>
+                        <td class="px-6 py-5">
+                            {{if .IsKev}}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded bg-error text-on-error text-xs font-bold uppercase tracking-widest">KEV</span>
+                            {{else}}
+                            <span class="text-on-surface-variant text-xs">-</span>
+                            {{end}}
+                        </td>
+                        <td class="px-6 py-5">
+                            {{if eq .Status "resolved"}}
+                            <span class="text-xs text-primary font-bold uppercase tracking-widest flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">check_circle</span> Resolved</span>
+                            {{else if eq .Status "ignored"}}
+                            <span class="text-xs text-on-surface-variant font-bold uppercase tracking-widest flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">visibility_off</span> Ignored</span>
+                            {{else}}
+                            <span class="text-xs text-error font-bold uppercase tracking-widest flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">warning</span> Active</span>
+                            {{end}}
+                        </td>
+                        <td class="px-6 py-5 text-sm text-on-surface font-mono">{{.PublishedAt.Format "2006-01-02"}}</td>
+                        <td class="px-6 py-5 text-right">
+                            <form action="/api/status" method="POST" class="inline">
+                                {{$.csrfField}}
+                                <input type="hidden" name="cve_id" value="{{.ID}}">
+                                <select name="status" onchange="this.form.submit()" class="bg-surface-container text-xs py-1 px-2 rounded border border-outline-variant/50 text-on-surface focus:outline-none focus:border-primary">
+                                    <option value="active" {{if eq .Status "active"}}selected{{end}}>Active</option>
+                                    <option value="resolved" {{if eq .Status "resolved"}}selected{{end}}>Resolved</option>
+                                    <option value="ignored" {{if eq .Status "ignored"}}selected{{end}}>Ignored</option>
+                                </select>
+                            </form>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="p-4 border-t border-outline-variant/30 flex justify-between items-center bg-surface-container-low">
+            <span class="text-xs font-label text-on-surface-variant tracking-widest uppercase">Page {{.CurrentPage}} of {{.TotalPages}}</span>
+            <div class="flex gap-2">
+                {{if .HasPrev}}
+                <a href="?page={{.PrevPage}}" class="px-3 py-1 bg-surface border border-outline-variant/50 rounded text-xs font-bold hover:bg-surface-container-high transition-colors text-on-surface">PREV</a>
+                {{end}}
+                {{if .HasNext}}
+                <a href="?page={{.NextPage}}" class="px-3 py-1 bg-surface border border-outline-variant/50 rounded text-xs font-bold hover:bg-surface-container-high transition-colors text-primary border-primary/30">NEXT</a>
+                {{end}}
+            </div>
+        </div>
+    </div>
 </div>
-
-<div class="pagination" style="margin-top: 20px; display: flex; justify-content: center; gap: 10px; align-items: center;">
-    {{if .HasPrev}}
-    <a href="/dashboard?page={{.PrevPage}}" class="btn" style="padding: 5px 15px;">&laquo; Previous</a>
-    {{end}}
-    
-    <span>Page {{.CurrentPage}} of {{.TotalPages}}</span>
-    
-    {{if .HasNext}}
-    <a href="/dashboard?page={{.NextPage}}" class="btn" style="padding: 5px 15px;">Next &raquo;</a>
-    {{end}}
-</div>
-
-<script>
-document.getElementById('cve-search').addEventListener('input', function(e) {
-    const term = e.target.value.toLowerCase();
-    const items = document.querySelectorAll('.cve-item');
-    items.forEach(item => {
-        const text = item.getAttribute('data-search').toLowerCase();
-        item.style.display = text.includes(term) ? 'block' : 'none';
-    });
-});
-
-function updateStatus(cveId, status) {
-    fetch('/api/status', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ cve_id: cveId, status: status })
-    })
-    .then(response => {
-        if (response.ok) {
-            const el = document.getElementById('cve-' + cveId);
-            if(el) {
-                el.style.display = 'none';
-            }
-        } else {
-            alert("Failed to update status.");
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert("An error occurred.");
-    });
-}
-
-function toggleSelectAll(source) {
-    const checkboxes = document.querySelectorAll('.cve-checkbox');
-    checkboxes.forEach(cb => {
-        if (cb.closest('.cve-item').style.display !== 'none') {
-            cb.checked = source.checked;
-        }
-    });
-}
-
-function bulkUpdate(status) {
-    const selected = Array.from(document.querySelectorAll('.cve-checkbox:checked')).map(cb => parseInt(cb.value));
-    if (selected.length === 0) {
-        alert("No CVEs selected.");
-        return;
-    }
-
-    if (!confirm(`Are you sure you want to mark ${selected.length} CVEs as ${status}?`)) {
-        return;
-    }
-
-    fetch('/api/status/bulk', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ cve_ids: selected, status: status })
-    })
-    .then(response => {
-        if (response.ok) {
-            location.reload();
-        } else {
-            alert("Failed to update status.");
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert("An error occurred.");
-    });
-}
-
-function markAllVisibleAs(status) {
-    const visibleCheckboxes = Array.from(document.querySelectorAll('.cve-item'))
-        .filter(item => item.style.display !== 'none')
-        .map(item => parseInt(item.id.replace('cve-', '')));
-    
-    if (visibleCheckboxes.length === 0) {
-        alert("No visible CVEs to update.");
-        return;
-    }
-
-    if (!confirm(`Are you sure you want to mark ALL ${visibleCheckboxes.length} visible CVEs as ${status}?`)) {
-        return;
-    }
-
-    fetch('/api/status/bulk', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ cve_ids: visibleCheckboxes, status: status })
-    })
-    .then(response => {
-        if (response.ok) {
-            location.reload();
-        } else {
-            alert("Failed to update status.");
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert("An error occurred.");
-    });
-}
-</script>
 {{end}}

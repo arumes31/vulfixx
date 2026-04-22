@@ -1,6 +1,10 @@
 package web
 
-import "html/template"
+import (
+	"html/template"
+	"log"
+	"path/filepath"
+)
 
 func InitTemplatesWithFuncs() {
 	funcs := template.FuncMap{
@@ -19,5 +23,18 @@ func InitTemplatesWithFuncs() {
 			return m
 		},
 	}
-	templates = template.Must(template.New("").Funcs(funcs).ParseGlob("templates/*.html"))
+
+	templateMap = make(map[string]*template.Template)
+
+	files, err := filepath.Glob("templates/*.html")
+	if err != nil {
+		log.Fatalf("Error globbing templates: %v", err)
+	}
+	for _, file := range files {
+		name := filepath.Base(file)
+		if name == "base.html" {
+			continue
+		}
+		templateMap[name] = template.Must(template.New(name).Funcs(funcs).ParseFiles("templates/base.html", file))
+	}
 }

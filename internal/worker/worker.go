@@ -137,8 +137,8 @@ func StartWorker(ctx context.Context) {
 type NVDResponse struct {
 	Vulnerabilities []struct {
 		CVE struct {
-			ID          string `json:"id"`
-			Published   string `json:"published"`
+			ID           string `json:"id"`
+			Published    string `json:"published"`
 			LastModified string `json:"lastModified"`
 			Descriptions []struct {
 				Lang  string `json:"lang"`
@@ -184,7 +184,7 @@ func fetchFromNVD(ctx context.Context) {
 			log.Printf("Invalid NVD_API_URL (bad scheme): %q", envURL) // #nosec G706
 			return
 		}
-		
+
 		// Allowlist NVD hosts
 		allowedHosts := map[string]bool{
 			"services.nvd.nist.gov": true,
@@ -358,7 +358,7 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 
 func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) bool {
 	log.Printf("ALERT: Sending to %s for %s\n", email, cve.CVEID)
-	
+
 	var wg sync.WaitGroup
 	successChan := make(chan bool, 2)
 
@@ -488,7 +488,6 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) bool 
 
 	return hasSuccess
 }
-
 
 func processEmailVerification(ctx context.Context) {
 	for {

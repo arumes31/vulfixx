@@ -1,56 +1,113 @@
 {{template "base" .}}
 
 {{define "content"}}
-<h2>Your Alert Subscriptions</h2>
-<div class="card">
-    <h3>Add New Subscription</h3>
-    <form action="/subscriptions" method="POST">
-        <div class="form-group">
-            <label>Keyword (e.g., Fortigate, Windows)</label>
-            <input type="text" name="keyword">
-        </div>
-        <div class="form-group">
-            <label>Minimum CVSS Score (0.0 - 10.0)</label>
-            <input type="number" step="0.1" name="min_severity" value="7.0" required>
-        </div>
-        <div class="form-group">
-            <label>Webhook URL (Optional)</label>
-            <input type="url" name="webhook_url" placeholder="https://example.com/webhook">
-        </div>
-        <button type="submit" class="btn">Add Subscription</button>
-    </form>
-</div>
+<div class="space-y-8">
+    <header class="border-b border-outline-variant/30 pb-6">
+        <h1 class="text-3xl font-display font-medium tracking-tight mb-2">Alert Subscriptions</h1>
+        <p class="text-on-surface-variant font-label text-sm uppercase tracking-widest">Configure telemetry notifications</p>
+    </header>
 
-<div class="card">
-    <h3>Current Subscriptions</h3>
-    {{if .Subscriptions}}
-    <table>
-        <thead>
-            <tr>
-                <th>Keyword</th>
-                <th>Min Severity</th>
-                <th>Webhook</th>
-                <th>Action</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{range .Subscriptions}}
-            <tr>
-                <td>{{if .Keyword}}{{.Keyword}}{{else}}<em>Any</em>{{end}}</td>
-                <td>{{.MinSeverity}}</td>
-                <td>{{if .WebhookURL}}{{.WebhookURL}}{{else}}<em>None</em>{{end}}</td>
-                <td>
-                    <form action="/subscriptions/delete" method="POST" style="display:inline;">
-                        <input type="hidden" name="id" value="{{.ID}}">
-                        <button type="submit" class="btn" style="background:#d9534f; padding: 4px 8px;">Delete</button>
-                    </form>
-                </td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
-    {{else}}
-    <p>You have no subscriptions configured.</p>
+    {{if .Error}}
+        <div class="bg-error-container/30 border border-error/30 text-error px-4 py-3 rounded-md text-sm mb-6 flex items-start gap-2">
+            <span class="material-symbols-outlined text-[18px]">warning</span>
+            <span>{{.Error}}</span>
+        </div>
     {{end}}
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- Add Subscription Form -->
+        <div class="lg:col-span-1">
+            <div class="bg-surface rounded-xl border border-outline-variant/30 overflow-hidden shadow-xl sticky top-6">
+                <div class="p-6 border-b border-outline-variant/30 bg-surface-container-low">
+                    <h3 class="font-display font-medium tracking-wide flex items-center gap-2">
+                        <span class="material-symbols-outlined text-tertiary">add_alert</span>
+                        New Subscription
+                    </h3>
+                </div>
+                <div class="p-6">
+                    <form action="/subscriptions" method="POST" class="space-y-5">
+                        {{.csrfField}}
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Target Keyword <span class="opacity-50 lowercase font-normal">(e.g. Fortigate)</span></label>
+                            <input type="text" name="keyword" class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-tertiary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors">
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Min CVSS Score</label>
+                            <input type="number" step="0.1" name="min_severity" value="7.0" required class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-tertiary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Webhook Endpoint <span class="opacity-50 lowercase font-normal">(optional)</span></label>
+                            <input type="url" name="webhook_url" placeholder="https://..." class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-tertiary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors">
+                        </div>
+                        <button type="submit" class="w-full bg-surface-container-high hover:bg-tertiary hover:text-on-primary border border-outline-variant/50 hover:border-tertiary text-on-surface font-label font-bold uppercase tracking-widest text-xs py-3 rounded transition-all duration-200 mt-4">
+                            Deploy Monitor
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Current Subscriptions -->
+        <div class="lg:col-span-2">
+            <div class="bg-surface rounded-xl border border-outline-variant/30 overflow-hidden shadow-xl">
+                <div class="p-6 border-b border-outline-variant/30 bg-surface-container-low">
+                    <h3 class="font-display font-medium tracking-wide flex items-center gap-2">
+                        <span class="material-symbols-outlined text-primary">monitoring</span>
+                        Active Monitors
+                    </h3>
+                </div>
+
+                {{if .Subscriptions}}
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-surface-container-lowest border-b border-outline-variant/30">
+                                <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Keyword</th>
+                                <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Severity</th>
+                                <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Webhook</th>
+                                <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-outline-variant/10">
+                            {{range .Subscriptions}}
+                            <tr class="hover:bg-surface-container transition-colors duration-150">
+                                <td class="px-6 py-4">
+                                    {{if .Keyword}}
+                                        <span class="font-mono text-sm text-on-surface">{{.Keyword}}</span>
+                                    {{else}}
+                                        <span class="text-xs text-on-surface-variant uppercase tracking-widest">Global</span>
+                                    {{end}}
+                                </td>
+                                <td class="px-6 py-4">
+                                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-surface-container-high text-on-surface border border-outline-variant/30 text-[10px] font-bold tracking-wider font-mono">
+                                        &ge; {{.MinSeverity}}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 max-w-[200px] truncate text-xs text-on-surface-variant font-mono">
+                                    {{if .WebhookURL}}{{.WebhookURL}}{{else}}-{{end}}
+                                </td>
+                                <td class="px-6 py-4 text-right">
+                                    <form action="/subscriptions/delete" method="POST" class="inline">
+                                        {{$.csrfField}}
+                                        <input type="hidden" name="id" value="{{.ID}}">
+                                        <button type="submit" class="p-2 text-error hover:bg-error-container/30 rounded transition-colors" title="Remove Monitor">
+                                            <span class="material-symbols-outlined text-[18px]">delete</span>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+                {{else}}
+                <div class="p-12 text-center flex flex-col items-center">
+                    <span class="material-symbols-outlined text-6xl text-outline-variant/50 mb-4" style="font-variation-settings: 'wght' 200;">scan_delete</span>
+                    <p class="text-on-surface-variant font-label tracking-widest uppercase text-sm">No monitors deployed</p>
+                </div>
+                {{end}}
+            </div>
+        </div>
+    </div>
 </div>
 {{end}}

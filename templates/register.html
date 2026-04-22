@@ -1,22 +1,44 @@
 {{template "base" .}}
 
 {{define "content"}}
-<div class="card" style="max-width: 400px; margin: auto;">
-    <h2>Register</h2>
-    {{if .Error}}
-        <p class="error">{{.Error}}</p>
-    {{end}}
-    <form action="/register" method="POST">
-        <div class="form-group">
-            <label>Email</label>
-            <input type="email" name="email" required>
+<div class="flex items-center justify-center min-h-[80vh]">
+    <div class="bg-surface-container border border-outline-variant/30 rounded-xl p-8 max-w-md w-full shadow-2xl relative overflow-hidden">
+        <!-- Decorative subtle gradient glow -->
+        <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-tertiary to-tertiary-container"></div>
+
+        <div class="text-center mb-8">
+            <span class="material-symbols-outlined text-4xl text-tertiary mb-2" style="font-variation-settings: 'FILL' 1;">how_to_reg</span>
+            <h2 class="text-2xl font-display font-bold tracking-wide">Operator Registration</h2>
+            <p class="text-sm font-label text-on-surface-variant tracking-widest uppercase mt-2">Initialize new access profile</p>
         </div>
-        <div class="form-group">
-            <label>Password</label>
-            <input type="password" name="password" required>
+
+        {{if .Error}}
+            <div class="bg-error-container/30 border border-error/30 text-error px-4 py-3 rounded-md text-sm mb-6 flex items-start gap-2">
+                <span class="material-symbols-outlined text-[18px]">warning</span>
+                <span>{{.Error}}</span>
+            </div>
+        {{end}}
+
+        <form action="/register" method="POST" class="space-y-6">
+            {{.csrfField}}
+            <div class="space-y-2">
+                <label class="text-xs font-label font-bold tracking-widest uppercase text-on-surface-variant block">Email Identity</label>
+                <input type="email" name="email" required placeholder="operator@system.core"
+                       class="w-full bg-surface-container-low border-b-2 border-outline-variant/50 focus:border-tertiary px-4 py-3 rounded-t-md text-on-surface focus:outline-none transition-colors placeholder:text-on-surface-variant/30">
+            </div>
+            <div class="space-y-2">
+                <label class="text-xs font-label font-bold tracking-widest uppercase text-on-surface-variant block">Secure Passphrase</label>
+                <input type="password" name="password" required placeholder="••••••••"
+                       class="w-full bg-surface-container-low border-b-2 border-outline-variant/50 focus:border-tertiary px-4 py-3 rounded-t-md text-on-surface focus:outline-none transition-colors placeholder:text-on-surface-variant/30 font-mono tracking-widest">
+            </div>
+            <button type="submit" class="w-full bg-gradient-to-r from-tertiary to-tertiary-container text-on-primary font-bold font-label tracking-widest uppercase py-3 rounded-md shadow-[0_0_15px_rgba(255,183,120,0.3)] hover:shadow-[0_0_25px_rgba(255,183,120,0.5)] transition-all duration-300 text-on-surface">
+                Initialize Profile
+            </button>
+        </form>
+
+        <div class="mt-8 pt-6 border-t border-outline-variant/30 text-center">
+            <p class="text-sm font-label text-on-surface-variant">Active profile exists? <a href="/login" class="text-tertiary hover:underline font-bold tracking-widest uppercase">Authenticate</a></p>
         </div>
-        <button type="submit" class="btn">Register</button>
-    </form>
-    <p>Already have an account? <a href="/login">Login here</a></p>
+    </div>
 </div>
 {{end}}

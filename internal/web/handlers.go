@@ -9,18 +9,18 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/pquerna/otp/totp"
 	"html/template"
 	"log"
 	"net/http"
-	"github.com/pquerna/otp/totp"
 	"strconv"
 	"time"
 )
 
-var templates *template.Template
+var templateMap map[string]*template.Template
 
 func InitTemplates() {
-	templates = template.Must(template.ParseGlob("templates/*.html"))
+	InitTemplatesWithFuncs()
 }
 
 func AuthMiddleware(next http.Handler) http.Handler {
@@ -112,7 +112,6 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 	totpCode := r.FormValue("totp_code")
 
-
 	session, err := store.Get(r, "session-name")
 	if err != nil {
 		log.Printf("Error getting session: %v", err)
@@ -137,7 +136,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		// Success! Clear pre-auth and set full auth
 		delete(session.Values, "pre_auth_user_id")
 		session.Values["user_id"] = preAuthUserID
-		
+
 		var isAdmin bool
 		_ = db.Pool.QueryRow(r.Context(), "SELECT is_admin FROM users WHERE id = $1", preAuthUserID).Scan(&isAdmin)
 		session.Values["is_admin"] = isAdmin
@@ -603,7 +602,7 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	w.Header().Set("Content-Type", "application/rss+xml")
-	_ , _ = fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8" ?>
+	_, _ = fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0">
 <channel>
   <title>CVE Tracker Feed</title>
@@ -621,7 +620,7 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.PublishedAt); err != nil {
 			continue
 		}
-		_ , _ = fmt.Fprintf(w, `
+		_, _ = fmt.Fprintf(w, `
   <item>
     <title>%s (CVSS: %.1f)</title>
     <link>https://nvd.nist.gov/vuln/detail/%s</link>
@@ -631,7 +630,7 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
   </item>`, cve.CVEID, cve.CVSSScore, cve.CVEID, template.HTMLEscapeString(cve.Description), cve.PublishedAt.Format(time.RFC1123Z), cve.CVEID)
 	}
 
-	_ , _ = fmt.Fprintf(w, `
+	_, _ = fmt.Fprintf(w, `
 </channel>
 </rss>`)
 }
@@ -687,30 +686,29 @@ func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
-    if r.Method != "POST" {
-        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-        return
-    }
-    userID, ok := GetUserID(r)
-    if !ok {
-        http.Redirect(w, r, "/login", http.StatusFound)
-        return
-    }
-    subIDStr := r.FormValue("id")
-    subID, err := strconv.Atoi(subIDStr)
-    if err != nil {
-        http.Error(w, "Invalid subscription ID", http.StatusBadRequest)
-        return
-    }
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	userID, ok := GetUserID(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	subIDStr := r.FormValue("id")
+	subID, err := strconv.Atoi(subIDStr)
+	if err != nil {
+		http.Error(w, "Invalid subscription ID", http.StatusBadRequest)
+		return
+	}
 
-    if _, err = db.Pool.Exec(context.Background(), "DELETE FROM user_subscriptions WHERE id = $1 AND user_id = $2", subID, userID); err != nil {
-        http.Error(w, "Error deleting subscription", http.StatusInternalServerError)
-        return
-    }
-    LogActivity(r.Context(), userID, "subscription_deleted", "Deleted subscription ID: "+subIDStr, r.RemoteAddr, r.UserAgent())
-    http.Redirect(w, r, "/subscriptions", http.StatusFound)
+	if _, err = db.Pool.Exec(context.Background(), "DELETE FROM user_subscriptions WHERE id = $1 AND user_id = $2", subID, userID); err != nil {
+		http.Error(w, "Error deleting subscription", http.StatusInternalServerError)
+		return
+	}
+	LogActivity(r.Context(), userID, "subscription_deleted", "Deleted subscription ID: "+subIDStr, r.RemoteAddr, r.UserAgent())
+	http.Redirect(w, r, "/subscriptions", http.StatusFound)
 }
-
 
 func VerifyEmailHandler(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
@@ -759,7 +757,13 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 		data["UserID"] = userID
 		data["IsAdmin"] = IsAdmin(r)
 	}
-	if err := templates.ExecuteTemplate(w, name, data); err != nil {
+	tmpl, ok := templateMap[name]
+	if !ok {
+		log.Printf("Template %s not found", name)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
 		log.Printf("Error executing template %s: %v", name, err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
@@ -830,4 +834,3 @@ func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	http.Redirect(w, r, "/admin/users", http.StatusFound)
 }
-
