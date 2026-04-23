@@ -1,3 +1,6 @@
+package db
+
+const schemaSQL = `
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
@@ -82,3 +85,4 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_email_change_requests_new_token ON email_c
 CREATE INDEX IF NOT EXISTS idx_cves_published_date ON cves (published_date DESC);
 CREATE INDEX IF NOT EXISTS idx_cves_cvss_score ON cves (cvss_score);
 CREATE INDEX IF NOT EXISTS idx_cves_updated_date ON cves (updated_date DESC);
+`

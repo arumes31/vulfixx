@@ -24,10 +24,11 @@ func TestWorkerFunctions(t *testing.T) {
 	// Mock NVD API
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := NVDResponse{
+			TotalResults: 1,
 			Vulnerabilities: []struct {
 				CVE struct {
-					ID          string `json:"id"`
-					Published   string `json:"published"`
+					ID           string `json:"id"`
+					Published    string `json:"published"`
 					LastModified string `json:"lastModified"`
 					Descriptions []struct {
 						Lang  string `json:"lang"`
@@ -39,13 +40,23 @@ func TestWorkerFunctions(t *testing.T) {
 								BaseScore float64 `json:"baseScore"`
 							} `json:"cvssData"`
 						} `json:"cvssMetricV31"`
+						CvssMetricV30 []struct {
+							CvssData struct {
+								BaseScore float64 `json:"baseScore"`
+							} `json:"cvssData"`
+						} `json:"cvssMetricV30"`
+						CvssMetricV2 []struct {
+							CvssData struct {
+								BaseScore float64 `json:"baseScore"`
+							} `json:"cvssData"`
+						} `json:"cvssMetricV2"`
 					} `json:"metrics"`
 				} `json:"cve"`
 			}{
 				{
 					CVE: struct {
-						ID          string `json:"id"`
-						Published   string `json:"published"`
+						ID           string `json:"id"`
+						Published    string `json:"published"`
 						LastModified string `json:"lastModified"`
 						Descriptions []struct {
 							Lang  string `json:"lang"`
@@ -57,6 +68,16 @@ func TestWorkerFunctions(t *testing.T) {
 									BaseScore float64 `json:"baseScore"`
 								} `json:"cvssData"`
 							} `json:"cvssMetricV31"`
+							CvssMetricV30 []struct {
+								CvssData struct {
+									BaseScore float64 `json:"baseScore"`
+								} `json:"cvssData"`
+							} `json:"cvssMetricV30"`
+							CvssMetricV2 []struct {
+								CvssData struct {
+									BaseScore float64 `json:"baseScore"`
+								} `json:"cvssData"`
+							} `json:"cvssMetricV2"`
 						} `json:"metrics"`
 					}{
 						ID:           "CVE-2023-0001",

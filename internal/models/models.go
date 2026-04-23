@@ -26,12 +26,14 @@ type CVE struct {
 }
 
 type UserSubscription struct {
-	ID          int
-	UserID      int
-	Keyword     string
-	MinSeverity float64
-	WebhookURL  string
-	CreatedAt   time.Time
+	ID            int
+	UserID        int
+	Keyword       string
+	MinSeverity   float64
+	WebhookURL    string
+	EnableEmail   bool
+	EnableWebhook bool
+	CreatedAt     time.Time
 }
 
 type UserCVEStatus struct {

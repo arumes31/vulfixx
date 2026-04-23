@@ -32,8 +32,26 @@ func InitDB() error {
 }
 
 func migrate(ctx context.Context) error {
-	_, err := Pool.Exec(ctx, "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;")
-	return err
+	queries := []string{
+		"ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;",
+		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS enable_email BOOLEAN DEFAULT TRUE;",
+		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS enable_webhook BOOLEAN DEFAULT TRUE;",
+		`CREATE TABLE IF NOT EXISTS sync_state (
+			key VARCHAR(100) PRIMARY KEY,
+			value TEXT NOT NULL,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);`,
+		"CREATE INDEX IF NOT EXISTS idx_cves_published_date ON cves (published_date DESC);",
+		"CREATE INDEX IF NOT EXISTS idx_cves_cvss_score ON cves (cvss_score);",
+		"CREATE INDEX IF NOT EXISTS idx_cves_updated_date ON cves (updated_date DESC);",
+	}
+
+	for _, q := range queries {
+		if _, err := Pool.Exec(ctx, q); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func CloseDB() {

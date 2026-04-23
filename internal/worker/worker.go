@@ -134,11 +134,15 @@ func StartWorker(ctx context.Context) {
 	go processEmailChange(ctx)
 }
 
+// NVDResponse is the top-level NVD API response structure.
 type NVDResponse struct {
+	ResultsPerPage  int `json:"resultsPerPage"`
+	StartIndex      int `json:"startIndex"`
+	TotalResults    int `json:"totalResults"`
 	Vulnerabilities []struct {
 		CVE struct {
-			ID          string `json:"id"`
-			Published   string `json:"published"`
+			ID           string `json:"id"`
+			Published    string `json:"published"`
 			LastModified string `json:"lastModified"`
 			Descriptions []struct {
 				Lang  string `json:"lang"`
@@ -150,18 +154,28 @@ type NVDResponse struct {
 						BaseScore float64 `json:"baseScore"`
 					} `json:"cvssData"`
 				} `json:"cvssMetricV31"`
+				CvssMetricV30 []struct {
+					CvssData struct {
+						BaseScore float64 `json:"baseScore"`
+					} `json:"cvssData"`
+				} `json:"cvssMetricV30"`
+				CvssMetricV2 []struct {
+					CvssData struct {
+						BaseScore float64 `json:"baseScore"`
+					} `json:"cvssData"`
+				} `json:"cvssMetricV2"`
 			} `json:"metrics"`
 		} `json:"cve"`
 	} `json:"vulnerabilities"`
 }
 
 func fetchCVEsPeriodically(ctx context.Context) {
-	// NIST NVD rate limit is strict. Using 1 hour here for real usage.
-	ticker := time.NewTicker(1 * time.Hour)
-	defer ticker.Stop()
-
 	// Fetch immediately on startup
 	fetchFromNVD(ctx)
+
+	// NIST NVD rate limit is strict. 1 hour for incremental syncs.
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
 
 	for {
 		select {
@@ -173,63 +187,171 @@ func fetchCVEsPeriodically(ctx context.Context) {
 	}
 }
 
-func fetchFromNVD(ctx context.Context) {
-	log.Println("Worker: Fetching CVEs from NVD...")
+func getLastSyncTime(ctx context.Context) time.Time {
+	var val string
+	err := db.Pool.QueryRow(ctx, "SELECT value FROM sync_state WHERE key = 'last_nvd_sync'").Scan(&val)
+	if err != nil {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, val)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
 
+func setLastSyncTime(ctx context.Context, t time.Time) {
+	val := t.UTC().Format(time.RFC3339)
+	_, err := db.Pool.Exec(ctx, `
+		INSERT INTO sync_state (key, value, updated_at)
+		VALUES ('last_nvd_sync', $1, NOW())
+		ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()
+	`, val)
+	if err != nil {
+		log.Printf("Worker: Failed to update sync_state: %v", err)
+	}
+}
+
+func nvdAPIDelay() time.Duration {
+	if os.Getenv("NVD_API_KEY") != "" {
+		return 700 * time.Millisecond
+	}
+	return 6500 * time.Millisecond
+}
+
+func fetchFromNVD(ctx context.Context) {
+	lastSync := getLastSyncTime(ctx)
+
+	if lastSync.IsZero() {
+		log.Println("Worker: No prior sync found — starting full NVD backfill...")
+		runFullSync(ctx, true)
+	} else {
+		log.Printf("Worker: Incremental sync — fetching CVEs modified since %s", lastSync.Format(time.RFC3339))
+		runFullSync(ctx, false)
+	}
+}
+
+func runFullSync(ctx context.Context, isBackfill bool) {
 	baseURL := defaultNVDBaseURL
 	if envURL := os.Getenv("NVD_API_URL"); envURL != "" {
-		// Validate env override: only allow https scheme and restricted hosts (G706 hardening)
 		parsed, err := url.Parse(envURL)
-		if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") {
-			log.Printf("Invalid NVD_API_URL (bad scheme): %q", envURL) // #nosec G706
+		if err == nil && (parsed.Scheme == "https" || parsed.Scheme == "http") {
+			baseURL = parsed.String()
+		}
+	}
+
+	lastSync := getLastSyncTime(ctx)
+	client := &http.Client{Timeout: 60 * time.Second}
+	const pageSize = 2000
+	startIndex := 0
+	totalResults := -1
+	syncStart := time.Now().UTC()
+	delay := nvdAPIDelay()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		nvdURL := fmt.Sprintf("%s?resultsPerPage=%d&startIndex=%d", baseURL, pageSize, startIndex)
+		if !isBackfill && !lastSync.IsZero() {
+			// NVD requires UTC format for date params
+			startDate := lastSync.Add(-1 * time.Minute).Format("2006-01-02T15:04:05.000")
+			nvdURL += fmt.Sprintf("&lastModStartDate=%s", url.QueryEscape(startDate))
+			nvdURL += fmt.Sprintf("&lastModEndDate=%s", url.QueryEscape(syncStart.Format("2006-01-02T15:04:05.000")))
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "GET", nvdURL, nil)
+		if err != nil {
+			log.Println("Error creating NVD request:", err)
 			return
 		}
-		
-		// Allowlist NVD hosts
-		allowedHosts := map[string]bool{
-			"services.nvd.nist.gov": true,
-			"localhost":             true, // for local testing
-			"127.0.0.1":             true, // for local testing
+		if apiKey := os.Getenv("NVD_API_KEY"); apiKey != "" {
+			req.Header.Set("apiKey", apiKey)
 		}
-		if !allowedHosts[parsed.Hostname()] {
-			log.Printf("Invalid NVD_API_URL (unauthorized host): %q", parsed.Host) // #nosec G706 -- %q escapes control characters
+
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Println("Error fetching from NVD:", err)
+			time.Sleep(delay * 2)
+			continue
+		}
+
+		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
+			resp.Body.Close()
+			log.Printf("Worker: NVD rate-limited (HTTP %d), backing off...", resp.StatusCode)
+			time.Sleep(30 * time.Second)
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			log.Printf("NVD API returned status: %d", resp.StatusCode)
 			return
 		}
 
-		baseURL = parsed.String()
-	}
-	nvdURL := baseURL + "?resultsPerPage=50"
+		var nvdResp NVDResponse
+		if err := json.NewDecoder(resp.Body).Decode(&nvdResp); err != nil {
+			resp.Body.Close()
+			log.Println("Error decoding NVD response:", err)
+			return
+		}
+		resp.Body.Close()
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, "GET", nvdURL, nil) // #nosec G704 -- URL validated above
-	if err != nil {
-		log.Println("Error creating NVD request:", err)
-		return
-	}
-	// Add API key if available to avoid rate limits
-	if apiKey := os.Getenv("NVD_API_KEY"); apiKey != "" {
-		req.Header.Set("apiKey", apiKey)
-	}
+		if totalResults < 0 {
+			totalResults = nvdResp.TotalResults
+			if isBackfill {
+				log.Printf("Worker: Starting backfill of %d CVEs", totalResults)
+			} else {
+				log.Printf("Worker: Incremental sync found %d modified CVEs", totalResults)
+			}
+		}
 
-	resp, err := client.Do(req) // #nosec G704 -- URL validated above
-	if err != nil {
-		log.Println("Error fetching from NVD:", err)
-		return
-	}
-	defer func() { _ = resp.Body.Close() }()
+		upsertCVEs(ctx, nvdResp.Vulnerabilities, !isBackfill)
 
-	if resp.StatusCode != http.StatusOK {
-		log.Printf("NVD API returned status: %d", resp.StatusCode)
-		return
-	}
+		startIndex += len(nvdResp.Vulnerabilities)
+		if startIndex >= totalResults || len(nvdResp.Vulnerabilities) == 0 {
+			break
+		}
 
-	var nvdResp NVDResponse
-	if err := json.NewDecoder(resp.Body).Decode(&nvdResp); err != nil {
-		log.Println("Error decoding NVD response:", err)
-		return
+		time.Sleep(delay)
 	}
 
-	for _, v := range nvdResp.Vulnerabilities {
+	setLastSyncTime(ctx, syncStart)
+	log.Println("Worker: NVD sync complete.")
+}
+
+func upsertCVEs(ctx context.Context, vulnerabilities []struct {
+	CVE struct {
+		ID           string `json:"id"`
+		Published    string `json:"published"`
+		LastModified string `json:"lastModified"`
+		Descriptions []struct {
+			Lang  string `json:"lang"`
+			Value string `json:"value"`
+		} `json:"descriptions"`
+		Metrics struct {
+			CvssMetricV31 []struct {
+				CvssData struct {
+					BaseScore float64 `json:"baseScore"`
+				} `json:"cvssData"`
+			} `json:"cvssMetricV31"`
+			CvssMetricV30 []struct {
+				CvssData struct {
+					BaseScore float64 `json:"baseScore"`
+				} `json:"cvssData"`
+			} `json:"cvssMetricV30"`
+			CvssMetricV2 []struct {
+				CvssData struct {
+					BaseScore float64 `json:"baseScore"`
+				} `json:"cvssData"`
+			} `json:"cvssMetricV2"`
+		} `json:"metrics"`
+	} `json:"cve"`
+}, sendAlerts bool) {
+	for _, v := range vulnerabilities {
 		cveData := v.CVE
 
 		desc := ""
@@ -243,6 +365,10 @@ func fetchFromNVD(ctx context.Context) {
 		score := 0.0
 		if len(cveData.Metrics.CvssMetricV31) > 0 {
 			score = cveData.Metrics.CvssMetricV31[0].CvssData.BaseScore
+		} else if len(cveData.Metrics.CvssMetricV30) > 0 {
+			score = cveData.Metrics.CvssMetricV30[0].CvssData.BaseScore
+		} else if len(cveData.Metrics.CvssMetricV2) > 0 {
+			score = cveData.Metrics.CvssMetricV2[0].CvssData.BaseScore
 		}
 
 		pubDate, _ := time.Parse(time.RFC3339, cveData.Published)
@@ -268,15 +394,17 @@ func fetchFromNVD(ctx context.Context) {
 		`, cve.CVEID, cve.Description, cve.CVSSScore, cve.PublishedDate, cve.UpdatedDate).Scan(&id)
 
 		if err != nil {
-			// Row may exist but unchanged or other err, ignore
-			continue
+			// Row might exist but be identical, or other error.
+			// Try to get ID if it exists.
+			_ = db.Pool.QueryRow(ctx, "SELECT id FROM cves WHERE cve_id = $1", cve.CVEID).Scan(&id)
 		}
-		cve.ID = id
-
-		alertJob, _ := json.Marshal(cve)
-		db.RedisClient.LPush(ctx, "cve_alerts_queue", alertJob)
+		
+		if id > 0 && sendAlerts {
+			cve.ID = id
+			alertJob, _ := json.Marshal(cve)
+			db.RedisClient.LPush(ctx, "cve_alerts_queue", alertJob)
+		}
 	}
-	log.Println("Worker: NVD fetch complete.")
 }
 
 func processAlerts(ctx context.Context) {
@@ -306,7 +434,7 @@ func processAlerts(ctx context.Context) {
 func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 	// Find matching subscriptions
 	rows, err := db.Pool.Query(ctx, `
-		SELECT s.id, s.user_id, s.keyword, s.min_severity, s.webhook_url, u.email
+		SELECT s.id, s.user_id, s.keyword, s.min_severity, s.webhook_url, s.enable_email, s.enable_webhook, u.email
 		FROM user_subscriptions s
 		JOIN users u ON s.user_id = u.id
 		WHERE u.is_email_verified = TRUE
@@ -320,7 +448,7 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 	for rows.Next() {
 		var sub models.UserSubscription
 		var email string
-		if err := rows.Scan(&sub.ID, &sub.UserID, &sub.Keyword, &sub.MinSeverity, &sub.WebhookURL, &email); err != nil {
+		if err := rows.Scan(&sub.ID, &sub.UserID, &sub.Keyword, &sub.MinSeverity, &sub.WebhookURL, &sub.EnableEmail, &sub.EnableWebhook, &email); err != nil {
 			log.Printf("Error scanning subscription row: %v", err)
 			continue
 		}
@@ -358,11 +486,11 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 
 func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) bool {
 	log.Printf("ALERT: Sending to %s for %s\n", email, cve.CVEID)
-	
+
 	var wg sync.WaitGroup
 	successChan := make(chan bool, 2)
 
-	if sub.WebhookURL != "" {
+	if sub.EnableWebhook && sub.WebhookURL != "" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -446,7 +574,7 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) bool 
 	smtpUser := os.Getenv("SMTP_USER")
 	smtpPass := os.Getenv("SMTP_PASS")
 
-	if smtpHost != "" && smtpPort != "" {
+	if sub.EnableEmail && smtpHost != "" && smtpPort != "" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -488,7 +616,6 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) bool 
 
 	return hasSuccess
 }
-
 
 func processEmailVerification(ctx context.Context) {
 	for {

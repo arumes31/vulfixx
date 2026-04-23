@@ -643,7 +643,7 @@ func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == "GET" {
-		query := `SELECT id, keyword, min_severity, webhook_url FROM user_subscriptions WHERE user_id = $1`
+		query := `SELECT id, keyword, min_severity, webhook_url, enable_email, enable_webhook FROM user_subscriptions WHERE user_id = $1`
 		rows, err := db.Pool.Query(context.Background(), query, userID)
 		if err != nil {
 			log.Printf("Error fetching subscriptions: %v", err)
@@ -654,7 +654,7 @@ func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 		var subs []models.UserSubscription
 		for rows.Next() {
 			var s models.UserSubscription
-			if err := rows.Scan(&s.ID, &s.Keyword, &s.MinSeverity, &s.WebhookURL); err != nil {
+			if err := rows.Scan(&s.ID, &s.Keyword, &s.MinSeverity, &s.WebhookURL, &s.EnableEmail, &s.EnableWebhook); err != nil {
 				log.Printf("Error scanning subscription: %v", err)
 				continue
 			}
@@ -672,11 +672,13 @@ func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 		minSeverityStr := r.FormValue("min_severity")
 		webhookUrl := r.FormValue("webhook_url")
 		minSeverity, _ := strconv.ParseFloat(minSeverityStr, 64)
+		enableEmail := r.FormValue("enable_email") == "on" || r.FormValue("enable_email") == "true"
+		enableWebhook := r.FormValue("enable_webhook") == "on" || r.FormValue("enable_webhook") == "true"
 
 		_, err := db.Pool.Exec(context.Background(), `
-			INSERT INTO user_subscriptions (user_id, keyword, min_severity, webhook_url)
-			VALUES ($1, $2, $3, $4)
-		`, userID, keyword, minSeverity, webhookUrl)
+			INSERT INTO user_subscriptions (user_id, keyword, min_severity, webhook_url, enable_email, enable_webhook)
+			VALUES ($1, $2, $3, $4, $5, $6)
+		`, userID, keyword, minSeverity, webhookUrl, enableEmail, enableWebhook)
 		if err != nil {
 			http.Error(w, "Error saving subscription", http.StatusInternalServerError)
 			return
