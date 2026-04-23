@@ -50,3 +50,17 @@ type AlertHistory struct {
 	CVEID  int
 	SentAt time.Time
 }
+
+type Asset struct {
+	ID        int
+	UserID    int
+	Name      string
+	Type      string // e.g., 'Server', 'Software', 'Network'
+	CreatedAt time.Time
+}
+
+type AssetKeyword struct {
+	ID      int
+	AssetID int
+	Keyword string
+}

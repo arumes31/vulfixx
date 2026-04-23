@@ -64,6 +64,19 @@ func migrate(ctx context.Context) error {
 		"CREATE INDEX IF NOT EXISTS idx_cves_published_date ON cves (published_date DESC);",
 		"CREATE INDEX IF NOT EXISTS idx_cves_cvss_score ON cves (cvss_score);",
 		"CREATE INDEX IF NOT EXISTS idx_cves_updated_date ON cves (updated_date DESC);",
+		`CREATE TABLE IF NOT EXISTS assets (
+			id SERIAL PRIMARY KEY,
+			user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+			name VARCHAR(255) NOT NULL,
+			type VARCHAR(100),
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);`,
+		`CREATE TABLE IF NOT EXISTS asset_keywords (
+			id SERIAL PRIMARY KEY,
+			asset_id INTEGER REFERENCES assets(id) ON DELETE CASCADE,
+			keyword VARCHAR(255) NOT NULL,
+			UNIQUE(asset_id, keyword)
+		);`,
 	}
 
 	for _, q := range queries {

@@ -129,6 +129,7 @@ var defaultNVDBaseURL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 
 func StartWorker(ctx context.Context) {
 	go fetchCVEsPeriodically(ctx)
+	go fetchCISAKEVPeriodically(ctx)
 	go processAlerts(ctx)
 	go processEmailVerification(ctx)
 	go processEmailChange(ctx)
@@ -185,6 +186,71 @@ func fetchCVEsPeriodically(ctx context.Context) {
 			fetchFromNVD(ctx)
 		}
 	}
+}
+
+func fetchCISAKEVPeriodically(ctx context.Context) {
+	// Fetch immediately on startup
+	fetchFromCISAKEV(ctx)
+
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			fetchFromCISAKEV(ctx)
+		}
+	}
+}
+
+type CISAKEVResponse struct {
+	Vulnerabilities []struct {
+		CVEID string `json:"cveID"`
+	} `json:"vulnerabilities"`
+}
+
+func fetchFromCISAKEV(ctx context.Context) {
+	log.Println("Worker: [SYNC] Fetching CISA KEV catalog...")
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get("https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json")
+	if err != nil {
+		log.Printf("Worker: [ERROR] Failed to fetch CISA KEV: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var kevResp CISAKEVResponse
+	if err := json.NewDecoder(resp.Body).Decode(&kevResp); err != nil {
+		log.Printf("Worker: [ERROR] Failed to decode CISA KEV: %v", err)
+		return
+	}
+
+	total := len(kevResp.Vulnerabilities)
+	log.Printf("Worker: [SYNC] Updating %d CISA KEV records...", total)
+
+	// Reset all cisa_kev flags first (optional, but safer if a CVE is removed from KEV)
+	_, _ = db.Pool.Exec(ctx, "UPDATE cves SET cisa_kev = false")
+
+	batchSize := 100
+	for i := 0; i < total; i += batchSize {
+		end := i + batchSize
+		if end > total {
+			end = total
+		}
+		
+		ids := make([]string, 0, batchSize)
+		for _, v := range kevResp.Vulnerabilities[i:end] {
+			ids = append(ids, v.CVEID)
+		}
+
+		_, err := db.Pool.Exec(ctx, "UPDATE cves SET cisa_kev = true WHERE cve_id = ANY($1)", ids)
+		if err != nil {
+			log.Printf("Worker: [ERROR] Failed to update KEV batch: %v", err)
+		}
+	}
+	log.Println("Worker: [SYNC] CISA KEV update complete.")
 }
 
 func getLastSyncTime(ctx context.Context) time.Time {
@@ -450,7 +516,7 @@ func processAlerts(ctx context.Context) {
 }
 
 func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
-	// Find matching subscriptions
+	// Find matching manual subscriptions
 	rows, err := db.Pool.Query(ctx, `
 		SELECT s.id, s.user_id, s.keyword, s.min_severity, s.webhook_url, s.enable_email, s.enable_webhook, u.email
 		FROM user_subscriptions s
@@ -463,6 +529,8 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 	}
 	defer rows.Close()
 
+	notifiedUsers := make(map[int]bool)
+
 	for rows.Next() {
 		var sub models.UserSubscription
 		var email string
@@ -471,35 +539,82 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 			continue
 		}
 
-		// Basic matching
-		match := true
-		if sub.Keyword != "" && !strings.Contains(strings.ToLower(cve.Description), strings.ToLower(sub.Keyword)) {
-			match = false
-		}
-		if sub.MinSeverity > 0 && cve.CVSSScore < sub.MinSeverity {
-			match = false
-		}
-
-		if match {
-			// Check if already alerted
-			var exists bool
-			if err := db.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM alert_history WHERE user_id=$1 AND cve_id=$2)", sub.UserID, cve.ID).Scan(&exists); err != nil {
-				log.Printf("Error checking alert history: %v", err)
-				continue
-			}
-			if !exists {
-				// Send alert and only record history on success
-				success := sendAlert(sub, cve, email)
-				if success {
-					if _, err := db.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id) VALUES ($1, $2)", sub.UserID, cve.ID); err != nil {
-						log.Printf("Error recording alert history: %v", err)
-					}
-				} else {
-					log.Printf("Warning: all alert deliveries failed for user %d, CVE %s — not recording history", sub.UserID, cve.CVEID)
-				}
+		if matchCVE(cve, sub.Keyword, sub.MinSeverity) {
+			if notifyIfNew(ctx, sub.UserID, cve.ID, sub, email) {
+				notifiedUsers[sub.UserID] = true
 			}
 		}
 	}
+
+	// Asset-Linked Monitoring (Virtual Subscriptions)
+	assetRows, err := db.Pool.Query(ctx, `
+		SELECT ak.keyword, a.user_id, u.email
+		FROM asset_keywords ak
+		JOIN assets a ON ak.asset_id = a.id
+		JOIN users u ON a.user_id = u.id
+		WHERE u.is_email_verified = TRUE
+	`)
+	if err != nil {
+		log.Println("Error fetching asset keywords:", err)
+		return
+	}
+	defer assetRows.Close()
+
+	for assetRows.Next() {
+		var keyword, email string
+		var userID int
+		if err := assetRows.Scan(&keyword, &userID, &email); err != nil {
+			continue
+		}
+
+		if notifiedUsers[userID] {
+			continue
+		}
+
+		if strings.Contains(strings.ToLower(cve.Description), strings.ToLower(keyword)) {
+			// Asset match uses default notification settings (both enabled)
+			sub := models.UserSubscription{
+				EnableEmail:   true,
+				EnableWebhook: true,
+			}
+			if notifyIfNew(ctx, userID, cve.ID, sub, email) {
+				notifiedUsers[userID] = true
+			}
+		}
+	}
+}
+
+func matchCVE(cve *models.CVE, keyword string, minSeverity float64) bool {
+	if keyword != "" && !strings.Contains(strings.ToLower(cve.Description), strings.ToLower(keyword)) {
+		return false
+	}
+	if minSeverity > 0 && cve.CVSSScore < minSeverity {
+		return false
+	}
+	return true
+}
+
+func notifyIfNew(ctx context.Context, userID, cveID int, sub models.UserSubscription, email string) bool {
+	var exists bool
+	if err := db.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM alert_history WHERE user_id=$1 AND cve_id=$2)", userID, cveID).Scan(&exists); err != nil {
+		return false
+	}
+	if exists {
+		return false
+	}
+
+	// Fetch CVE for alert
+	var cve models.CVE
+	err := db.Pool.QueryRow(ctx, "SELECT cve_id, description, cvss_score FROM cves WHERE id = $1", cveID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore)
+	if err != nil {
+		return false
+	}
+
+	if sendAlert(sub, &cve, email) {
+		_, _ = db.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id) VALUES ($1, $2)", userID, cveID)
+		return true
+	}
+	return false
 }
 
 func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) bool {

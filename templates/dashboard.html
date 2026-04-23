@@ -16,127 +16,187 @@
     </header>
 
     <!-- Summary Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
         <!-- Card 1: Total CVEs -->
-        <div class="bg-surface-container p-6 rounded-xl border-l-4 border-primary transition-transform duration-200 hover:scale-[1.02]">
-            <div class="flex justify-between items-start mb-4">
-                <span class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant">Total CVEs</span>
+        <div class="bg-surface-container p-5 rounded-xl border-l-4 border-primary transition-transform duration-200 hover:scale-[1.02]">
+            <div class="flex justify-between items-start mb-3">
+                <span class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant">Active Threats</span>
                 <span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">security</span>
             </div>
             <div class="flex items-baseline gap-2">
-                <h2 class="text-5xl font-display font-bold text-on-surface">{{.Total}}</h2>
+                <h2 class="text-4xl font-display font-bold text-on-surface">{{.Total}}</h2>
             </div>
         </div>
 
         <!-- Card 2: KEV Count -->
-        <div class="bg-surface-container p-6 rounded-xl border-l-4 border-tertiary transition-transform duration-200 hover:scale-[1.02]">
-            <div class="flex justify-between items-start mb-4">
-                <span class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant">KEV Count</span>
+        <div class="bg-surface-container p-5 rounded-xl border-l-4 border-tertiary transition-transform duration-200 hover:scale-[1.02]">
+            <div class="flex justify-between items-start mb-3">
+                <span class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant">CISA KEV</span>
                 <span class="material-symbols-outlined text-tertiary" style="font-variation-settings: 'FILL' 1;">warning</span>
             </div>
             <div class="flex items-baseline gap-2">
-                <h2 class="text-5xl font-display font-bold text-on-surface">{{.KevCount}}</h2>
-                <span class="text-xs text-tertiary font-medium tracking-tight">CISA TRACKED</span>
+                <h2 class="text-4xl font-display font-bold text-on-surface">{{.KevCount}}</h2>
+                <span class="text-[10px] text-tertiary font-medium tracking-tight uppercase">Exploited</span>
             </div>
         </div>
 
-        <!-- Card 3: High Severity -->
-        <div class="bg-surface-container p-6 rounded-xl border-l-4 border-error transition-transform duration-200 hover:scale-[1.02]">
-            <div class="flex justify-between items-start mb-4">
-                <span class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant">High Severity</span>
+        <!-- Card 3: Critical Severity -->
+        <div class="bg-surface-container p-5 rounded-xl border-l-4 border-error transition-transform duration-200 hover:scale-[1.02]">
+            <div class="flex justify-between items-start mb-3">
+                <span class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant">Critical</span>
                 <span class="material-symbols-outlined text-error" style="font-variation-settings: 'FILL' 1;">dangerous</span>
             </div>
             <div class="flex items-baseline gap-2">
-                <h2 class="text-5xl font-display font-bold text-error">{{.HighCount}}</h2>
-                <span class="text-xs text-error font-medium tracking-tight">CVSS 7.0+</span>
+                <h2 class="text-4xl font-display font-bold text-error">{{.CritCount}}</h2>
+                <span class="text-[10px] text-error font-medium tracking-tight uppercase">CVSS 9.0+</span>
+            </div>
+        </div>
+
+        <!-- Card 4: In Progress -->
+        <div class="bg-surface-container p-5 rounded-xl border-l-4 border-secondary transition-transform duration-200 hover:scale-[1.02]">
+            <div class="flex justify-between items-start mb-3">
+                <span class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant">Remediating</span>
+                <span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1;">engineering</span>
+            </div>
+            <div class="flex items-baseline gap-2">
+                <h2 class="text-4xl font-display font-bold text-secondary">{{.ProgressCount}}</h2>
+                <span class="text-[10px] text-secondary font-medium tracking-tight uppercase">In Progress</span>
             </div>
         </div>
     </div>
 
+    <!-- Filter Bar -->
+    <div class="bg-surface-container-low p-4 rounded-xl border border-outline-variant/30">
+        <form action="/dashboard" method="GET" class="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-6 gap-4 items-end">
+            <div class="space-y-1.5">
+                <label class="text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant px-1">Keyword / ID</label>
+                <div class="relative">
+                    <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
+                    <input type="text" name="q" value="{{.Query}}" placeholder="Search..." class="bg-surface-container w-full pl-9 pr-4 py-2 rounded-md border-b-2 border-transparent focus:border-primary focus:outline-none text-sm transition-colors">
+                </div>
+            </div>
+            
+            <div class="space-y-1.5">
+                <label class="text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant px-1">Remediation Status</label>
+                <select name="status" class="bg-surface-container w-full px-3 py-2 rounded-md border-b-2 border-transparent focus:border-primary focus:outline-none text-sm transition-colors">
+                    <option value="active" {{if eq .StatusFilter "active"}}selected{{end}}>All Active</option>
+                    <option value="in_progress" {{if eq .StatusFilter "in_progress"}}selected{{end}}>In Progress</option>
+                    <option value="waiting_patch" {{if eq .StatusFilter "waiting_patch"}}selected{{end}}>Waiting Patch</option>
+                    <option value="resolved" {{if eq .StatusFilter "resolved"}}selected{{end}}>Resolved</option>
+                    <option value="ignored" {{if eq .StatusFilter "ignored"}}selected{{end}}>Ignored</option>
+                </select>
+            </div>
+
+            <div class="space-y-1.5">
+                <label class="text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant px-1">CVSS Range</label>
+                <div class="flex items-center gap-2">
+                    <input type="number" step="0.1" name="min_cvss" value="{{.MinCvss}}" placeholder="0.0" class="bg-surface-container w-full px-2 py-2 rounded-md border-b-2 border-transparent focus:border-primary focus:outline-none text-sm transition-colors">
+                    <span class="text-on-surface-variant">-</span>
+                    <input type="number" step="0.1" name="max_cvss" value="{{.MaxCvss}}" placeholder="10.0" class="bg-surface-container w-full px-2 py-2 rounded-md border-b-2 border-transparent focus:border-primary focus:outline-none text-sm transition-colors">
+                </div>
+            </div>
+
+            <div class="space-y-1.5">
+                <label class="text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant px-1">Date Published</label>
+                <div class="flex items-center gap-2">
+                    <input type="date" name="start_date" value="{{.StartDate}}" class="bg-surface-container w-full px-2 py-2 rounded-md border-b-2 border-transparent focus:border-primary focus:outline-none text-xs transition-colors">
+                    <input type="date" name="end_date" value="{{.EndDate}}" class="bg-surface-container w-full px-2 py-2 rounded-md border-b-2 border-transparent focus:border-primary focus:outline-none text-xs transition-colors">
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-2 pb-2">
+                <label class="text-[10px] font-label font-bold text-on-surface-variant inline-flex items-center cursor-pointer">
+                    <input type="checkbox" name="kev" value="true" {{if .KevOnly}}checked{{end}} class="mr-2 h-4 w-4 rounded border-outline-variant text-tertiary focus:ring-tertiary">
+                    Priority KEV
+                </label>
+                <label class="text-[10px] font-label font-bold text-on-surface-variant inline-flex items-center cursor-pointer">
+                    <input type="checkbox" name="all" value="true" {{if .SearchAll}}checked{{end}} class="mr-2 h-4 w-4 rounded border-outline-variant text-primary focus:ring-primary">
+                    Global Library
+                </label>
+            </div>
+
+            <div class="pb-1">
+                <button type="submit" class="w-full bg-primary hover:bg-primary/90 text-on-primary py-2.5 rounded-md text-xs font-black tracking-widest uppercase shadow-lg shadow-primary/20 transition-all active:scale-95">Apply Intelligence</button>
+            </div>
+        </form>
+    </div>
+
     <!-- Main Data Table -->
     <div class="bg-surface rounded-xl border border-outline-variant/30 overflow-hidden shadow-2xl">
-        <div class="p-6 border-b border-outline-variant/30 flex justify-between items-center bg-surface-container-low">
-            <h3 class="font-display font-medium text-lg tracking-wide">Recent Telemetry</h3>
-
-            <form action="/dashboard" method="GET" class="relative flex items-center">
-                <div class="relative inline-block">
-                    <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
-                    <input type="text" name="q" value="{{.Query}}" placeholder="Search ID or description..." class="bg-surface-container w-64 pl-9 pr-4 py-2 rounded-md border-b-2 border-transparent focus:border-primary focus:outline-none text-sm font-label transition-colors">
-                </div>
-                <input type="date" name="start_date" value="{{.StartDate}}" class="bg-surface-container ml-2 pl-3 pr-2 py-2 rounded-md border-b-2 border-transparent focus:border-primary focus:outline-none text-sm font-label transition-colors">
-                <span class="text-on-surface-variant text-sm mx-1">-</span>
-                <input type="date" name="end_date" value="{{.EndDate}}" class="bg-surface-container pl-3 pr-2 py-2 rounded-md border-b-2 border-transparent focus:border-primary focus:outline-none text-sm font-label transition-colors">
-                <label class="ml-3 text-sm font-label text-on-surface-variant inline-flex items-center cursor-pointer">
-                    <input type="checkbox" name="all" value="true" {{if .SearchAll}}checked{{end}} class="mr-1.5 h-4 w-4 rounded border-outline-variant text-primary focus:ring-primary focus:ring-offset-surface">
-                    Search All
-                </label>
-                <button type="submit" class="ml-2 bg-primary hover:bg-primary/90 text-on-primary px-3 py-1.5 rounded-md text-sm font-bold tracking-wide transition-colors">Filter</button>
-            </form>
-        </div>
-
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
                 <thead>
                     <tr class="bg-surface-container-low border-b border-outline-variant/30">
-                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">ID Reference</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Reference</th>
                         <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Severity</th>
-                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">KEV</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Indicators</th>
                         <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Status</th>
-                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Publish Date</th>
-                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant text-right">Actions</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant text-right">Workflow</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-outline-variant/10">
                     {{range .CVEs}}
-                    <tr class="hover:bg-surface-container transition-colors duration-150">
+                    <tr class="hover:bg-surface-container/50 transition-colors duration-150">
                         <td class="px-6 py-5">
                             <div class="flex flex-col">
                                 <a href="https://nvd.nist.gov/vuln/detail/{{.CVEID}}" target="_blank" rel="noopener noreferrer" class="text-sm font-bold font-display text-primary hover:underline">{{.CVEID}}</a>
+                                <p class="text-[10px] text-on-surface-variant mt-1 font-mono uppercase tracking-tighter opacity-60">Published {{.PublishedDate.Format "Jan 02, 2006"}}</p>
                             </div>
                         </td>
                         <td class="px-6 py-5">
-                            {{if ge .CVSSScore 7.0}}
-                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-error-container/30 text-error border border-error/20 text-[10px] font-bold tracking-wider uppercase"><span class="w-1.5 h-1.5 rounded-full bg-error"></span> High ({{.CVSSScore}})</span>
+                            {{if ge .CVSSScore 9.0}}
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-error/10 text-error border border-error/20 text-[10px] font-black tracking-widest uppercase"><span class="w-1.5 h-1.5 rounded-full bg-error animate-pulse"></span> CRITICAL ({{.CVSSScore}})</span>
+                            {{else if ge .CVSSScore 7.0}}
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-error-container/20 text-error border border-error/20 text-[10px] font-bold tracking-widest uppercase">HIGH ({{.CVSSScore}})</span>
                             {{else if ge .CVSSScore 4.0}}
-                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-tertiary-container/30 text-tertiary border border-tertiary/20 text-[10px] font-bold tracking-wider uppercase"><span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span> Medium ({{.CVSSScore}})</span>
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-tertiary-container/20 text-tertiary border border-tertiary/20 text-[10px] font-bold tracking-widest uppercase">MEDIUM ({{.CVSSScore}})</span>
                             {{else}}
-                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-surface-variant text-on-surface border border-outline-variant/30 text-[10px] font-bold tracking-wider uppercase"><span class="w-1.5 h-1.5 rounded-full bg-on-surface-variant"></span> Low ({{.CVSSScore}})</span>
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-surface-variant/40 text-on-surface-variant border border-outline-variant/30 text-[10px] font-bold tracking-widest uppercase">LOW ({{.CVSSScore}})</span>
                             {{end}}
                         </td>
                         <td class="px-6 py-5">
-                            {{if .CISAKEV}}
-                            <span class="inline-flex items-center px-2 py-0.5 rounded bg-error text-on-error text-xs font-bold uppercase tracking-widest">KEV</span>
-                            {{else}}
-                            <span class="text-on-surface-variant text-xs">-</span>
-                            {{end}}
+                            <div class="flex items-center gap-2">
+                                {{if .CISAKEV}}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded bg-error text-on-error text-[9px] font-black uppercase tracking-widest shadow-sm shadow-error/20">KEV</span>
+                                {{end}}
+                                {{if ge .CVSSScore 9.0}}
+                                <span class="material-symbols-outlined text-error text-lg" title="High Priority Threat">priority_high</span>
+                                {{end}}
+                            </div>
                         </td>
                         <td class="px-6 py-5">
                             {{if eq .Status "resolved"}}
-                            <span class="text-xs text-primary font-bold uppercase tracking-widest flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">check_circle</span> Resolved</span>
+                            <span class="text-[10px] text-primary font-black uppercase tracking-widest flex items-center gap-1.5 bg-primary/10 px-2 py-1 rounded-full w-fit"><span class="material-symbols-outlined text-[14px]">check_circle</span> Resolved</span>
                             {{else if eq .Status "ignored"}}
-                            <span class="text-xs text-on-surface-variant font-bold uppercase tracking-widest flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">visibility_off</span> Ignored</span>
+                            <span class="text-[10px] text-on-surface-variant font-black uppercase tracking-widest flex items-center gap-1.5 bg-surface-variant/50 px-2 py-1 rounded-full w-fit opacity-60"><span class="material-symbols-outlined text-[14px]">visibility_off</span> Ignored</span>
+                            {{else if eq .Status "in_progress"}}
+                            <span class="text-[10px] text-secondary font-black uppercase tracking-widest flex items-center gap-1.5 bg-secondary/10 px-2 py-1 rounded-full w-fit"><span class="material-symbols-outlined text-[14px] animate-spin" style="animation-duration: 3s;">settings</span> In Progress</span>
+                            {{else if eq .Status "waiting_patch"}}
+                            <span class="text-[10px] text-tertiary font-black uppercase tracking-widest flex items-center gap-1.5 bg-tertiary/10 px-2 py-1 rounded-full w-fit"><span class="material-symbols-outlined text-[14px]">hourglass_empty</span> Waiting Patch</span>
                             {{else}}
-                            <span class="text-xs text-error font-bold uppercase tracking-widest flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">warning</span> Active</span>
+                            <span class="text-[10px] text-error font-black uppercase tracking-widest flex items-center gap-1.5 bg-error/10 px-2 py-1 rounded-full w-fit shadow-sm shadow-error/5"><span class="material-symbols-outlined text-[14px]">warning</span> Active</span>
                             {{end}}
                         </td>
-                        <td class="px-6 py-5 text-sm text-on-surface font-mono">{{.PublishedDate.Format "2006-01-02"}}</td>
                         <td class="px-6 py-5 text-right">
                             <form action="/api/status" method="POST" class="inline">
                                 {{$.csrfField}}
                                 <input type="hidden" name="cve_id" value="{{.ID}}">
-                                <select name="status" onchange="updateCVEStatus(this.form)" class="bg-surface-container text-xs py-1 px-2 rounded border border-outline-variant/50 text-on-surface focus:outline-none focus:border-primary">
-                                    <option value="active" {{if eq .Status "active"}}selected{{end}}>Active</option>
+                                <select name="status" onchange="updateCVEStatus(this.form)" class="bg-surface-container text-[10px] font-black uppercase tracking-widest py-1.5 px-3 rounded-lg border border-outline-variant/30 text-on-surface focus:outline-none focus:border-primary transition-all hover:bg-surface-container-high cursor-pointer">
+                                    <option value="active" {{if eq .Status "active"}}selected{{end}}>Mark Active</option>
+                                    <option value="in_progress" {{if eq .Status "in_progress"}}selected{{end}}>In Progress</option>
+                                    <option value="waiting_patch" {{if eq .Status "waiting_patch"}}selected{{end}}>Wait Patch</option>
                                     <option value="resolved" {{if eq .Status "resolved"}}selected{{end}}>Resolved</option>
-                                    <option value="ignored" {{if eq .Status "ignored"}}selected{{end}}>Ignored</option>
+                                    <option value="ignored" {{if eq .Status "ignored"}}selected{{end}}>Ignore</option>
                                 </select>
                             </form>
                         </td>
                     </tr>
                     {{else}}
                     <tr>
-                        <td colspan="6">
-                            <div class="p-12 text-center flex flex-col items-center">
-                                <p class="text-on-surface-variant font-label tracking-widest uppercase text-sm">No CVEs found</p>
+                        <td colspan="5">
+                            <div class="p-20 text-center flex flex-col items-center">
+                                <span class="material-symbols-outlined text-6xl text-outline-variant/30 mb-4" style="font-variation-settings: 'wght' 100;">database_off</span>
+                                <p class="text-on-surface-variant font-label tracking-widest uppercase text-sm">No vulnerability intelligence matching your criteria</p>
                             </div>
                         </td>
                     </tr>
@@ -146,14 +206,14 @@
         </div>
 
         <!-- Pagination -->
-        <div class="p-4 border-t border-outline-variant/30 flex justify-between items-center bg-surface-container-low">
-            <span class="text-xs font-label text-on-surface-variant tracking-widest uppercase">{{if gt .TotalPages 0}}Page {{.CurrentPage}} of {{.TotalPages}}{{else}}No results{{end}}</span>
-            <div class="flex gap-2">
+        <div class="p-6 border-t border-outline-variant/30 flex justify-between items-center bg-surface-container-low">
+            <span class="text-[10px] font-label font-black text-on-surface-variant tracking-widest uppercase">{{if gt .TotalPages 0}}Page {{.CurrentPage}} of {{.TotalPages}}{{else}}No intelligence results{{end}}</span>
+            <div class="flex gap-4">
                 {{if .HasPrev}}
-                <a href="?page={{.PrevPage}}&q={{.Query}}&start_date={{.StartDate}}&end_date={{.EndDate}}&all={{if .SearchAll}}true{{end}}" class="px-3 py-1 bg-surface border border-outline-variant/50 rounded text-xs font-bold hover:bg-surface-container-high transition-colors text-on-surface">PREV</a>
+                <a href="?page={{.PrevPage}}&q={{.Query}}&start_date={{.StartDate}}&end_date={{.EndDate}}&all={{if .SearchAll}}true{{end}}&status={{.StatusFilter}}&kev={{.KevOnly}}&min_cvss={{.MinCvss}}&max_cvss={{.MaxCvss}}" class="px-6 py-2 bg-surface-container-high border border-outline-variant/50 rounded-lg text-[10px] font-black tracking-widest uppercase hover:bg-primary hover:text-on-primary transition-all duration-200">PREV</a>
                 {{end}}
                 {{if .HasNext}}
-                <a href="?page={{.NextPage}}&q={{.Query}}&start_date={{.StartDate}}&end_date={{.EndDate}}&all={{if .SearchAll}}true{{end}}" class="px-3 py-1 bg-surface border border-outline-variant/50 rounded text-xs font-bold hover:bg-surface-container-high transition-colors text-primary border-primary/30">NEXT</a>
+                <a href="?page={{.NextPage}}&q={{.Query}}&start_date={{.StartDate}}&end_date={{.EndDate}}&all={{if .SearchAll}}true{{end}}&status={{.StatusFilter}}&kev={{.KevOnly}}&min_cvss={{.MinCvss}}&max_cvss={{.MaxCvss}}" class="px-6 py-2 bg-primary text-on-primary rounded-lg text-[10px] font-black tracking-widest uppercase hover:shadow-lg hover:shadow-primary/30 transition-all duration-200 active:scale-95">NEXT</a>
                 {{end}}
             </div>
         </div>
@@ -168,8 +228,7 @@ function updateCVEStatus(form) {
     const status = selectElem.value;
     const csrfToken = form.querySelector('input[name="gorilla.csrf.Token"]').value;
 
-    // Cache the previous value in a data attribute
-    const previousValue = (selectElem.getAttribute('data-prev-value')) || (selectElem.options[selectElem.selectedIndex].defaultSelected ? selectElem.querySelector('option[selected]').value : 'active');
+    const previousValue = selectElem.getAttribute('data-prev-value') || 'active';
 
     fetch('/api/status', {
         method: 'POST',
@@ -182,33 +241,18 @@ function updateCVEStatus(form) {
             status: status
         })
     }).then(response => {
-        if (!response.ok) {
-            throw new Error('Server returned ' + response.status);
-        }
+        if (!response.ok) throw new Error('Server error');
         selectElem.setAttribute('data-prev-value', status);
-
-        // Update UI
-        const row = form.closest('tr');
-        if (row) {
-            const statusCell = row.children[3]; // The 4th td contains the status
-            if (statusCell) {
-                if (status === 'resolved') {
-                    statusCell.innerHTML = '<span class="text-xs text-primary font-bold uppercase tracking-widest flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">check_circle</span> Resolved</span>';
-                } else if (status === 'ignored') {
-                    statusCell.innerHTML = '<span class="text-xs text-on-surface-variant font-bold uppercase tracking-widest flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">visibility_off</span> Ignored</span>';
-                } else {
-                    statusCell.innerHTML = '<span class="text-xs text-error font-bold uppercase tracking-widest flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">warning</span> Active</span>';
-                }
-            }
-        }
+        
+        // Refresh page to update widgets and counts
+        window.location.reload();
     }).catch(error => {
         console.error('Error updating status:', error);
-        alert('Failed to update status. Please try again.');
+        alert('Status update failed');
         selectElem.value = previousValue;
     });
 }
 
-// Initialize prev-value on page load
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('form[action="/api/status"] select[name="status"]').forEach(select => {
         select.setAttribute('data-prev-value', select.value);

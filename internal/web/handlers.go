@@ -15,6 +15,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -265,14 +266,25 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	startDate := r.URL.Query().Get("start_date")
 	endDate := r.URL.Query().Get("end_date")
 	searchAll := r.URL.Query().Get("all") == "true"
+	statusFilter := r.URL.Query().Get("status") // e.g. 'active', 'in_progress', 'resolved'
+	kevOnly := r.URL.Query().Get("kev") == "true"
+	minCvssStr := r.URL.Query().Get("min_cvss")
+	maxCvssStr := r.URL.Query().Get("max_cvss")
 
-	var totalItems, kevCount, highCount int
+	minCvss, _ := strconv.ParseFloat(minCvssStr, 64)
+	maxCvss, _ := strconv.ParseFloat(maxCvssStr, 64)
+	if maxCvss == 0 {
+		maxCvss = 10.0
+	}
+
+	var totalItems, kevCount int
 
 	metricsQuery := `
 		SELECT
 			COUNT(DISTINCT c.id) as total_cves,
 			COUNT(DISTINCT CASE WHEN c.cisa_kev = true THEN c.id END) as kev_count,
-			COUNT(DISTINCT CASE WHEN c.cvss_score >= 7.0 THEN c.id END) as high_count
+			COUNT(DISTINCT CASE WHEN c.cvss_score >= 9.0 THEN c.id END) as critical_count,
+			COUNT(DISTINCT CASE WHEN ucs.status = 'in_progress' THEN c.id END) as in_progress_count
 		FROM cves c
 	`
 
@@ -287,13 +299,27 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		metricsQuery += `
 		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
-		WHERE (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored'))
+		WHERE (1=1)
 		`
+		if statusFilter == "" || statusFilter == "active" {
+			metricsQuery += " AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) "
+		} else {
+			metricsQuery += " AND ucs.status = '" + statusFilter + "' "
+		}
 	}
 
 	metricsQuery += `
 		  AND ($2 = '' OR c.cve_id ILIKE '%' || $2 || '%' OR c.description ILIKE '%' || $2 || '%')
 	`
+	if kevOnly {
+		metricsQuery += " AND c.cisa_kev = true "
+	}
+	if minCvss > 0 {
+		metricsQuery += fmt.Sprintf(" AND c.cvss_score >= %f ", minCvss)
+	}
+	if maxCvss < 10 {
+		metricsQuery += fmt.Sprintf(" AND c.cvss_score <= %f ", maxCvss)
+	}
 
 	args := []interface{}{userID, searchQuery}
 
@@ -313,7 +339,8 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		args = append(args, "")
 	}
 
-	err := db.Pool.QueryRow(context.Background(), metricsQuery, args...).Scan(&totalItems, &kevCount, &highCount)
+	var critCount, progressCount int
+	err := db.Pool.QueryRow(context.Background(), metricsQuery, args...).Scan(&totalItems, &kevCount, &critCount, &progressCount)
 	if err != nil {
 		log.Printf("Error counting metrics: %v", err)
 	}
@@ -334,13 +361,27 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		query += `
 		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
-		WHERE (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored'))
+		WHERE (1=1)
 		`
+		if statusFilter == "" || statusFilter == "active" {
+			query += " AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) "
+		} else {
+			query += " AND ucs.status = '" + statusFilter + "' "
+		}
 	}
 
 	query += `
 		  AND ($2 = '' OR c.cve_id ILIKE '%' || $2 || '%' OR c.description ILIKE '%' || $2 || '%')
 	`
+	if kevOnly {
+		query += " AND c.cisa_kev = true "
+	}
+	if minCvss > 0 {
+		query += fmt.Sprintf(" AND c.cvss_score >= %f ", minCvss)
+	}
+	if maxCvss < 10 {
+		query += fmt.Sprintf(" AND c.cvss_score <= %f ", maxCvss)
+	}
 
 	if startDate != "" {
 		query += ` AND c.published_date >= $3`
@@ -378,20 +419,25 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	totalPages := (totalItems + pageSize - 1) / pageSize
 
 	RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
-		"CVEs":        cves,
-		"Total":       totalItems,
-		"KevCount":    kevCount,
-		"HighCount":   highCount,
-		"CurrentPage": page,
-		"TotalPages":  totalPages,
-		"HasPrev":     page > 1,
-		"HasNext":     page < totalPages,
-		"PrevPage":    page - 1,
-		"NextPage":    page + 1,
-		"Query":       searchQuery,
-		"StartDate":   startDate,
-		"EndDate":     endDate,
-		"SearchAll":   searchAll,
+		"CVEs":          cves,
+		"Total":         totalItems,
+		"KevCount":      kevCount,
+		"CritCount":     critCount,
+		"ProgressCount": progressCount,
+		"CurrentPage":   page,
+		"TotalPages":    totalPages,
+		"HasPrev":       page > 1,
+		"HasNext":       page < totalPages,
+		"PrevPage":      page - 1,
+		"NextPage":      page + 1,
+		"Query":         searchQuery,
+		"StartDate":     startDate,
+		"EndDate":       endDate,
+		"SearchAll":     searchAll,
+		"StatusFilter":  statusFilter,
+		"KevOnly":       kevOnly,
+		"MinCvss":       minCvssStr,
+		"MaxCvss":       maxCvssStr,
 	})
 }
 
@@ -417,7 +463,14 @@ func UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Status != "resolved" && req.Status != "ignored" && req.Status != "active" {
+	validStatuses := map[string]bool{
+		"active":         true,
+		"in_progress":    true,
+		"waiting_patch":  true,
+		"resolved":       true,
+		"ignored":        true,
+	}
+	if !validStatuses[req.Status] {
 		http.Error(w, "Invalid status", http.StatusBadRequest)
 		return
 	}
@@ -917,4 +970,114 @@ func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/admin/users", http.StatusFound)
+}
+
+func AssetsHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := GetUserID(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	if r.Method == "GET" {
+		rows, err := db.Pool.Query(r.Context(), `
+			SELECT a.id, a.name, a.type, a.created_at, 
+			       COALESCE(array_agg(ak.keyword) FILTER (WHERE ak.keyword IS NOT NULL), '{}')
+			FROM assets a
+			LEFT JOIN asset_keywords ak ON a.id = ak.asset_id
+			WHERE a.user_id = $1
+			GROUP BY a.id
+			ORDER BY a.created_at DESC
+		`, userID)
+		if err != nil {
+			log.Printf("Error fetching assets: %v", err)
+			http.Error(w, "Error fetching assets", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		type AssetWithKeywords struct {
+			models.Asset
+			Keywords []string
+		}
+		var assets []AssetWithKeywords
+		for rows.Next() {
+			var a AssetWithKeywords
+			if err := rows.Scan(&a.ID, &a.Name, &a.Type, &a.CreatedAt, &a.Keywords); err != nil {
+				continue
+			}
+			assets = append(assets, a)
+		}
+		RenderTemplate(w, r, "assets.html", map[string]interface{}{"Assets": assets})
+		return
+	}
+
+	if r.Method == "POST" {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Error parsing form", http.StatusBadRequest)
+			return
+		}
+		name := r.FormValue("name")
+		assetType := r.FormValue("type")
+		keywords := r.FormValue("keywords")
+
+		tx, err := db.Pool.Begin(r.Context())
+		if err != nil {
+			http.Error(w, "Error starting transaction", http.StatusInternalServerError)
+			return
+		}
+		defer func() { _ = tx.Rollback(r.Context()) }()
+
+		var assetID int
+		err = tx.QueryRow(r.Context(), `
+			INSERT INTO assets (user_id, name, type) VALUES ($1, $2, $3) RETURNING id
+		`, userID, name, assetType).Scan(&assetID)
+		if err != nil {
+			http.Error(w, "Error creating asset", http.StatusInternalServerError)
+			return
+		}
+
+		if keywords != "" {
+			kwList := strings.Split(keywords, ",")
+			for _, kw := range kwList {
+				kw = strings.TrimSpace(kw)
+				if kw != "" {
+					_, err = tx.Exec(r.Context(), `
+						INSERT INTO asset_keywords (asset_id, keyword) VALUES ($1, $2)
+						ON CONFLICT DO NOTHING
+					`, assetID, kw)
+					if err != nil {
+						http.Error(w, "Error adding keyword", http.StatusInternalServerError)
+						return
+					}
+				}
+			}
+		}
+
+		if err = tx.Commit(r.Context()); err != nil {
+			http.Error(w, "Error committing transaction", http.StatusInternalServerError)
+			return
+		}
+
+		http.Redirect(w, r, "/assets", http.StatusFound)
+	}
+}
+
+func DeleteAssetHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	userID, ok := GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	assetID := r.FormValue("id")
+	_, err := db.Pool.Exec(r.Context(), "DELETE FROM assets WHERE id = $1 AND user_id = $2", assetID, userID)
+	if err != nil {
+		http.Error(w, "Error deleting asset", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/assets", http.StatusFound)
 }
