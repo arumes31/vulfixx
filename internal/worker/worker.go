@@ -218,10 +218,12 @@ type CISAKEVResponse struct {
 	} `json:"vulnerabilities"`
 }
 
+var defaultCISAKEVURL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+
 func fetchFromCISAKEV(ctx context.Context) {
 	log.Println("Worker: [SYNC] Fetching CISA KEV catalog...")
 	client := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", defaultCISAKEVURL, nil)
 	if err != nil {
 		log.Printf("Worker: [ERROR] Failed to create CISA KEV request: %v", err)
 		return

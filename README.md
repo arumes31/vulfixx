@@ -88,6 +88,7 @@ This project uses a modern GitHub Actions pipeline (`.github/workflows/docker-bu
 - **Unit Testing**: Automated Go tests to ensure logic correctness.
 - **Linting**: Strict code quality checks with `golangci-lint` (v2.x).
 - **Security Scanning**: Vulnerability detection with `gosec`.
+- **Styling**: Modernized CSS pipeline with **Tailwind CSS v4** for high-performance, zero-runtime styling.
 - **Container Publishing**: Images are automatically built and pushed to **GitHub Container Registry (GHCR)**.
 
 To run the entire CI pipeline locally using `act`:

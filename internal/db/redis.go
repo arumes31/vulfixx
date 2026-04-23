@@ -7,7 +7,12 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-var RedisClient *redis.Client
+type RedisProvider interface {
+	redis.Cmdable
+	Close() error
+}
+
+var RedisClient RedisProvider
 
 func InitRedis() error {
 	url := os.Getenv("REDIS_URL")

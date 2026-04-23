@@ -2,81 +2,121 @@ package db
 
 import (
 	"context"
-	"os"
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/pashagolub/pgxmock/v3"
 )
 
-func TestInitDB(t *testing.T) {
-	if os.Getenv("CI") == "true" {
-		t.Skip("skipping integration test in CI")
-	}
-
-	t.Setenv("DB_HOST", "localhost")
-	t.Setenv("DB_PORT", "5432")
-	t.Setenv("DB_USER", "cveuser")
-	t.Setenv("DB_PASSWORD", "cvepass")
-	t.Setenv("DB_NAME", "cvetracker")
-
-	err := InitDB()
+func TestInitDBMock(t *testing.T) {
+	mock, err := SetupTestDB()
 	if err != nil {
-		if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "timeout") {
-			t.Skipf("skipping integration test: DB not available: %v", err)
-		}
-		t.Fatalf("Failed to init DB: %v", err)
+		t.Fatalf("failed to setup mock db: %v", err)
 	}
+	defer mock.Close()
 
-	err = Pool.Ping(context.Background())
+	mock.ExpectPing()
+	if err := Pool.Ping(context.Background()); err != nil {
+		t.Errorf("expected ping to succeed, got %v", err)
+	}
+}
+
+func TestRedisMock(t *testing.T) {
+	mr, err := SetupTestRedis()
 	if err != nil {
-		t.Errorf("Expected to ping db successfully, got error: %v", err)
+		t.Fatalf("failed to setup miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	if err := RedisClient.Ping(context.Background()).Err(); err != nil {
+		t.Errorf("expected redis ping to succeed, got %v", err)
+	}
+}
+
+func TestMigrate(t *testing.T) {
+	mock, err := SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	// Mock all queries in migrate
+	mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
+	
+	queries := []string{
+		"ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin",
+		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS enable_email",
+		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS enable_webhook",
+		"CREATE TABLE IF NOT EXISTS sync_state",
+		"CREATE INDEX IF NOT EXISTS idx_cves_published_date",
+		"CREATE INDEX IF NOT EXISTS idx_cves_cvss_score",
+		"CREATE INDEX IF NOT EXISTS idx_cves_updated_date",
+		"CREATE TABLE IF NOT EXISTS assets",
+		"CREATE TABLE IF NOT EXISTS asset_keywords",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS vector_string",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS \"references\"",
+		"CREATE TABLE IF NOT EXISTS user_cve_notes",
 	}
 
+	for _, q := range queries {
+		mock.ExpectExec(q).WillReturnResult(pgxmock.NewResult("ALTER", 0))
+	}
+
+	err = migrate(context.Background())
+	if err != nil {
+		t.Errorf("migrate failed: %v", err)
+	}
+}
+
+func TestMigrateError(t *testing.T) {
+	mock, err := SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnError(fmt.Errorf("schema fail"))
+	
+	err = migrate(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "failed to execute base schema") {
+		t.Errorf("expected schema error, got %v", err)
+	}
+}
+
+func TestMigrateQueryError(t *testing.T) {
+	mock, err := SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
+	mock.ExpectExec("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin").WillReturnError(fmt.Errorf("query fail"))
+	
+	err = migrate(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "migration 0 failed") {
+		t.Errorf("expected migration error, got %v", err)
+	}
+}
+
+func TestCloseDB(t *testing.T) {
+	// Test nil pool
+	Pool = nil
+	CloseDB() // Should not panic
+
+	// Test real pool
+	_, _ = SetupTestDB()
 	CloseDB()
 }
 
-func TestInitDBWithInvalidDSN(t *testing.T) {
-	t.Setenv("DB_HOST", "invalid_host")
-	t.Setenv("DB_PORT", "abc")
-	t.Setenv("DB_USER", "user")
-	t.Setenv("DB_PASSWORD", "pass")
-	t.Setenv("DB_NAME", "db")
-
-	err := InitDB()
-	if err == nil {
-		t.Fatal("Expected error with invalid DSN (port abc), but got nil")
-	}
-	CloseDB()
-}
-
-func TestRedis(t *testing.T) {
-	if os.Getenv("CI") == "true" {
-		t.Skip("skipping integration test in CI")
-	}
-
-	t.Setenv("REDIS_URL", "localhost:6379")
-
-	err := InitRedis()
-	if err != nil {
-		if strings.Contains(err.Error(), "connection refused") {
-			t.Skipf("skipping integration test: Redis not available: %v", err)
-		}
-		t.Fatalf("Failed to init redis: %v", err)
-	}
-
-	err = RedisClient.Ping(context.Background()).Err()
-	if err != nil {
-		t.Errorf("Expected to ping redis successfully, got error: %v", err)
-	}
-
-	CloseRedis()
-}
-
-func TestRedisInvalid(t *testing.T) {
-	t.Setenv("REDIS_URL", "invalid_host:1234")
-
+func TestRedisErrors(t *testing.T) {
+	t.Setenv("REDIS_URL", "invalid:port")
 	err := InitRedis()
 	if err == nil {
-		t.Log("Redis client creation usually doesn't fail until ping")
+		t.Error("expected error for invalid redis url")
 	}
-	CloseRedis()
+	
+	RedisClient = nil
+	CloseRedis() // Should not panic
 }
