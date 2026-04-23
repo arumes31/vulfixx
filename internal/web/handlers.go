@@ -262,40 +262,103 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	offset := (page - 1) * pageSize
 
 	searchQuery := r.URL.Query().Get("q")
+	startDate := r.URL.Query().Get("start_date")
+	endDate := r.URL.Query().Get("end_date")
+	searchAll := r.URL.Query().Get("all") == "true"
+
 	var totalItems, kevCount, highCount int
 
-	// Fetch metrics for dashboard
 	metricsQuery := `
 		SELECT
 			COUNT(DISTINCT c.id) as total_cves,
 			COUNT(DISTINCT CASE WHEN c.cisa_kev = true THEN c.id END) as kev_count,
 			COUNT(DISTINCT CASE WHEN c.cvss_score >= 7.0 THEN c.id END) as high_count
 		FROM cves c
+	`
+
+	if !searchAll {
+		metricsQuery += `
 		INNER JOIN user_subscriptions us ON us.user_id = $1
 		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
 		WHERE (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored'))
 		  AND c.cvss_score >= us.min_severity
 		  AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%')
+		`
+	} else {
+		metricsQuery += `
+		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
+		WHERE (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored'))
+		`
+	}
+
+	metricsQuery += `
 		  AND ($2 = '' OR c.cve_id ILIKE '%' || $2 || '%' OR c.description ILIKE '%' || $2 || '%')
 	`
-	err := db.Pool.QueryRow(context.Background(), metricsQuery, userID, searchQuery).Scan(&totalItems, &kevCount, &highCount)
+
+	args := []interface{}{userID, searchQuery}
+
+	if startDate != "" {
+		metricsQuery += ` AND c.published_date >= $3`
+		args = append(args, startDate)
+	} else {
+		metricsQuery += ` AND (1=1 OR $3 = '')`
+		args = append(args, "")
+	}
+
+	if endDate != "" {
+		metricsQuery += ` AND c.published_date <= $4`
+		args = append(args, endDate)
+	} else {
+		metricsQuery += ` AND (1=1 OR $4 = '')`
+		args = append(args, "")
+	}
+
+	err := db.Pool.QueryRow(context.Background(), metricsQuery, args...).Scan(&totalItems, &kevCount, &highCount)
 	if err != nil {
 		log.Printf("Error counting metrics: %v", err)
 	}
 
-	// Fetch CVEs not resolved/ignored by user, filtered by their subscriptions and search query
 	query := `
 		SELECT DISTINCT c.id, c.cve_id, c.description, c.cvss_score, c.cisa_kev, c.published_date, COALESCE(ucs.status, 'active') as status
 		FROM cves c
+	`
+
+	if !searchAll {
+		query += `
 		INNER JOIN user_subscriptions us ON us.user_id = $1
 		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
 		WHERE (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored'))
 		  AND c.cvss_score >= us.min_severity
 		  AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%')
+		`
+	} else {
+		query += `
+		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
+		WHERE (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored'))
+		`
+	}
+
+	query += `
 		  AND ($2 = '' OR c.cve_id ILIKE '%' || $2 || '%' OR c.description ILIKE '%' || $2 || '%')
-		ORDER BY c.published_date DESC LIMIT $3 OFFSET $4
 	`
-	rows, err := db.Pool.Query(context.Background(), query, userID, searchQuery, pageSize, offset)
+
+	if startDate != "" {
+		query += ` AND c.published_date >= $3`
+	} else {
+		query += ` AND (1=1 OR $3 = '')`
+	}
+
+	if endDate != "" {
+		query += ` AND c.published_date <= $4`
+	} else {
+		query += ` AND (1=1 OR $4 = '')`
+	}
+
+	query += ` ORDER BY c.published_date DESC LIMIT $5 OFFSET $6`
+
+	args = append(args, pageSize, offset)
+
+	rows, err := db.Pool.Query(context.Background(), query, args...)
 	if err != nil {
 		http.Error(w, "Error fetching CVEs", http.StatusInternalServerError)
 		return
@@ -326,6 +389,9 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"PrevPage":    page - 1,
 		"NextPage":    page + 1,
 		"Query":       searchQuery,
+		"StartDate":   startDate,
+		"EndDate":     endDate,
+		"SearchAll":   searchAll,
 	})
 }
 
