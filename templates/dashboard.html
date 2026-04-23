@@ -159,7 +159,7 @@ function updateCVEStatus(form) {
     const csrfToken = form.querySelector('input[name="gorilla.csrf.Token"]').value;
 
     // Cache the previous value in a data attribute
-    const previousValue = selectElem.getAttribute('data-prev-value') || selectElem.options[selectElem.selectedIndex].defaultSelected ? selectElem.querySelector('option[selected]').value : 'active';
+    const previousValue = (selectElem.getAttribute('data-prev-value')) || (selectElem.options[selectElem.selectedIndex].defaultSelected ? selectElem.querySelector('option[selected]').value : 'active');
 
     fetch('/api/status', {
         method: 'POST',

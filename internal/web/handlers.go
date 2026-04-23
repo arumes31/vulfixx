@@ -285,7 +285,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch CVEs not resolved/ignored by user, filtered by their subscriptions and search query
 	query := `
-		SELECT DISTINCT c.id, c.cve_id, c.description, c.cvss_score, c.cisa_kev, c.published_date
+		SELECT DISTINCT c.id, c.cve_id, c.description, c.cvss_score, c.cisa_kev, c.published_date, COALESCE(ucs.status, 'active') as status
 		FROM cves c
 		INNER JOIN user_subscriptions us ON us.user_id = $1
 		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
@@ -305,7 +305,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	var cves []models.CVE
 	for rows.Next() {
 		var cve models.CVE
-		err := rows.Scan(&cve.ID, &cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.CISAKEV, &cve.PublishedDate)
+		err := rows.Scan(&cve.ID, &cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.CISAKEV, &cve.PublishedDate, &cve.Status)
 		if err != nil {
 			continue
 		}
