@@ -35,7 +35,7 @@
                         <span>{{$count}}</span>
                     </div>
                     <div class="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden">
-                        <div class="h-full {{if eq $label "Critical"}}bg-error{{else if eq $label "High"}}bg-error/70{{else if eq $label "Medium"}}bg-tertiary{{else}}bg-surface-variant{{end}}" style="width: {{percent $count $total}}%"></div>
+                        <div class="h-full {{if eq $label "Critical"}}bg-error{{else if eq $label "High"}}bg-error{{else if eq $label "Medium"}}bg-tertiary{{else}}bg-surface-variant{{end}} {{if eq $label "High"}}opacity-70{{end}}" style="width: {{percent $count $total}}%;"></div>
                     </div>
                 </div>
                 {{end}}
@@ -143,7 +143,7 @@
                                     {{end}}
                                 {{end}}
 
-                                <button onclick="openNotes({{.ID}}, '{{.CVEID}}', {{.Notes}})" class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors {{if .Notes}}text-primary opacity-100{{else}}opacity-30{{end}}" title="Remediation Notes">description</button>
+                                <button data-id="{{.ID}}" data-cveid="{{.CVEID}}" data-notes="{{.Notes}}" onclick="openNotesFromBtn(this)" class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors {{if .Notes}}text-primary opacity-100{{else}}opacity-30{{end}}" title="Remediation Notes">description</button>
                             </div>
                         </td>
                         <td class="px-6 py-5">
@@ -258,6 +258,13 @@ function explainVector(vector) {
 
 function closeVector() {
     document.getElementById('vectorModal').classList.add('hidden');
+}
+
+function openNotesFromBtn(btn) {
+    const id = btn.getAttribute('data-id');
+    const cveid = btn.getAttribute('data-cveid');
+    const notes = btn.getAttribute('data-notes');
+    openNotes(id, cveid, notes);
 }
 
 function openNotes(id, name, text) {

@@ -34,20 +34,26 @@ func TestWorkerFunctions(t *testing.T) {
 						Lang  string `json:"lang"`
 						Value string `json:"value"`
 					} `json:"descriptions"`
+					References []struct {
+						URL string `json:"url"`
+					} `json:"references"`
 					Metrics struct {
 						CvssMetricV31 []struct {
 							CvssData struct {
-								BaseScore float64 `json:"baseScore"`
+								BaseScore    float64 `json:"baseScore"`
+								VectorString string  `json:"vectorString"`
 							} `json:"cvssData"`
 						} `json:"cvssMetricV31"`
 						CvssMetricV30 []struct {
 							CvssData struct {
-								BaseScore float64 `json:"baseScore"`
+								BaseScore    float64 `json:"baseScore"`
+								VectorString string  `json:"vectorString"`
 							} `json:"cvssData"`
 						} `json:"cvssMetricV30"`
 						CvssMetricV2 []struct {
 							CvssData struct {
-								BaseScore float64 `json:"baseScore"`
+								BaseScore    float64 `json:"baseScore"`
+								VectorString string  `json:"vectorString"`
 							} `json:"cvssData"`
 						} `json:"cvssMetricV2"`
 					} `json:"metrics"`
@@ -62,20 +68,26 @@ func TestWorkerFunctions(t *testing.T) {
 							Lang  string `json:"lang"`
 							Value string `json:"value"`
 						} `json:"descriptions"`
+						References []struct {
+							URL string `json:"url"`
+						} `json:"references"`
 						Metrics struct {
 							CvssMetricV31 []struct {
 								CvssData struct {
-									BaseScore float64 `json:"baseScore"`
+									BaseScore    float64 `json:"baseScore"`
+									VectorString string  `json:"vectorString"`
 								} `json:"cvssData"`
 							} `json:"cvssMetricV31"`
 							CvssMetricV30 []struct {
 								CvssData struct {
-									BaseScore float64 `json:"baseScore"`
+									BaseScore    float64 `json:"baseScore"`
+									VectorString string  `json:"vectorString"`
 								} `json:"cvssData"`
 							} `json:"cvssMetricV30"`
 							CvssMetricV2 []struct {
 								CvssData struct {
-									BaseScore float64 `json:"baseScore"`
+									BaseScore    float64 `json:"baseScore"`
+									VectorString string  `json:"vectorString"`
 								} `json:"cvssData"`
 							} `json:"cvssMetricV2"`
 						} `json:"metrics"`
@@ -88,6 +100,48 @@ func TestWorkerFunctions(t *testing.T) {
 							Value string `json:"value"`
 						}{
 							{Lang: "en", Value: "Test description"},
+						},
+						References: []struct {
+							URL string `json:"url"`
+						}{
+							{URL: "https://example.com/exploit"},
+						},
+						Metrics: struct {
+							CvssMetricV31 []struct {
+								CvssData struct {
+									BaseScore    float64 `json:"baseScore"`
+									VectorString string  `json:"vectorString"`
+								} `json:"cvssData"`
+							} `json:"cvssMetricV31"`
+							CvssMetricV30 []struct {
+								CvssData struct {
+									BaseScore    float64 `json:"baseScore"`
+									VectorString string  `json:"vectorString"`
+								} `json:"cvssData"`
+							} `json:"cvssMetricV30"`
+							CvssMetricV2 []struct {
+								CvssData struct {
+									BaseScore    float64 `json:"baseScore"`
+									VectorString string  `json:"vectorString"`
+								} `json:"cvssData"`
+							} `json:"cvssMetricV2"`
+						}{
+							CvssMetricV31: []struct {
+								CvssData struct {
+									BaseScore    float64 `json:"baseScore"`
+									VectorString string  `json:"vectorString"`
+								} `json:"cvssData"`
+							}{
+								{
+									CvssData: struct {
+										BaseScore    float64 `json:"baseScore"`
+										VectorString string  `json:"vectorString"`
+									}{
+										BaseScore:    7.5,
+										VectorString: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+									},
+								},
+							},
 						},
 					},
 				},
