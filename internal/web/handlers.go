@@ -302,10 +302,18 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
 		WHERE (1=1)
 		`
+		allowedStatuses := map[string]bool{
+			"active":        true,
+			"in_progress":   true,
+			"waiting_patch": true,
+			"resolved":      true,
+			"ignored":       true,
+		}
+
 		if statusFilter == "" || statusFilter == "active" {
 			metricsQuery += " AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) "
-		} else {
-			metricsQuery += " AND ucs.status = '" + statusFilter + "' "
+		} else if allowedStatuses[statusFilter] {
+			metricsQuery += " AND ucs.status = $10 " // Placeholder for statusFilter
 		}
 	}
 
@@ -340,6 +348,14 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		args = append(args, "")
 	}
 
+	// For the status filter placeholder if it was added
+	if strings.Contains(metricsQuery, "$10") {
+		args = append(args, statusFilter)
+	} else {
+		// Padding to keep args aligned if we ever add more positional params
+		args = append(args, "")
+	}
+
 	var critCount, progressCount int
 	err := db.Pool.QueryRow(context.Background(), metricsQuery, args...).Scan(&totalItems, &kevCount, &critCount, &progressCount)
 	if err != nil {
@@ -347,7 +363,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := `
-		SELECT DISTINCT c.id, c.cve_id, c.description, c.cvss_score, c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, c.references, ucn.notes
+		SELECT DISTINCT c.id, c.cve_id, c.description, c.cvss_score, c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, c."references", ucn.notes
 		FROM cves c
 		LEFT JOIN user_cve_notes ucn ON c.id = ucn.cve_id AND ucn.user_id = $1
 	`
@@ -368,7 +384,11 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		if statusFilter == "" || statusFilter == "active" {
 			query += " AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) "
 		} else {
-			query += " AND ucs.status = '" + statusFilter + "' "
+			// Reuse the allowlist check from above
+			allowedStatuses := map[string]bool{"active":true,"in_progress":true,"waiting_patch":true,"resolved":true,"ignored":true}
+			if allowedStatuses[statusFilter] {
+				query += " AND ucs.status = $10 "
+			}
 		}
 	}
 
@@ -399,7 +419,17 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	query += ` ORDER BY c.published_date DESC LIMIT $5 OFFSET $6`
 
+	// Ensure args matches placeholders $1..$6 + $10
+	// args is [userID, searchQuery, startDate, endDate]
+	// and we added pageSize, offset
 	args = append(args, pageSize, offset)
+	// If $10 is used, ensure it's at index 9 (10th element)
+	if strings.Contains(query, "$10") {
+		for len(args) < 9 {
+			args = append(args, "")
+		}
+		args = append(args, statusFilter)
+	}
 
 	rows, err := db.Pool.Query(context.Background(), query, args...)
 	if err != nil {
@@ -435,23 +465,46 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		threatLevel = "ELEVATED"
 		threatColor = "text-tertiary"
 	}
-	// Severity Distribution
-	severityDist := map[string]int{
-		"Critical": 0,
-		"High":     0,
-		"Medium":   0,
-		"Low":      0,
-	}
-	for _, c := range cves {
-		if c.CVSSScore >= 9.0 {
-			severityDist["Critical"]++
-		} else if c.CVSSScore >= 7.0 {
-			severityDist["High"]++
-		} else if c.CVSSScore >= 4.0 {
-			severityDist["Medium"]++
-		} else {
-			severityDist["Low"]++
+	// Severity Distribution - Calculate across entire dataset (Issue 3)
+	severityDist := map[string]int{"Critical": 0, "High": 0, "Medium": 0, "Low": 0}
+	distQuery := `
+		SELECT c.cvss_score 
+		FROM cves c 
+		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
+		WHERE (1=1)
+	`
+	distArgs := []interface{}{userID}
+	if !searchAll {
+		distQuery += ` AND EXISTS (SELECT 1 FROM user_subscriptions us WHERE us.user_id = $1 AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%') AND c.cvss_score >= us.min_severity)`
+	} else if statusFilter == "" || statusFilter == "active" {
+		distQuery += " AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) "
+	} else {
+		allowedStatuses := map[string]bool{"active":true,"in_progress":true,"waiting_patch":true,"resolved":true,"ignored":true}
+		if allowedStatuses[statusFilter] {
+			distQuery += " AND ucs.status = $2 "
+			distArgs = append(distArgs, statusFilter)
 		}
+	}
+
+	distRows, err := db.Pool.Query(context.Background(), distQuery, distArgs...)
+	if err == nil {
+		defer distRows.Close()
+		for distRows.Next() {
+			var score float64
+			if err := distRows.Scan(&score); err == nil {
+				if score >= 9.0 {
+					severityDist["Critical"]++
+				} else if score >= 7.0 {
+					severityDist["High"]++
+				} else if score >= 4.0 {
+					severityDist["Medium"]++
+				} else {
+					severityDist["Low"]++
+				}
+			}
+		}
+	} else {
+		log.Printf("Dashboard: distribution query failed: %v", err)
 	}
 
 	totalPages := (totalItems + pageSize - 1) / pageSize
@@ -1068,6 +1121,23 @@ func AssetsHandler(w http.ResponseWriter, r *http.Request) {
 		assetType := r.FormValue("type")
 		keywords := r.FormValue("keywords")
 
+		// Validate inputs (Issue 5)
+		if len(name) < 1 || len(name) > 255 {
+			http.Error(w, "Asset name must be between 1 and 255 characters", http.StatusBadRequest)
+			return
+		}
+		allowedTypes := map[string]bool{
+			"Server":   true,
+			"Software": true,
+			"Network":  true,
+			"Cloud":    true,
+			"IoT":      true,
+		}
+		if !allowedTypes[assetType] {
+			http.Error(w, "Invalid asset category", http.StatusBadRequest)
+			return
+		}
+
 		tx, err := db.Pool.Begin(r.Context())
 		if err != nil {
 			http.Error(w, "Error starting transaction", http.StatusInternalServerError)
@@ -1120,8 +1190,14 @@ func DeleteAssetHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	assetID := r.FormValue("id")
-	_, err := db.Pool.Exec(r.Context(), "DELETE FROM assets WHERE id = $1 AND user_id = $2", assetID, userID)
+	idStr := r.FormValue("id")
+	assetID, err := strconv.Atoi(idStr)
+	if err != nil {
+		log.Printf("DeleteAsset: invalid asset ID %q: %v", idStr, err)
+		http.Error(w, "Invalid asset ID", http.StatusBadRequest)
+		return
+	}
+	_, err = db.Pool.Exec(r.Context(), "DELETE FROM assets WHERE id = $1 AND user_id = $2", assetID, userID)
 	if err != nil {
 		http.Error(w, "Error deleting asset", http.StatusInternalServerError)
 		return

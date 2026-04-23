@@ -35,7 +35,7 @@
                         <span>{{$count}}</span>
                     </div>
                     <div class="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden">
-                        <div class="h-full {{if eq $label "Critical"}}bg-error{{else if eq $label "High"}}bg-error{{else if eq $label "Medium"}}bg-tertiary{{else}}bg-surface-variant{{end}} {{if eq $label "High"}}opacity-70{{end}}" style="width: {{percent $count $total}}%;"></div>
+                        <div class="h-full {{if eq $label "Critical"}}bg-error{{else if eq $label "High"}}bg-error{{else if eq $label "Medium"}}bg-tertiary{{else}}bg-surface-variant{{end}} {{if eq $label "High"}}opacity-70{{end}}" style="width: {{if gt $total 0}}{{percent $count $total}}{{else}}0{{end}}%;"></div>
                     </div>
                 </div>
                 {{end}}
@@ -118,13 +118,13 @@
                         <td class="px-6 py-5">
                             <div class="flex flex-col gap-1.5">
                                 {{if ge .CVSSScore 9.0}}
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-error/10 text-error border border-error/20 text-[10px] font-black tracking-widest uppercase cursor-help" onclick="explainVector('{{.VectorString}}')"><span class="w-1.5 h-1.5 rounded-full bg-error animate-pulse"></span> CRITICAL ({{.CVSSScore}})</span>
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-error/10 text-error border border-error/20 text-[10px] font-black tracking-widest uppercase cursor-help vector-explainer" data-vector="{{.VectorString}}"><span class="w-1.5 h-1.5 rounded-full bg-error animate-pulse"></span> CRITICAL ({{.CVSSScore}})</span>
                                 {{else if ge .CVSSScore 7.0}}
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-error-container/20 text-error border border-error/20 text-[10px] font-bold tracking-widest uppercase cursor-help" onclick="explainVector('{{.VectorString}}')">HIGH ({{.CVSSScore}})</span>
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-error-container/20 text-error border border-error/20 text-[10px] font-bold tracking-widest uppercase cursor-help vector-explainer" data-vector="{{.VectorString}}">HIGH ({{.CVSSScore}})</span>
                                 {{else if ge .CVSSScore 4.0}}
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-tertiary-container/20 text-tertiary border border-tertiary/20 text-[10px] font-bold tracking-widest uppercase cursor-help" onclick="explainVector('{{.VectorString}}')">MEDIUM ({{.CVSSScore}})</span>
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-tertiary-container/20 text-tertiary border border-tertiary/20 text-[10px] font-bold tracking-widest uppercase cursor-help vector-explainer" data-vector="{{.VectorString}}">MEDIUM ({{.CVSSScore}})</span>
                                 {{else}}
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-surface-variant/40 text-on-surface-variant border border-outline-variant/30 text-[10px] font-bold tracking-widest uppercase cursor-help" onclick="explainVector('{{.VectorString}}')">LOW ({{.CVSSScore}})</span>
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-surface-variant/40 text-on-surface-variant border border-outline-variant/30 text-[10px] font-bold tracking-widest uppercase cursor-help vector-explainer" data-vector="{{.VectorString}}">LOW ({{.CVSSScore}})</span>
                                 {{end}}
                                 <div class="text-[8px] font-mono opacity-40 group-hover:opacity-100 transition-opacity">{{.VectorString}}</div>
                             </div>
@@ -143,7 +143,7 @@
                                     {{end}}
                                 {{end}}
 
-                                <button data-id="{{.ID}}" data-cveid="{{.CVEID}}" data-notes="{{.Notes}}" onclick="openNotesFromBtn(this)" class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors {{if .Notes}}text-primary opacity-100{{else}}opacity-30{{end}}" title="Remediation Notes">description</button>
+                                <button data-id="{{.ID}}" data-cveid="{{.CVEID}}" data-notes="{{.Notes}}" class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors remediation-notes-btn {{if .Notes}}text-primary opacity-100{{else}}opacity-30{{end}}" title="Remediation Notes">description</button>
                             </div>
                         </td>
                         <td class="px-6 py-5">
@@ -279,18 +279,36 @@ function closeNotes() {
 }
 
 document.getElementById('saveNotesBtn').onclick = function() {
+    if (!currentCveId) return;
     const notes = document.getElementById('notesText').value;
     const csrfToken = document.querySelector('input[name="gorilla.csrf.Token"]').value;
 
     fetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-        body: JSON.stringify({ cve_id: currentCveId, notes: notes })
+        body: JSON.stringify({ cve_id: Number(currentCveId), notes: notes })
     }).then(r => {
         if (!r.ok) throw new Error();
         window.location.reload();
     }).catch(() => alert('Failed to save notes'));
 };
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Vector explanation listener
+    document.querySelectorAll('.vector-explainer').forEach(el => {
+        el.addEventListener('click', () => explainVector(el.getAttribute('data-vector')));
+    });
+
+    // Notes modal listener
+    document.querySelectorAll('.remediation-notes-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-id');
+            const cveid = btn.getAttribute('data-cveid');
+            const notes = btn.getAttribute('data-notes');
+            openNotes(id, cveid, notes);
+        });
+    });
+});
 
 function updateCVEStatus(form) {
     const cveId = form.elements['cve_id'].value;

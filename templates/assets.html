@@ -21,13 +21,13 @@
                     <form action="/assets" method="POST" class="space-y-5">
                         {{.csrfField}}
                         <div class="space-y-2">
-                            <label class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant block">Asset Name</label>
-                            <input type="text" name="name" required placeholder="e.g. Production Firewall" class="bg-surface-container w-full px-4 py-2.5 rounded-md border-b-2 border-transparent focus:border-secondary focus:outline-none text-sm transition-colors">
+                            <label for="asset_name" class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant block">Asset Name</label>
+                            <input type="text" id="asset_name" name="name" required placeholder="e.g. Production Firewall" class="bg-surface-container w-full px-4 py-2.5 rounded-md border-b-2 border-transparent focus:border-secondary focus:outline-none text-sm transition-colors">
                         </div>
                         
                         <div class="space-y-2">
-                            <label class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant block">Asset Category</label>
-                            <select name="type" class="bg-surface-container w-full px-4 py-2.5 rounded-md border-b-2 border-transparent focus:border-secondary focus:outline-none text-sm transition-colors">
+                            <label for="asset_category" class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant block">Asset Category</label>
+                            <select id="asset_category" name="type" class="bg-surface-container w-full px-4 py-2.5 rounded-md border-b-2 border-transparent focus:border-secondary focus:outline-none text-sm transition-colors">
                                 <option value="Server">Server</option>
                                 <option value="Software">Software</option>
                                 <option value="Network">Network Device</option>
@@ -37,8 +37,8 @@
                         </div>
 
                         <div class="space-y-2">
-                            <label class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant block">Monitoring Keywords <span class="opacity-50 lowercase font-normal">(comma separated)</span></label>
-                            <textarea name="keywords" rows="3" placeholder="Fortigate, FortiOS, SSL VPN" class="bg-surface-container w-full px-4 py-2.5 rounded-md border-b-2 border-transparent focus:border-secondary focus:outline-none text-sm transition-colors font-mono"></textarea>
+                            <label for="asset_keywords" class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant block">Monitoring Keywords <span class="opacity-50 lowercase font-normal">(comma separated)</span></label>
+                            <textarea id="asset_keywords" name="keywords" rows="3" placeholder="Fortigate, FortiOS, SSL VPN" class="bg-surface-container w-full px-4 py-2.5 rounded-md border-b-2 border-transparent focus:border-secondary focus:outline-none text-sm transition-colors font-mono"></textarea>
                             <p class="text-[9px] text-on-surface-variant leading-relaxed">Any new CVE matching these terms will trigger an automated high-priority alert for this asset.</p>
                         </div>
 
@@ -72,10 +72,10 @@
                                     <span class="text-[10px] font-black uppercase tracking-widest text-on-surface-variant opacity-60">{{.Type}}</span>
                                 </div>
                             </div>
-                            <form action="/assets/delete" method="POST" onsubmit="return confirm('Archive this asset and stop automated monitoring?');">
+                            <form action="/assets/delete" method="POST" class="delete-asset-form">
                                 {{$.csrfField}}
                                 <input type="hidden" name="id" value="{{.ID}}">
-                                <button type="submit" class="p-2 text-error hover:bg-error/10 rounded-full transition-colors">
+                                <button type="submit" class="p-2 text-error hover:bg-error/10 rounded-full transition-colors" aria-label="Archive asset {{.Name}}">
                                     <span class="material-symbols-outlined text-[20px]">delete_sweep</span>
                                 </button>
                             </form>
@@ -99,4 +99,17 @@
         </div>
     </div>
 </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.delete-asset-form').forEach(form => {
+        form.addEventListener('submit', (e) => {
+            if (!confirm('Archive this asset and stop automated monitoring?')) {
+                e.preventDefault();
+            }
+        });
+    });
+});
+</script>
 {{end}}

@@ -221,7 +221,12 @@ type CISAKEVResponse struct {
 func fetchFromCISAKEV(ctx context.Context) {
 	log.Println("Worker: [SYNC] Fetching CISA KEV catalog...")
 	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get("https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json")
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json", nil)
+	if err != nil {
+		log.Printf("Worker: [ERROR] Failed to create CISA KEV request: %v", err)
+		return
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("Worker: [ERROR] Failed to fetch CISA KEV: %v", err)
 		return
@@ -237,8 +242,11 @@ func fetchFromCISAKEV(ctx context.Context) {
 	total := len(kevResp.Vulnerabilities)
 	log.Printf("Worker: [SYNC] Updating %d CISA KEV records...", total)
 
-	// Reset all cisa_kev flags first (optional, but safer if a CVE is removed from KEV)
-	_, _ = db.Pool.Exec(ctx, "UPDATE cves SET cisa_kev = false")
+	// Reset all cisa_kev flags first
+	if _, err := db.Pool.Exec(ctx, "UPDATE cves SET cisa_kev = false"); err != nil {
+		log.Printf("Worker: [ERROR] Failed to reset CISA KEV status: %v", err)
+		return
+	}
 
 	batchSize := 100
 	for i := 0; i < total; i += batchSize {
@@ -345,11 +353,32 @@ func runFullSync(ctx context.Context, isBackfill bool) {
 			req.Header.Set("apiKey", apiKey)
 		}
 
-		resp, err := client.Do(req)
-		if err != nil {
-			log.Println("Error fetching from NVD:", err)
-			time.Sleep(delay * 2)
-			continue
+		var resp *http.Response
+		maxRetries := 3
+		var retryErr error
+		for retry := 0; retry < maxRetries; retry++ {
+			resp, retryErr = client.Do(req)
+			if retryErr == nil {
+				if resp.StatusCode == http.StatusOK {
+					break
+				}
+				// Retry on 5xx errors
+				if resp.StatusCode >= 500 && resp.StatusCode < 600 {
+					resp.Body.Close()
+					log.Printf("Worker: NVD API returned status %d, retrying (%d/%d)...", resp.StatusCode, retry+1, maxRetries)
+					time.Sleep(delay * time.Duration(retry+1))
+					continue
+				}
+				// Don't retry on other non-200 statuses
+				break
+			}
+			log.Printf("Worker: [ERROR] NVD API call failed: %v, retrying (%d/%d)...", retryErr, retry+1, maxRetries)
+			time.Sleep(delay * time.Duration(retry+1))
+		}
+
+		if retryErr != nil {
+			log.Println("Error fetching from NVD after retries:", retryErr)
+			return
 		}
 
 		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
@@ -361,7 +390,7 @@ func runFullSync(ctx context.Context, isBackfill bool) {
 
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
-			log.Printf("NVD API returned status: %d", resp.StatusCode)
+			log.Printf("NVD API returned non-retriable status: %d", resp.StatusCode)
 			return
 		}
 
@@ -482,13 +511,13 @@ func upsertCVEs(ctx context.Context, vulnerabilities []struct {
 		var tag string
 		err := db.Pool.QueryRow(ctx, `
 			WITH upsert AS (
-				INSERT INTO cves (cve_id, description, cvss_score, vector_string, references, published_date, updated_date)
+				INSERT INTO cves (cve_id, description, cvss_score, vector_string, "references", published_date, updated_date)
 				VALUES ($1, $2, $3, $4, $5, $6, $7)
 				ON CONFLICT (cve_id) DO UPDATE SET
 					description = EXCLUDED.description,
 					cvss_score = EXCLUDED.cvss_score,
 					vector_string = EXCLUDED.vector_string,
-					references = EXCLUDED.references,
+					"references" = EXCLUDED."references",
 					updated_date = EXCLUDED.updated_date
 				RETURNING id, (xmax = 0) AS is_insert
 			)
@@ -502,6 +531,7 @@ func upsertCVEs(ctx context.Context, vulnerabilities []struct {
 				updated++
 			}
 		} else {
+			log.Printf("Worker: [ERROR] Failed to upsert CVE %s: %v", cve.CVEID, err)
 			_ = db.Pool.QueryRow(ctx, "SELECT id FROM cves WHERE cve_id = $1", cve.CVEID).Scan(&id)
 		}
 		
@@ -996,6 +1026,11 @@ func sendWeeklySummaries(ctx context.Context) {
 	log.Println("Worker: [WEEKLY] Intelligence briefs dispatched.")
 }
 func sendEmail(toEmail, subject, body string) error {
+	safeEmail, err := sanitizeEmail(toEmail)
+	if err != nil {
+		return fmt.Errorf("invalid recipient: %w", err)
+	}
+
 	smtpHost := os.Getenv("SMTP_HOST")
 	smtpPort := os.Getenv("SMTP_PORT")
 	smtpUser := os.Getenv("SMTP_USER")
@@ -1006,7 +1041,7 @@ func sendEmail(toEmail, subject, body string) error {
 	}
 
 	mime := "MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\n"
-	msg := []byte(fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\n%s%s", smtpUser, toEmail, subject, mime, body))
+	msg := []byte(fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\n%s%s", smtpUser, safeEmail, subject, mime, body))
 
-	return sendMailWithTimeout(smtpHost, smtpPort, smtpUser, smtpPass, []string{toEmail}, msg)
+	return sendMailWithTimeout(smtpHost, smtpPort, smtpUser, smtpPass, []string{safeEmail}, msg)
 }
