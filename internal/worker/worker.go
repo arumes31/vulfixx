@@ -303,15 +303,22 @@ func runFullSync(ctx context.Context, isBackfill bool) {
 		if totalResults < 0 {
 			totalResults = nvdResp.TotalResults
 			if isBackfill {
-				log.Printf("Worker: Starting backfill of %d CVEs", totalResults)
+				log.Printf("Worker: [SYNC] Starting full backfill of %d CVEs", totalResults)
 			} else {
-				log.Printf("Worker: Incremental sync found %d modified CVEs", totalResults)
+				log.Printf("Worker: [SYNC] Incremental sync found %d modified CVEs", totalResults)
 			}
 		}
 
-		upsertCVEs(ctx, nvdResp.Vulnerabilities, !isBackfill)
+		inserted, updated := upsertCVEs(ctx, nvdResp.Vulnerabilities, !isBackfill)
 
 		startIndex += len(nvdResp.Vulnerabilities)
+		progress := 0.0
+		if totalResults > 0 {
+			progress = float64(startIndex) / float64(totalResults) * 100
+		}
+
+		log.Printf("Worker: [PROGRESS] %.1f%% (%d/%d) | New: %d, Updated: %d", progress, startIndex, totalResults, inserted, updated)
+
 		if startIndex >= totalResults || len(nvdResp.Vulnerabilities) == 0 {
 			break
 		}
@@ -350,9 +357,10 @@ func upsertCVEs(ctx context.Context, vulnerabilities []struct {
 			} `json:"cvssMetricV2"`
 		} `json:"metrics"`
 	} `json:"cve"`
-}, sendAlerts bool) {
+}, sendAlerts bool) (inserted int, updated int) {
 	for _, v := range vulnerabilities {
 		cveData := v.CVE
+		// ... logic continues
 
 		desc := ""
 		for _, d := range cveData.Descriptions {
@@ -383,19 +391,28 @@ func upsertCVEs(ctx context.Context, vulnerabilities []struct {
 		}
 
 		var id int
+		var tag string
 		err := db.Pool.QueryRow(ctx, `
-			INSERT INTO cves (cve_id, description, cvss_score, published_date, updated_date)
-			VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (cve_id) DO UPDATE SET
-				description = EXCLUDED.description,
-				cvss_score = EXCLUDED.cvss_score,
-				updated_date = EXCLUDED.updated_date
-			RETURNING id
-		`, cve.CVEID, cve.Description, cve.CVSSScore, cve.PublishedDate, cve.UpdatedDate).Scan(&id)
+			WITH upsert AS (
+				INSERT INTO cves (cve_id, description, cvss_score, published_date, updated_date)
+				VALUES ($1, $2, $3, $4, $5)
+				ON CONFLICT (cve_id) DO UPDATE SET
+					description = EXCLUDED.description,
+					cvss_score = EXCLUDED.cvss_score,
+					updated_date = EXCLUDED.updated_date
+				RETURNING id, (xmax = 0) AS is_insert
+			)
+			SELECT id, CASE WHEN is_insert THEN 'ins' ELSE 'upd' END FROM upsert
+		`, cve.CVEID, cve.Description, cve.CVSSScore, cve.PublishedDate, cve.UpdatedDate).Scan(&id, &tag)
 
-		if err != nil {
-			// Row might exist but be identical, or other error.
-			// Try to get ID if it exists.
+		if err == nil {
+			if tag == "ins" {
+				inserted++
+			} else {
+				updated++
+			}
+		} else {
+			// fallback for identical rows or errors
 			_ = db.Pool.QueryRow(ctx, "SELECT id FROM cves WHERE cve_id = $1", cve.CVEID).Scan(&id)
 		}
 		
@@ -405,6 +422,7 @@ func upsertCVEs(ctx context.Context, vulnerabilities []struct {
 			db.RedisClient.LPush(ctx, "cve_alerts_queue", alertJob)
 		}
 	}
+	return inserted, updated
 }
 
 func processAlerts(ctx context.Context) {

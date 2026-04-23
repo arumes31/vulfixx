@@ -832,6 +832,13 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 	if ok {
 		data["UserID"] = userID
 		data["IsAdmin"] = IsAdmin(r)
+
+		// Fetch global CVE stats for the sidebar/navbar
+		var totalCached, newLast24h int
+		_ = db.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM cves").Scan(&totalCached)
+		_ = db.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM cves WHERE updated_date >= NOW() - INTERVAL '24 hours'").Scan(&newLast24h)
+		data["GlobalTotalCVEs"] = totalCached
+		data["GlobalNewCVEs"] = newLast24h
 	}
 	data["csrfField"] = csrf.TemplateField(r)
 	tmpl, ok := templateMap[name]
