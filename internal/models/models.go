@@ -19,8 +19,11 @@ type CVE struct {
 	CVEID         string
 	Description   string
 	CVSSScore     float64
+	VectorString  string
 	CISAKEV       bool
 	Status        string
+	Notes         string
+	References    []string
 	PublishedDate time.Time
 	UpdatedDate   time.Time
 	CreatedAt     time.Time
@@ -63,4 +66,11 @@ type AssetKeyword struct {
 	ID      int
 	AssetID int
 	Keyword string
+}
+
+type CVENote struct {
+	UserID    int
+	CVEID     int
+	Notes     string
+	UpdatedAt time.Time
 }

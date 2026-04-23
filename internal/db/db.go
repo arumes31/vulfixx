@@ -77,6 +77,15 @@ func migrate(ctx context.Context) error {
 			keyword VARCHAR(255) NOT NULL,
 			UNIQUE(asset_id, keyword)
 		);`,
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS vector_string TEXT;",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS references TEXT[];",
+		`CREATE TABLE IF NOT EXISTS user_cve_notes (
+			user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+			cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,
+			notes TEXT,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (user_id, cve_id)
+		);`,
 	}
 
 	for _, q := range queries {

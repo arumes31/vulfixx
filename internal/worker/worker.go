@@ -130,6 +130,7 @@ var defaultNVDBaseURL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 func StartWorker(ctx context.Context) {
 	go fetchCVEsPeriodically(ctx)
 	go fetchCISAKEVPeriodically(ctx)
+	go startWeeklySummaryTask(ctx)
 	go processAlerts(ctx)
 	go processEmailVerification(ctx)
 	go processEmailChange(ctx)
@@ -149,20 +150,26 @@ type NVDResponse struct {
 				Lang  string `json:"lang"`
 				Value string `json:"value"`
 			} `json:"descriptions"`
+			References []struct {
+				URL string `json:"url"`
+			} `json:"references"`
 			Metrics struct {
 				CvssMetricV31 []struct {
 					CvssData struct {
-						BaseScore float64 `json:"baseScore"`
+						BaseScore    float64 `json:"baseScore"`
+						VectorString string  `json:"vectorString"`
 					} `json:"cvssData"`
 				} `json:"cvssMetricV31"`
 				CvssMetricV30 []struct {
 					CvssData struct {
-						BaseScore float64 `json:"baseScore"`
+						BaseScore    float64 `json:"baseScore"`
+						VectorString string  `json:"vectorString"`
 					} `json:"cvssData"`
 				} `json:"cvssMetricV30"`
 				CvssMetricV2 []struct {
 					CvssData struct {
-						BaseScore float64 `json:"baseScore"`
+						BaseScore    float64 `json:"baseScore"`
+						VectorString string  `json:"vectorString"`
 					} `json:"cvssData"`
 				} `json:"cvssMetricV2"`
 			} `json:"metrics"`
@@ -405,20 +412,26 @@ func upsertCVEs(ctx context.Context, vulnerabilities []struct {
 			Lang  string `json:"lang"`
 			Value string `json:"value"`
 		} `json:"descriptions"`
+		References []struct {
+			URL string `json:"url"`
+		} `json:"references"`
 		Metrics struct {
 			CvssMetricV31 []struct {
 				CvssData struct {
-					BaseScore float64 `json:"baseScore"`
+					BaseScore    float64 `json:"baseScore"`
+					VectorString string  `json:"vectorString"`
 				} `json:"cvssData"`
 			} `json:"cvssMetricV31"`
 			CvssMetricV30 []struct {
 				CvssData struct {
-					BaseScore float64 `json:"baseScore"`
+					BaseScore    float64 `json:"baseScore"`
+					VectorString string  `json:"vectorString"`
 				} `json:"cvssData"`
 			} `json:"cvssMetricV30"`
 			CvssMetricV2 []struct {
 				CvssData struct {
-					BaseScore float64 `json:"baseScore"`
+					BaseScore    float64 `json:"baseScore"`
+					VectorString string  `json:"vectorString"`
 				} `json:"cvssData"`
 			} `json:"cvssMetricV2"`
 		} `json:"metrics"`
@@ -426,7 +439,6 @@ func upsertCVEs(ctx context.Context, vulnerabilities []struct {
 }, sendAlerts bool) (inserted int, updated int) {
 	for _, v := range vulnerabilities {
 		cveData := v.CVE
-		// ... logic continues
 
 		desc := ""
 		for _, d := range cveData.Descriptions {
@@ -437,12 +449,21 @@ func upsertCVEs(ctx context.Context, vulnerabilities []struct {
 		}
 
 		score := 0.0
+		vector := ""
 		if len(cveData.Metrics.CvssMetricV31) > 0 {
 			score = cveData.Metrics.CvssMetricV31[0].CvssData.BaseScore
+			vector = cveData.Metrics.CvssMetricV31[0].CvssData.VectorString
 		} else if len(cveData.Metrics.CvssMetricV30) > 0 {
 			score = cveData.Metrics.CvssMetricV30[0].CvssData.BaseScore
+			vector = cveData.Metrics.CvssMetricV30[0].CvssData.VectorString
 		} else if len(cveData.Metrics.CvssMetricV2) > 0 {
 			score = cveData.Metrics.CvssMetricV2[0].CvssData.BaseScore
+			vector = cveData.Metrics.CvssMetricV2[0].CvssData.VectorString
+		}
+
+		var refs []string
+		for _, r := range cveData.References {
+			refs = append(refs, r.URL)
 		}
 
 		pubDate, _ := time.Parse(time.RFC3339, cveData.Published)
@@ -452,6 +473,7 @@ func upsertCVEs(ctx context.Context, vulnerabilities []struct {
 			CVEID:         cveData.ID,
 			Description:   desc,
 			CVSSScore:     score,
+			VectorString:  vector,
 			PublishedDate: pubDate,
 			UpdatedDate:   modDate,
 		}
@@ -460,16 +482,18 @@ func upsertCVEs(ctx context.Context, vulnerabilities []struct {
 		var tag string
 		err := db.Pool.QueryRow(ctx, `
 			WITH upsert AS (
-				INSERT INTO cves (cve_id, description, cvss_score, published_date, updated_date)
-				VALUES ($1, $2, $3, $4, $5)
+				INSERT INTO cves (cve_id, description, cvss_score, vector_string, references, published_date, updated_date)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
 				ON CONFLICT (cve_id) DO UPDATE SET
 					description = EXCLUDED.description,
 					cvss_score = EXCLUDED.cvss_score,
+					vector_string = EXCLUDED.vector_string,
+					references = EXCLUDED.references,
 					updated_date = EXCLUDED.updated_date
 				RETURNING id, (xmax = 0) AS is_insert
 			)
 			SELECT id, CASE WHEN is_insert THEN 'ins' ELSE 'upd' END FROM upsert
-		`, cve.CVEID, cve.Description, cve.CVSSScore, cve.PublishedDate, cve.UpdatedDate).Scan(&id, &tag)
+		`, cve.CVEID, cve.Description, cve.CVSSScore, cve.VectorString, refs, cve.PublishedDate, cve.UpdatedDate).Scan(&id, &tag)
 
 		if err == nil {
 			if tag == "ins" {
@@ -478,7 +502,6 @@ func upsertCVEs(ctx context.Context, vulnerabilities []struct {
 				updated++
 			}
 		} else {
-			// fallback for identical rows or errors
 			_ = db.Pool.QueryRow(ctx, "SELECT id FROM cves WHERE cve_id = $1", cve.CVEID).Scan(&id)
 		}
 		
@@ -895,4 +918,95 @@ func sendVerificationEmail(email, token string) {
 			log.Printf("SMTP not configured. Verification link for %s: token=%s (redacted)\n", email, redacted)
 		}
 	}
+}
+
+func startWeeklySummaryTask(ctx context.Context) {
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			now := time.Now()
+			// Send every Monday at 08:00 AM
+			if now.Weekday() == time.Monday && now.Hour() == 8 {
+				sendWeeklySummaries(ctx)
+				// Wait extra time to avoid multiple runs within the 08:00 hour
+				time.Sleep(2 * time.Hour)
+			}
+		}
+	}
+}
+
+func sendWeeklySummaries(ctx context.Context) {
+	log.Println("Worker: [WEEKLY] Starting intelligence brief generation...")
+	rows, err := db.Pool.Query(ctx, "SELECT id, email FROM users WHERE is_email_verified = TRUE")
+	if err != nil {
+		log.Printf("Worker: [ERROR] Failed to fetch users for weekly brief: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var userID int
+		var email string
+		if err := rows.Scan(&userID, &email); err != nil {
+			continue
+		}
+
+		var totalNew, resolved int
+		err := db.Pool.QueryRow(ctx, `
+			SELECT 
+				(SELECT COUNT(*) FROM cves WHERE published_date > NOW() - INTERVAL '7 days') as new_count,
+				(SELECT COUNT(*) FROM user_cve_status WHERE user_id = $1 AND status = 'resolved' AND updated_at > NOW() - INTERVAL '7 days') as resolved_count
+		`, userID).Scan(&totalNew, &resolved)
+
+		if err != nil {
+			log.Printf("Worker: [ERROR] Failed to calculate stats for %s: %v", email, err)
+			continue
+		}
+
+		body := fmt.Sprintf(`
+			<div style="font-family: 'Inter', sans-serif; max-width: 600px; margin: auto; background: #101418; color: #dfe2eb; padding: 40px; border-radius: 12px; border: 1px solid #232931;">
+				<h1 style="color: #00daf3; font-size: 24px; margin-bottom: 10px;">Vulfixx Weekly Brief</h1>
+				<p style="opacity: 0.7; font-size: 14px; margin-bottom: 30px;">Intelligence summary for the last 7 days.</p>
+				
+				<div style="display: grid; grid-template-cols: 1fr 1fr; gap: 20px; margin-bottom: 40px;">
+					<div style="background: #1c2026; padding: 20px; border-radius: 8px; border-left: 4px solid #00daf3;">
+						<div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.5;">New Threats</div>
+						<div style="font-size: 32px; font-weight: bold; margin-top: 5px;">%d</div>
+					</div>
+					<div style="background: #1c2026; padding: 20px; border-radius: 8px; border-left: 4px solid #00f39a;">
+						<div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.5;">Resolved</div>
+						<div style="font-size: 32px; font-weight: bold; margin-top: 5px;">%d</div>
+					</div>
+				</div>
+
+				<p style="margin-bottom: 30px;">Review your full vulnerability inventory and remediation steps in the Vulfixx dashboard.</p>
+				
+				<a href="%s/dashboard" style="display: block; width: 100%%; background: #00daf3; color: #101418; text-align: center; padding: 15px 0; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em;">Access Dashboard</a>
+			</div>
+		`, totalNew, resolved, os.Getenv("BASE_URL"))
+
+		if err := sendEmail(email, "Weekly Intelligence Brief", body); err != nil {
+			log.Printf("Worker: [ERROR] Failed to send brief to %s: %v", email, err)
+		}
+	}
+	log.Println("Worker: [WEEKLY] Intelligence briefs dispatched.")
+}
+func sendEmail(toEmail, subject, body string) error {
+	smtpHost := os.Getenv("SMTP_HOST")
+	smtpPort := os.Getenv("SMTP_PORT")
+	smtpUser := os.Getenv("SMTP_USER")
+	smtpPass := os.Getenv("SMTP_PASS")
+
+	if smtpHost == "" || smtpPort == "" {
+		return fmt.Errorf("SMTP not configured")
+	}
+
+	mime := "MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\n"
+	msg := []byte(fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\n%s%s", smtpUser, toEmail, subject, mime, body))
+
+	return sendMailWithTimeout(smtpHost, smtpPort, smtpUser, smtpPass, []string{toEmail}, msg)
 }

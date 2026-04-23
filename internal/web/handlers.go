@@ -5,6 +5,7 @@ import (
 	"cve-tracker/internal/auth"
 	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -346,8 +347,9 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := `
-		SELECT DISTINCT c.id, c.cve_id, c.description, c.cvss_score, c.cisa_kev, c.published_date, COALESCE(ucs.status, 'active') as status
+		SELECT DISTINCT c.id, c.cve_id, c.description, c.cvss_score, c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, c.references, ucn.notes
 		FROM cves c
+		LEFT JOIN user_cve_notes ucn ON c.id = ucn.cve_id AND ucn.user_id = $1
 	`
 
 	if !searchAll {
@@ -401,6 +403,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := db.Pool.Query(context.Background(), query, args...)
 	if err != nil {
+		log.Printf("Error fetching CVEs: %v", err)
 		http.Error(w, "Error fetching CVEs", http.StatusInternalServerError)
 		return
 	}
@@ -408,12 +411,47 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	var cves []models.CVE
 	for rows.Next() {
-		var cve models.CVE
-		err := rows.Scan(&cve.ID, &cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.CISAKEV, &cve.PublishedDate, &cve.Status)
+		var c models.CVE
+		var notes sql.NullString
+		err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &notes)
 		if err != nil {
+			log.Printf("Error scanning CVE: %v", err)
 			continue
 		}
-		cves = append(cves, cve)
+		c.Notes = notes.String
+		cves = append(cves, c)
+	}
+
+	// Threat Level Calculation
+	threatLevel := "LOW"
+	threatColor := "text-primary"
+	if kevCount > 5 || critCount > 10 {
+		threatLevel = "CRITICAL"
+		threatColor = "text-error"
+	} else if kevCount > 0 || critCount > 0 {
+		threatLevel = "HIGH"
+		threatColor = "text-error"
+	} else if progressCount > 0 {
+		threatLevel = "ELEVATED"
+		threatColor = "text-tertiary"
+	}
+	// Severity Distribution
+	severityDist := map[string]int{
+		"Critical": 0,
+		"High":     0,
+		"Medium":   0,
+		"Low":      0,
+	}
+	for _, c := range cves {
+		if c.CVSSScore >= 9.0 {
+			severityDist["Critical"]++
+		} else if c.CVSSScore >= 7.0 {
+			severityDist["High"]++
+		} else if c.CVSSScore >= 4.0 {
+			severityDist["Medium"]++
+		} else {
+			severityDist["Low"]++
+		}
 	}
 
 	totalPages := (totalItems + pageSize - 1) / pageSize
@@ -424,6 +462,9 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"KevCount":      kevCount,
 		"CritCount":     critCount,
 		"ProgressCount": progressCount,
+		"ThreatLevel":   threatLevel,
+		"ThreatColor":   threatColor,
+		"SeverityDist":  severityDist,
 		"CurrentPage":   page,
 		"TotalPages":    totalPages,
 		"HasPrev":       page > 1,
@@ -698,9 +739,10 @@ func AlertHistoryHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
-	// Simple RSS feed for CVEs matching a user's subscription
-	// Can be accessed via /feed?token=...
 	token := r.URL.Query().Get("token")
+	minSeverityStr := r.URL.Query().Get("min_cvss")
+	keyword := r.URL.Query().Get("q")
+
 	if token == "" {
 		http.Error(w, "Missing token", http.StatusUnauthorized)
 		return
@@ -713,15 +755,20 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	minSeverity := 0.0
+	if minSeverityStr != "" {
+		minSeverity, _ = strconv.ParseFloat(minSeverityStr, 64)
+	}
+
 	query := `
 		SELECT DISTINCT c.cve_id, c.description, c.cvss_score, c.published_date
 		FROM cves c
 		INNER JOIN user_subscriptions us ON us.user_id = $1
-		WHERE c.cvss_score >= us.min_severity
-		  AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%')
+		WHERE (c.cvss_score >= us.min_severity OR c.cvss_score >= $2)
+		  AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%' OR $3 = '' OR c.description ILIKE '%' || $3 || '%')
 		ORDER BY c.published_date DESC LIMIT 50
 	`
-	rows, err := db.Pool.Query(context.Background(), query, userID)
+	rows, err := db.Pool.Query(context.Background(), query, userID, minSeverity, keyword)
 	if err != nil {
 		http.Error(w, "Error fetching CVEs", http.StatusInternalServerError)
 		return
@@ -1080,4 +1127,40 @@ func DeleteAssetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/assets", http.StatusFound)
+}
+
+func UpdateCVENoteHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	userID, ok := GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		CVEID int    `json:"cve_id"`
+		Notes string `json:"notes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	_, err := db.Pool.Exec(r.Context(), `
+		INSERT INTO user_cve_notes (user_id, cve_id, notes, updated_at)
+		VALUES ($1, $2, $3, NOW())
+		ON CONFLICT (user_id, cve_id) DO UPDATE SET
+			notes = EXCLUDED.notes,
+			updated_at = NOW()
+	`, userID, req.CVEID, req.Notes)
+	if err != nil {
+		log.Printf("Error updating note: %v", err)
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
