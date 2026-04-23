@@ -4,8 +4,8 @@ import (
 	"context"
 	"cve-tracker/internal/db"
 	"os"
-	"testing"
 	"strings"
+	"testing"
 )
 
 func TestAuthIntegration(t *testing.T) {

@@ -1,59 +1,76 @@
-{{define "admin_users.html"}}
-{{template "base.html" .}}
+{{template "base" .}}
 
-{{block "content" .}}
-<div class="container mx-auto px-4 py-8">
-    <div class="flex justify-between items-center mb-6">
-        <h1 class="text-3xl font-bold text-gray-800">User Management</h1>
-    </div>
+{{define "content"}}
+<div class="space-y-8">
+    <header class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-outline-variant/30 pb-6">
+        <div>
+            <h1 class="text-3xl font-display font-medium tracking-tight mb-2">Operator Matrix</h1>
+            <p class="text-on-surface-variant font-label text-sm uppercase tracking-widest">Global access administration</p>
+        </div>
+    </header>
 
-    <div class="bg-white shadow-md rounded-lg overflow-hidden">
-        <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50">
-                <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Verified</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Admin</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created At</th>
-                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-gray-200">
-                {{range .Users}}
-                <tr>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{.Email}}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {{if .IsEmailVerified}}
-                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Yes</span>
-                        {{else}}
-                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">No</span>
-                        {{end}}
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {{if .IsAdmin}}
-                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">Admin</span>
-                        {{else}}
-                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">User</span>
-                        {{end}}
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        {{if not .IsAdmin}}
-                        <form action="/admin/users/delete" method="POST" onsubmit="return confirm('Are you sure you want to delete this user?');" class="inline">
-                            <input type="hidden" name="id" value="{{.ID}}">
-                            <button type="submit" class="text-red-600 hover:text-red-900">Delete</button>
-                        </form>
-                        {{end}}
-                    </td>
-                </tr>
-                {{else}}
-                <tr>
-                    <td colspan="5" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">No users found.</td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
+    <div class="bg-surface rounded-xl border border-outline-variant/30 overflow-hidden shadow-xl">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-surface-container-low border-b border-outline-variant/30">
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Identity</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Authentication</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Clearance</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Initialization Date</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-outline-variant/10">
+                    {{range .Users}}
+                    <tr class="hover:bg-surface-container transition-colors duration-150">
+                        <td class="px-6 py-4">
+                            <span class="text-sm font-bold font-mono text-on-surface">{{.Email}}</span>
+                        </td>
+                        <td class="px-6 py-4">
+                            {{if .IsEmailVerified}}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-primary-container/20 text-primary border border-primary/20 text-[10px] font-bold tracking-widest uppercase">Verified</span>
+                            {{else}}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-error-container/20 text-error border border-error/20 text-[10px] font-bold tracking-widest uppercase">Unverified</span>
+                            {{end}}
+                        </td>
+                        <td class="px-6 py-4">
+                            {{if .IsAdmin}}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-tertiary-container/20 text-tertiary border border-tertiary/20 text-[10px] font-bold tracking-widest uppercase font-mono">SYS_ADMIN</span>
+                            {{else}}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-surface-variant text-on-surface border border-outline-variant/30 text-[10px] font-bold tracking-widest uppercase font-mono">OPERATOR</span>
+                            {{end}}
+                        </td>
+                        <td class="px-6 py-4 text-xs font-mono text-on-surface-variant">
+                            {{.CreatedAt.Format "2006-01-02 15:04:05"}}
+                        </td>
+                        <td class="px-6 py-4 text-right">
+                            {{if not .IsAdmin}}
+                            <form action="/admin/users/delete" method="POST" class="inline" onsubmit="return confirm('WARNING: Permanently purge operator {{.Email}} from the system?');">
+                                {{$.csrfField}}
+                                <input type="hidden" name="id" value="{{.ID}}">
+                                <button type="submit" class="p-2 text-error hover:bg-error-container/30 rounded transition-colors" title="Purge Operator">
+                                    <span class="material-symbols-outlined text-[18px]">person_remove</span>
+                                </button>
+                            </form>
+                            {{else}}
+                            <span class="text-xs text-on-surface-variant italic font-label pr-2">Protected</span>
+                            {{end}}
+                        </td>
+                    </tr>
+                    {{else}}
+                    <tr>
+                        <td colspan="5">
+                            <div class="p-12 text-center flex flex-col items-center">
+                                <span class="material-symbols-outlined text-6xl text-outline-variant/50 mb-4" style="font-variation-settings: 'wght' 200;">groups</span>
+                                <p class="text-on-surface-variant font-label tracking-widest uppercase text-sm">No operators found in registry</p>
+                            </div>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
-{{end}}
 {{end}}

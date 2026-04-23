@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
-	"strings"
 )
 
 func TestWorkerFunctions(t *testing.T) {
@@ -142,9 +142,9 @@ func TestWorkerFunctions(t *testing.T) {
 
 	// Direct calls
 	cveBody := models.CVE{
-		CVEID: "CVE-TEST-WORKER",
+		CVEID:       "CVE-TEST-WORKER",
 		Description: "Test",
-		CVSSScore: 7.5,
+		CVSSScore:   7.5,
 	}
 	evaluateSubscriptions(context.Background(), &cveBody)
 	sendAlert(models.UserSubscription{WebhookURL: "http://127.0.0.1:9999", UserID: 1}, &cveBody, "test@example.com")

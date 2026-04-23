@@ -5,14 +5,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"testing"
 	"strings"
+	"testing"
 )
 
 func TestWebErrorPaths(t *testing.T) {
 	t.Setenv("SESSION_KEY", "testkey")
 	t.Setenv("CSRF_KEY", "0123456789abcdef0123456789abcdef")
-	
+
 	if os.Getenv("CI") == "true" {
 		t.Skip("skipping integration test in CI")
 	}

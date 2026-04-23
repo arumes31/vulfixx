@@ -3,8 +3,8 @@ package db
 import (
 	"context"
 	"os"
-	"testing"
 	"strings"
+	"testing"
 )
 
 func TestInitDB(t *testing.T) {

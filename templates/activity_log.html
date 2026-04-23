@@ -1,36 +1,64 @@
 {{template "base" .}}
 
 {{define "content"}}
-<div class="flex-container" style="display: flex; justify-content: space-between; align-items: center;">
-    <h2>User Activity Log</h2>
-    <button class="btn" title="Export Activity to JSON" onclick="window.location.href='/activity/export'" style="padding: 5px 10px; font-size: 1.2em;">📥</button>
-</div>
-<p>Recent actions performed on your account.</p>
+<div class="space-y-8">
+    <header class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-outline-variant/30 pb-6">
+        <div>
+            <h1 class="text-3xl font-display font-medium tracking-tight mb-2">Operator Activity</h1>
+            <p class="text-on-surface-variant font-label text-sm uppercase tracking-widest">System audit trail</p>
+        </div>
+        <div class="flex gap-3">
+            <a href="/activity/export" class="flex items-center gap-2 px-4 py-2 bg-surface border border-outline-variant/50 rounded-md text-sm font-label uppercase tracking-widest hover:bg-surface-container-high transition-colors text-primary border-primary/30">
+                <span class="material-symbols-outlined text-sm">download</span>
+                Export JSON
+            </a>
+        </div>
+    </header>
 
-<div class="card">
-    <table style="width: 100%; border-collapse: collapse;">
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th>Activity</th>
-                <th>Description</th>
-                <th>IP Address</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{range .Logs}}
-            <tr>
-                <td>{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
-                <td><span class="btn" style="padding: 2px 8px; cursor: default; background: #5bc85c;">{{.ActivityType}}</span></td>
-                <td>{{.Description}}</td>
-                <td><code>{{.IPAddress}}</code></td>
-            </tr>
-            {{else}}
-            <tr>
-                <td colspan="4" style="text-align: center;">No activity recorded yet.</td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
+    <div class="bg-surface rounded-xl border border-outline-variant/30 overflow-hidden shadow-xl">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-surface-container-low border-b border-outline-variant/30">
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Timestamp</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Type</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Detail</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Origin IP</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-outline-variant/10">
+                    {{range .Logs}}
+                    <tr class="hover:bg-surface-container transition-colors duration-150">
+                        <td class="px-6 py-4 text-xs font-mono text-on-surface-variant">
+                            {{.CreatedAt.Format "2006-01-02 15:04:05"}}
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="inline-flex items-center px-2.5 py-1 rounded bg-primary-container/20 text-primary border border-primary/20 text-[10px] font-bold tracking-widest uppercase font-mono">
+                                {{.ActivityType}}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-on-surface">
+                            {{.Description}}
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="text-xs font-mono text-on-surface-variant bg-surface-container px-2 py-1 rounded border border-outline-variant/30">
+                                {{.IPAddress}}
+                            </span>
+                        </td>
+                    </tr>
+                    {{else}}
+                    <tr>
+                        <td colspan="4">
+                            <div class="p-12 text-center flex flex-col items-center">
+                                <span class="material-symbols-outlined text-6xl text-outline-variant/50 mb-4" style="font-variation-settings: 'wght' 200;">history_toggle_off</span>
+                                <p class="text-on-surface-variant font-label tracking-widest uppercase text-sm">No activity recorded</p>
+                            </div>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 {{end}}

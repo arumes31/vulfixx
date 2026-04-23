@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -24,6 +25,19 @@ func InitDB() error {
 		return fmt.Errorf("unable to create connection pool: %w", err)
 	}
 
+	// Wait for database to be ready
+	var pingErr error
+	for i := 0; i < 15; i++ {
+		pingErr = Pool.Ping(context.Background())
+		if pingErr == nil {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if pingErr != nil {
+		return fmt.Errorf("database connection failed after retries: %w", pingErr)
+	}
+
 	if err := migrate(context.Background()); err != nil {
 		return fmt.Errorf("migration failed: %w", err)
 	}
@@ -32,6 +46,12 @@ func InitDB() error {
 }
 
 func migrate(ctx context.Context) error {
+	// First ensure base schema is present
+	if _, err := Pool.Exec(ctx, schemaSQL); err != nil {
+		return fmt.Errorf("failed to execute base schema: %w", err)
+	}
+
+	// Then run incremental migrations
 	queries := []string{
 		"ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;",
 		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS enable_email BOOLEAN DEFAULT TRUE;",

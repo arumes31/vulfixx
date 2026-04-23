@@ -1,5 +1,6 @@
-cve-tracker
+/cve-tracker
 coverage*
 .env
 .qodo
 *.exe
+node_modules

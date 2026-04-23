@@ -4,13 +4,13 @@ import (
 	"context"
 	"cve-tracker/internal/auth"
 	"cve-tracker/internal/db"
-	"net/http"
 	"encoding/json"
+	"net/http"
 
-	"github.com/pquerna/otp/totp"
-	"rsc.io/qr"
 	"encoding/base64"
+	"github.com/pquerna/otp/totp"
 	"log"
+	"rsc.io/qr"
 )
 
 func SettingsHandler(w http.ResponseWriter, r *http.Request) {
@@ -110,7 +110,6 @@ func VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/settings", http.StatusFound)
 }
 
-
 func ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := GetUserID(r)
 	if !ok {
@@ -157,8 +156,8 @@ func ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RenderTemplate(w, r, "settings.html", map[string]interface{}{
-		"Email":         email,
-		"IsTOTPEnabled": isTOTPEnabled,
+		"Email":           email,
+		"IsTOTPEnabled":   isTOTPEnabled,
 		"PasswordSuccess": "Password updated successfully.",
 	})
 }
@@ -257,8 +256,8 @@ func DeleteAccountHandler(w http.ResponseWriter, r *http.Request) {
 	_, err := auth.Login(r.Context(), email, password)
 	if err != nil {
 		RenderTemplate(w, r, "settings.html", map[string]interface{}{
-			"Email":         email,
-			"DeleteError":   "Invalid password",
+			"Email":       email,
+			"DeleteError": "Invalid password",
 		})
 		return
 	}

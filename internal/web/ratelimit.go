@@ -1,9 +1,9 @@
 package web
 
 import (
-	"time"
 	"net/http"
 	"sync"
+	"time"
 
 	"golang.org/x/time/rate"
 )
