@@ -351,16 +351,22 @@ func UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Status != "resolved" && req.Status != "ignored" {
+	if req.Status != "resolved" && req.Status != "ignored" && req.Status != "active" {
 		http.Error(w, "Invalid status", http.StatusBadRequest)
 		return
 	}
 
-	_, err = db.Pool.Exec(context.Background(), `
-		INSERT INTO user_cve_status (user_id, cve_id, status)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (user_id, cve_id) DO UPDATE SET status = $3, updated_at = CURRENT_TIMESTAMP
-	`, userID, req.CVEID, req.Status)
+	if req.Status == "active" {
+		_, err = db.Pool.Exec(context.Background(), `
+			DELETE FROM user_cve_status WHERE user_id = $1 AND cve_id = $2
+		`, userID, req.CVEID)
+	} else {
+		_, err = db.Pool.Exec(context.Background(), `
+			INSERT INTO user_cve_status (user_id, cve_id, status)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (user_id, cve_id) DO UPDATE SET status = $3, updated_at = CURRENT_TIMESTAMP
+		`, userID, req.CVEID, req.Status)
+	}
 
 	if err != nil {
 		http.Error(w, "Failed to update status", http.StatusInternalServerError)

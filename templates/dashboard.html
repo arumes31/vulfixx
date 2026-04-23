@@ -154,8 +154,12 @@
 <script>
 function updateCVEStatus(form) {
     const cveId = form.elements['cve_id'].value;
-    const status = form.elements['status'].value;
+    const selectElem = form.elements['status'];
+    const status = selectElem.value;
     const csrfToken = form.querySelector('input[name="gorilla.csrf.Token"]').value;
+
+    // Cache the previous value in a data attribute
+    const previousValue = selectElem.getAttribute('data-prev-value') || selectElem.options[selectElem.selectedIndex].defaultSelected ? selectElem.querySelector('option[selected]').value : 'active';
 
     fetch('/api/status', {
         method: 'POST',
@@ -169,10 +173,35 @@ function updateCVEStatus(form) {
         })
     }).then(response => {
         if (!response.ok) {
-            console.error('Failed to update status');
+            throw new Error('Server returned ' + response.status);
+        }
+        selectElem.setAttribute('data-prev-value', status);
+
+        // Update UI
+        const row = form.closest('tr');
+        if (row) {
+            const statusCell = row.children[3]; // The 4th td contains the status
+            if (statusCell) {
+                if (status === 'resolved') {
+                    statusCell.innerHTML = '<span class="text-xs text-primary font-bold uppercase tracking-widest flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">check_circle</span> Resolved</span>';
+                } else if (status === 'ignored') {
+                    statusCell.innerHTML = '<span class="text-xs text-on-surface-variant font-bold uppercase tracking-widest flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">visibility_off</span> Ignored</span>';
+                } else {
+                    statusCell.innerHTML = '<span class="text-xs text-error font-bold uppercase tracking-widest flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">warning</span> Active</span>';
+                }
+            }
         }
     }).catch(error => {
-        console.error('Error:', error);
+        console.error('Error updating status:', error);
+        alert('Failed to update status. Please try again.');
+        selectElem.value = previousValue;
     });
 }
+
+// Initialize prev-value on page load
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('form[action="/api/status"] select[name="status"]').forEach(select => {
+        select.setAttribute('data-prev-value', select.value);
+    });
+});
 </script>
