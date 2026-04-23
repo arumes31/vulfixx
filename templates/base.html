@@ -72,12 +72,12 @@
             <span class="font-display font-bold">CVE Tracker</span>
         </div>
         <div class="flex gap-2">
-            <a href="/dashboard" class="material-symbols-outlined">dashboard</a>
-            <a href="/subscriptions" class="material-symbols-outlined">star</a>
-            <a href="/settings" class="material-symbols-outlined">settings</a>
+            <a href="/dashboard" class="material-symbols-outlined" aria-label="Dashboard">dashboard</a>
+            <a href="/subscriptions" class="material-symbols-outlined" aria-label="Subscriptions">star</a>
+            <a href="/settings" class="material-symbols-outlined" aria-label="Settings">settings</a>
             <form action="/logout" method="POST" class="inline m-0 p-0">
                 {{.csrfField}}
-                <button type="submit" class="material-symbols-outlined bg-transparent border-none text-error cursor-pointer">logout</button>
+                <button type="submit" class="material-symbols-outlined bg-transparent border-none text-error cursor-pointer" aria-label="Logout">logout</button>
             </form>
         </div>
     </header>

@@ -81,7 +81,7 @@
                     <tr class="hover:bg-surface-container transition-colors duration-150">
                         <td class="px-6 py-5">
                             <div class="flex flex-col">
-                                <a href="https://nvd.nist.gov/vuln/detail/{{.CVEID}}" target="_blank" class="text-sm font-bold font-display text-primary hover:underline">{{.CVEID}}</a>
+                                <a href="https://nvd.nist.gov/vuln/detail/{{.CVEID}}" target="_blank" rel="noopener noreferrer" class="text-sm font-bold font-display text-primary hover:underline">{{.CVEID}}</a>
                             </div>
                         </td>
                         <td class="px-6 py-5">
@@ -114,12 +114,20 @@
                             <form action="/api/status" method="POST" class="inline">
                                 {{$.csrfField}}
                                 <input type="hidden" name="cve_id" value="{{.ID}}">
-                                <select name="status" onchange="this.form.submit()" class="bg-surface-container text-xs py-1 px-2 rounded border border-outline-variant/50 text-on-surface focus:outline-none focus:border-primary">
+                                <select name="status" onchange="updateCVEStatus(this.form)" class="bg-surface-container text-xs py-1 px-2 rounded border border-outline-variant/50 text-on-surface focus:outline-none focus:border-primary">
                                     <option value="active" {{if eq .Status "active"}}selected{{end}}>Active</option>
                                     <option value="resolved" {{if eq .Status "resolved"}}selected{{end}}>Resolved</option>
                                     <option value="ignored" {{if eq .Status "ignored"}}selected{{end}}>Ignored</option>
                                 </select>
                             </form>
+                        </td>
+                    </tr>
+                    {{else}}
+                    <tr>
+                        <td colspan="6">
+                            <div class="p-12 text-center flex flex-col items-center">
+                                <p class="text-on-surface-variant font-label tracking-widest uppercase text-sm">No CVEs found</p>
+                            </div>
                         </td>
                     </tr>
                     {{end}}
@@ -129,7 +137,7 @@
 
         <!-- Pagination -->
         <div class="p-4 border-t border-outline-variant/30 flex justify-between items-center bg-surface-container-low">
-            <span class="text-xs font-label text-on-surface-variant tracking-widest uppercase">Page {{.CurrentPage}} of {{.TotalPages}}</span>
+            <span class="text-xs font-label text-on-surface-variant tracking-widest uppercase">{{if gt .TotalPages 0}}Page {{.CurrentPage}} of {{.TotalPages}}{{else}}No results{{end}}</span>
             <div class="flex gap-2">
                 {{if .HasPrev}}
                 <a href="?page={{.PrevPage}}&q={{.Query}}" class="px-3 py-1 bg-surface border border-outline-variant/50 rounded text-xs font-bold hover:bg-surface-container-high transition-colors text-on-surface">PREV</a>
@@ -142,3 +150,29 @@
     </div>
 </div>
 {{end}}
+
+<script>
+function updateCVEStatus(form) {
+    const cveId = form.elements['cve_id'].value;
+    const status = form.elements['status'].value;
+    const csrfToken = form.querySelector('input[name="gorilla.csrf.Token"]').value;
+
+    fetch('/api/status', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken
+        },
+        body: JSON.stringify({
+            cve_id: Number(cveId),
+            status: status
+        })
+    }).then(response => {
+        if (!response.ok) {
+            console.error('Failed to update status');
+        }
+    }).catch(error => {
+        console.error('Error:', error);
+    });
+}
+</script>
