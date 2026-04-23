@@ -1191,9 +1191,11 @@ func DeleteAssetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	idStr := r.FormValue("id")
+	// Sanitize for logging (Issue 706)
+	safeIdStr := strings.ReplaceAll(strings.ReplaceAll(idStr, "\n", ""), "\r", "")
 	assetID, err := strconv.Atoi(idStr)
 	if err != nil {
-		log.Printf("DeleteAsset: invalid asset ID %q: %v", idStr, err)
+		log.Printf("DeleteAsset: invalid asset ID %q: %v", safeIdStr, err)
 		http.Error(w, "Invalid asset ID", http.StatusBadRequest)
 		return
 	}

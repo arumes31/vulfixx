@@ -344,7 +344,7 @@ func runFullSync(ctx context.Context, isBackfill bool) {
 			nvdURL += fmt.Sprintf("&lastModEndDate=%s", url.QueryEscape(syncStart.Format("2006-01-02T15:04:05.000")))
 		}
 
-		req, err := http.NewRequestWithContext(ctx, "GET", nvdURL, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", nvdURL, nil) // #nosec G704 -- URL is constructed from hardcoded base and escaped params
 		if err != nil {
 			log.Println("Error creating NVD request:", err)
 			return
@@ -357,15 +357,15 @@ func runFullSync(ctx context.Context, isBackfill bool) {
 		maxRetries := 3
 		var retryErr error
 		for retry := 0; retry < maxRetries; retry++ {
-			resp, retryErr = client.Do(req)
+			resp, retryErr = client.Do(req) // #nosec G704 -- Request is verified safe
 			if retryErr == nil {
 				if resp.StatusCode == http.StatusOK {
 					break
 				}
 				// Retry on 5xx errors
 				if resp.StatusCode >= 500 && resp.StatusCode < 600 {
-					resp.Body.Close()
-					log.Printf("Worker: NVD API returned status %d, retrying (%d/%d)...", resp.StatusCode, retry+1, maxRetries)
+					_ = resp.Body.Close()
+					log.Printf("Worker: NVD API returned status %d, retrying (%d/%d)...", resp.StatusCode, retry+1, maxRetries) // #nosec G706 -- StatusCode is int, no injection risk
 					time.Sleep(delay * time.Duration(retry+1))
 					continue
 				}
@@ -382,25 +382,25 @@ func runFullSync(ctx context.Context, isBackfill bool) {
 		}
 
 		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
-			resp.Body.Close()
-			log.Printf("Worker: NVD rate-limited (HTTP %d), backing off...", resp.StatusCode)
+			_ = resp.Body.Close()
+			log.Printf("Worker: NVD rate-limited (HTTP %d), backing off...", resp.StatusCode) // #nosec G706 -- StatusCode is int, no injection risk
 			time.Sleep(30 * time.Second)
 			continue
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			log.Printf("NVD API returned non-retriable status: %d", resp.StatusCode)
+			_ = resp.Body.Close()
+			log.Printf("NVD API returned non-retriable status: %d", resp.StatusCode) // #nosec G706 -- StatusCode is int, no injection risk
 			return
 		}
 
 		var nvdResp NVDResponse
 		if err := json.NewDecoder(resp.Body).Decode(&nvdResp); err != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			log.Println("Error decoding NVD response:", err)
 			return
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		if totalResults < 0 {
 			totalResults = nvdResp.TotalResults
