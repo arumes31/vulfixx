@@ -30,11 +30,17 @@ func InitTemplatesWithFuncs() {
 	if err != nil {
 		log.Fatalf("Error globbing templates: %v", err)
 	}
+	if len(files) == 0 {
+		log.Fatalf("No templates found")
+	}
 	for _, file := range files {
 		name := filepath.Base(file)
 		if name == "base.html" {
 			continue
 		}
 		templateMap[name] = template.Must(template.New(name).Funcs(funcs).ParseFiles("templates/base.html", file))
+	}
+	if len(templateMap) == 0 {
+		log.Fatalf("No renderable templates loaded")
 	}
 }

@@ -3,3 +3,4 @@ coverage*
 .env
 .qodo
 *.exe
+node_modules

@@ -60,7 +60,7 @@
 
             <form action="/dashboard" method="GET" class="relative">
                 <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
-                <input type="text" name="q" placeholder="Search ID or description..." class="bg-surface-container w-64 pl-9 pr-4 py-2 rounded-md border-b-2 border-transparent focus:border-primary focus:outline-none text-sm font-label transition-colors">
+                <input type="text" name="q" value="{{.Query}}" placeholder="Search ID or description..." class="bg-surface-container w-64 pl-9 pr-4 py-2 rounded-md border-b-2 border-transparent focus:border-primary focus:outline-none text-sm font-label transition-colors">
             </form>
         </div>
 
@@ -81,7 +81,7 @@
                     <tr class="hover:bg-surface-container transition-colors duration-150">
                         <td class="px-6 py-5">
                             <div class="flex flex-col">
-                                <a href="https://nvd.nist.gov/vuln/detail/{{.ID}}" target="_blank" class="text-sm font-bold font-display text-primary hover:underline">{{.ID}}</a>
+                                <a href="https://nvd.nist.gov/vuln/detail/{{.CVEID}}" target="_blank" class="text-sm font-bold font-display text-primary hover:underline">{{.CVEID}}</a>
                             </div>
                         </td>
                         <td class="px-6 py-5">
@@ -132,10 +132,10 @@
             <span class="text-xs font-label text-on-surface-variant tracking-widest uppercase">Page {{.CurrentPage}} of {{.TotalPages}}</span>
             <div class="flex gap-2">
                 {{if .HasPrev}}
-                <a href="?page={{.PrevPage}}" class="px-3 py-1 bg-surface border border-outline-variant/50 rounded text-xs font-bold hover:bg-surface-container-high transition-colors text-on-surface">PREV</a>
+                <a href="?page={{.PrevPage}}&q={{.Query}}" class="px-3 py-1 bg-surface border border-outline-variant/50 rounded text-xs font-bold hover:bg-surface-container-high transition-colors text-on-surface">PREV</a>
                 {{end}}
                 {{if .HasNext}}
-                <a href="?page={{.NextPage}}" class="px-3 py-1 bg-surface border border-outline-variant/50 rounded text-xs font-bold hover:bg-surface-container-high transition-colors text-primary border-primary/30">NEXT</a>
+                <a href="?page={{.NextPage}}&q={{.Query}}" class="px-3 py-1 bg-surface border border-outline-variant/50 rounded text-xs font-bold hover:bg-surface-container-high transition-colors text-primary border-primary/30">NEXT</a>
                 {{end}}
             </div>
         </div>

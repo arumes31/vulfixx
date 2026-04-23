@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/gorilla/csrf"
 	"github.com/pquerna/otp/totp"
 	"html/template"
 	"log"
@@ -260,23 +261,29 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	pageSize := 20
 	offset := (page - 1) * pageSize
 
-	// Fetch total count for pagination
-	countQuery := `
-		SELECT COUNT(DISTINCT c.id)
+	searchQuery := r.URL.Query().Get("q")
+	var totalItems, kevCount, highCount int
+
+	// Fetch metrics for dashboard
+	metricsQuery := `
+		SELECT
+			COUNT(DISTINCT c.id) as total_cves,
+			COUNT(DISTINCT CASE WHEN c.cisa_kev = true THEN c.id END) as kev_count,
+			COUNT(DISTINCT CASE WHEN c.cvss_score >= 7.0 THEN c.id END) as high_count
 		FROM cves c
 		INNER JOIN user_subscriptions us ON us.user_id = $1
 		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
 		WHERE (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored'))
 		  AND c.cvss_score >= us.min_severity
 		  AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%')
+		  AND ($2 = '' OR c.cve_id ILIKE '%' || $2 || '%' OR c.description ILIKE '%' || $2 || '%')
 	`
-	var totalItems int
-	err := db.Pool.QueryRow(context.Background(), countQuery, userID).Scan(&totalItems)
+	err := db.Pool.QueryRow(context.Background(), metricsQuery, userID, searchQuery).Scan(&totalItems, &kevCount, &highCount)
 	if err != nil {
-		log.Printf("Error counting CVEs: %v", err)
+		log.Printf("Error counting metrics: %v", err)
 	}
 
-	// Fetch CVEs not resolved/ignored by user, filtered by their subscriptions
+	// Fetch CVEs not resolved/ignored by user, filtered by their subscriptions and search query
 	query := `
 		SELECT DISTINCT c.id, c.cve_id, c.description, c.cvss_score, c.cisa_kev, c.published_date
 		FROM cves c
@@ -285,9 +292,10 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		WHERE (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored'))
 		  AND c.cvss_score >= us.min_severity
 		  AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%')
-		ORDER BY c.published_date DESC LIMIT $2 OFFSET $3
+		  AND ($2 = '' OR c.cve_id ILIKE '%' || $2 || '%' OR c.description ILIKE '%' || $2 || '%')
+		ORDER BY c.published_date DESC LIMIT $3 OFFSET $4
 	`
-	rows, err := db.Pool.Query(context.Background(), query, userID, pageSize, offset)
+	rows, err := db.Pool.Query(context.Background(), query, userID, searchQuery, pageSize, offset)
 	if err != nil {
 		http.Error(w, "Error fetching CVEs", http.StatusInternalServerError)
 		return
@@ -295,7 +303,6 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	var cves []models.CVE
-	var kevCount, highCount int
 	for rows.Next() {
 		var cve models.CVE
 		err := rows.Scan(&cve.ID, &cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.CISAKEV, &cve.PublishedDate)
@@ -303,12 +310,6 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		cves = append(cves, cve)
-		if cve.CISAKEV {
-			kevCount++
-		}
-		if cve.CVSSScore >= 7.0 {
-			highCount++
-		}
 	}
 
 	totalPages := (totalItems + pageSize - 1) / pageSize
@@ -324,6 +325,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"HasNext":     page < totalPages,
 		"PrevPage":    page - 1,
 		"NextPage":    page + 1,
+		"Query":       searchQuery,
 	})
 }
 
@@ -757,6 +759,7 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 		data["UserID"] = userID
 		data["IsAdmin"] = IsAdmin(r)
 	}
+	data["csrfField"] = csrf.TemplateField(r)
 	tmpl, ok := templateMap[name]
 	if !ok {
 		log.Printf("Template %s not found", name)
