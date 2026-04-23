@@ -9,18 +9,19 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/gorilla/csrf"
+	"github.com/pquerna/otp/totp"
 	"html/template"
 	"log"
 	"net/http"
-	"github.com/pquerna/otp/totp"
 	"strconv"
 	"time"
 )
 
-var templates *template.Template
+var templateMap map[string]*template.Template
 
 func InitTemplates() {
-	templates = template.Must(template.ParseGlob("templates/*.html"))
+	InitTemplatesWithFuncs()
 }
 
 func AuthMiddleware(next http.Handler) http.Handler {
@@ -112,7 +113,6 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 	totpCode := r.FormValue("totp_code")
 
-
 	session, err := store.Get(r, "session-name")
 	if err != nil {
 		log.Printf("Error getting session: %v", err)
@@ -137,7 +137,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		// Success! Clear pre-auth and set full auth
 		delete(session.Values, "pre_auth_user_id")
 		session.Values["user_id"] = preAuthUserID
-		
+
 		var isAdmin bool
 		_ = db.Pool.QueryRow(r.Context(), "SELECT is_admin FROM users WHERE id = $1", preAuthUserID).Scan(&isAdmin)
 		session.Values["is_admin"] = isAdmin
@@ -261,34 +261,41 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	pageSize := 20
 	offset := (page - 1) * pageSize
 
-	// Fetch total count for pagination
-	countQuery := `
-		SELECT COUNT(DISTINCT c.id)
+	searchQuery := r.URL.Query().Get("q")
+	var totalItems, kevCount, highCount int
+
+	// Fetch metrics for dashboard
+	metricsQuery := `
+		SELECT
+			COUNT(DISTINCT c.id) as total_cves,
+			COUNT(DISTINCT CASE WHEN c.cisa_kev = true THEN c.id END) as kev_count,
+			COUNT(DISTINCT CASE WHEN c.cvss_score >= 7.0 THEN c.id END) as high_count
 		FROM cves c
 		INNER JOIN user_subscriptions us ON us.user_id = $1
 		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
 		WHERE (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored'))
 		  AND c.cvss_score >= us.min_severity
 		  AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%')
+		  AND ($2 = '' OR c.cve_id ILIKE '%' || $2 || '%' OR c.description ILIKE '%' || $2 || '%')
 	`
-	var totalItems int
-	err := db.Pool.QueryRow(context.Background(), countQuery, userID).Scan(&totalItems)
+	err := db.Pool.QueryRow(context.Background(), metricsQuery, userID, searchQuery).Scan(&totalItems, &kevCount, &highCount)
 	if err != nil {
-		log.Printf("Error counting CVEs: %v", err)
+		log.Printf("Error counting metrics: %v", err)
 	}
 
-	// Fetch CVEs not resolved/ignored by user, filtered by their subscriptions
+	// Fetch CVEs not resolved/ignored by user, filtered by their subscriptions and search query
 	query := `
-		SELECT DISTINCT c.id, c.cve_id, c.description, c.cvss_score, c.cisa_kev, c.published_date
+		SELECT DISTINCT c.id, c.cve_id, c.description, c.cvss_score, c.cisa_kev, c.published_date, COALESCE(ucs.status, 'active') as status
 		FROM cves c
 		INNER JOIN user_subscriptions us ON us.user_id = $1
 		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
 		WHERE (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored'))
 		  AND c.cvss_score >= us.min_severity
 		  AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%')
-		ORDER BY c.published_date DESC LIMIT $2 OFFSET $3
+		  AND ($2 = '' OR c.cve_id ILIKE '%' || $2 || '%' OR c.description ILIKE '%' || $2 || '%')
+		ORDER BY c.published_date DESC LIMIT $3 OFFSET $4
 	`
-	rows, err := db.Pool.Query(context.Background(), query, userID, pageSize, offset)
+	rows, err := db.Pool.Query(context.Background(), query, userID, searchQuery, pageSize, offset)
 	if err != nil {
 		http.Error(w, "Error fetching CVEs", http.StatusInternalServerError)
 		return
@@ -296,20 +303,13 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	var cves []models.CVE
-	var kevCount, highCount int
 	for rows.Next() {
 		var cve models.CVE
-		err := rows.Scan(&cve.ID, &cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.CISAKEV, &cve.PublishedDate)
+		err := rows.Scan(&cve.ID, &cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.CISAKEV, &cve.PublishedDate, &cve.Status)
 		if err != nil {
 			continue
 		}
 		cves = append(cves, cve)
-		if cve.CISAKEV {
-			kevCount++
-		}
-		if cve.CVSSScore >= 7.0 {
-			highCount++
-		}
 	}
 
 	totalPages := (totalItems + pageSize - 1) / pageSize
@@ -325,6 +325,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"HasNext":     page < totalPages,
 		"PrevPage":    page - 1,
 		"NextPage":    page + 1,
+		"Query":       searchQuery,
 	})
 }
 
@@ -350,16 +351,22 @@ func UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Status != "resolved" && req.Status != "ignored" {
+	if req.Status != "resolved" && req.Status != "ignored" && req.Status != "active" {
 		http.Error(w, "Invalid status", http.StatusBadRequest)
 		return
 	}
 
-	_, err = db.Pool.Exec(context.Background(), `
-		INSERT INTO user_cve_status (user_id, cve_id, status)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (user_id, cve_id) DO UPDATE SET status = $3, updated_at = CURRENT_TIMESTAMP
-	`, userID, req.CVEID, req.Status)
+	if req.Status == "active" {
+		_, err = db.Pool.Exec(context.Background(), `
+			DELETE FROM user_cve_status WHERE user_id = $1 AND cve_id = $2
+		`, userID, req.CVEID)
+	} else {
+		_, err = db.Pool.Exec(context.Background(), `
+			INSERT INTO user_cve_status (user_id, cve_id, status)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (user_id, cve_id) DO UPDATE SET status = $3, updated_at = CURRENT_TIMESTAMP
+		`, userID, req.CVEID, req.Status)
+	}
 
 	if err != nil {
 		http.Error(w, "Failed to update status", http.StatusInternalServerError)
@@ -603,7 +610,7 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	w.Header().Set("Content-Type", "application/rss+xml")
-	_ , _ = fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8" ?>
+	_, _ = fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0">
 <channel>
   <title>CVE Tracker Feed</title>
@@ -621,7 +628,7 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.PublishedAt); err != nil {
 			continue
 		}
-		_ , _ = fmt.Fprintf(w, `
+		_, _ = fmt.Fprintf(w, `
   <item>
     <title>%s (CVSS: %.1f)</title>
     <link>https://nvd.nist.gov/vuln/detail/%s</link>
@@ -631,7 +638,7 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
   </item>`, cve.CVEID, cve.CVSSScore, cve.CVEID, template.HTMLEscapeString(cve.Description), cve.PublishedAt.Format(time.RFC1123Z), cve.CVEID)
 	}
 
-	_ , _ = fmt.Fprintf(w, `
+	_, _ = fmt.Fprintf(w, `
 </channel>
 </rss>`)
 }
@@ -687,30 +694,29 @@ func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
-    if r.Method != "POST" {
-        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-        return
-    }
-    userID, ok := GetUserID(r)
-    if !ok {
-        http.Redirect(w, r, "/login", http.StatusFound)
-        return
-    }
-    subIDStr := r.FormValue("id")
-    subID, err := strconv.Atoi(subIDStr)
-    if err != nil {
-        http.Error(w, "Invalid subscription ID", http.StatusBadRequest)
-        return
-    }
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	userID, ok := GetUserID(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	subIDStr := r.FormValue("id")
+	subID, err := strconv.Atoi(subIDStr)
+	if err != nil {
+		http.Error(w, "Invalid subscription ID", http.StatusBadRequest)
+		return
+	}
 
-    if _, err = db.Pool.Exec(context.Background(), "DELETE FROM user_subscriptions WHERE id = $1 AND user_id = $2", subID, userID); err != nil {
-        http.Error(w, "Error deleting subscription", http.StatusInternalServerError)
-        return
-    }
-    LogActivity(r.Context(), userID, "subscription_deleted", "Deleted subscription ID: "+subIDStr, r.RemoteAddr, r.UserAgent())
-    http.Redirect(w, r, "/subscriptions", http.StatusFound)
+	if _, err = db.Pool.Exec(context.Background(), "DELETE FROM user_subscriptions WHERE id = $1 AND user_id = $2", subID, userID); err != nil {
+		http.Error(w, "Error deleting subscription", http.StatusInternalServerError)
+		return
+	}
+	LogActivity(r.Context(), userID, "subscription_deleted", "Deleted subscription ID: "+subIDStr, r.RemoteAddr, r.UserAgent())
+	http.Redirect(w, r, "/subscriptions", http.StatusFound)
 }
-
 
 func VerifyEmailHandler(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
@@ -759,7 +765,14 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 		data["UserID"] = userID
 		data["IsAdmin"] = IsAdmin(r)
 	}
-	if err := templates.ExecuteTemplate(w, name, data); err != nil {
+	data["csrfField"] = csrf.TemplateField(r)
+	tmpl, ok := templateMap[name]
+	if !ok {
+		log.Printf("Template %s not found", name)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
 		log.Printf("Error executing template %s: %v", name, err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
@@ -830,4 +843,3 @@ func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	http.Redirect(w, r, "/admin/users", http.StatusFound)
 }
-

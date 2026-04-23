@@ -8,9 +8,10 @@ import (
 	"encoding/hex"
 	"errors"
 
-	"golang.org/x/crypto/bcrypt"
 	"github.com/pquerna/otp/totp"
+	"golang.org/x/crypto/bcrypt"
 )
+
 func GenerateToken() (string, error) {
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
@@ -100,7 +101,6 @@ func InitAdmin(ctx context.Context, email, password, totpSecret string) error {
 
 	return err
 }
-
 
 func ChangePassword(ctx context.Context, userID int, currentPassword, newPassword, totpCode string) error {
 	var hash string

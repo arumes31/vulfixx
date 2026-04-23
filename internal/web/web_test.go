@@ -104,7 +104,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 		(1, 'CVE-2024-0001', 'Test CVE 1', 7.5, '2024-01-01'),
 		(2, 'CVE-2024-0002', 'Test CVE 2', 8.5, '2024-01-02'),
 		(3, 'CVE-2024-0003', 'Test CVE 3', 9.5, '2024-01-03')`)
-	
+
 	// Create a real user using Register
 	form := url.Values{}
 	form.Add("email", "web_test2@example.com")
@@ -203,7 +203,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Form request failed: %v", err)
 		}
-		
+
 		if len(expectedCodes) > 0 {
 			found := false
 			for _, code := range expectedCodes {

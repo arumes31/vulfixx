@@ -1,33 +1,60 @@
 {{template "base" .}}
 
 {{define "content"}}
-<h2>Alert History</h2>
-<p>Recent alerts sent to your email or webhooks.</p>
+<div class="space-y-8">
+    <header class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-outline-variant/30 pb-6">
+        <div>
+            <h1 class="text-3xl font-display font-medium tracking-tight mb-2">Notification Telemetry</h1>
+            <p class="text-on-surface-variant font-label text-sm uppercase tracking-widest">History of dispatched alerts</p>
+        </div>
+    </header>
 
-<div class="card">
-    <table style="width: 100%; border-collapse: collapse;">
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th>CVE ID</th>
-                <th>CVSS</th>
-                <th>Description</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{range .Alerts}}
-            <tr>
-                <td>{{.SentAt.Format "2006-01-02 15:04:05"}}</td>
-                <td><strong>{{.CVEID}}</strong></td>
-                <td><span class="cve-score {{if ge .CVSSScore 7.0}}score-high{{else if ge .CVSSScore 4.0}}score-med{{else}}score-low{{end}}" style="padding: 2px 8px;">{{.CVSSScore}}</span></td>
-                <td>{{.Description}}</td>
-            </tr>
-            {{else}}
-            <tr>
-                <td colspan="4" style="text-align: center;">No alerts sent yet.</td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
+    <div class="bg-surface rounded-xl border border-outline-variant/30 overflow-hidden shadow-xl">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-surface-container-low border-b border-outline-variant/30">
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Timestamp</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">ID Reference</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Severity</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Details</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-outline-variant/10">
+                    {{range .Alerts}}
+                    <tr class="hover:bg-surface-container transition-colors duration-150">
+                        <td class="px-6 py-4 text-xs font-mono text-on-surface-variant whitespace-nowrap">
+                            {{.SentAt.Format "2006-01-02 15:04:05"}}
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="text-sm font-bold font-display text-primary">{{.CVEID}}</span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {{if ge .CVSSScore 7.0}}
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-error-container/30 text-error border border-error/20 text-[10px] font-bold tracking-wider uppercase font-mono"><span class="w-1.5 h-1.5 rounded-full bg-error"></span> {{.CVSSScore}}</span>
+                            {{else if ge .CVSSScore 4.0}}
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-tertiary-container/30 text-tertiary border border-tertiary/20 text-[10px] font-bold tracking-wider uppercase font-mono"><span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span> {{.CVSSScore}}</span>
+                            {{else}}
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-surface-variant text-on-surface border border-outline-variant/30 text-[10px] font-bold tracking-wider uppercase font-mono"><span class="w-1.5 h-1.5 rounded-full bg-on-surface-variant"></span> {{.CVSSScore}}</span>
+                            {{end}}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-on-surface">
+                            {{.Description}}
+                        </td>
+                    </tr>
+                    {{else}}
+                    <tr>
+                        <td colspan="4">
+                            <div class="p-12 text-center flex flex-col items-center">
+                                <span class="material-symbols-outlined text-6xl text-outline-variant/50 mb-4" style="font-variation-settings: 'wght' 200;">notifications_paused</span>
+                                <p class="text-on-surface-variant font-label tracking-widest uppercase text-sm">No alerts dispatched</p>
+                            </div>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 {{end}}

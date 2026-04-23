@@ -20,6 +20,7 @@ type CVE struct {
 	Description   string
 	CVSSScore     float64
 	CISAKEV       bool
+	Status        string
 	PublishedDate time.Time
 	UpdatedDate   time.Time
 	CreatedAt     time.Time
