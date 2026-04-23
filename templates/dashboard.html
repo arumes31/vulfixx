@@ -94,7 +94,7 @@
                             {{end}}
                         </td>
                         <td class="px-6 py-5">
-                            {{if .IsKev}}
+                            {{if .CISAKEV}}
                             <span class="inline-flex items-center px-2 py-0.5 rounded bg-error text-on-error text-xs font-bold uppercase tracking-widest">KEV</span>
                             {{else}}
                             <span class="text-on-surface-variant text-xs">-</span>
@@ -109,7 +109,7 @@
                             <span class="text-xs text-error font-bold uppercase tracking-widest flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">warning</span> Active</span>
                             {{end}}
                         </td>
-                        <td class="px-6 py-5 text-sm text-on-surface font-mono">{{.PublishedAt.Format "2006-01-02"}}</td>
+                        <td class="px-6 py-5 text-sm text-on-surface font-mono">{{.PublishedDate.Format "2006-01-02"}}</td>
                         <td class="px-6 py-5 text-right">
                             <form action="/api/status" method="POST" class="inline">
                                 {{$.csrfField}}

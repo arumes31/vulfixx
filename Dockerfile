@@ -7,7 +7,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN npm install -D tailwindcss@3 postcss autoprefixer @tailwindcss/forms @tailwindcss/container-queries
+RUN npm ci
 RUN npx tailwindcss -i ./input.css -o ./static/css/main.css --minify
 RUN CGO_ENABLED=0 GOOS=linux go build -o cve-tracker ./cmd/cve-tracker
 

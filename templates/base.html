@@ -76,6 +76,7 @@
             <a href="/subscriptions" class="material-symbols-outlined">star</a>
             <a href="/settings" class="material-symbols-outlined">settings</a>
             <form action="/logout" method="POST" class="inline m-0 p-0">
+                {{.csrfField}}
                 <button type="submit" class="material-symbols-outlined bg-transparent border-none text-error cursor-pointer">logout</button>
             </form>
         </div>
