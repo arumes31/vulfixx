@@ -35,7 +35,7 @@ func TestFetchFromCISAKEV(t *testing.T) {
 	defer ts.Close()
 
 	defaultCISAKEVURL = ts.URL
-	
+
 	mock.ExpectExec("UPDATE cves SET cisa_kev = false").WillReturnResult(pgxmock.NewResult("UPDATE", 10))
 	mock.ExpectExec("UPDATE cves SET cisa_kev = true WHERE cve_id = ANY").
 		WithArgs([]string{"CVE-2023-1111", "CVE-2023-2222"}).
@@ -129,7 +129,7 @@ func TestUpsertCVEs(t *testing.T) {
 	mock.ExpectQuery("WITH upsert AS").
 		WithArgs("CVE-UPD-TEST", pgxmock.AnyArg(), 0.0, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "tag"}).AddRow(1, "upd"))
-	
+
 	ins, upd := upsertCVEs(ctx, vulns, false)
 	if ins != 0 || upd != 1 {
 		t.Errorf("upsertCVEs failed: got %d ins, %d upd", ins, upd)
