@@ -489,3 +489,11 @@ func TestWebEndpointsCoverage(t *testing.T) {
 		mock.ExpectExec("DELETE FROM users").WillReturnResult(pgxmock.NewResult("DELETE", 1))
 	})
 }
+
+func TestInitTemplates(t *testing.T) {
+    if err := os.Chdir("../.."); err != nil {
+		t.Logf("Warning: Failed to chdir: %v", err)
+	}
+	defer func() { _ = os.Chdir("internal/web") }()
+    InitTemplates()
+}
