@@ -339,3 +339,11 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	delAccForm.Add("password", "password456")
 	doAuthReqForm("POST", "/settings/delete", delAccForm)
 }
+
+func TestInitTemplates(t *testing.T) {
+    if err := os.Chdir("../.."); err != nil {
+		t.Logf("Warning: Failed to chdir: %v", err)
+	}
+	defer os.Chdir("internal/web")
+    InitTemplates()
+}

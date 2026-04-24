@@ -129,3 +129,83 @@ func TestWorkerFunctions(t *testing.T) {
 	sendAlert(models.UserSubscription{WebhookURL: "http://127.0.0.1:9999", UserID: 1}, &cveBody, "test@example.com")
 	sendVerificationEmail("test@example.com", "token123")
 }
+
+func TestSanitizeEmail(t *testing.T) {
+	valid, err := sanitizeEmail("test@example.com")
+	if err != nil || valid != "test@example.com" {
+		t.Errorf("Failed to sanitize valid email: %v", err)
+	}
+
+	invalid, err := sanitizeEmail("invalid\n email@example.com")
+	if err == nil {
+		t.Errorf("Expected error for invalid email, got %s", invalid)
+	}
+}
+
+func TestRedactToken(t *testing.T) {
+	token := redactToken("12345678901234567890")
+	if !strings.HasPrefix(token, "12345678") {
+		t.Errorf("Failed to redact long token, got: %s", token)
+	}
+
+	short := redactToken("123")
+	if !strings.HasPrefix(short, "123") {
+		t.Errorf("Failed to handle short token, got: %s", short)
+	}
+
+    empty := redactToken("")
+    if empty != "<empty>" {
+        t.Errorf("Failed to handle empty token")
+    }
+}
+
+func TestRedactURL(t *testing.T) {
+	u := redactURL("http://user:pass@example.com/path?query=1")
+	if strings.Contains(u, "user:pass") {
+		t.Errorf("Failed to redact URL, got: %s", u)
+	}
+
+	invalid := redactURL(":%^")
+	if invalid != "[invalid-url]" {
+		t.Errorf("Failed to handle invalid URL, got: %s", invalid)
+	}
+}
+
+func TestSendMailWithTimeout(t *testing.T) {
+	// Attempt to send email to closed port
+	err := sendMailWithTimeout("127.0.0.1", "1", "user", "pass", []string{"test@example.com"}, []byte("test"))
+	if err == nil {
+		t.Errorf("Expected error sending mail to closed port")
+	}
+}
+
+func TestFetchCVEsPeriodically(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+    defaultNVDBaseURL = "http://localhost:12345"
+	go fetchCVEsPeriodically(ctx)
+	time.Sleep(100 * time.Millisecond)
+}
+
+func TestProcessEmailChange(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go processEmailChange(ctx)
+    db.RedisClient.LPush(ctx, "email_change_queue", "{\"email\":\"test@example.com\", \"token\":\"token\", \"type\":\"old\"}")
+    db.RedisClient.LPush(ctx, "email_change_queue", "invalid")
+	time.Sleep(100 * time.Millisecond)
+}
+
+func TestSendEmailChangeNotification(t *testing.T) {
+    // Should fail silently or return error (it logs internally)
+    sendEmailChangeNotification("test@example.com", "token123", "old")
+}
+
+func TestStartWorker(t *testing.T) {
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+    go StartWorker(ctx)
+    time.Sleep(100 * time.Millisecond)
+}

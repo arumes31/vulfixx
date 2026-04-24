@@ -9,8 +9,8 @@ import (
 )
 
 func TestAuthIntegration(t *testing.T) {
-	if os.Getenv("CI") == "true" {
-		t.Skip("skipping integration test in CI")
+	if os.Getenv("SKIP_INTEGRATION") == "true" {
+		t.Skip("skipping integration test")
 	}
 
 	// Setup DB
@@ -32,7 +32,7 @@ func TestAuthIntegration(t *testing.T) {
 	ctx := context.Background()
 
 	// Clean up table for test
-	_, _ = db.Pool.Exec(ctx, "DELETE FROM users WHERE email = 'test@example.com'")
+	_, _ = db.Pool.Exec(ctx, "DELETE FROM users WHERE email IN ('test@example.com', 'admin_init@example.com', 'changed@example.com', 'admin_init2@example.com')")
 
 	token, err := Register(ctx, "test@example.com", "password")
 	if err != nil {
@@ -80,4 +80,42 @@ func TestAuthIntegration(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Expected error for changing with wrong old password")
 	}
+
+    // Test Email Change Flow
+    oldTok, newTok, err := RequestEmailChange(ctx, user.ID, "changed@example.com")
+    if err != nil {
+        t.Fatalf("Failed to request email change: %v", err)
+    }
+
+    // Confirm old
+    ok, _, _, err := ConfirmEmailChange(ctx, oldTok)
+    if err != nil {
+        t.Fatalf("Failed to confirm old email token: %v", err)
+    }
+    if ok {
+        t.Fatalf("Should not be fully confirmed yet")
+    }
+
+    // Confirm new
+    ok, newEmail, _, err := ConfirmEmailChange(ctx, newTok)
+    if err != nil {
+        t.Fatalf("Failed to confirm new email token: %v", err)
+    }
+    if !ok || newEmail != "changed@example.com" {
+        t.Fatalf("Expected fully confirmed and correct new email, got ok=%v, email=%s", ok, newEmail)
+    }
+
+    // Test InitAdmin
+    err = InitAdmin(ctx, "admin_init@example.com", "password", "JBSWY3DPEHPK3PXP")
+    if err != nil {
+        t.Fatalf("Failed to init admin: %v", err)
+    }
+    err = InitAdmin(ctx, "", "", "") // should skip
+    if err != nil {
+        t.Fatalf("Failed to skip empty admin init: %v", err)
+    }
+    err = InitAdmin(ctx, "admin_init2@example.com", "password", "") // missing totp
+    if err == nil {
+        t.Fatalf("Expected error missing totp secret")
+    }
 }
