@@ -140,12 +140,12 @@
                     <input type="password" name="current_password" required class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
                 </div>
                 <div class="space-y-2 mt-6">
-                    <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">New Passphrase</label>
-                    <input type="password" name="new_password" required class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
+                    <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">New Passphrase (min 8 chars)</label>
+                    <input type="password" name="new_password" required minlength="8" class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
                 </div>
                 <div class="space-y-2">
                     <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Confirm New</label>
-                    <input type="password" name="confirm_password" required class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
+                    <input type="password" name="confirm_password" required minlength="8" class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
                 </div>
                 {{if .IsTOTPEnabled}}
                 <div class="space-y-2 mt-6">
