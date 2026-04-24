@@ -192,8 +192,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 		}
 
 		// Optional: LogActivity if it's a logout or other specific calls
-		if path == "/logout" {
-		}
+		// if path == "/logout" {}
 
 		t.Logf("Starting request %s %s", method, path)
 		var req *http.Request

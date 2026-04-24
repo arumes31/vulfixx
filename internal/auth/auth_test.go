@@ -106,6 +106,7 @@ func TestEmailChangeFlow(t *testing.T) {
 	mock.ExpectCommit()
 
 	confirmed, email, uid, err := ConfirmEmailChange(ctx, oldToken)
+	_ = email
 	if err != nil || confirmed || uid != 1 {
 		t.Fatalf("Failed first confirmation: %v, %v, %d", err, confirmed, uid)
 	}
@@ -128,6 +129,7 @@ func TestEmailChangeFlow(t *testing.T) {
 	mock.ExpectCommit()
 
 	confirmed, email, uid, err = ConfirmEmailChange(ctx, newToken)
+	_ = uid
 	if err != nil || !confirmed || email != "new@example.com" {
 		t.Fatalf("Failed final confirmation: %v, %v, %s", err, confirmed, email)
 	}
@@ -221,8 +223,6 @@ func TestAuthErrors(t *testing.T) {
 	})
 }
 
-type errorReader struct{}
-func (e errorReader) Read(p []byte) (n int, err error) { return 0, errors.New("rand fail") }
 
 func TestGenerateTokenError(t *testing.T) {
 	// Register uses GenerateToken. If GenerateToken fails, Register should fail.

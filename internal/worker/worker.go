@@ -231,7 +231,7 @@ func fetchFromCISAKEV(ctx context.Context) {
 		log.Printf("Worker: [ERROR] Failed to fetch CISA KEV: %v", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var kevResp CISAKEVResponse
 	if err := json.NewDecoder(resp.Body).Decode(&kevResp); err != nil {
@@ -714,7 +714,7 @@ func sendWebhookAlert(sub models.UserSubscription, cve *models.CVE, email string
 		log.Printf("Failed to send webhook to %s: %v", redactURL(sub.WebhookURL), err)
 		return false
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	return resp.StatusCode >= 200 && resp.StatusCode < 300
 }

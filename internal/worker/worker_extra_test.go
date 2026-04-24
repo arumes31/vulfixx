@@ -137,7 +137,7 @@ func TestUpsertCVEs(t *testing.T) {
 }
 
 func TestNVDAPIDelay(t *testing.T) {
-	os.Unsetenv("NVD_API_KEY")
+	_ = os.Unsetenv("NVD_API_KEY")
 	if nvdAPIDelay() != 6500*time.Millisecond {
 		t.Errorf("expected 6500ms delay without API key")
 	}
@@ -154,7 +154,5 @@ func TestSendAlertWebhook(t *testing.T) {
 		WebhookURL:    "http://127.0.0.1:8080", // Unsafe loopback
 	}
 	cve := &models.CVE{CVEID: "CVE-1"}
-	if sendAlert(sub, cve, "test@example.com") {
-		// Should be false because 127.0.0.1 is unsafe
-	}
+	_ = sendAlert(sub, cve, "test@example.com") // Should be false because 127.0.0.1 is unsafe
 }
