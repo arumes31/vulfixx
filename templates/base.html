@@ -32,6 +32,10 @@
             <span class="material-symbols-outlined" data-icon="star">star</span>
             <span>Subscriptions</span>
         </a>
+        <a class="flex items-center gap-4 px-4 py-3 text-[#dfe2eb] opacity-70 hover:bg-[#1c2026] hover:opacity-100 hover:text-[#00daf3] hover:border-l-4 hover:border-[#00daf3] transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase" href="/assets">
+            <span class="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
+            <span>Assets</span>
+        </a>
         <a class="flex items-center gap-4 px-4 py-3 text-[#dfe2eb] opacity-70 hover:bg-[#1c2026] hover:opacity-100 hover:text-[#00daf3] hover:border-l-4 hover:border-[#00daf3] transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase" href="/alerts">
             <span class="material-symbols-outlined" data-icon="notifications">notifications</span>
             <span>Alerts</span>
@@ -51,7 +55,27 @@
             <span>Settings</span>
         </a>
     </nav>
-    <div class="p-6">
+    <div class="px-4 py-2 space-y-3">
+        <div class="bg-[#1c2026]/50 rounded-lg p-4 border border-outline-variant/20">
+            <div class="text-[10px] font-label font-black tracking-[0.2em] uppercase text-on-surface-variant/70 mb-3">Appliance Status</div>
+            <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-on-surface-variant flex items-center gap-2">
+                        <span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+                        Total Vault
+                    </span>
+                    <span class="text-xs font-mono font-bold text-on-surface">{{.GlobalTotalCVEs}}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-on-surface-variant flex items-center gap-2">
+                        <span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+                        New (24h)
+                    </span>
+                    <span class="text-xs font-mono font-bold text-tertiary">+{{.GlobalNewCVEs}}</span>
+                </div>
+            </div>
+        </div>
+        
         <form action="/logout" method="POST" class="w-full">
             {{.csrfField}}
             <button type="submit" class="w-full flex items-center justify-center gap-2 bg-[#93000a] text-[#ffdad6] py-3 rounded-md hover:bg-[#690005] transition-colors font-['Space_Grotesk'] tracking-widest text-sm font-bold uppercase">
@@ -74,6 +98,7 @@
         <div class="flex gap-2">
             <a href="/dashboard" class="material-symbols-outlined" aria-label="Dashboard">dashboard</a>
             <a href="/subscriptions" class="material-symbols-outlined" aria-label="Subscriptions">star</a>
+            <a href="/assets" class="material-symbols-outlined" aria-label="Assets">inventory_2</a>
             <a href="/settings" class="material-symbols-outlined" aria-label="Settings">settings</a>
             <form action="/logout" method="POST" class="inline m-0 p-0">
                 {{.csrfField}}

@@ -9,10 +9,14 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/pashagolub/pgxmock/v3"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestWebEndpointsCoverage(t *testing.T) {
@@ -29,23 +33,18 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	t.Setenv("SESSION_KEY", "supersecretkey")
 	t.Setenv("CSRF_KEY", "0123456789abcdef0123456789abcdef")
 
-	if err := db.InitDB(); err != nil {
-		if strings.Contains(err.Error(), "connection refused") {
-			t.Skipf("InitDB failed (skipping): %v", err)
-		} else {
-			t.Fatalf("InitDB failed: %v", err)
-		}
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
 	}
-	defer db.CloseDB()
+	mock.MatchExpectationsInOrder(true)
 
-	if err := db.InitRedis(); err != nil {
-		if strings.Contains(err.Error(), "connection refused") {
-			t.Skipf("InitRedis failed (skipping): %v", err)
-		} else {
-			t.Fatalf("InitRedis failed: %v", err)
-		}
+
+	mr, err := db.SetupTestRedis()
+	if err != nil {
+		t.Fatalf("failed to setup miniredis: %v", err)
 	}
-	defer db.CloseRedis()
+	defer mr.Close()
 
 	InitSession()
 
@@ -96,6 +95,16 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	ts := httptest.NewServer(r)
 	defer ts.Close()
 
+	// Seed user expectations
+	mock.ExpectExec("DELETE FROM users").WillReturnResult(pgxmock.NewResult("DELETE", 0))
+	mock.ExpectExec("DELETE FROM cves").WillReturnResult(pgxmock.NewResult("DELETE", 0))
+	mock.ExpectExec("INSERT INTO cves").WillReturnResult(pgxmock.NewResult("INSERT", 3))
+
+	// Register expectations
+	mock.ExpectExec("INSERT INTO users").
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	
 	// Seed user
 	ctx := context.Background()
 	_, _ = db.Pool.Exec(ctx, "DELETE FROM users WHERE email IN ('web_test2@example.com', 'new_web_test@example.com')")
@@ -120,12 +129,31 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to register: %v", err)
 	}
+	if resReg.StatusCode != http.StatusFound && resReg.StatusCode != http.StatusOK {
+		t.Fatalf("Register failed with status %d", resReg.StatusCode)
+	}
 	_ = resReg.Body.Close()
 
+	// Verify expectations
+	mock.ExpectExec("UPDATE users SET is_email_verified = TRUE").
+		WithArgs("web_test2@example.com").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectQuery("SELECT id FROM users").WithArgs("web_test2@example.com").
+		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
+
+	// Login expectations
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
+	mock.ExpectQuery("SELECT id, email, password_hash").WithArgs("web_test2@example.com").
+		WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
+			AddRow(1, "web_test2@example.com", string(hashedPassword), true, false, "", false))
+	mock.ExpectExec("INSERT INTO user_activity_logs").
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
 	// Verify email manually
-	_, _ = db.Pool.Exec(ctx, "UPDATE users SET is_email_verified = TRUE WHERE email = 'web_test2@example.com'")
+	_, _ = db.Pool.Exec(ctx, "UPDATE users SET is_email_verified = TRUE WHERE email = $1", "web_test2@example.com")
 	var userID int
-	if err := db.Pool.QueryRow(ctx, "SELECT id FROM users WHERE email = 'web_test2@example.com'").Scan(&userID); err != nil {
+	if err := db.Pool.QueryRow(ctx, "SELECT id FROM users WHERE email = $1", "web_test2@example.com").Scan(&userID); err != nil {
 		t.Fatalf("Failed to scan user ID: %v", err)
 	}
 
@@ -139,7 +167,10 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to login: %v", err)
 	}
-	defer func() { _ = resLog.Body.Close() }()
+	if resLog.StatusCode != http.StatusFound && resLog.StatusCode != http.StatusOK {
+		t.Fatalf("Login failed with status %d", resLog.StatusCode)
+	}
+	_ = resLog.Body.Close()
 
 	var sessionCookie *http.Cookie
 	for _, cookie := range resLog.Cookies() {
@@ -149,7 +180,27 @@ func TestWebEndpointsCoverage(t *testing.T) {
 		}
 	}
 
-	doAuthReq := func(method, path string, body []byte, expectedCodes ...int) *http.Response {
+	doAuthReq := func(method, path string, body []byte, extraMocks func(), expectedCodes ...int) *http.Response {
+		isPublic := path == "/" || strings.HasPrefix(path, "/feed") || path == "/login" || path == "/register" || strings.HasPrefix(path, "/verify-email") || strings.HasPrefix(path, "/confirm-email-change")
+
+		if !isPublic {
+			// Auth check for AuthMiddleware
+			mock.ExpectQuery(regexp.QuoteMeta("SELECT is_email_verified FROM users WHERE id = $1")).WithArgs(pgxmock.AnyArg()).
+				WillReturnRows(pgxmock.NewRows([]string{"is_email_verified"}).AddRow(true))
+		}
+
+		if extraMocks != nil {
+			extraMocks()
+		}
+
+		// Optional: LogActivity if it's a logout or other specific calls
+		if path == "/logout" {
+			mock.ExpectExec("INSERT INTO user_activity_logs").
+				WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+				WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		}
+
+		t.Logf("Starting request %s %s", method, path)
 		var req *http.Request
 		var err error
 		if body != nil {
@@ -186,11 +237,28 @@ func TestWebEndpointsCoverage(t *testing.T) {
 		} else if res.StatusCode >= 400 {
 			t.Errorf("Request %s %s returned error status: %d", method, path, res.StatusCode)
 		}
+		t.Logf("Response %s %s: %d", method, path, res.StatusCode)
+		if res.StatusCode == http.StatusFound {
+			t.Logf("Redirect location: %s", res.Header.Get("Location"))
+		}
 		t.Cleanup(func() { _ = res.Body.Close() })
 		return res
 	}
 
-	doAuthReqForm := func(method, path string, form url.Values, expectedCodes ...int) *http.Response {
+	doAuthReqForm := func(method, path string, form url.Values, extraMocks func(), expectedCodes ...int) *http.Response {
+		isPublic := path == "/login" || path == "/register"
+
+		if !isPublic {
+			// Auth check for AuthMiddleware
+			mock.ExpectQuery(regexp.QuoteMeta("SELECT is_email_verified FROM users WHERE id = $1")).WithArgs(pgxmock.AnyArg()).
+				WillReturnRows(pgxmock.NewRows([]string{"is_email_verified"}).AddRow(true))
+		}
+
+		if extraMocks != nil {
+			extraMocks()
+		}
+
+		t.Logf("Starting form request %s %s", method, path)
 		req, err := http.NewRequest(method, ts.URL+path, strings.NewReader(form.Encode()))
 		if err != nil {
 			t.Fatalf("Failed to create form request: %v", err)
@@ -223,80 +291,159 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	}
 
 	// 1. Dashboard
-	doAuthReq("GET", "/dashboard", nil)
+	doAuthReq("GET", "/dashboard", nil, func() {
+		// Metrics (5 args: userID, searchQuery, startDate, endDate, statusFilter)
+		mock.ExpectQuery("SELECT.*COUNT.*total_cves").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit", "prog"}).AddRow(3, 0, 0, 0))
+		
+		// List (at least 7 args: userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter?)
+		// The statusFilter is sometimes at $10. We'll just use AnyArgs by using a large number or fixing it.
+		// Actually, let's use a regex that matches ANY number of args if possible? No.
+		// We'll just provide 10 AnyArgs.
+		mock.ExpectQuery("SELECT DISTINCT.*FROM cves").WithArgs(
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), 
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), 
+			pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "desc", "score", "vector", "kev", "pub", "upd", "status", "refs", "notes"}).
+				AddRow(1, "CVE-2024-0001", "Test 1", 7.5, "V1", false, time.Now(), time.Now(), "active", "[]", ""))
+		
+		// Distribution (same 5 args as metrics)
+		mock.ExpectQuery("SELECT.*CASE.*cvss_score").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnRows(pgxmock.NewRows([]string{"score_distribution"}).AddRow("{}"))
+	})
 
 	// 2. Subscriptions GET & POST
-	doAuthReq("GET", "/subscriptions", nil)
+	doAuthReq("GET", "/subscriptions", nil, nil)
 	subForm := url.Values{}
 	subForm.Add("keyword", "test")
 	subForm.Add("min_severity", "5.5")
-	doAuthReqForm("POST", "/subscriptions", subForm)
+	doAuthReqForm("POST", "/subscriptions", subForm, func() {
+		mock.ExpectExec("INSERT INTO user_subscriptions").WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	})
 
 	// 3. Export
-	doAuthReq("GET", "/export", nil)
+	doAuthReq("GET", "/export", nil, func() {
+		mock.ExpectQuery("SELECT id, cve_id").WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id"}).AddRow(1, "CVE-2024-0001"))
+	})
 
 	// 4. API Status
 	statusBody, _ := json.Marshal(map[string]interface{}{"cve_id": 1, "status": "resolved"})
-	doAuthReq("POST", "/api/status", statusBody)
+	doAuthReq("POST", "/api/status", statusBody, func() {
+		mock.ExpectExec("INSERT INTO user_cve_status").WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	})
 
 	// 5. Settings
-	doAuthReq("GET", "/settings", nil)
+	doAuthReq("GET", "/settings", nil, nil)
 
 	// 6. Change Password
 	pwForm := url.Values{}
 	pwForm.Add("current_password", "password123")
 	pwForm.Add("new_password", "password456")
 	pwForm.Add("confirm_password", "password456")
-	doAuthReqForm("POST", "/settings/password", pwForm)
+	doAuthReqForm("POST", "/settings/password", pwForm, func() {
+		mock.ExpectQuery("SELECT password_hash FROM users").WillReturnRows(pgxmock.NewRows([]string{"password_hash"}).AddRow(string(hashedPassword)))
+		mock.ExpectExec("UPDATE users SET password_hash").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	})
 
 	// 7. Activity Log
-	doAuthReq("GET", "/activity", nil)
-	doAuthReq("GET", "/activity/export", nil)
+	doAuthReq("GET", "/activity", nil, nil)
+	doAuthReq("GET", "/activity/export", nil, nil)
 
 	// 8. Alert History
-	doAuthReq("GET", "/alerts", nil)
+	doAuthReq("GET", "/alerts", nil, nil)
 
 	// 9. Bulk Update
 	bulkBody, _ := json.Marshal(map[string]interface{}{
 		"cve_ids": []int{1, 2, 3},
 		"status":  "resolved",
 	})
-	doAuthReq("POST", "/api/status/bulk", bulkBody)
+	doAuthReq("POST", "/api/status/bulk", bulkBody, func() {
+		mock.ExpectExec("INSERT INTO user_cve_status").WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	})
 
 	// 9. Change Email (Initial request)
 	emailForm := url.Values{}
 	emailForm.Add("new_email", "new_web_test@example.com")
 	emailForm.Add("password", "password456")
-	doAuthReqForm("POST", "/settings/email", emailForm)
+	doAuthReqForm("POST", "/settings/email", emailForm, func() {
+		mock.ExpectQuery("SELECT password_hash FROM users").WillReturnRows(pgxmock.NewRows([]string{"password_hash"}).AddRow(string(hashedPassword)))
+		mock.ExpectExec("INSERT INTO email_change_requests").WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	})
 
 	// Confirm email change (simulating both links clicked)
 	var oldToken, newToken string
+	mock.ExpectQuery("SELECT old_email_token, new_email_token FROM email_change_requests").WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"old_email_token", "new_email_token"}).AddRow("old", "new"))
 	if err := db.Pool.QueryRow(ctx, "SELECT old_email_token, new_email_token FROM email_change_requests WHERE user_id = $1", userID).Scan(&oldToken, &newToken); err != nil {
 		t.Fatalf("Failed to scan email change tokens: %v", err)
 	}
 
 	// Confirm old
-	doAuthReq("GET", "/confirm-email-change?token="+oldToken, nil)
+	doAuthReq("GET", "/confirm-email-change?token="+oldToken, nil, func() {
+		mock.ExpectQuery("SELECT id, user_id").WillReturnRows(pgxmock.NewRows([]string{"id", "user_id", "new_email"}).AddRow(1, userID, "new_web_test@example.com"))
+		mock.ExpectExec("UPDATE email_change_requests SET old_email_confirmed").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	})
 	// Confirm new
-	doAuthReq("GET", "/confirm-email-change?token="+newToken, nil)
+	doAuthReq("GET", "/confirm-email-change?token="+newToken, nil, func() {
+		mock.ExpectQuery("SELECT id, user_id").WillReturnRows(pgxmock.NewRows([]string{"id", "user_id", "new_email"}).AddRow(1, userID, "new_web_test@example.com"))
+		mock.ExpectExec("UPDATE email_change_requests SET new_email_confirmed").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("UPDATE users SET email").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("DELETE FROM email_change_requests").WillReturnResult(pgxmock.NewResult("DELETE", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	})
 
 	// 10. TOTP Handlers
-	doAuthReq("POST", "/settings/totp/generate", nil)
+	doAuthReq("POST", "/settings/totp/generate", nil, func() {
+		mock.ExpectExec("UPDATE users SET totp_secret").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	})
 	totpForm := url.Values{}
 	totpForm.Add("totp_code", "123456")
-	doAuthReqForm("POST", "/settings/totp/verify", totpForm)
+	doAuthReqForm("POST", "/settings/totp/verify", totpForm, func() {
+		mock.ExpectQuery("SELECT totp_secret").WillReturnRows(pgxmock.NewRows([]string{"totp_secret"}).AddRow("JBSWY3DPEHPK3PXP"))
+		mock.ExpectExec("UPDATE users SET is_totp_enabled").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	})
 
 	// 11. Delete Subscription
 	delForm := url.Values{}
 	delForm.Add("id", "1")
-	doAuthReqForm("POST", "/subscriptions/delete", delForm)
+	doAuthReqForm("POST", "/subscriptions/delete", delForm, func() {
+		mock.ExpectExec("DELETE FROM user_subscriptions").WillReturnResult(pgxmock.NewResult("DELETE", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	})
 
 	// 12. RSS Feed (use updated email after email change)
 	var token string
-	if err := db.Pool.QueryRow(ctx, "SELECT rss_feed_token FROM users WHERE email = 'new_web_test@example.com'").Scan(&token); err != nil {
+	mock.ExpectQuery("SELECT rss_feed_token FROM users").WithArgs("new_web_test@example.com").
+		WillReturnRows(pgxmock.NewRows([]string{"rss_feed_token"}).AddRow("rss_token"))
+	if err := db.Pool.QueryRow(ctx, "SELECT rss_feed_token FROM users WHERE email = $1", "new_web_test@example.com").Scan(&token); err != nil {
 		t.Fatalf("Failed to scan RSS token: %v", err)
 	}
-	doAuthReq("GET", "/feed?token="+token, nil)
+	doAuthReq("GET", "/feed?token="+token, nil, func() {
+		mock.ExpectQuery("SELECT DISTINCT").WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "desc", "score", "vector", "kev", "pub", "upd", "status", "refs", "notes"}).
+			AddRow(1, "CVE-2024-0001", "Test 1", 7.5, "V1", false, time.Now(), time.Now(), "active", "[]", ""))
+	})
 
 	// 13. Public Routes Error cases
 	// Register with existing email (email was changed to new_web_test@example.com)
@@ -312,10 +459,10 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	_ = resRegErr.Body.Close()
 
 	// Verify with invalid token (expect 400 or 200 with error message)
-	doAuthReq("GET", "/verify-email?token=invalid", nil, http.StatusBadRequest, http.StatusOK)
+	doAuthReq("GET", "/verify-email?token=invalid", nil, nil, http.StatusBadRequest, http.StatusOK)
 
 	// 13. Logout
-	doAuthReq("POST", "/logout", nil)
+	doAuthReq("POST", "/logout", nil, nil)
 
 	// 14. Delete Account
 	// Login again with updated credentials (email changed to new_web_test@example.com, password changed to password456)
@@ -337,7 +484,10 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	}
 	delAccForm := url.Values{}
 	delAccForm.Add("password", "password456")
-	doAuthReqForm("POST", "/settings/delete", delAccForm)
+	doAuthReqForm("POST", "/settings/delete", delAccForm, func() {
+		mock.ExpectQuery("SELECT password_hash FROM users").WillReturnRows(pgxmock.NewRows([]string{"password_hash"}).AddRow(string(hashedPassword)))
+		mock.ExpectExec("DELETE FROM users").WillReturnResult(pgxmock.NewResult("DELETE", 1))
+	})
 }
 
 func TestInitTemplates(t *testing.T) {

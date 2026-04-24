@@ -4,6 +4,7 @@ import (
 	"html/template"
 	"log"
 	"path/filepath"
+	"strings"
 )
 
 func InitTemplatesWithFuncs() {
@@ -21,6 +22,13 @@ func InitTemplatesWithFuncs() {
 				m[key] = values[i+1]
 			}
 			return m
+		},
+		"contains": strings.Contains,
+		"percent": func(count, total int) int {
+			if total == 0 {
+				return 0
+			}
+			return int(float64(count) / float64(total) * 100)
 		},
 	}
 

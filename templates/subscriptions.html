@@ -39,6 +39,32 @@
                             <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Webhook Endpoint <span class="opacity-50 lowercase font-normal">(optional)</span></label>
                             <input type="url" name="webhook_url" placeholder="https://..." class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-tertiary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors">
                         </div>
+                        <div class="space-y-3 pt-2">
+                            <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Notification Channels</label>
+                            
+                            <div class="flex items-center justify-between bg-surface-container/50 p-3 rounded-lg border border-outline-variant/30">
+                                <div class="flex items-center gap-3">
+                                    <span class="material-symbols-outlined text-[20px] text-primary">mail</span>
+                                    <span class="text-xs font-medium text-on-surface">Email Delivery</span>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" name="enable_email" value="true" checked class="sr-only peer">
+                                    <div class="w-11 h-6 bg-surface-container-high peer-focus:ring-2 peer-focus:ring-primary peer-focus:ring-offset-2 peer-focus:ring-offset-surface rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                                </label>
+                            </div>
+
+                            <div class="flex items-center justify-between bg-surface-container/50 p-3 rounded-lg border border-outline-variant/30">
+                                <div class="flex items-center gap-3">
+                                    <span class="material-symbols-outlined text-[20px] text-secondary">webhook</span>
+                                    <span class="text-xs font-medium text-on-surface">Webhook Sync</span>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" name="enable_webhook" value="true" class="sr-only peer">
+                                    <div class="w-11 h-6 bg-surface-container-high peer-focus:ring-2 peer-focus:ring-secondary peer-focus:ring-offset-2 peer-focus:ring-offset-surface rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-secondary"></div>
+                                </label>
+                            </div>
+                        </div>
+
                         <button type="submit" class="w-full bg-surface-container-high hover:bg-tertiary hover:text-on-primary border border-outline-variant/50 hover:border-tertiary text-on-surface font-label font-bold uppercase tracking-widest text-xs py-3 rounded transition-all duration-200 mt-4">
                             Deploy Monitor
                         </button>
@@ -64,7 +90,7 @@
                             <tr class="bg-surface-container-lowest border-b border-outline-variant/30">
                                 <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Keyword</th>
                                 <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Severity</th>
-                                <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Webhook</th>
+                                <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Channels</th>
                                 <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant text-right">Action</th>
                             </tr>
                         </thead>
@@ -83,8 +109,11 @@
                                         &ge; {{.MinSeverity}}
                                     </span>
                                 </td>
-                                <td class="px-6 py-4 max-w-[200px] truncate text-xs text-on-surface-variant font-mono">
-                                    {{if .WebhookURL}}{{.WebhookURL}}{{else}}-{{end}}
+                                <td class="px-6 py-4">
+                                    <div class="flex items-center gap-3 text-on-surface-variant">
+                                        <span class="material-symbols-outlined text-[18px] {{if .EnableEmail}}text-primary{{else}}opacity-20{{end}}" title="{{if .EnableEmail}}Email Enabled{{else}}Email Disabled{{end}}">mail</span>
+                                        <span class="material-symbols-outlined text-[18px] {{if .EnableWebhook}}text-secondary{{else}}opacity-20{{end}}" title="{{if .EnableWebhook}}Webhook Enabled{{else}}Webhook Disabled{{end}}">webhook</span>
+                                    </div>
                                 </td>
                                 <td class="px-6 py-4 text-right">
                                     <form action="/subscriptions/delete" method="POST" class="inline">

@@ -6,10 +6,21 @@ import (
 	"os"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var Pool *pgxpool.Pool
+type DBPool interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Begin(ctx context.Context) (pgx.Tx, error)
+	Close()
+	Ping(ctx context.Context) error
+}
+
+var Pool DBPool
 
 func InitDB() error {
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
@@ -46,13 +57,54 @@ func InitDB() error {
 }
 
 func migrate(ctx context.Context) error {
-	_, err := Pool.Exec(ctx, schemaSQL)
-	if err != nil {
+	// First ensure base schema is present
+	if _, err := Pool.Exec(ctx, schemaSQL); err != nil {
 		return fmt.Errorf("failed to execute base schema: %w", err)
 	}
 
-	_, err = Pool.Exec(ctx, "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;")
-	return err
+	// Then run incremental migrations
+	queries := []string{
+		"ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;",
+		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS enable_email BOOLEAN DEFAULT TRUE;",
+		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS enable_webhook BOOLEAN DEFAULT TRUE;",
+		`CREATE TABLE IF NOT EXISTS sync_state (
+			key VARCHAR(100) PRIMARY KEY,
+			value TEXT NOT NULL,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);`,
+		"CREATE INDEX IF NOT EXISTS idx_cves_published_date ON cves (published_date DESC);",
+		"CREATE INDEX IF NOT EXISTS idx_cves_cvss_score ON cves (cvss_score);",
+		"CREATE INDEX IF NOT EXISTS idx_cves_updated_date ON cves (updated_date DESC);",
+		`CREATE TABLE IF NOT EXISTS assets (
+			id SERIAL PRIMARY KEY,
+			user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+			name VARCHAR(255) NOT NULL,
+			type VARCHAR(100),
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);`,
+		`CREATE TABLE IF NOT EXISTS asset_keywords (
+			id SERIAL PRIMARY KEY,
+			asset_id INTEGER REFERENCES assets(id) ON DELETE CASCADE,
+			keyword VARCHAR(255) NOT NULL,
+			UNIQUE(asset_id, keyword)
+		);`,
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS vector_string TEXT;",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS \"references\" TEXT[];",
+		`CREATE TABLE IF NOT EXISTS user_cve_notes (
+			user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+			cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,
+			notes TEXT,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (user_id, cve_id)
+		);`,
+	}
+
+	for i, q := range queries {
+		if _, err := Pool.Exec(ctx, q); err != nil {
+			return fmt.Errorf("migration %d failed executing query %q: %w", i, q, err)
+		}
+	}
+	return nil
 }
 
 func CloseDB() {

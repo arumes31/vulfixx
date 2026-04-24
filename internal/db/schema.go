@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS user_subscriptions (
     keyword VARCHAR(255),
     min_severity NUMERIC(4,1),
     webhook_url TEXT,
+    enable_email BOOLEAN DEFAULT TRUE,
+    enable_webhook BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -70,8 +72,17 @@ CREATE TABLE IF NOT EXISTS email_change_requests (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS sync_state (
+    key VARCHAR(100) PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_user_activity_logs_user_id_created_at ON user_activity_logs (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_user_activity_logs_created_at ON user_activity_logs (created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_email_change_requests_old_token ON email_change_requests (old_email_token);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_email_change_requests_new_token ON email_change_requests (new_email_token);
+CREATE INDEX IF NOT EXISTS idx_cves_published_date ON cves (published_date DESC);
+CREATE INDEX IF NOT EXISTS idx_cves_cvss_score ON cves (cvss_score);
+CREATE INDEX IF NOT EXISTS idx_cves_updated_date ON cves (updated_date DESC);
 `
