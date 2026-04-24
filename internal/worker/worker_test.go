@@ -192,6 +192,8 @@ func TestProcessEmailChange(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	_ = db.InitRedis()
+	defer db.CloseRedis()
 	go processEmailChange(ctx)
     db.RedisClient.LPush(ctx, "email_change_queue", "{\"email\":\"test@example.com\", \"token\":\"token\", \"type\":\"old\"}")
     db.RedisClient.LPush(ctx, "email_change_queue", "invalid")
