@@ -12,6 +12,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+const MinPasswordLength = 8
+
 func GenerateToken() (string, error) {
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
@@ -21,6 +23,9 @@ func GenerateToken() (string, error) {
 }
 
 func Register(ctx context.Context, email, password string) (string, error) {
+	if len(password) < MinPasswordLength {
+		return "", errors.New("password must be at least 8 characters long")
+	}
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return "", err
@@ -120,6 +125,10 @@ func ChangePassword(ctx context.Context, userID int, currentPassword, newPasswor
 		if !totp.Validate(totpCode, secret) {
 			return errors.New("invalid TOTP code")
 		}
+	}
+
+	if len(newPassword) < MinPasswordLength {
+		return errors.New("password must be at least 8 characters long")
 	}
 
 	newHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
