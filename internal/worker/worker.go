@@ -11,11 +11,13 @@ import (
 	"net"
 	"net/http"
 	"net/mail"
+	"net/netip"
 	"net/smtp"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -671,23 +673,10 @@ func notifyIfNew(ctx context.Context, userID, cveID int, sub models.UserSubscrip
 }
 
 func sendWebhookAlert(sub models.UserSubscription, cve *models.CVE, email string) bool {
-	u, err := url.Parse(sub.WebhookURL)
+	_, err := url.Parse(sub.WebhookURL)
 	if err != nil {
 		log.Printf("Invalid webhook URL for %s: %v", email, err)
 		return false
-	}
-
-	ips, err := net.DefaultResolver.LookupNetIP(context.Background(), "ip", u.Hostname())
-	if err != nil {
-		log.Printf("DNS resolution failed for webhook %s: %v", redactURL(sub.WebhookURL), err)
-		return false
-	}
-
-	for _, ip := range ips {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
-			log.Printf("Blocked webhook to unsafe IP %s for %s", ip.String(), email)
-			return false
-		}
 	}
 
 	payload := map[string]interface{}{
@@ -702,7 +691,41 @@ func sendWebhookAlert(sub models.UserSubscription, cve *models.CVE, email string
 		return false
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	dialer := &net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+		Control: func(network, address string, c syscall.RawConn) error {
+			host, _, err := net.SplitHostPort(address)
+			if err != nil {
+				return err
+			}
+			ip, err := netip.ParseAddr(host)
+			if err != nil {
+				return err
+			}
+			if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+				log.Printf("Blocked webhook to unsafe IP %s for %s", ip.String(), email)
+				return fmt.Errorf("blocked unsafe IP: %s", ip.String())
+			}
+			return nil
+		},
+	}
+
+	transport := &http.Transport{
+		DialContext:           dialer.DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+	defer transport.CloseIdleConnections()
+
+	client := &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: transport,
+	}
+
 	req, err := http.NewRequest("POST", sub.WebhookURL, strings.NewReader(string(jsonData)))
 	if err != nil {
 		return false
