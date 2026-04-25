@@ -45,7 +45,7 @@ func TestAuthMiddleware(t *testing.T) {
 		
 		// But let's try to set the value in the session.
 		rr := httptest.NewRecorder()
-		session.Save(req, rr)
+		_ = session.Save(req, rr)
 		
 		// Re-create request with cookie
 		req = httptest.NewRequest("GET", "/dashboard", nil)
@@ -68,7 +68,7 @@ func TestAuthMiddleware(t *testing.T) {
 		session, _ := store.Get(req, "session-name")
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
-		session.Save(req, rr)
+		_ = session.Save(req, rr)
 		
 		req = httptest.NewRequest("GET", "/dashboard", nil)
 		for _, c := range rr.Result().Cookies() {
@@ -110,7 +110,7 @@ func TestAdminMiddleware(t *testing.T) {
 		session, _ := store.Get(req, "session-name")
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
-		session.Save(req, rr)
+		_ = session.Save(req, rr)
 		
 		req = httptest.NewRequest("GET", "/admin", nil)
 		for _, c := range rr.Result().Cookies() {
@@ -132,7 +132,7 @@ func TestAdminMiddleware(t *testing.T) {
 		session, _ := store.Get(req, "session-name")
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
-		session.Save(req, rr)
+		_ = session.Save(req, rr)
 		
 		req = httptest.NewRequest("GET", "/admin", nil)
 		for _, c := range rr.Result().Cookies() {

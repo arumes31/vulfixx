@@ -1,7 +1,6 @@
 package worker
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"cve-tracker/internal/db"
@@ -12,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"net/mail"
-	"net/netip"
 	"net/smtp"
 	"net/url"
 	"os"
@@ -233,7 +231,7 @@ func fetchFromCISAKEV(ctx context.Context) {
 		log.Printf("Worker: [ERROR] Failed to fetch CISA KEV: %v", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var kevResp CISAKEVResponse
 	if err := json.NewDecoder(resp.Body).Decode(&kevResp); err != nil {
@@ -256,7 +254,7 @@ func fetchFromCISAKEV(ctx context.Context) {
 		if end > total {
 			end = total
 		}
-		
+
 		ids := make([]string, 0, batchSize)
 		for _, v := range kevResp.Vulnerabilities[i:end] {
 			ids = append(ids, v.CVEID)
@@ -536,7 +534,7 @@ func upsertCVEs(ctx context.Context, vulnerabilities []struct {
 			log.Printf("Worker: [ERROR] Failed to upsert CVE %s: %v", cve.CVEID, err)
 			_ = db.Pool.QueryRow(ctx, "SELECT id FROM cves WHERE cve_id = $1", cve.CVEID).Scan(&id)
 		}
-		
+
 		if id > 0 && sendAlerts {
 			cve.ID = id
 			alertJob, _ := json.Marshal(cve)
@@ -672,6 +670,74 @@ func notifyIfNew(ctx context.Context, userID, cveID int, sub models.UserSubscrip
 	return false
 }
 
+func sendWebhookAlert(sub models.UserSubscription, cve *models.CVE, email string) bool {
+	u, err := url.Parse(sub.WebhookURL)
+	if err != nil {
+		log.Printf("Invalid webhook URL for %s: %v", email, err)
+		return false
+	}
+
+	ips, err := net.DefaultResolver.LookupNetIP(context.Background(), "ip", u.Hostname())
+	if err != nil {
+		log.Printf("DNS resolution failed for webhook %s: %v", redactURL(sub.WebhookURL), err)
+		return false
+	}
+
+	for _, ip := range ips {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+			log.Printf("Blocked webhook to unsafe IP %s for %s", ip.String(), email)
+			return false
+		}
+	}
+
+	payload := map[string]interface{}{
+		"cve_id":      cve.CVEID,
+		"description": cve.Description,
+		"cvss_score":  cve.CVSSScore,
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("Failed to marshal webhook payload: %v", err)
+		return false
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequest("POST", sub.WebhookURL, strings.NewReader(string(jsonData)))
+	if err != nil {
+		return false
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Failed to send webhook to %s: %v", redactURL(sub.WebhookURL), err)
+		return false
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	return resp.StatusCode >= 200 && resp.StatusCode < 300
+}
+
+func sendEmailAlert(cve *models.CVE, email string) bool {
+	subject := fmt.Sprintf("Vulfixx Alert: %s", cve.CVEID)
+	body := fmt.Sprintf(`
+		<div style="font-family: 'Inter', sans-serif; padding: 20px;">
+			<h2 style="color: #ff4a4a;">New Vulnerability Alert</h2>
+			<p><strong>CVE ID:</strong> %s</p>
+			<p><strong>CVSS Score:</strong> %.1f</p>
+			<p><strong>Description:</strong> %s</p>
+		</div>
+	`, cve.CVEID, cve.CVSSScore, cve.Description)
+
+	err := sendEmail(email, subject, body)
+	if err != nil {
+		log.Printf("Failed to send email alert to %s: %v", email, err)
+		return false
+	}
+	return true
+}
+
 func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) bool {
 	log.Printf("ALERT: Sending to %s for %s\n", email, cve.CVEID)
 
@@ -691,8 +757,6 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) bool 
 	// Send Email using SMTP
 	smtpHost := os.Getenv("SMTP_HOST")
 	smtpPort := os.Getenv("SMTP_PORT")
-	smtpUser := os.Getenv("SMTP_USER")
-	smtpPass := os.Getenv("SMTP_PASS")
 
 	if sub.EnableEmail && smtpHost != "" && smtpPort != "" {
 		wg.Add(1)

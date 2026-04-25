@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -71,8 +72,8 @@ func TestWorkerFunctions(t *testing.T) {
 				{
 					CVE: struct {
 						ID           string `json:"id"`
-						Published    string    `json:"published"`
-						LastModified string    `json:"lastModified"`
+						Published    string `json:"published"`
+						LastModified string `json:"lastModified"`
 						Descriptions []struct {
 							Lang  string `json:"lang"`
 							Value string `json:"value"`
@@ -165,11 +166,11 @@ func TestWorkerFunctions(t *testing.T) {
 	// Mock expectations for fetchFromNVD
 	mock.ExpectQuery("SELECT value FROM sync_state WHERE key = 'last_nvd_sync'").
 		WillReturnError(fmt.Errorf("no sync")) // Trigger full backfill
-	
+
 	mock.ExpectQuery("WITH upsert AS").
 		WithArgs("CVE-2023-0001", pgxmock.AnyArg(), 7.5, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "tag"}).AddRow(1, "ins"))
-	
+
 	mock.ExpectExec("INSERT INTO sync_state").
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -188,7 +189,7 @@ func TestWorkerFunctions(t *testing.T) {
 	mock.ExpectQuery("SELECT cve_id, description, cvss_score FROM cves").WithArgs(1).
 		WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score"}).AddRow("CVE-2023-0001", "Test description", 7.5))
 	mock.ExpectExec("INSERT INTO alert_history").WithArgs(1, 1).WillReturnResult(pgxmock.NewResult("INSERT", 1))
-	
+
 	mock.ExpectQuery("SELECT ak.keyword, a.user_id").
 		WillReturnRows(pgxmock.NewRows([]string{"keyword", "user_id", "email"}).
 			AddRow("test", 2, "asset@example.com"))
@@ -272,10 +273,10 @@ func TestRedactToken(t *testing.T) {
 		t.Errorf("Failed to handle short token, got: %s", short)
 	}
 
-    empty := redactToken("")
-    if empty != "<empty>" {
-        t.Errorf("Failed to handle empty token")
-    }
+	empty := redactToken("")
+	if empty != "<empty>" {
+		t.Errorf("Failed to handle empty token")
+	}
 }
 
 func TestRedactURL(t *testing.T) {
@@ -302,7 +303,7 @@ func TestFetchCVEsPeriodically(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-    defaultNVDBaseURL = "http://localhost:12345"
+	defaultNVDBaseURL = "http://localhost:12345"
 	go fetchCVEsPeriodically(ctx)
 	time.Sleep(100 * time.Millisecond)
 }
@@ -314,19 +315,19 @@ func TestProcessEmailChange(t *testing.T) {
 	_ = db.InitRedis()
 	defer db.CloseRedis()
 	go processEmailChange(ctx)
-    db.RedisClient.LPush(ctx, "email_change_queue", "{\"email\":\"test@example.com\", \"token\":\"token\", \"type\":\"old\"}")
-    db.RedisClient.LPush(ctx, "email_change_queue", "invalid")
+	db.RedisClient.LPush(ctx, "email_change_queue", "{\"email\":\"test@example.com\", \"token\":\"token\", \"type\":\"old\"}")
+	db.RedisClient.LPush(ctx, "email_change_queue", "invalid")
 	time.Sleep(100 * time.Millisecond)
 }
 
 func TestSendEmailChangeNotification(t *testing.T) {
-    // Should fail silently or return error (it logs internally)
-    sendEmailChangeNotification("test@example.com", "token123", "old")
+	// Should fail silently or return error (it logs internally)
+	sendEmailChangeNotification("test@example.com", "token123", "old")
 }
 
 func TestStartWorker(t *testing.T) {
-    ctx, cancel := context.WithCancel(context.Background())
-    defer cancel()
-    go StartWorker(ctx)
-    time.Sleep(100 * time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go StartWorker(ctx)
+	time.Sleep(100 * time.Millisecond)
 }

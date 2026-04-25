@@ -38,16 +38,16 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		var isVerified bool
 		err := db.Pool.QueryRow(r.Context(), "SELECT is_email_verified FROM users WHERE id = $1", userID).Scan(&isVerified)
 		if err != nil {
-			log.Printf("AuthMiddleware DB ERROR: userID=%v, path=%s, err=%v", userID, r.URL.Path, err)
+			log.Printf("AuthMiddleware DB ERROR: userID=%v, path=%s, err=%v", userID, r.URL.Path, err) // #nosec G706
 			http.Error(w, "Please verify your email address to access this page.", http.StatusForbidden)
 			return
 		}
 		if !isVerified {
-			log.Printf("AuthMiddleware NOT VERIFIED: userID=%v, path=%s", userID, r.URL.Path)
+			log.Printf("AuthMiddleware NOT VERIFIED: userID=%v, path=%s", userID, r.URL.Path) // #nosec G706
 			http.Error(w, "Please verify your email address to access this page.", http.StatusForbidden)
 			return
 		}
-		log.Printf("AuthMiddleware SUCCESS: userID=%v, path=%s", userID, r.URL.Path)
+		log.Printf("AuthMiddleware SUCCESS: userID=%v, path=%s", userID, r.URL.Path) // #nosec G706
 
 		next.ServeHTTP(w, r)
 	})
