@@ -119,7 +119,7 @@
                                     <form action="/subscriptions/delete" method="POST" class="inline">
                                         {{$.csrfField}}
                                         <input type="hidden" name="id" value="{{.ID}}">
-                                        <button type="submit" class="p-2 text-error hover:bg-error-container/30 rounded transition-colors" title="Remove Monitor">
+                                        <button type="submit" class="p-2 text-error hover:bg-error-container/30 rounded transition-colors" title="Remove Monitor" aria-label="Remove Monitor">
                                             <span class="material-symbols-outlined text-[18px]">delete</span>
                                         </button>
                                     </form>
