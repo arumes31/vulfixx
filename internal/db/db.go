@@ -90,6 +90,9 @@ func migrate(ctx context.Context) error {
 		);`,
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS vector_string TEXT;",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS \"references\" TEXT[];",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS epss_score NUMERIC(4,3);",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS cwe_id VARCHAR(50);",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS cwe_name TEXT;",
 		`CREATE TABLE IF NOT EXISTS user_cve_notes (
 			user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
 			cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,

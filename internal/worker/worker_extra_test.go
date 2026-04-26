@@ -84,6 +84,12 @@ func TestUpsertCVEs(t *testing.T) {
 					} `json:"cvssData"`
 				} `json:"cvssMetricV2"`
 			} `json:"metrics"`
+			Weaknesses []struct {
+				Description []struct {
+					Lang  string `json:"lang"`
+					Value string `json:"value"`
+				} `json:"description"`
+			} `json:"weaknesses"`
 		} `json:"cve"`
 	}{
 		{
@@ -118,6 +124,12 @@ func TestUpsertCVEs(t *testing.T) {
 						} `json:"cvssData"`
 					} `json:"cvssMetricV2"`
 				} `json:"metrics"`
+				Weaknesses []struct {
+					Description []struct {
+						Lang  string `json:"lang"`
+						Value string `json:"value"`
+					} `json:"description"`
+				} `json:"weaknesses"`
 			}{
 				ID:           "CVE-UPD-TEST",
 				Published:    time.Now().Format(time.RFC3339),
@@ -127,7 +139,7 @@ func TestUpsertCVEs(t *testing.T) {
 	}
 
 	mock.ExpectQuery("WITH upsert AS").
-		WithArgs("CVE-UPD-TEST", pgxmock.AnyArg(), 0.0, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WithArgs("CVE-UPD-TEST", pgxmock.AnyArg(), 0.0, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "tag"}).AddRow(1, "upd"))
 	
 	ins, upd := upsertCVEs(ctx, vulns, false)
@@ -154,7 +166,7 @@ func TestSendAlertWebhook(t *testing.T) {
 		WebhookURL:    "http://127.0.0.1:8080", // Unsafe loopback
 	}
 	cve := &models.CVE{CVEID: "CVE-1"}
-	if sendAlert(sub, cve, "test@example.com") {
-		// Should be false because 127.0.0.1 is unsafe
+	if sendAlert(sub, cve, "test@example.com", "Asset-1") {
+		t.Error("sendAlert should have failed for loopback webhook URL")
 	}
 }

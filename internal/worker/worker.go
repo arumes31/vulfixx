@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"cve-tracker/internal/auth"
 	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
 	"encoding/json"
@@ -134,6 +135,7 @@ func StartWorker(ctx context.Context) {
 	go processAlerts(ctx)
 	go processEmailVerification(ctx)
 	go processEmailChange(ctx)
+	go syncEPSSPeriodically(ctx)
 }
 
 // NVDResponse is the top-level NVD API response structure.
@@ -173,6 +175,12 @@ type NVDResponse struct {
 					} `json:"cvssData"`
 				} `json:"cvssMetricV2"`
 			} `json:"metrics"`
+			Weaknesses []struct {
+				Description []struct {
+					Lang  string `json:"lang"`
+					Value string `json:"value"`
+				} `json:"description"`
+			} `json:"weaknesses"`
 		} `json:"cve"`
 	} `json:"vulnerabilities"`
 }
@@ -466,6 +474,12 @@ func upsertCVEs(ctx context.Context, vulnerabilities []struct {
 				} `json:"cvssData"`
 			} `json:"cvssMetricV2"`
 		} `json:"metrics"`
+		Weaknesses []struct {
+			Description []struct {
+				Lang  string `json:"lang"`
+				Value string `json:"value"`
+			} `json:"description"`
+		} `json:"weaknesses"`
 	} `json:"cve"`
 }, sendAlerts bool) (inserted int, updated int) {
 	for _, v := range vulnerabilities {
@@ -500,11 +514,25 @@ func upsertCVEs(ctx context.Context, vulnerabilities []struct {
 		pubDate, _ := time.Parse(time.RFC3339, cveData.Published)
 		modDate, _ := time.Parse(time.RFC3339, cveData.LastModified)
 
+		cwe := ""
+		for _, w := range cveData.Weaknesses {
+			for _, d := range w.Description {
+				if d.Lang == "en" && strings.HasPrefix(d.Value, "CWE-") {
+					cwe = d.Value
+					break
+				}
+			}
+			if cwe != "" {
+				break
+			}
+		}
+
 		cve := models.CVE{
 			CVEID:         cveData.ID,
 			Description:   desc,
 			CVSSScore:     score,
 			VectorString:  vector,
+			CWEID:         cwe,
 			PublishedDate: pubDate,
 			UpdatedDate:   modDate,
 		}
@@ -513,18 +541,19 @@ func upsertCVEs(ctx context.Context, vulnerabilities []struct {
 		var tag string
 		err := db.Pool.QueryRow(ctx, `
 			WITH upsert AS (
-				INSERT INTO cves (cve_id, description, cvss_score, vector_string, "references", published_date, updated_date)
-				VALUES ($1, $2, $3, $4, $5, $6, $7)
+				INSERT INTO cves (cve_id, description, cvss_score, vector_string, cwe_id, "references", published_date, updated_date)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 				ON CONFLICT (cve_id) DO UPDATE SET
 					description = EXCLUDED.description,
 					cvss_score = EXCLUDED.cvss_score,
 					vector_string = EXCLUDED.vector_string,
+					cwe_id = EXCLUDED.cwe_id,
 					"references" = EXCLUDED."references",
 					updated_date = EXCLUDED.updated_date
 				RETURNING id, (xmax = 0) AS is_insert
 			)
 			SELECT id, CASE WHEN is_insert THEN 'ins' ELSE 'upd' END FROM upsert
-		`, cve.CVEID, cve.Description, cve.CVSSScore, cve.VectorString, refs, cve.PublishedDate, cve.UpdatedDate).Scan(&id, &tag)
+		`, cve.CVEID, cve.Description, cve.CVSSScore, cve.VectorString, cve.CWEID, refs, cve.PublishedDate, cve.UpdatedDate).Scan(&id, &tag)
 
 		if err == nil {
 			if tag == "ins" {
@@ -595,7 +624,7 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		}
 
 		if matchCVE(cve, sub.Keyword, sub.MinSeverity) {
-			if notifyIfNew(ctx, sub.UserID, cve.ID, sub, email) {
+			if notifyIfNew(ctx, sub.UserID, cve.ID, sub, email, "") {
 				notifiedUsers[sub.UserID] = true
 			}
 		}
@@ -603,7 +632,7 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 
 	// Asset-Linked Monitoring (Virtual Subscriptions)
 	assetRows, err := db.Pool.Query(ctx, `
-		SELECT ak.keyword, a.user_id, u.email
+		SELECT ak.keyword, a.user_id, u.email, a.name
 		FROM asset_keywords ak
 		JOIN assets a ON ak.asset_id = a.id
 		JOIN users u ON a.user_id = u.id
@@ -616,9 +645,9 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 	defer assetRows.Close()
 
 	for assetRows.Next() {
-		var keyword, email string
+		var keyword, email, assetName string
 		var userID int
-		if err := assetRows.Scan(&keyword, &userID, &email); err != nil {
+		if err := assetRows.Scan(&keyword, &userID, &email, &assetName); err != nil {
 			continue
 		}
 
@@ -632,7 +661,7 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 				EnableEmail:   true,
 				EnableWebhook: true,
 			}
-			if notifyIfNew(ctx, userID, cve.ID, sub, email) {
+			if notifyIfNew(ctx, userID, cve.ID, sub, email, assetName) {
 				notifiedUsers[userID] = true
 			}
 		}
@@ -649,7 +678,7 @@ func matchCVE(cve *models.CVE, keyword string, minSeverity float64) bool {
 	return true
 }
 
-func notifyIfNew(ctx context.Context, userID, cveID int, sub models.UserSubscription, email string) bool {
+func notifyIfNew(ctx context.Context, userID, cveID int, sub models.UserSubscription, email, assetName string) bool {
 	var exists bool
 	if err := db.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM alert_history WHERE user_id=$1 AND cve_id=$2)", userID, cveID).Scan(&exists); err != nil {
 		return false
@@ -660,19 +689,142 @@ func notifyIfNew(ctx context.Context, userID, cveID int, sub models.UserSubscrip
 
 	// Fetch CVE for alert
 	var cve models.CVE
-	err := db.Pool.QueryRow(ctx, "SELECT cve_id, description, cvss_score FROM cves WHERE id = $1", cveID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore)
+	err := db.Pool.QueryRow(ctx, `
+		SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, published_date, "references" 
+		FROM cves WHERE id = $1
+	`, cveID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.VectorString, &cve.CISAKEV, &cve.EPSSScore, &cve.CWEID, &cve.PublishedDate, &cve.References)
 	if err != nil {
+		log.Printf("Failed to fetch full CVE details for alert: %v", err)
 		return false
 	}
 
-	if sendAlert(sub, &cve, email) {
-		_, _ = db.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id) VALUES ($1, $2)", userID, cveID)
-		return true
-	}
-	return false
+	return bufferAlert(ctx, userID, &cve, email, assetName)
 }
 
-func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) bool {
+func bufferAlert(ctx context.Context, userID int, cve *models.CVE, email, assetName string) bool {
+	key := fmt.Sprintf("alert_buffer:%d", userID)
+	data := map[string]interface{}{
+		"cve":        cve,
+		"email":      email,
+		"asset_name": assetName,
+	}
+	blob, _ := json.Marshal(data)
+	
+	db.RedisClient.RPush(ctx, key, blob)
+	// Set a flag to process this user's buffer in 5 minutes if not already set
+	processingKey := fmt.Sprintf("alert_processing:%d", userID)
+	set, _ := db.RedisClient.SetNX(ctx, processingKey, "true", 5*time.Minute).Result()
+	if set {
+		go func() {
+			time.Sleep(5 * time.Minute)
+			processUserBuffer(context.Background(), userID)
+			db.RedisClient.Del(context.Background(), processingKey)
+		}()
+	}
+	return true
+}
+
+func processUserBuffer(ctx context.Context, userID int) {
+	key := fmt.Sprintf("alert_buffer:%d", userID)
+	blobs, _ := db.RedisClient.LRange(ctx, key, 0, -1).Result()
+	db.RedisClient.Del(ctx, key)
+
+	if len(blobs) == 0 {
+		return
+	}
+
+	if len(blobs) == 1 {
+		// Just one alert, send standard template
+		var data struct {
+			CVE       models.CVE `json:"cve"`
+			Email     string     `json:"email"`
+			AssetName string     `json:"asset_name"`
+		}
+	if err := json.Unmarshal([]byte(blobs[0]), &data); err != nil {
+		log.Printf("Failed to unmarshal single alert blob for user %d: %v", userID, err)
+		return
+	}
+		
+		// We need the subscription settings to know if email is enabled.
+		// For simplicity in the buffer, we'll assume it was checked in notifyIfNew.
+		// However, sendAlert needs the UserSubscription object.
+		// We'll mock a default one since we're already in the email-sending path.
+		sub := models.UserSubscription{EnableEmail: true, EnableWebhook: true}
+		sendAlert(sub, &data.CVE, data.Email, data.AssetName)
+		return
+	}
+
+	// Multiple alerts, send summary brief
+	var email string
+	type AlertItem struct {
+		CVEID     string
+		Score     float64
+		AssetName string
+	}
+	var items []AlertItem
+	
+	for _, b := range blobs {
+		var data struct {
+			CVE       models.CVE `json:"cve"`
+			Email     string     `json:"email"`
+			AssetName string     `json:"asset_name"`
+		}
+		if err := json.Unmarshal([]byte(b), &data); err != nil {
+			continue
+		}
+		email = data.Email
+		items = append(items, AlertItem{
+			CVEID:     data.CVE.CVEID,
+			Score:     data.CVE.CVSSScore,
+			AssetName: data.AssetName,
+		})
+	}
+
+	rowsHTML := ""
+	for _, item := range items {
+		assetInfo := ""
+		if item.AssetName != "" {
+			assetInfo = fmt.Sprintf("<br><span style='font-size: 11px; opacity: 0.6;'>Asset: %s</span>", item.AssetName)
+		}
+		rowsHTML += fmt.Sprintf(`
+			<tr>
+				<td style="padding: 15px; border-bottom: 1px solid #232931;">
+					<strong style="color: #00daf3;">%s</strong>%s
+				</td>
+				<td style="padding: 15px; border-bottom: 1px solid #232931; text-align: right;">
+					<span style="background: #1c2026; padding: 4px 10px; border-radius: 4px; font-weight: bold;">%.1f</span>
+				</td>
+			</tr>
+		`, item.CVEID, assetInfo, item.Score)
+	}
+
+	body := fmt.Sprintf(`
+		<div style="font-family: 'Inter', sans-serif; max-width: 600px; margin: auto; background: #101418; color: #dfe2eb; padding: 40px; border-radius: 12px; border: 1px solid #232931;">
+			<h2 style="color: #00daf3; margin-top: 0;">Intelligence Brief: %d New Threats</h2>
+			<p style="font-size: 14px; opacity: 0.7; margin-bottom: 30px;">Multiple vulnerabilities matching your profile were detected in the last 5 minutes.</p>
+			
+			<table style="width: 100%%; border-collapse: collapse; margin-bottom: 30px;">
+				<thead>
+					<tr style="font-size: 11px; text-transform: uppercase; opacity: 0.5; text-align: left;">
+						<th style="padding: 10px 15px;">Vulnerability</th>
+						<th style="padding: 10px 15px; text-align: right;">CVSS</th>
+					</tr>
+				</thead>
+				<tbody>
+					%s
+				</tbody>
+			</table>
+
+			<a href="%s/dashboard" style="display: block; width: 100%%; background: #00daf3; color: #101418; text-align: center; padding: 15px 0; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 14px; text-transform: uppercase;">Review All Threats</a>
+		</div>
+	`, len(items), rowsHTML, os.Getenv("BASE_URL"))
+
+	if err := sendEmail(email, fmt.Sprintf("Threat Report: %d New Vulnerabilities Detected", len(items)), body); err != nil {
+		log.Printf("Failed to send buffered threat report to %s: %v", email, err)
+	}
+}
+
+func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName string) bool {
 	log.Printf("ALERT: Sending to %s for %s\n", email, cve.CVEID)
 
 	var wg sync.WaitGroup
@@ -757,33 +909,131 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email string) bool 
 	}
 
 	// Send Email using SMTP
-	smtpHost := os.Getenv("SMTP_HOST")
-	smtpPort := os.Getenv("SMTP_PORT")
-	smtpUser := os.Getenv("SMTP_USER")
-	smtpPass := os.Getenv("SMTP_PASS")
-
-	if sub.EnableEmail && smtpHost != "" && smtpPort != "" {
+	if sub.EnableEmail {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			safeEmail, emailErr := sanitizeEmail(email)
-			if emailErr != nil {
-				log.Printf("Invalid email for CVE alert: %v", emailErr)
-				return
-			}
-			to := []string{safeEmail}
-			msg := []byte(fmt.Sprintf("From: %s\r\n"+
-				"To: %s\r\n"+
-				"Subject: New CVE Alert: %s\r\n"+
-				"\r\n"+
-				"A new CVE matching your subscription has been found.\r\n\r\n"+
-				"CVE ID: %s\r\n"+
-				"CVSS Score: %.1f\r\n"+
-				"Description: %s\r\n", smtpUser, safeEmail, cve.CVEID, cve.CVEID, cve.CVSSScore, cve.Description))
 
-			err := sendMailWithTimeout(smtpHost, smtpPort, smtpUser, smtpPass, to, msg) // #nosec G707 -- email sanitized above
-			if err != nil {
-				log.Printf("Failed to send email to %s: %v", email, err)
+			severity := "Low"
+			severityColor := "#00cc66"
+			if cve.CVSSScore >= 9.0 {
+				severity = "Critical"
+				severityColor = "#ff4d4d"
+			} else if cve.CVSSScore >= 7.0 {
+				severity = "High"
+				severityColor = "#ff8c00"
+			} else if cve.CVSSScore >= 4.0 {
+				severity = "Medium"
+				severityColor = "#ffcc00"
+			}
+
+			kevBadge := ""
+			if cve.CISAKEV {
+				kevBadge = `
+					<div style="background: #ff4d4d; color: #ffffff; padding: 10px 15px; border-radius: 6px; margin-bottom: 25px; font-weight: bold; border-left: 5px solid #b30000;">
+						⚠️ KNOWN EXPLOITED VULNERABILITY
+						<div style="font-size: 11px; font-weight: normal; margin-top: 3px; opacity: 0.9;">This CVE is documented in the CISA KEV catalog.</div>
+					</div>`
+			}
+
+			refsHTML := ""
+			if len(cve.References) > 0 {
+				refsHTML = "<div style='margin-top: 20px;'><strong style='font-size: 12px; text-transform: uppercase; opacity: 0.6;'>References</strong><ul style='padding-left: 20px; margin-top: 10px; font-size: 13px;'>"
+				count := 0
+				for _, ref := range cve.References {
+					if count >= 5 {
+						refsHTML += "<li>... and more</li>"
+						break
+					}
+					refsHTML += fmt.Sprintf("<li><a href='%s' style='color: #00daf3; text-decoration: none;'>%s</a></li>", ref, ref)
+					count++
+				}
+				refsHTML += "</ul></div>"
+			}
+
+			assetBadge := ""
+			if assetName != "" {
+				assetBadge = fmt.Sprintf(`
+					<div style="background: #1c2026; padding: 10px 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #00daf3;">
+						<div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.5;">Matched Asset</div>
+						<div style="font-size: 14px; font-weight: bold; margin-top: 2px;">%s</div>
+					</div>`, assetName)
+			}
+
+			epssDisplay := "N/A"
+			if cve.EPSSScore > 0 {
+				epssDisplay = fmt.Sprintf("%.1f%%", cve.EPSSScore*100)
+			}
+
+			cweDisplay := ""
+			if cve.CWEID != "" {
+				cweDisplay = fmt.Sprintf("<div style='font-size: 11px; opacity: 0.6; margin-top: 5px;'>Type: %s</div>", cve.CWEID)
+			}
+
+			// Generate Action Token and store in Redis for 24 hours
+			actionToken, _ := auth.GenerateToken()
+			actionData, _ := json.Marshal(map[string]interface{}{
+				"user_id": sub.UserID,
+				"cve_id":  cve.ID,
+				"keyword": sub.Keyword,
+			})
+			db.RedisClient.Set(context.Background(), "alert_action:"+actionToken, actionData, 24*time.Hour)
+
+			body := fmt.Sprintf(`
+				<div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: auto; background: #101418; color: #dfe2eb; padding: 40px; border-radius: 12px; border: 1px solid #232931;">
+					<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+						<span style="color: #00daf3; font-weight: bold; font-size: 18px; letter-spacing: 0.05em;">VULFIXX INTEL</span>
+						<span style="background: #1c2026; padding: 4px 10px; border-radius: 4px; font-size: 12px; opacity: 0.7;">%s</span>
+					</div>
+
+					%s
+					%s
+
+					<h1 style="font-size: 28px; margin: 0 0 5px 0; color: #ffffff;">%s</h1>
+					%s
+					
+					<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 25px 0;">
+						<div style="background: #1c2026; padding: 15px; border-radius: 8px; border-bottom: 3px solid %s;">
+							<div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.5; margin-bottom: 4px;">CVSS Base</div>
+							<div style="font-size: 24px; font-weight: bold; color: %s;">%.1f</div>
+							<div style="font-size: 10px; font-weight: bold; color: %s; text-transform: uppercase;">%s</div>
+						</div>
+						<div style="background: #1c2026; padding: 15px; border-radius: 8px; border-bottom: 3px solid #00daf3;">
+							<div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.5; margin-bottom: 4px;">Exploit Prob (EPSS)</div>
+							<div style="font-size: 24px; font-weight: bold; color: #00daf3;">%s</div>
+							<div style="font-size: 10px; opacity: 0.5; text-transform: uppercase;">Next 30 Days</div>
+						</div>
+					</div>
+
+					<div style="background: #1c2026; padding: 15px; border-radius: 8px; margin-bottom: 30px;">
+						<div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.5; margin-bottom: 8px;">Technical Vector</div>
+						<div style="font-size: 12px; font-family: monospace; word-break: break-all; opacity: 0.8;">%s</div>
+					</div>
+
+					<p style="font-size: 15px; line-height: 1.6; color: #b0b5c0; margin-bottom: 30px;">%s</p>
+
+					<div style="background: #1c2026; padding: 20px; border-radius: 8px; margin-bottom: 30px;">
+						<div style="font-size: 12px; margin-bottom: 15px;">
+							<span style="opacity: 0.5;">Published:</span> <span style="margin-left: 5px;">%s</span>
+						</div>
+						%s
+					</div>
+
+					<a href="%s/cve/%s" style="display: block; width: 100%%; box-sizing: border-box; background: #00daf3; color: #101418; text-align: center; padding: 16px 0; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 14px; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 15px;">Full Technical Analysis</a>
+					
+					<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+						<a href="%s/alert-action?action=acknowledge&token=%s" style="display: block; background: #1c2026; color: #dfe2eb; text-align: center; padding: 12px 0; border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: bold; border: 1px solid #232931;">Acknowledge</a>
+						<a href="%s/alert-action?action=mute&token=%s" style="display: block; background: #1c2026; color: #dfe2eb; text-align: center; padding: 12px 0; border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: bold; border: 1px solid #232931;">Mute Key</a>
+					</div>
+
+					<div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #232931; font-size: 11px; opacity: 0.4; text-align: center;">
+						Vulfixx Intelligence Engine | Automated Threat Monitoring
+					</div>
+				</div>
+			`, time.Now().Format("Jan 02, 2006"), kevBadge, assetBadge, cve.CVEID, cweDisplay, severityColor, severityColor, cve.CVSSScore, severityColor, severity, epssDisplay, cve.VectorString, cve.Description, cve.PublishedDate.Format("Jan 02, 2006"), refsHTML, os.Getenv("BASE_URL"), cve.CVEID, os.Getenv("BASE_URL"), actionToken, os.Getenv("BASE_URL"), actionToken)
+
+			if err := sendEmail(email, "Security Alert: "+cve.CVEID, body); err != nil {
+				log.Printf("Failed to send email alert to %s: %v", email, err)
 			} else {
 				successChan <- true
 			}
@@ -864,41 +1114,35 @@ func sendEmailChangeNotification(email, token, emailType string) {
 	log.Printf("Sending email change notification (%s) to %s\n", emailType, email)
 	smtpHost := os.Getenv("SMTP_HOST")
 	smtpPort := os.Getenv("SMTP_PORT")
-	smtpUser := os.Getenv("SMTP_USER")
-	smtpPass := os.Getenv("SMTP_PASS")
 
 	if smtpHost != "" && smtpPort != "" {
-		safeEmail, emailErr := sanitizeEmail(email)
-		if emailErr != nil {
-			log.Printf("Invalid email for email change notification: %v", emailErr)
-			return
-		}
-		to := []string{safeEmail}
 		baseURL := os.Getenv("BASE_URL")
 		if baseURL == "" {
 			baseURL = "http://localhost:8080"
 		}
 
-		subject := "Confirm Email Change - CVE Tracker"
-		body := fmt.Sprintf("Please confirm your email change request by clicking the link below:\r\n\r\n"+
-			"%s/confirm-email-change?token=%s\r\n", baseURL, token)
+	subject := "Confirm Email Change - Vulfixx"
+	content := "Please confirm your email change request by clicking the link below:"
+	if emailType == "old" {
+		content = "You have requested to change your email address. " + content
+	} else {
+		content = "You have been set as the new email address for a Vulfixx account. " + content
+	}
 
-		if emailType == "old" {
-			body = "You have requested to change your email address. " + body
-		} else {
-			body = "You have been set as the new email address for a CVE Tracker account. " + body
-		}
+	body := fmt.Sprintf(`
+		<div style="font-family: 'Inter', sans-serif; max-width: 500px; margin: auto; background: #101418; color: #dfe2eb; padding: 40px; border-radius: 12px; border: 1px solid #232931;">
+			<h2 style="color: #00daf3; margin-top: 0;">Email Change Request</h2>
+			<p style="font-size: 15px; line-height: 1.6; color: #b0b5c0; margin-bottom: 30px;">%s</p>
+			
+			<a href="%s/confirm-email-change?token=%s" style="display: block; width: 100%%; background: #00daf3; color: #101418; text-align: center; padding: 14px 0; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; text-transform: uppercase;">Confirm Email Change</a>
+			
+			<p style="font-size: 12px; opacity: 0.5; margin-top: 30px;">If you did not request this change, please contact support immediately.</p>
+		</div>
+	`, content, baseURL, token)
 
-		msg := []byte(fmt.Sprintf("From: %s\r\n"+
-			"To: %s\r\n"+
-			"Subject: %s\r\n"+
-			"\r\n"+
-			"%s", smtpUser, safeEmail, subject, body))
-
-		err := sendMailWithTimeout(smtpHost, smtpPort, smtpUser, smtpPass, to, msg) // #nosec G707 -- email validated above
-		if err != nil {
-			log.Printf("Failed to send email change notification to %s: %v", safeEmail, err)
-		}
+	if err := sendEmail(email, subject, body); err != nil {
+		log.Printf("Failed to send email change notification to %s: %v", email, err)
+	}
 	} else {
 		// Redact token in dev fallback log; show full link only if ENABLE_DEV_EMAIL_LINK_LOGGING is set
 		if os.Getenv("ENABLE_DEV_EMAIL_LINK_LOGGING") == "true" {
@@ -914,32 +1158,28 @@ func sendVerificationEmail(email, token string) {
 	log.Printf("Sending verification email to %s\n", email)
 	smtpHost := os.Getenv("SMTP_HOST")
 	smtpPort := os.Getenv("SMTP_PORT")
-	smtpUser := os.Getenv("SMTP_USER")
-	smtpPass := os.Getenv("SMTP_PASS")
 
 	if smtpHost != "" && smtpPort != "" {
-		safeEmail, emailErr := sanitizeEmail(email)
-		if emailErr != nil {
-			log.Printf("Invalid email for verification: %v", emailErr)
-			return
-		}
-		to := []string{safeEmail}
 		// In production, BASE_URL should be configured.
 		baseURL := os.Getenv("BASE_URL")
 		if baseURL == "" {
 			baseURL = "http://localhost:8080"
 		}
 
-		msg := []byte(fmt.Sprintf("From: %s\r\n"+
-			"To: %s\r\n"+
-			"Subject: Verify Your Email - CVE Tracker\r\n"+
-			"\r\n"+
-			"Please verify your email address by clicking the link below:\r\n\r\n"+
-			"%s/verify-email?token=%s\r\n", smtpUser, safeEmail, baseURL, token))
+		subject := "Verify Your Email - Vulfixx"
+		body := fmt.Sprintf(`
+			<div style="font-family: 'Inter', sans-serif; max-width: 500px; margin: auto; background: #101418; color: #dfe2eb; padding: 40px; border-radius: 12px; border: 1px solid #232931;">
+				<h2 style="color: #00daf3; margin-top: 0;">Welcome to Vulfixx</h2>
+				<p style="font-size: 15px; line-height: 1.6; color: #b0b5c0; margin-bottom: 30px;">Please verify your email address to start receiving security alerts and managing your infrastructure threats.</p>
+				
+				<a href="%s/verify-email?token=%s" style="display: block; width: 100%%; background: #00daf3; color: #101418; text-align: center; padding: 14px 0; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; text-transform: uppercase;">Verify Email Address</a>
+				
+				<p style="font-size: 12px; opacity: 0.5; margin-top: 30px;">If you did not create an account, you can safely ignore this email.</p>
+			</div>
+		`, baseURL, token)
 
-		err := sendMailWithTimeout(smtpHost, smtpPort, smtpUser, smtpPass, to, msg) // #nosec G707 -- email validated above
-		if err != nil {
-			log.Printf("Failed to send verification email to %s: %v", safeEmail, err)
+		if err := sendEmail(email, subject, body); err != nil {
+			log.Printf("Failed to send verification email to %s: %v", email, err)
 		}
 	} else {
 		// Redact token in dev fallback log
@@ -1042,8 +1282,79 @@ func sendEmail(toEmail, subject, body string) error {
 		return fmt.Errorf("SMTP not configured")
 	}
 
-	mime := "MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\n"
+	mime := "MIME-version: 1.0;\r\nContent-Type: text/html; charset=\"UTF-8\";\r\n\r\n"
 	msg := []byte(fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\n%s%s", smtpUser, safeEmail, subject, mime, body))
 
 	return sendMailWithTimeout(smtpHost, smtpPort, smtpUser, smtpPass, []string{safeEmail}, msg)
+}
+func syncEPSSPeriodically(ctx context.Context) {
+	// Sync every 24 hours
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+	
+	// Initial sync
+	syncEPSS(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			syncEPSS(ctx)
+		}
+	}
+}
+
+func syncEPSS(ctx context.Context) {
+	log.Println("Worker: [SYNC] Starting EPSS score synchronization...")
+	
+	rows, err := db.Pool.Query(ctx, "SELECT cve_id FROM cves WHERE created_at > NOW() - INTERVAL '30 days'")
+	if err != nil {
+		log.Printf("Worker: [ERROR] Failed to fetch CVEs for EPSS sync: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	
+	for rows.Next() {
+		var cveID string
+		if err := rows.Scan(&cveID); err != nil {
+			continue
+		}
+
+		epssURL := fmt.Sprintf("https://api.first.org/data/v1/epss?cve=%s", cveID)
+		req, _ := http.NewRequestWithContext(ctx, "GET", epssURL, nil)
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("Worker: [ERROR] Failed to fetch EPSS for %s: %v", cveID, err)
+			continue
+		}
+		
+		var epssResp struct {
+			Data []struct {
+				EPSS string `json:"epss"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&epssResp); err != nil {
+			resp.Body.Close()
+			continue
+		}
+		resp.Body.Close()
+
+		if len(epssResp.Data) > 0 {
+			score := 0.0
+		if _, err := fmt.Sscanf(epssResp.Data[0].EPSS, "%f", &score); err != nil {
+			log.Printf("EPSS: Failed to parse score for %s: %v", cveID, err)
+			continue
+		}
+			_, err = db.Pool.Exec(ctx, "UPDATE cves SET epss_score = $1 WHERE cve_id = $2", score, cveID)
+			if err != nil {
+				log.Printf("Worker: [ERROR] Failed to update EPSS for %s: %v", cveID, err)
+			}
+		}
+		// Respect rate limits
+		time.Sleep(100 * time.Millisecond)
+	}
+	log.Println("Worker: [SYNC] EPSS score synchronization complete.")
 }

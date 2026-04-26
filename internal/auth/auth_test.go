@@ -105,7 +105,7 @@ func TestEmailChangeFlow(t *testing.T) {
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	mock.ExpectCommit()
 
-	confirmed, email, uid, err := ConfirmEmailChange(ctx, oldToken)
+	confirmed, _, uid, err := ConfirmEmailChange(ctx, oldToken)
 	if err != nil || confirmed || uid != 1 {
 		t.Fatalf("Failed first confirmation: %v, %v, %d", err, confirmed, uid)
 	}
@@ -127,7 +127,8 @@ func TestEmailChangeFlow(t *testing.T) {
 		WillReturnResult(pgxmock.NewResult("DELETE", 1))
 	mock.ExpectCommit()
 
-	confirmed, email, uid, err = ConfirmEmailChange(ctx, newToken)
+	var email string
+	confirmed, email, _, err = ConfirmEmailChange(ctx, newToken)
 	if err != nil || !confirmed || email != "new@example.com" {
 		t.Fatalf("Failed final confirmation: %v, %v, %s", err, confirmed, email)
 	}
@@ -221,8 +222,6 @@ func TestAuthErrors(t *testing.T) {
 	})
 }
 
-type errorReader struct{}
-func (e errorReader) Read(p []byte) (n int, err error) { return 0, errors.New("rand fail") }
 
 func TestGenerateTokenError(t *testing.T) {
 	// Register uses GenerateToken. If GenerateToken fails, Register should fail.

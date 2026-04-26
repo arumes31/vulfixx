@@ -4,11 +4,17 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 
 ## 🚀 V2 Intelligence Features
 - **Advanced Threat Analysis**: Integrated CVSS Vector explainer and dynamic Appliance Threat Level monitoring.
+- **EPSS Integration**: Exploit Prediction Scoring System (EPSS) integration for probability-based risk assessment.
+- **Smart Alert Batching**: Redis-backed intelligence buffering that groups related threats into unified reports to prevent alert fatigue.
+- **Actionable Notifications**: Direct "Acknowledge" and "Mute" functionality embedded in email alerts via secure temporary tokens.
+- **Infrastructure Context**: Automatic mapping of vulnerabilities to specific infrastructure assets.
+- **CWE Classification**: Deep vulnerability categorization using Common Weakness Enumeration (CWE) intelligence.
 - **Remediation Lifecycle**: Private journaling and status tracking for vulnerability management.
 - **Automated Intelligence**: Weekly email summaries and CISA KEV automated synchronization.
 - **Enhanced Telemetry**: Risk Profile distribution charts and direct Proof-of-Concept (PoC) discovery links.
 - **Asset-Linked Monitoring**: Proactive infrastructure defense via asset-keyword mapping.
 - **Secure Integration**: Filtered, token-authenticated RSS feeds for personalized technical intel.
+- **Rich Email Alerts**: Premium HTML notifications with EPSS probability gauges, CWE labels, and asset badges.
 - **Modern UI**: High-density dashboard with glassmorphism aesthetics and Material Symbol integration.
 
 ## Getting Started

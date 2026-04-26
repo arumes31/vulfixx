@@ -798,6 +798,69 @@ func AlertHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func HandleAlertAction(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	action := r.URL.Query().Get("action")
+
+	if token == "" || action == "" {
+		http.Error(w, "Invalid action request", http.StatusBadRequest)
+		return
+	}
+
+	dataBlob, err := db.RedisClient.Get(r.Context(), "alert_action:"+token).Result()
+	if err != nil {
+		http.Error(w, "This action link has expired or is invalid.", http.StatusGone)
+		return
+	}
+
+	var data struct {
+		UserID  int    `json:"user_id"`
+		CVEID   int    `json:"cve_id"`
+		Keyword string `json:"keyword"`
+	}
+	if err := json.Unmarshal([]byte(dataBlob), &data); err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	ctx := r.Context()
+	switch action {
+	case "acknowledge":
+		_, err = db.Pool.Exec(ctx, `
+			INSERT INTO user_cve_status (user_id, cve_id, status)
+			VALUES ($1, $2, 'in_progress')
+			ON CONFLICT (user_id, cve_id) DO UPDATE SET status = 'in_progress', updated_at = CURRENT_TIMESTAMP
+		`, data.UserID, data.CVEID)
+		if err != nil {
+			http.Error(w, "Failed to acknowledge alert", http.StatusInternalServerError)
+			return
+		}
+		LogActivity(ctx, data.UserID, "alert_action", fmt.Sprintf("Acknowledged CVE ID %d via email", data.CVEID), r.RemoteAddr, r.UserAgent())
+		RenderTemplate(w, r, "message.html", map[string]interface{}{
+			"Title":   "Alert Acknowledged",
+			"Message": "Vulnerability has been marked as 'In Progress'. View it in your dashboard for further analysis.",
+		})
+
+	case "mute":
+		_, err = db.Pool.Exec(ctx, "DELETE FROM user_subscriptions WHERE user_id = $1 AND keyword = $2", data.UserID, data.Keyword)
+		if err != nil {
+			http.Error(w, "Failed to mute keyword", http.StatusInternalServerError)
+			return
+		}
+		LogActivity(ctx, data.UserID, "alert_action", fmt.Sprintf("Muted keyword '%s' via email", data.Keyword), r.RemoteAddr, r.UserAgent())
+		RenderTemplate(w, r, "message.html", map[string]interface{}{
+			"Title":   "Keyword Muted",
+			"Message": fmt.Sprintf("You will no longer receive alerts for the keyword '%s'.", data.Keyword),
+		})
+
+	default:
+		http.Error(w, "Unsupported action", http.StatusBadRequest)
+	}
+
+	// Delete token after use
+	db.RedisClient.Del(ctx, "alert_action:"+token)
+}
+
 func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	minSeverityStr := r.URL.Query().Get("min_cvss")

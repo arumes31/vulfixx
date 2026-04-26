@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS cves (
     description TEXT,
     cvss_score NUMERIC(4,1),
     cisa_kev BOOLEAN DEFAULT FALSE,
+    epss_score NUMERIC(4,3),
+    cwe_id VARCHAR(50),
+    cwe_name TEXT,
     published_date TIMESTAMP WITH TIME ZONE,
     updated_date TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

@@ -21,6 +21,9 @@ type CVE struct {
 	CVSSScore     float64
 	VectorString  string
 	CISAKEV       bool
+	EPSSScore     float64
+	CWEID         string
+	CWEName       string
 	Status        string
 	Notes         string
 	References    []string
