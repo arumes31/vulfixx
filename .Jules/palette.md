@@ -1,0 +1,3 @@
+## 2026-04-26 - Missing label associations on Authentication and Registration forms
+**Learning:** Found an accessibility issue pattern across `templates/login.html` and `templates/register.html` where labels were not properly associated with their respective input fields via `for` and `id` attributes. This prevents screen readers from correctly identifying inputs. Adding an explicit `autofocus` attribute also improves keyboard flow upon page load for better accessibility.
+**Action:** Always verify `for` and `id` linking between `label` and `input` tags when creating or reviewing Go templates containing form elements, especially across standard authentication interfaces.

@@ -29,19 +29,19 @@
             {{.csrfField}}
         {{if .RequireTOTP}}
             <div class="space-y-2">
-                <label class="text-xs font-label font-bold tracking-widest uppercase text-on-surface-variant block">TOTP Code</label>
-                <input type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456"
+                <label for="totp_code" class="text-xs font-label font-bold tracking-widest uppercase text-on-surface-variant block">TOTP Code</label>
+                <input id="totp_code" type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456" autofocus
                        class="w-full bg-surface-container-low border-b-2 border-outline-variant/50 focus:border-primary px-4 py-3 rounded-t-md text-on-surface focus:outline-none transition-colors font-mono tracking-widest placeholder:text-on-surface-variant/30">
             </div>
         {{else}}
             <div class="space-y-2">
-                <label class="text-xs font-label font-bold tracking-widest uppercase text-on-surface-variant block">Email Operator</label>
-                <input type="email" name="email" required placeholder="operator@system.core"
+                <label for="email" class="text-xs font-label font-bold tracking-widest uppercase text-on-surface-variant block">Email Operator</label>
+                <input id="email" type="email" name="email" required placeholder="operator@system.core" autofocus
                        class="w-full bg-surface-container-low border-b-2 border-outline-variant/50 focus:border-primary px-4 py-3 rounded-t-md text-on-surface focus:outline-none transition-colors placeholder:text-on-surface-variant/30">
             </div>
             <div class="space-y-2">
-                <label class="text-xs font-label font-bold tracking-widest uppercase text-on-surface-variant block">Passphrase</label>
-                <input type="password" name="password" required placeholder="••••••••"
+                <label for="password" class="text-xs font-label font-bold tracking-widest uppercase text-on-surface-variant block">Passphrase</label>
+                <input id="password" type="password" name="password" required placeholder="••••••••"
                        class="w-full bg-surface-container-low border-b-2 border-outline-variant/50 focus:border-primary px-4 py-3 rounded-t-md text-on-surface focus:outline-none transition-colors placeholder:text-on-surface-variant/30 font-mono tracking-widest">
             </div>
         {{end}}
