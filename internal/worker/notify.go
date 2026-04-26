@@ -161,18 +161,34 @@ func notifyIfNew(ctx context.Context, userID, cveID int, sub models.UserSubscrip
 }
 
 func bufferAlert(ctx context.Context, userID int, cve *models.CVE, email, assetName string) bool {
+	// Severity-Based Routing:
+	// Critical (>= 9.0) gets immediate delivery.
+	// High (>= 7.0) gets a short buffer (1 min).
+	// Others get a longer buffer (5 min) for digest creation.
+	
+	if cve.CVSSScore >= 9.0 {
+		sub := models.UserSubscription{EnableEmail: true, EnableWebhook: true}
+		return sendAlert(sub, cve, email, assetName)
+	}
+
 	key := fmt.Sprintf("alert_buffer:%d", userID)
 	data := map[string]interface{}{"cve": cve, "email": email, "asset_name": assetName}
 	blob, _ := json.Marshal(data)
 	db.RedisClient.RPush(ctx, key, blob)
+
 	processingKey := fmt.Sprintf("alert_processing:%d", userID)
-	set, _ := db.RedisClient.SetNX(ctx, processingKey, "true", 5*time.Minute).Result()
+	set, _ := db.RedisClient.SetNX(ctx, processingKey, "true", 10*time.Minute).Result()
 	if set {
-		go func() {
-			time.Sleep(5 * time.Minute)
+		bufferTime := 5 * time.Minute
+		if cve.CVSSScore >= 7.0 {
+			bufferTime = 1 * time.Minute
+		}
+
+		go func(bTime time.Duration) {
+			time.Sleep(bTime)
 			processUserBuffer(context.Background(), userID)
 			db.RedisClient.Del(context.Background(), processingKey)
-		}()
+		}(bufferTime)
 	}
 	return true
 }
@@ -291,9 +307,69 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName st
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			payloadMap := map[string]interface{}{"cve_id": cve.CVEID, "description": cve.Description, "cvss_score": cve.CVSSScore}
+			
+			// Robust Webhook Security (from main)
+			parsedURL, err := url.Parse(sub.WebhookURL)
+			redacted := redactURL(sub.WebhookURL)
+			if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+				log.Printf("Skipping invalid webhook URL scheme: %s", redacted)
+				return
+			}
+
+			// DNS Pinning / SSRF Protection
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			ips, err := net.DefaultResolver.LookupIPAddr(ctx, parsedURL.Hostname())
+			if err != nil {
+				log.Printf("Failed to resolve webhook host: %s, err: %v", redacted, err)
+				return
+			}
+
+			isSafe := true
+			var safeIP net.IP
+			for _, ipAddr := range ips {
+				if addr, ok := netip.AddrFromSlice(ipAddr.IP); ok {
+					if addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified() {
+						isSafe = false
+						break
+					}
+					if safeIP == nil {
+						safeIP = ipAddr.IP
+					}
+				}
+			}
+
+			if !isSafe || safeIP == nil {
+				log.Printf("Skipping unsafe webhook URL IP: %s", redacted)
+				return
+			}
+
+			payloadMap := map[string]interface{}{
+				"cve_id":      cve.CVEID,
+				"description": cve.Description,
+				"cvss_score":  cve.CVSSScore,
+				"asset_name":  assetName,
+			}
+			if os.Getenv("WEBHOOK_INCLUDE_USER_EMAIL") == "true" {
+				payloadMap["user_email"] = email
+			}
 			payload, _ := json.Marshal(payloadMap)
-			resp, err := http.Post(sub.WebhookURL, "application/json", strings.NewReader(string(payload)))
+
+			client := &http.Client{
+				Timeout: 10 * time.Second,
+				Transport: &http.Transport{
+					DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+						port := parsedURL.Port()
+						if port == "" {
+							if parsedURL.Scheme == "https" { port = "443" } else { port = "80" }
+						}
+						dialer := &net.Dialer{Timeout: 5 * time.Second}
+						return dialer.DialContext(ctx, network, net.JoinHostPort(safeIP.String(), port))
+					},
+				},
+			}
+
+			resp, err := client.Post(sub.WebhookURL, "application/json", strings.NewReader(string(payload)))
 			if err == nil {
 				_ = resp.Body.Close()
 				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
