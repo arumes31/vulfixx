@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS cves (
     epss_score NUMERIC(4,3),
     cwe_id VARCHAR(50),
     cwe_name TEXT,
+    github_poc_count INTEGER DEFAULT 0,
     published_date TIMESTAMP WITH TIME ZONE,
     updated_date TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

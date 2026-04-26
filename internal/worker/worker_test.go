@@ -213,9 +213,9 @@ func TestWorkerFunctions(t *testing.T) {
 
 	// notifyIfNew for first sub
 	mock.ExpectQuery("SELECT EXISTS").WithArgs(1, 1).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
-	mock.ExpectQuery(`SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, published_date, "references" FROM cves`).WithArgs(1).
-		WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "epss_score", "cwe_id", "published_date", "references"}).
-			AddRow("CVE-2023-0001", "Test description", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", false, 0.05, "CWE-79", time.Now(), []string{"http://example.com"}))
+	mock.ExpectQuery(`SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, github_poc_count, published_date, "references" FROM cves`).WithArgs(1).
+		WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "epss_score", "cwe_id", "github_poc_count", "published_date", "references"}).
+			AddRow("CVE-2023-0001", "Test description", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", false, 0.05, "CWE-79", 0, time.Now(), []string{"http://example.com"}))
 	mock.ExpectExec("INSERT INTO alert_history").WithArgs(1, 1).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	
 	mock.ExpectQuery("SELECT ak.keyword, a.user_id").

@@ -24,6 +24,7 @@ type CVE struct {
 	EPSSScore     float64
 	CWEID         string
 	CWEName       string
+	GitHubPoCCount int
 	Status        string
 	Notes         string
 	References    []string

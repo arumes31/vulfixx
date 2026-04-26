@@ -4,6 +4,7 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 
 ## 🚀 V2 Intelligence Features
 - **Advanced Threat Analysis**: Integrated CVSS Vector explainer and dynamic Appliance Threat Level monitoring.
+- **Social Buzz & Threat Trending**: GitHub-integrated "Buzz" meter that tracks community interest and public PoC presence without requiring API keys.
 - **EPSS Integration**: Exploit Prediction Scoring System (EPSS) integration for probability-based risk assessment.
 - **Smart Alert Batching**: Redis-backed intelligence buffering that groups related threats into unified reports to prevent alert fatigue.
 - **Actionable Notifications**: Direct "Acknowledge" and "Mute" functionality embedded in email alerts via secure temporary tokens.
@@ -14,7 +15,7 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 - **Enhanced Telemetry**: Risk Profile distribution charts and direct Proof-of-Concept (PoC) discovery links.
 - **Asset-Linked Monitoring**: Proactive infrastructure defense via asset-keyword mapping.
 - **Secure Integration**: Filtered, token-authenticated RSS feeds for personalized technical intel.
-- **Rich Email Alerts**: Premium HTML notifications with EPSS probability gauges, CWE labels, and asset badges.
+- **Rich Email Alerts**: Premium HTML notifications with EPSS probability gauges, GitHub Buzz indicators, and asset badges.
 - **Modern UI**: High-density dashboard with glassmorphism aesthetics and Material Symbol integration.
 
 ## Getting Started

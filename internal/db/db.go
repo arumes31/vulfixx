@@ -93,6 +93,7 @@ func migrate(ctx context.Context) error {
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS epss_score NUMERIC(4,3);",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS cwe_id VARCHAR(50);",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS cwe_name TEXT;",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS github_poc_count INTEGER DEFAULT 0;",
 		`CREATE TABLE IF NOT EXISTS user_cve_notes (
 			user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
 			cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,

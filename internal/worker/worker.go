@@ -136,6 +136,7 @@ func StartWorker(ctx context.Context) {
 	go processEmailVerification(ctx)
 	go processEmailChange(ctx)
 	go syncEPSSPeriodically(ctx)
+	go syncGitHubBuzzPeriodically(ctx)
 }
 
 // NVDResponse is the top-level NVD API response structure.
@@ -690,9 +691,9 @@ func notifyIfNew(ctx context.Context, userID, cveID int, sub models.UserSubscrip
 	// Fetch CVE for alert
 	var cve models.CVE
 	err := db.Pool.QueryRow(ctx, `
-		SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, published_date, "references" 
+		SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, github_poc_count, published_date, "references" 
 		FROM cves WHERE id = $1
-	`, cveID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.VectorString, &cve.CISAKEV, &cve.EPSSScore, &cve.CWEID, &cve.PublishedDate, &cve.References)
+	`, cveID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.VectorString, &cve.CISAKEV, &cve.EPSSScore, &cve.CWEID, &cve.GitHubPoCCount, &cve.PublishedDate, &cve.References)
 	if err != nil {
 		log.Printf("Failed to fetch full CVE details for alert: %v", err)
 		return false
@@ -760,6 +761,7 @@ func processUserBuffer(ctx context.Context, userID int) {
 		CVEID     string
 		Score     float64
 		AssetName string
+		Buzz      int
 	}
 	var items []AlertItem
 	
@@ -777,6 +779,7 @@ func processUserBuffer(ctx context.Context, userID int) {
 			CVEID:     data.CVE.CVEID,
 			Score:     data.CVE.CVSSScore,
 			AssetName: data.AssetName,
+			Buzz:      data.CVE.GitHubPoCCount,
 		})
 	}
 
@@ -786,16 +789,28 @@ func processUserBuffer(ctx context.Context, userID int) {
 		if item.AssetName != "" {
 			assetInfo = fmt.Sprintf("<br><span style='font-size: 11px; opacity: 0.6;'>Asset: %s</span>", item.AssetName)
 		}
+		buzzBadge := ""
+		if item.Buzz >= 15 {
+			buzzBadge = "🔥 High"
+		} else if item.Buzz >= 6 {
+			buzzBadge = "📈 Hot"
+		} else if item.Buzz >= 2 {
+			buzzBadge = "✨ New"
+		}
+
 		rowsHTML += fmt.Sprintf(`
 			<tr>
 				<td style="padding: 15px; border-bottom: 1px solid #232931;">
 					<strong style="color: #00daf3;">%s</strong>%s
 				</td>
+				<td style="padding: 15px; border-bottom: 1px solid #232931; text-align: center; font-size: 12px;">
+					%s
+				</td>
 				<td style="padding: 15px; border-bottom: 1px solid #232931; text-align: right;">
 					<span style="background: #1c2026; padding: 4px 10px; border-radius: 4px; font-weight: bold;">%.1f</span>
 				</td>
 			</tr>
-		`, item.CVEID, assetInfo, item.Score)
+		`, item.CVEID, assetInfo, buzzBadge, item.Score)
 	}
 
 	body := fmt.Sprintf(`
@@ -807,6 +822,7 @@ func processUserBuffer(ctx context.Context, userID int) {
 				<thead>
 					<tr style="font-size: 11px; text-transform: uppercase; opacity: 0.5; text-align: left;">
 						<th style="padding: 10px 15px;">Vulnerability</th>
+						<th style="padding: 10px 15px; text-align: center;">Buzz</th>
 						<th style="padding: 10px 15px; text-align: right;">CVSS</th>
 					</tr>
 				</thead>
@@ -970,6 +986,19 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName st
 				cweDisplay = fmt.Sprintf("<div style='font-size: 11px; opacity: 0.6; margin-top: 5px;'>Type: %s</div>", cve.CWEID)
 			}
 
+			buzzStatus := "Quiet"
+			buzzColor := "#666666"
+			if cve.GitHubPoCCount >= 15 {
+				buzzStatus = "High Buzz / Viral"
+				buzzColor = "#ff4d4d"
+			} else if cve.GitHubPoCCount >= 6 {
+				buzzStatus = "Trending / PoC Public"
+				buzzColor = "#ff8c00"
+			} else if cve.GitHubPoCCount >= 2 {
+				buzzStatus = "Emerging Interest"
+				buzzColor = "#ffcc00"
+			}
+
 			// Generate Action Token and store in Redis for 24 hours
 			actionToken, _ := auth.GenerateToken()
 			actionData, _ := json.Marshal(map[string]interface{}{
@@ -1005,6 +1034,12 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName st
 						</div>
 					</div>
 
+					<div style="background: #1c2026; padding: 15px; border-radius: 8px; margin-bottom: 25px; border-left: 4px solid %s;">
+						<div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.5; margin-bottom: 4px;">Social Buzz / PoC Status</div>
+						<div style="font-size: 14px; font-weight: bold; color: %s;">%s</div>
+						<div style="font-size: 10px; opacity: 0.5; margin-top: 2px;">%d mentions across GitHub repositories</div>
+					</div>
+
 					<div style="background: #1c2026; padding: 15px; border-radius: 8px; margin-bottom: 30px;">
 						<div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.5; margin-bottom: 8px;">Technical Vector</div>
 						<div style="font-size: 12px; font-family: monospace; word-break: break-all; opacity: 0.8;">%s</div>
@@ -1030,7 +1065,7 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName st
 						Vulfixx Intelligence Engine | Automated Threat Monitoring
 					</div>
 				</div>
-			`, time.Now().Format("Jan 02, 2006"), kevBadge, assetBadge, cve.CVEID, cweDisplay, severityColor, severityColor, cve.CVSSScore, severityColor, severity, epssDisplay, cve.VectorString, cve.Description, cve.PublishedDate.Format("Jan 02, 2006"), refsHTML, os.Getenv("BASE_URL"), cve.CVEID, os.Getenv("BASE_URL"), actionToken, os.Getenv("BASE_URL"), actionToken)
+			`, time.Now().Format("Jan 02, 2006"), kevBadge, assetBadge, cve.CVEID, cweDisplay, severityColor, severityColor, cve.CVSSScore, severityColor, severity, epssDisplay, buzzColor, buzzColor, buzzStatus, cve.GitHubPoCCount, cve.VectorString, cve.Description, cve.PublishedDate.Format("Jan 02, 2006"), refsHTML, os.Getenv("BASE_URL"), cve.CVEID, os.Getenv("BASE_URL"), actionToken, os.Getenv("BASE_URL"), actionToken)
 
 			if err := sendEmail(email, "Security Alert: "+cve.CVEID, body); err != nil {
 				log.Printf("Failed to send email alert to %s: %v", email, err)
@@ -1357,4 +1392,76 @@ func syncEPSS(ctx context.Context) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	log.Println("Worker: [SYNC] EPSS score synchronization complete.")
+}
+
+func syncGitHubBuzzPeriodically(ctx context.Context) {
+	// Sync more frequently since GitHub data changes fast (every 4 hours)
+	ticker := time.NewTicker(4 * time.Hour)
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			syncGitHubBuzz(ctx)
+		}
+	}
+}
+
+func syncGitHubBuzz(ctx context.Context) {
+	log.Println("Worker: [SYNC] Starting GitHub Social Buzz synchronization...")
+	
+	// Check CVEs from the last 14 days as interest is highest then
+	rows, err := db.Pool.Query(ctx, "SELECT cve_id FROM cves WHERE created_at > NOW() - INTERVAL '14 days' ORDER BY created_at DESC")
+	if err != nil {
+		log.Printf("Worker: [ERROR] Failed to fetch CVEs for GitHub sync: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	
+	for rows.Next() {
+		var cveID string
+		if err := rows.Scan(&cveID); err != nil {
+			continue
+		}
+
+		// GitHub Search API (Public, Unauthenticated limit is 10 req/min)
+		githubURL := fmt.Sprintf("https://api.github.com/search/repositories?q=%s", cveID)
+		req, _ := http.NewRequestWithContext(ctx, "GET", githubURL, nil)
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+		req.Header.Set("User-Agent", "Vulfixx-Threat-Intel")
+		
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("Worker: [ERROR] Failed to fetch GitHub buzz for %s: %v", cveID, err)
+			continue
+		}
+		
+		if resp.StatusCode == 403 {
+			resp.Body.Close()
+			log.Printf("Worker: [WARN] GitHub API rate limited, skipping remaining CVEs")
+			break
+		}
+
+		var ghResp struct {
+			TotalCount int `json:"total_count"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&ghResp); err != nil {
+			resp.Body.Close()
+			continue
+		}
+		resp.Body.Close()
+
+		_, err = db.Pool.Exec(ctx, "UPDATE cves SET github_poc_count = $1 WHERE cve_id = $2", ghResp.TotalCount, cveID)
+		if err != nil {
+			log.Printf("Worker: [ERROR] Failed to update GitHub buzz for %s: %v", cveID, err)
+		}
+
+		// Throttle to respect unauthenticated rate limits (10 req/min -> 6 seconds delay)
+		time.Sleep(7 * time.Second)
+	}
+	log.Println("Worker: [SYNC] GitHub Social Buzz synchronization complete.")
 }
