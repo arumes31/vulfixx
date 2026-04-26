@@ -105,7 +105,8 @@ func TestEmailChangeFlow(t *testing.T) {
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	mock.ExpectCommit()
 
-	confirmed, _, uid, err := ConfirmEmailChange(ctx, oldToken)
+	confirmed, email, uid, err := ConfirmEmailChange(ctx, oldToken)
+	_ = email
 	if err != nil || confirmed || uid != 1 {
 		t.Fatalf("Failed first confirmation: %v, %v, %d", err, confirmed, uid)
 	}
@@ -127,8 +128,8 @@ func TestEmailChangeFlow(t *testing.T) {
 		WillReturnResult(pgxmock.NewResult("DELETE", 1))
 	mock.ExpectCommit()
 
-	var email string
-	confirmed, email, _, err = ConfirmEmailChange(ctx, newToken)
+	confirmed, email, uid, err = ConfirmEmailChange(ctx, newToken)
+	_ = uid
 	if err != nil || !confirmed || email != "new@example.com" {
 		t.Fatalf("Failed final confirmation: %v, %v, %s", err, confirmed, email)
 	}
@@ -220,19 +221,6 @@ func TestAuthErrors(t *testing.T) {
 			t.Errorf("expected invalid TOTP error, got %v", err)
 		}
 	})
-}
-
-
-func TestGenerateTokenError(t *testing.T) {
-	// Register uses GenerateToken. If GenerateToken fails, Register should fail.
-	// We can't easily swap crypto/rand.Reader because it's a global.
-	// But we can test it indirectly if we could inject it.
-	// Since GenerateToken is used in Register, we'll try to trigger it there.
-	
-	// Actually, Register calls it. Let's try to mock rand.Reader.
-	// IMPORTANT: This is a bit hacky and can affect other tests if not restored.
-	// Since tests run in parallel, we should be careful.
-	// But here we can just test the function itself.
 }
 
 func TestConfirmEmailChangeMore(t *testing.T) {

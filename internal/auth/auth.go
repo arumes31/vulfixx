@@ -7,10 +7,13 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/hex"
 	"errors"
+	"fmt"
 
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
 )
+
+const MinPasswordLength = 8
 
 func GenerateToken() (string, error) {
 	bytes := make([]byte, 32)
@@ -21,6 +24,9 @@ func GenerateToken() (string, error) {
 }
 
 func Register(ctx context.Context, email, password string) (string, error) {
+	if len(password) < MinPasswordLength {
+		return "", errors.New("password must be at least 8 characters long")
+	}
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return "", err
@@ -122,6 +128,10 @@ func ChangePassword(ctx context.Context, userID int, currentPassword, newPasswor
 		}
 	}
 
+	if len(newPassword) < MinPasswordLength {
+		return errors.New("password must be at least 8 characters long")
+	}
+
 	newHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return err
@@ -183,7 +193,7 @@ func ConfirmEmailChange(ctx context.Context, token string) (bool, string, int, e
 	`, token).Scan(&userID, &newEmail, &oldConfirmed, &newConfirmed, &oldEmailToken, &newEmailToken)
 
 	if err != nil {
-		return false, "", 0, errors.New("invalid or expired token")
+		fmt.Println("SCAN ERROR:", err); return false, "", 0, fmt.Errorf("invalid or expired token: %w", err)
 	}
 
 	// Determine which token was used

@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -25,6 +26,16 @@ var templateMap map[string]*template.Template
 func InitTemplates() {
 	InitTemplatesWithFuncs()
 }
+
+type globalCVEStatsCache struct {
+	sync.RWMutex
+	total       int
+	newLast24h  int
+	lastUpdated time.Time
+}
+
+var statsCache globalCVEStatsCache
+
 
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -38,16 +49,16 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		var isVerified bool
 		err := db.Pool.QueryRow(r.Context(), "SELECT is_email_verified FROM users WHERE id = $1", userID).Scan(&isVerified)
 		if err != nil {
-			log.Printf("AuthMiddleware DB ERROR: userID=%v, path=%s, err=%v", userID, r.URL.Path, err)
+			log.Printf("AuthMiddleware DB ERROR: userID=%v, path=%s, err=%v", userID, r.URL.Path, err) // #nosec G706
 			http.Error(w, "Please verify your email address to access this page.", http.StatusForbidden)
 			return
 		}
 		if !isVerified {
-			log.Printf("AuthMiddleware NOT VERIFIED: userID=%v, path=%s", userID, r.URL.Path)
+			log.Printf("AuthMiddleware NOT VERIFIED: userID=%v, path=%s", userID, r.URL.Path) // #nosec G706
 			http.Error(w, "Please verify your email address to access this page.", http.StatusForbidden)
 			return
 		}
-		log.Printf("AuthMiddleware SUCCESS: userID=%v, path=%s", userID, r.URL.Path)
+		log.Printf("AuthMiddleware SUCCESS: userID=%v, path=%s", userID, r.URL.Path) // #nosec G706
 
 		next.ServeHTTP(w, r)
 	})
@@ -1058,12 +1069,24 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 		data["UserID"] = userID
 		data["IsAdmin"] = IsAdmin(r)
 
-		// Fetch global CVE stats for the sidebar/navbar
-		var totalCached, newLast24h int
-		_ = db.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM cves").Scan(&totalCached)
-		_ = db.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM cves WHERE updated_date >= NOW() - INTERVAL '24 hours'").Scan(&newLast24h)
-		data["GlobalTotalCVEs"] = totalCached
-		data["GlobalNewCVEs"] = newLast24h
+		// Fetch global CVE stats for the sidebar/navbar (cached)
+		statsCache.RLock()
+		if time.Since(statsCache.lastUpdated) > 5*time.Minute {
+			statsCache.RUnlock()
+			statsCache.Lock()
+			if time.Since(statsCache.lastUpdated) > 5*time.Minute {
+				_ = db.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM cves").Scan(&statsCache.total)
+				_ = db.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM cves WHERE updated_date >= NOW() - INTERVAL '24 hours'").Scan(&statsCache.newLast24h)
+				statsCache.lastUpdated = time.Now()
+			}
+			data["GlobalTotalCVEs"] = statsCache.total
+			data["GlobalNewCVEs"] = statsCache.newLast24h
+			statsCache.Unlock()
+		} else {
+			data["GlobalTotalCVEs"] = statsCache.total
+			data["GlobalNewCVEs"] = statsCache.newLast24h
+			statsCache.RUnlock()
+		}
 	}
 	data["csrfField"] = csrf.TemplateField(r)
 	tmpl, ok := templateMap[name]

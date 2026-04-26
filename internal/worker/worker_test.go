@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -77,8 +78,8 @@ func TestWorkerFunctions(t *testing.T) {
 				{
 					CVE: struct {
 						ID           string `json:"id"`
-						Published    string    `json:"published"`
-						LastModified string    `json:"lastModified"`
+						Published    string `json:"published"`
+						LastModified string `json:"lastModified"`
 						Descriptions []struct {
 							Lang  string `json:"lang"`
 							Value string `json:"value"`
@@ -193,11 +194,10 @@ func TestWorkerFunctions(t *testing.T) {
 	mock.ExpectQuery("SELECT value FROM sync_state WHERE key = 'last_nvd_sync'").
 		WillReturnError(fmt.Errorf("no sync")) // Trigger full backfill
 	
-	// Test upsertCVEs
 	mock.ExpectQuery("WITH upsert AS").
 		WithArgs("CVE-2023-0001", pgxmock.AnyArg(), 7.5, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "tag"}).AddRow(1, "ins"))
-	
+
 	mock.ExpectExec("INSERT INTO sync_state").
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -217,16 +217,16 @@ func TestWorkerFunctions(t *testing.T) {
 		WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "epss_score", "cwe_id", "github_poc_count", "published_date", "references"}).
 			AddRow("CVE-2023-0001", "Test description", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", false, 0.05, "CWE-79", 0, time.Now(), []string{"http://example.com"}))
 	mock.ExpectExec("INSERT INTO alert_history").WithArgs(1, 1).WillReturnResult(pgxmock.NewResult("INSERT", 1))
-	
+
 	mock.ExpectQuery("SELECT ak.keyword, a.user_id").
 		WillReturnRows(pgxmock.NewRows([]string{"keyword", "user_id", "email", "name"}).
 			AddRow("test", 2, "asset@example.com", "Asset-1"))
 
 	// notifyIfNew for second sub (asset match)
 	mock.ExpectQuery("SELECT EXISTS").WithArgs(2, 1).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
-	mock.ExpectQuery(`SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, published_date, "references" FROM cves`).WithArgs(1).
-		WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "epss_score", "cwe_id", "published_date", "references"}).
-			AddRow("CVE-2023-0001", "Test description", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", false, 0.05, "CWE-79", time.Now(), []string{"http://example.com"}))
+	mock.ExpectQuery(`SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, github_poc_count, published_date, "references" FROM cves`).WithArgs(1).
+		WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "epss_score", "cwe_id", "github_poc_count", "published_date", "references"}).
+			AddRow("CVE-2023-0001", "Test description", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", false, 0.05, "CWE-79", 0, time.Now(), []string{"http://example.com"}))
 	mock.ExpectExec("INSERT INTO alert_history").WithArgs(2, 1).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	cveBody := models.CVE{
