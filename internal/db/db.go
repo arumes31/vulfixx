@@ -94,6 +94,8 @@ func migrate(ctx context.Context) error {
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS cwe_id VARCHAR(50);",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS cwe_name TEXT;",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS github_poc_count INTEGER DEFAULT 0;",
+		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS filter_logic TEXT DEFAULT '';",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS osint_data JSONB DEFAULT '{}';",
 		`CREATE TABLE IF NOT EXISTS user_cve_notes (
 			user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
 			cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,

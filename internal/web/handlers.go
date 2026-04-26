@@ -593,6 +593,8 @@ func UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	LogActivity(context.Background(), userID, "remediation", fmt.Sprintf("Updated CVE ID %d status to: %s", req.CVEID, req.Status), r.RemoteAddr, r.UserAgent())
+
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"success":true}`))
 }
@@ -835,7 +837,7 @@ func HandleAlertAction(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Failed to acknowledge alert", http.StatusInternalServerError)
 			return
 		}
-		LogActivity(ctx, data.UserID, "alert_action", fmt.Sprintf("Acknowledged CVE ID %d via email", data.CVEID), r.RemoteAddr, r.UserAgent())
+		LogActivity(ctx, data.UserID, "remediation", fmt.Sprintf("Acknowledged CVE ID %d via email", data.CVEID), r.RemoteAddr, r.UserAgent())
 		RenderTemplate(w, r, "message.html", map[string]interface{}{
 			"Title":   "Alert Acknowledged",
 			"Message": "Vulnerability has been marked as 'In Progress'. View it in your dashboard for further analysis.",

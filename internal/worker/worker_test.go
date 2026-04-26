@@ -208,8 +208,8 @@ func TestWorkerFunctions(t *testing.T) {
 
 	// Test evaluateSubscriptions
 	mock.ExpectQuery("SELECT s.id, s.user_id").
-		WillReturnRows(pgxmock.NewRows([]string{"id", "user_id", "keyword", "min_severity", "webhook_url", "enable_email", "enable_webhook", "email"}).
-			AddRow(1, 1, "test", 5.0, "http://example.com/webhook", true, true, "test@example.com"))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "user_id", "keyword", "min_severity", "webhook_url", "enable_email", "enable_webhook", "filter_logic", "email"}).
+			AddRow(1, 1, "test", 5.0, "http://example.com/webhook", true, true, "", "test@example.com"))
 
 	// notifyIfNew for first sub
 	mock.ExpectQuery("SELECT EXISTS").WithArgs(1, 1).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))

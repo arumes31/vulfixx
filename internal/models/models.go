@@ -25,6 +25,7 @@ type CVE struct {
 	CWEID         string
 	CWEName       string
 	GitHubPoCCount int
+	OSINTData     map[string]interface{}
 	Status        string
 	Notes         string
 	References    []string
@@ -41,6 +42,7 @@ type UserSubscription struct {
 	WebhookURL    string
 	EnableEmail   bool
 	EnableWebhook bool
+	FilterLogic   string
 	CreatedAt     time.Time
 }
 

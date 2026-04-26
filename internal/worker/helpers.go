@@ -1,0 +1,113 @@
+package worker
+
+import (
+	"crypto/tls"
+	"fmt"
+	"net"
+	"net/mail"
+	"net/smtp"
+	"net/url"
+	"strings"
+	"time"
+)
+
+// sanitizeEmail validates and sanitizes an email address to prevent
+// SMTP header injection (gosec G707). Uses net/mail for proper parsing.
+func sanitizeEmail(email string) (string, error) {
+	// Strip any CR/LF first
+	s := strings.ReplaceAll(email, "\r", "")
+	s = strings.ReplaceAll(s, "\n", "")
+	// Validate with net/mail
+	addr, err := mail.ParseAddress(s)
+	if err != nil {
+		return "", fmt.Errorf("invalid email address %q: %w", s, err)
+	}
+	return addr.Address, nil
+}
+
+// redactToken safely redacts a token for logging.
+func redactToken(token string) string {
+	n := 8
+	if len(token) < n {
+		n = len(token)
+	}
+	if n == 0 {
+		return "<empty>"
+	}
+	return token[:n] + "..."
+}
+
+// redactURL redacts a URL for logging by removing Userinfo, Query, and Path.
+func redactURL(u string) string {
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return "[invalid-url]"
+	}
+	parsed.User = nil
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	parsed.Path = "/"
+	return parsed.String()
+}
+
+// sendMailWithTimeout is a replacement for smtp.SendMail that supports deadlines.
+func sendMailWithTimeout(host, port, user, password string, to []string, msg []byte) error {
+	addr := net.JoinHostPort(host, port)
+	// #nosec G704 -- Host and port are from controlled environment variables
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	if err != nil {
+		return fmt.Errorf("dial timeout: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	if err := conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		return fmt.Errorf("set deadline: %w", err)
+	}
+
+	client, err := smtp.NewClient(conn, host)
+	if err != nil {
+		return fmt.Errorf("new client: %w", err)
+	}
+	defer func() { _ = client.Quit() }()
+
+	// Negotiate STARTTLS if supported (G706 hardening)
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		config := &tls.Config{
+			ServerName: host,
+		}
+		if err := client.StartTLS(config); err != nil {
+			return fmt.Errorf("starttls: %w", err)
+		}
+	}
+
+	if user != "" && password != "" {
+		auth := smtp.PlainAuth("", user, password, host)
+		if err := client.Auth(auth); err != nil {
+			return fmt.Errorf("auth: %w", err)
+		}
+	}
+
+	if err := client.Mail(to[0]); err != nil {
+		return err
+	}
+	for _, addr := range to {
+		if err := client.Rcpt(addr); err != nil {
+			return err
+		}
+	}
+
+	w, err := client.Data()
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(msg)
+	if err != nil {
+		return err
+	}
+	err = w.Close()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

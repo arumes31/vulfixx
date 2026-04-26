@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS cves (
     cwe_id VARCHAR(50),
     cwe_name TEXT,
     github_poc_count INTEGER DEFAULT 0,
+    osint_data JSONB DEFAULT '{}',
     published_date TIMESTAMP WITH TIME ZONE,
     updated_date TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -37,6 +38,7 @@ CREATE TABLE IF NOT EXISTS user_subscriptions (
     webhook_url TEXT,
     enable_email BOOLEAN DEFAULT TRUE,
     enable_webhook BOOLEAN DEFAULT TRUE,
+    filter_logic TEXT DEFAULT '',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

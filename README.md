@@ -3,11 +3,15 @@
 A robust Go-based application for tracking and alerting on new Common Vulnerabilities and Exposures (CVEs) from the NIST NVD database.
 
 ## 🚀 V2 Intelligence Features
-- **Advanced Threat Analysis**: Integrated CVSS Vector explainer and dynamic Appliance Threat Level monitoring.
-- **Social Buzz & Threat Trending**: GitHub-integrated "Buzz" meter that tracks community interest and public PoC presence without requiring API keys.
+- **Advanced Alert Routing**: Precision delivery of alerts to different channels based on severity or risk profile.
+- **Complex Boolean Alert Filters**: Surgical alert filtering using multi-variable logic (e.g., `severity > 8 && epss > 0.1`).
+- **Audit Logs for Remediation**: Comprehensive chronological tracking of all vulnerability status changes and manual acknowledgments.
+- **Community OSINT Intelligence**: Automated discovery of technical discussions on Hacker News and Reddit for every threat.
+- **Vendor Advisory Aggregator**: Intelligent classification and highlighting of official security bulletins from Microsoft, Cisco, Ubuntu, etc.
+- **Social Buzz & Threat Trending**: GitHub-integrated "Buzz" meter that tracks community interest and public PoC presence.
 - **EPSS Integration**: Exploit Prediction Scoring System (EPSS) integration for probability-based risk assessment.
-- **Smart Alert Batching**: Redis-backed intelligence buffering that groups related threats into unified reports to prevent alert fatigue.
-- **Actionable Notifications**: Direct "Acknowledge" and "Mute" functionality embedded in email alerts via secure temporary tokens.
+- **Smart Alert Batching**: Redis-backed intelligence buffering that groups related threats into unified reports.
+- **Actionable Notifications**: Direct "Acknowledge" and "Mute" functionality embedded in email alerts.
 - **Infrastructure Context**: Automatic mapping of vulnerabilities to specific infrastructure assets.
 - **CWE Classification**: Deep vulnerability categorization using Common Weakness Enumeration (CWE) intelligence.
 - **Remediation Lifecycle**: Private journaling and status tracking for vulnerability management.
@@ -15,7 +19,7 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 - **Enhanced Telemetry**: Risk Profile distribution charts and direct Proof-of-Concept (PoC) discovery links.
 - **Asset-Linked Monitoring**: Proactive infrastructure defense via asset-keyword mapping.
 - **Secure Integration**: Filtered, token-authenticated RSS feeds for personalized technical intel.
-- **Rich Email Alerts**: Premium HTML notifications with EPSS probability gauges, GitHub Buzz indicators, and asset badges.
+- **Rich Email Alerts**: Premium HTML notifications with OSINT links, Vendor advisories, and Risk gauges.
 - **Modern UI**: High-density dashboard with glassmorphism aesthetics and Material Symbol integration.
 
 ## Getting Started
