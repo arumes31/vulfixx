@@ -34,9 +34,24 @@ type CVE struct {
 	CreatedAt     time.Time
 }
 
+type Team struct {
+	ID         int
+	Name       string
+	InviteCode string
+	CreatedAt  time.Time
+}
+
+type TeamMember struct {
+	TeamID   int
+	UserID   int
+	Role     string // owner, admin, member
+	JoinedAt time.Time
+}
+
 type UserSubscription struct {
 	ID            int
 	UserID        int
+	TeamID        *int
 	Keyword       string
 	MinSeverity   float64
 	WebhookURL    string
@@ -48,6 +63,7 @@ type UserSubscription struct {
 
 type UserCVEStatus struct {
 	UserID    int
+	TeamID    *int
 	CVEID     int
 	Status    string
 	UpdatedAt time.Time
@@ -63,6 +79,7 @@ type AlertHistory struct {
 type Asset struct {
 	ID        int
 	UserID    int
+	TeamID    *int
 	Name      string
 	Type      string // e.g., 'Server', 'Software', 'Network'
 	CreatedAt time.Time
@@ -76,6 +93,7 @@ type AssetKeyword struct {
 
 type CVENote struct {
 	UserID    int
+	TeamID    *int
 	CVEID     int
 	Notes     string
 	UpdatedAt time.Time

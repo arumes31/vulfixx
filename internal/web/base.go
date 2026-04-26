@@ -3,10 +3,12 @@ package web
 import (
 	"context"
 	"cve-tracker/internal/db"
+	"encoding/json"
 	"html/template"
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -120,7 +122,38 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 		data["UserID"] = userID
 		data["IsAdmin"] = IsAdmin(r)
 
-		// Fetch global CVE stats for the sidebar/navbar (cached)
+		// Fetch user's teams
+		teamRows, err := db.Pool.Query(r.Context(), `
+			SELECT t.id, t.name 
+			FROM teams t
+			JOIN team_members tm ON t.id = tm.team_id
+			WHERE tm.user_id = $1
+		`, userID)
+		if err == nil {
+			var teams []map[string]interface{}
+			for teamRows.Next() {
+				var id int
+				var name string
+				if err := teamRows.Scan(&id, &name); err == nil {
+					teams = append(teams, map[string]interface{}{"ID": id, "Name": name})
+				}
+			}
+			teamRows.Close()
+			data["UserTeams"] = teams
+		}
+
+		activeTeamID, ok := GetActiveTeamID(r)
+		if ok && activeTeamID != 0 {
+			var teamName string
+			_ = db.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
+			data["ActiveTeamID"] = activeTeamID
+			data["ActiveTeamName"] = teamName
+		} else {
+			data["ActiveTeamID"] = 0
+			data["ActiveTeamName"] = "Private Workspace"
+		}
+
+		// Fetch global CVE stats
 		statsCache.RLock()
 		if time.Since(statsCache.lastUpdated) > 5*time.Minute {
 			statsCache.RUnlock()
@@ -150,4 +183,29 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 		log.Printf("Error executing template %s: %v", name, err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
+}
+func SendResponse(w http.ResponseWriter, r *http.Request, success bool, message string, redirect string, errMsg string) {
+	if r.Header.Get("X-Requested-With") == "XMLHttpRequest" || strings.Contains(r.Header.Get("Accept"), "application/json") {
+		w.Header().Set("Content-Type", "application/json")
+		resp := map[string]interface{}{
+			"success": success,
+		}
+		if message != "" {
+			resp["message"] = message
+		}
+		if redirect != "" {
+			resp["redirect"] = redirect
+		}
+		if errMsg != "" {
+			resp["error"] = errMsg
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	if !success {
+		http.Error(w, errMsg, http.StatusBadRequest)
+		return
+	}
+	http.Redirect(w, r, redirect, http.StatusFound)
 }

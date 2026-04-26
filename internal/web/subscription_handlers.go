@@ -43,7 +43,7 @@ func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == "POST" {
 		if err := r.ParseForm(); err != nil {
-			http.Error(w, "Error parsing form", http.StatusBadRequest)
+			SendResponse(w, r, false, "", "", "Error parsing form")
 			return
 		}
 		keyword := r.FormValue("keyword")
@@ -58,37 +58,37 @@ func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 			VALUES ($1, $2, $3, $4, $5, $6)
 		`, userID, keyword, minSeverity, webhookUrl, enableEmail, enableWebhook)
 		if err != nil {
-			http.Error(w, "Error saving subscription", http.StatusInternalServerError)
+			SendResponse(w, r, false, "", "", "Error saving subscription")
 			return
 		}
 		LogActivity(r.Context(), userID, "subscription_added", "Added keyword: "+keyword, r.RemoteAddr, r.UserAgent())
-		http.Redirect(w, r, "/subscriptions", http.StatusFound)
+		SendResponse(w, r, true, "Telemetry monitor initialized", "/subscriptions", "")
 	}
 }
 
 func DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		SendResponse(w, r, false, "", "", "Method not allowed")
 		return
 	}
 	userID, ok := GetUserID(r)
 	if !ok {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		SendResponse(w, r, false, "", "", "Unauthorized")
 		return
 	}
 	subIDStr := r.FormValue("id")
 	subID, err := strconv.Atoi(subIDStr)
 	if err != nil {
-		http.Error(w, "Invalid subscription ID", http.StatusBadRequest)
+		SendResponse(w, r, false, "", "", "Invalid subscription ID")
 		return
 	}
 
 	if _, err = db.Pool.Exec(context.Background(), "DELETE FROM user_subscriptions WHERE id = $1 AND user_id = $2", subID, userID); err != nil {
-		http.Error(w, "Error deleting subscription", http.StatusInternalServerError)
+		SendResponse(w, r, false, "", "", "Error deleting subscription")
 		return
 	}
 	LogActivity(r.Context(), userID, "subscription_deleted", "Deleted subscription ID: "+subIDStr, r.RemoteAddr, r.UserAgent())
-	http.Redirect(w, r, "/subscriptions", http.StatusFound)
+	SendResponse(w, r, true, "Telemetry pipeline removed", "/subscriptions", "")
 }
 
 func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {

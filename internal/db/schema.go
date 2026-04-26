@@ -30,9 +30,44 @@ CREATE TABLE IF NOT EXISTS cves (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS user_subscriptions (
+CREATE TABLE IF NOT EXISTS teams (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    invite_code VARCHAR(50) UNIQUE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS team_members (
+    team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(20) DEFAULT 'member', -- 'owner', 'admin', 'member'
+    joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (team_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS assets (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(100),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS asset_keywords (
+    id SERIAL PRIMARY KEY,
+    asset_id INTEGER REFERENCES assets(id) ON DELETE CASCADE,
+    keyword VARCHAR(255) NOT NULL
+);
+
+-- Note: user_subscriptions already exists, we just add the column via migration in InitDB
+-- But for a clean schema.go, I'll update the definitions.
+
+DROP TABLE IF EXISTS user_subscriptions CASCADE;
+CREATE TABLE user_subscriptions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
     keyword VARCHAR(255),
     min_severity NUMERIC(4,1),
     webhook_url TEXT,
@@ -42,12 +77,28 @@ CREATE TABLE IF NOT EXISTS user_subscriptions (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS user_cve_status (
+DROP TABLE IF EXISTS user_cve_status CASCADE;
+CREATE TABLE user_cve_status (
+    id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
     cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,
-    status VARCHAR(50) NOT NULL, -- e.g., 'resolved', 'ignored'
+    status VARCHAR(50) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (user_id, cve_id)
+    CONSTRAINT unique_user_status UNIQUE (user_id, cve_id) WHERE team_id IS NULL,
+    CONSTRAINT unique_team_status UNIQUE (team_id, cve_id) WHERE team_id IS NOT NULL
+);
+
+DROP TABLE IF EXISTS cve_notes CASCADE;
+CREATE TABLE cve_notes (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+    cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,
+    notes TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_user_notes UNIQUE (user_id, cve_id) WHERE team_id IS NULL,
+    CONSTRAINT unique_team_notes UNIQUE (team_id, cve_id) WHERE team_id IS NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS alert_history (
@@ -61,7 +112,7 @@ CREATE TABLE IF NOT EXISTS alert_history (
 CREATE TABLE IF NOT EXISTS user_activity_logs (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    activity_type VARCHAR(100) NOT NULL, -- e.g., 'login', 'password_change', 'subscription_added'
+    activity_type VARCHAR(100) NOT NULL,
     description TEXT,
     ip_address VARCHAR(45),
     user_agent TEXT,
@@ -91,4 +142,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_email_change_requests_new_token ON email_c
 CREATE INDEX IF NOT EXISTS idx_cves_published_date ON cves (published_date DESC);
 CREATE INDEX IF NOT EXISTS idx_cves_cvss_score ON cves (cvss_score);
 CREATE INDEX IF NOT EXISTS idx_cves_updated_date ON cves (updated_date DESC);
+CREATE INDEX IF NOT EXISTS idx_assets_team_id ON assets(team_id);
+CREATE INDEX IF NOT EXISTS idx_user_cve_status_team_id ON user_cve_status(team_id);
 `

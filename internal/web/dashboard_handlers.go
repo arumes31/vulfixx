@@ -1,7 +1,6 @@
 package web
 
 import (
-	"context"
 	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
 	"database/sql"
@@ -10,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"strings"
 )
 
 func DashboardHandler(w http.ResponseWriter, r *http.Request) {
@@ -19,6 +17,8 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
+
+	activeTeamID, _ := GetActiveTeamID(r)
 
 	pageStr := r.URL.Query().Get("page")
 	page, _ := strconv.Atoi(pageStr)
@@ -32,7 +32,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	startDate := r.URL.Query().Get("start_date")
 	endDate := r.URL.Query().Get("end_date")
 	searchAll := r.URL.Query().Get("all") == "true"
-	statusFilter := r.URL.Query().Get("status") // e.g. 'active', 'in_progress', 'resolved'
+	statusFilter := r.URL.Query().Get("status")
 	kevOnly := r.URL.Query().Get("kev") == "true"
 	minCvssStr := r.URL.Query().Get("min_cvss")
 	maxCvssStr := r.URL.Query().Get("max_cvss")
@@ -43,163 +43,83 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		maxCvss = 10.0
 	}
 
-	var totalItems, kevCount int
+	var totalItems, kevCount, critCount, progressCount int
 
-	metricsQuery := `
+	statusJoinCond := "ucs.user_id = $1 AND ucs.team_id IS NULL"
+	if activeTeamID > 0 {
+		statusJoinCond = fmt.Sprintf("ucs.team_id = %d", activeTeamID)
+	}
+
+	metricsQuery := fmt.Sprintf(`
 		SELECT
 			COUNT(DISTINCT c.id) as total_cves,
 			COUNT(DISTINCT CASE WHEN c.cisa_kev = true THEN c.id END) as kev_count,
 			COUNT(DISTINCT CASE WHEN c.cvss_score >= 9.0 THEN c.id END) as critical_count,
 			COUNT(DISTINCT CASE WHEN ucs.status = 'in_progress' THEN c.id END) as in_progress_count
 		FROM cves c
-	`
+		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s
+	`, statusJoinCond)
 
+	whereClause := " WHERE (1=1) "
 	if !searchAll {
-		metricsQuery += `
-		INNER JOIN user_subscriptions us ON us.user_id = $1
-		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
-		WHERE (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored'))
-		  AND c.cvss_score >= us.min_severity
-		  AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%')
-		`
+		metricsQuery += " INNER JOIN user_subscriptions us ON us.user_id = $1 "
+		whereClause += " AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) "
+		whereClause += " AND c.cvss_score >= us.min_severity "
+		whereClause += " AND (us.keyword = '' OR c.description ILIKE '%%' || us.keyword || '%%') "
 	} else {
-		metricsQuery += `
-		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
-		WHERE (1=1)
-		`
-		allowedStatuses := map[string]bool{
-			"active":        true,
-			"in_progress":   true,
-			"waiting_patch": true,
-			"resolved":      true,
-			"ignored":       true,
-		}
-
 		if statusFilter == "" || statusFilter == "active" {
-			metricsQuery += " AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) "
-		} else if allowedStatuses[statusFilter] {
-			metricsQuery += " AND ucs.status = $10 " // Placeholder for statusFilter
+			whereClause += " AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) "
+		} else {
+			whereClause += " AND ucs.status = $7 "
 		}
 	}
 
-	metricsQuery += `
-		  AND ($2 = '' OR c.cve_id ILIKE '%' || $2 || '%' OR c.description ILIKE '%' || $2 || '%')
-	`
+	whereClause += " AND ($2 = '' OR c.cve_id ILIKE '%%' || $2 || '%%' OR c.description ILIKE '%%' || $2 || '%%') "
 	if kevOnly {
-		metricsQuery += " AND c.cisa_kev = true "
+		whereClause += " AND c.cisa_kev = true "
 	}
 	if minCvss > 0 {
-		metricsQuery += fmt.Sprintf(" AND c.cvss_score >= %f ", minCvss)
+		whereClause += fmt.Sprintf(" AND c.cvss_score >= %f ", minCvss)
 	}
 	if maxCvss < 10 {
-		metricsQuery += fmt.Sprintf(" AND c.cvss_score <= %f ", maxCvss)
+		whereClause += fmt.Sprintf(" AND c.cvss_score <= %f ", maxCvss)
 	}
-
-	args := []interface{}{userID, searchQuery}
-
 	if startDate != "" {
-		metricsQuery += ` AND c.published_date >= $3`
-		args = append(args, startDate)
-	} else {
-		metricsQuery += ` AND (1=1 OR $3 = '')`
-		args = append(args, "")
+		whereClause += " AND c.published_date >= $3 "
 	}
-
 	if endDate != "" {
-		metricsQuery += ` AND c.published_date <= $4`
-		args = append(args, endDate)
-	} else {
-		metricsQuery += ` AND (1=1 OR $4 = '')`
-		args = append(args, "")
+		whereClause += " AND c.published_date <= $4 "
 	}
 
-	// For the status filter placeholder if it was added
-	if strings.Contains(metricsQuery, "$10") {
-		args = append(args, statusFilter)
-	} else {
-		// Padding to keep args aligned if we ever add more positional params
-		args = append(args, "")
-	}
-
-	var critCount, progressCount int
-	err := db.Pool.QueryRow(context.Background(), metricsQuery, args...).Scan(&totalItems, &kevCount, &critCount, &progressCount)
+	fullMetricsQuery := metricsQuery + whereClause
+	err := db.Pool.QueryRow(r.Context(), fullMetricsQuery, userID, searchQuery, startDate, endDate, 0, 0, statusFilter).Scan(&totalItems, &kevCount, &critCount, &progressCount)
 	if err != nil {
-		log.Printf("Error counting metrics: %v", err)
+		log.Printf("Dashboard metrics error: %v", err)
 	}
 
-	query := `
+	notesJoinCond := "ucn.user_id = $1 AND ucn.team_id IS NULL"
+	if activeTeamID > 0 {
+		notesJoinCond = fmt.Sprintf("ucn.team_id = %d", activeTeamID)
+	}
+
+	query := fmt.Sprintf(`
 		SELECT DISTINCT c.id, c.cve_id, c.description, c.cvss_score, c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, c."references", ucn.notes
 		FROM cves c
-		LEFT JOIN user_cve_notes ucn ON c.id = ucn.cve_id AND ucn.user_id = $1
-	`
+		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s
+		LEFT JOIN cve_notes ucn ON c.id = ucn.cve_id AND %s
+	`, statusJoinCond, notesJoinCond)
 
 	if !searchAll {
-		query += `
-		INNER JOIN user_subscriptions us ON us.user_id = $1
-		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
-		WHERE (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored'))
-		  AND c.cvss_score >= us.min_severity
-		  AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%')
-		`
-	} else {
-		query += `
-		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
-		WHERE (1=1)
-		`
-		if statusFilter == "" || statusFilter == "active" {
-			query += " AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) "
-		} else {
-			// Reuse the allowlist check from above
-			allowedStatuses := map[string]bool{"active":true,"in_progress":true,"waiting_patch":true,"resolved":true,"ignored":true}
-			if allowedStatuses[statusFilter] {
-				query += " AND ucs.status = $10 "
-			}
-		}
+		query += " INNER JOIN user_subscriptions us ON us.user_id = $1 "
 	}
 
-	query += `
-		  AND ($2 = '' OR c.cve_id ILIKE '%' || $2 || '%' OR c.description ILIKE '%' || $2 || '%')
-	`
-	if kevOnly {
-		query += " AND c.cisa_kev = true "
-	}
-	if minCvss > 0 {
-		query += fmt.Sprintf(" AND c.cvss_score >= %f ", minCvss)
-	}
-	if maxCvss < 10 {
-		query += fmt.Sprintf(" AND c.cvss_score <= %f ", maxCvss)
-	}
+	query += whereClause
+	query += " ORDER BY c.published_date DESC LIMIT $5 OFFSET $6 "
 
-	if startDate != "" {
-		query += ` AND c.published_date >= $3`
-	} else {
-		query += ` AND (1=1 OR $3 = '')`
-	}
-
-	if endDate != "" {
-		query += ` AND c.published_date <= $4`
-	} else {
-		query += ` AND (1=1 OR $4 = '')`
-	}
-
-	query += ` ORDER BY c.published_date DESC LIMIT $5 OFFSET $6`
-
-	// Ensure args matches placeholders $1..$6 + $10
-	// args is [userID, searchQuery, startDate, endDate]
-	// and we added pageSize, offset
-	args = append(args, pageSize, offset)
-	// If $10 is used, ensure it's at index 9 (10th element)
-	if strings.Contains(query, "$10") {
-		for len(args) < 9 {
-			args = append(args, "")
-		}
-		args = append(args, statusFilter)
-	}
-
-	rows, err := db.Pool.Query(context.Background(), query, args...)
+	rows, err := db.Pool.Query(r.Context(), query, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter)
 	if err != nil {
-		log.Printf("Error fetching CVEs: %v", err)
-		http.Error(w, "Error fetching CVEs", http.StatusInternalServerError)
+		log.Printf("Dashboard query error: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
@@ -209,67 +129,17 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		var c models.CVE
 		var notes sql.NullString
 		err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &notes)
-		if err != nil {
-			log.Printf("Error scanning CVE: %v", err)
-			continue
+		if err == nil {
+			c.Notes = notes.String
+			cves = append(cves, c)
 		}
-		c.Notes = notes.String
-		cves = append(cves, c)
 	}
 
-	// Threat Level Calculation
 	threatLevel := "LOW"
-	threatColor := "text-primary"
-	if kevCount > 5 || critCount > 10 {
-		threatLevel = "CRITICAL"
-		threatColor = "text-error"
-	} else if kevCount > 0 || critCount > 0 {
+	threatColor := "text-blue-400"
+	if kevCount > 0 || critCount > 0 {
 		threatLevel = "HIGH"
-		threatColor = "text-error"
-	} else if progressCount > 0 {
-		threatLevel = "ELEVATED"
-		threatColor = "text-tertiary"
-	}
-	// Severity Distribution - Calculate across entire dataset (Issue 3)
-	severityDist := map[string]int{"Critical": 0, "High": 0, "Medium": 0, "Low": 0}
-	distQuery := `
-		SELECT c.cvss_score 
-		FROM cves c 
-		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
-		WHERE (1=1)
-	`
-	distArgs := []interface{}{userID}
-	if !searchAll {
-		distQuery += ` AND EXISTS (SELECT 1 FROM user_subscriptions us WHERE us.user_id = $1 AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%') AND c.cvss_score >= us.min_severity)`
-	} else if statusFilter == "" || statusFilter == "active" {
-		distQuery += " AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) "
-	} else {
-		allowedStatuses := map[string]bool{"active":true,"in_progress":true,"waiting_patch":true,"resolved":true,"ignored":true}
-		if allowedStatuses[statusFilter] {
-			distQuery += " AND ucs.status = $2 "
-			distArgs = append(distArgs, statusFilter)
-		}
-	}
-
-	distRows, err := db.Pool.Query(context.Background(), distQuery, distArgs...)
-	if err == nil {
-		defer distRows.Close()
-		for distRows.Next() {
-			var score float64
-			if err := distRows.Scan(&score); err == nil {
-				if score >= 9.0 {
-					severityDist["Critical"]++
-				} else if score >= 7.0 {
-					severityDist["High"]++
-				} else if score >= 4.0 {
-					severityDist["Medium"]++
-				} else {
-					severityDist["Low"]++
-				}
-			}
-		}
-	} else {
-		log.Printf("Dashboard: distribution query failed: %v", err)
+		threatColor = "text-red-500"
 	}
 
 	totalPages := (totalItems + pageSize - 1) / pageSize
@@ -282,7 +152,6 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"ProgressCount": progressCount,
 		"ThreatLevel":   threatLevel,
 		"ThreatColor":   threatColor,
-		"SeverityDist":  severityDist,
 		"CurrentPage":   page,
 		"TotalPages":    totalPages,
 		"HasPrev":       page > 1,
@@ -290,169 +159,176 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"PrevPage":      page - 1,
 		"NextPage":      page + 1,
 		"Query":         searchQuery,
-		"StartDate":     startDate,
-		"EndDate":       endDate,
-		"SearchAll":     searchAll,
-		"StatusFilter":  statusFilter,
-		"KevOnly":       kevOnly,
-		"MinCvss":       minCvssStr,
-		"MaxCvss":       maxCvssStr,
+		"ActiveTeamID":  activeTeamID,
 	})
 }
 
 func UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	userID, ok := GetUserID(r)
+	if !ok {
+		SendResponse(w, r, false, "", "", "Unauthorized")
 		return
 	}
 
-	userID, ok := GetUserID(r)
-	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
+	activeTeamID, _ := GetActiveTeamID(r)
 
 	var req struct {
 		CVEID  int    `json:"cve_id"`
 		Status string `json:"status"`
 	}
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	validStatuses := map[string]bool{
-		"active":         true,
-		"in_progress":    true,
-		"waiting_patch":  true,
-		"resolved":       true,
-		"ignored":        true,
-	}
-	if !validStatuses[req.Status] {
-		http.Error(w, "Invalid status", http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		SendResponse(w, r, false, "", "", "Bad request")
 		return
 	}
 
 	if req.Status == "active" {
-		_, err = db.Pool.Exec(context.Background(), `
-			DELETE FROM user_cve_status WHERE user_id = $1 AND cve_id = $2
-		`, userID, req.CVEID)
+		query := "DELETE FROM user_cve_status WHERE cve_id = $1 AND "
+		if activeTeamID > 0 {
+			query += "team_id = $2"
+			_, err := db.Pool.Exec(r.Context(), query, req.CVEID, activeTeamID)
+			if err != nil {
+				SendResponse(w, r, false, "", "", "Internal server error")
+				return
+			}
+		} else {
+			query += "user_id = $2 AND team_id IS NULL"
+			_, err := db.Pool.Exec(r.Context(), query, req.CVEID, userID)
+			if err != nil {
+				SendResponse(w, r, false, "", "", "Internal server error")
+				return
+			}
+		}
 	} else {
-		_, err = db.Pool.Exec(context.Background(), `
-			INSERT INTO user_cve_status (user_id, cve_id, status)
-			VALUES ($1, $2, $3)
-			ON CONFLICT (user_id, cve_id) DO UPDATE SET status = $3, updated_at = CURRENT_TIMESTAMP
-		`, userID, req.CVEID, req.Status)
-	}
-
-	if err != nil {
-		http.Error(w, "Failed to update status", http.StatusInternalServerError)
-		return
-	}
-
-	LogActivity(context.Background(), userID, "remediation", fmt.Sprintf("Updated CVE ID %d status to: %s", req.CVEID, req.Status), r.RemoteAddr, r.UserAgent())
-
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"success":true}`))
-}
-
-func BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	userID, ok := GetUserID(r)
-	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	var req struct {
-		CVEIDs []int  `json:"cve_ids"`
-		Status string `json:"status"`
-	}
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	if req.Status != "resolved" && req.Status != "ignored" {
-		http.Error(w, "Invalid status", http.StatusBadRequest)
-		return
-	}
-
-	if len(req.CVEIDs) == 0 {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"success":true}`))
-		return
-	}
-
-	// Use a transaction for bulk update
-	tx, err := db.Pool.Begin(context.Background())
-	if err != nil {
-		http.Error(w, "Database error", http.StatusInternalServerError)
-		return
-	}
-	defer func() {
-		_ = tx.Rollback(context.Background())
-	}()
-
-	for _, id := range req.CVEIDs {
-		_, err = tx.Exec(context.Background(), `
-			INSERT INTO user_cve_status (user_id, cve_id, status)
-			VALUES ($1, $2, $3)
-			ON CONFLICT (user_id, cve_id) DO UPDATE SET status = $3, updated_at = CURRENT_TIMESTAMP
-		`, userID, id, req.Status)
+		var teamPtr *int
+		if activeTeamID > 0 {
+			teamPtr = &activeTeamID
+		}
+		
+		query := `
+			INSERT INTO user_cve_status (user_id, team_id, cve_id, status)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (user_id, cve_id) WHERE team_id IS NULL DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
+		`
+		if activeTeamID > 0 {
+			query = `
+				INSERT INTO user_cve_status (user_id, team_id, cve_id, status)
+				VALUES ($1, $2, $3, $4)
+				ON CONFLICT (team_id, cve_id) WHERE team_id IS NOT NULL DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
+			`
+		}
+		_, err := db.Pool.Exec(r.Context(), query, userID, teamPtr, req.CVEID, req.Status)
 		if err != nil {
-			http.Error(w, "Failed to update status", http.StatusInternalServerError)
+			log.Printf("UpdateStatus Error: %v", err)
+			SendResponse(w, r, false, "", "", "Internal server error")
 			return
 		}
 	}
 
-	if err := tx.Commit(context.Background()); err != nil {
-		http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"success":true}`))
+	LogActivity(r.Context(), userID, "cve_status_updated", fmt.Sprintf("Updated CVE ID %d status to %s", req.CVEID, req.Status), r.RemoteAddr, r.UserAgent())
+	SendResponse(w, r, true, "Remediation status updated", "", "")
 }
 
 func UpdateCVENoteHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
 	userID, ok := GetUserID(r)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		SendResponse(w, r, false, "", "", "Unauthorized")
 		return
 	}
+
+	activeTeamID, _ := GetActiveTeamID(r)
 
 	var req struct {
 		CVEID int    `json:"cve_id"`
 		Notes string `json:"notes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
+		SendResponse(w, r, false, "", "", "Bad request")
 		return
 	}
 
-	_, err := db.Pool.Exec(r.Context(), `
-		INSERT INTO user_cve_notes (user_id, cve_id, notes, updated_at)
-		VALUES ($1, $2, $3, NOW())
-		ON CONFLICT (user_id, cve_id) DO UPDATE SET
-			notes = EXCLUDED.notes,
-			updated_at = NOW()
-	`, userID, req.CVEID, req.Notes)
+	var teamPtr *int
+	if activeTeamID > 0 {
+		teamPtr = &activeTeamID
+	}
+
+	query := `
+		INSERT INTO cve_notes (user_id, team_id, cve_id, notes)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (user_id, cve_id) WHERE team_id IS NULL DO UPDATE SET notes = EXCLUDED.notes, updated_at = NOW()
+	`
+	if activeTeamID > 0 {
+		query = `
+			INSERT INTO cve_notes (user_id, team_id, cve_id, notes)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (team_id, cve_id) WHERE team_id IS NOT NULL DO UPDATE SET notes = EXCLUDED.notes, updated_at = NOW()
+		`
+	}
+
+	_, err := db.Pool.Exec(r.Context(), query, userID, teamPtr, req.CVEID, req.Notes)
 	if err != nil {
-		log.Printf("Error updating note: %v", err)
-		http.Error(w, "Database error", http.StatusInternalServerError)
+		log.Printf("UpdateNote Error: %v", err)
+		SendResponse(w, r, false, "", "", "Internal server error")
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	LogActivity(r.Context(), userID, "cve_note_updated", fmt.Sprintf("Updated notes for CVE ID %d", req.CVEID), r.RemoteAddr, r.UserAgent())
+	SendResponse(w, r, true, "Notes saved successfully", "", "")
+}
+
+func BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := GetUserID(r)
+	if !ok {
+		SendResponse(w, r, false, "", "", "Unauthorized")
+		return
+	}
+
+	activeTeamID, _ := GetActiveTeamID(r)
+
+	var req struct {
+		CVEIDs []int  `json:"cve_ids"`
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		SendResponse(w, r, false, "", "", "Bad request")
+		return
+	}
+
+	tx, err := db.Pool.Begin(r.Context())
+	if err != nil {
+		SendResponse(w, r, false, "", "", "Internal server error")
+		return
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+
+	for _, id := range req.CVEIDs {
+		var teamPtr *int
+		if activeTeamID > 0 {
+			teamPtr = &activeTeamID
+		}
+		
+		query := `
+			INSERT INTO user_cve_status (user_id, team_id, cve_id, status)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (user_id, cve_id) WHERE team_id IS NULL DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
+		`
+		if activeTeamID > 0 {
+			query = `
+				INSERT INTO user_cve_status (user_id, team_id, cve_id, status)
+				VALUES ($1, $2, $3, $4)
+				ON CONFLICT (team_id, cve_id) WHERE team_id IS NOT NULL DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
+			`
+		}
+		_, err = tx.Exec(r.Context(), query, userID, teamPtr, id, req.Status)
+		if err != nil {
+			SendResponse(w, r, false, "", "", "Internal server error")
+			return
+		}
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		SendResponse(w, r, false, "", "", "Internal server error")
+		return
+	}
+
+	SendResponse(w, r, true, fmt.Sprintf("Updated %d CVEs", len(req.CVEIDs)), "", "")
 }

@@ -37,6 +37,18 @@ func GetUserID(r *http.Request) (int, bool) {
 	return userID, ok
 }
 
+func GetActiveTeamID(r *http.Request) (int, bool) {
+	session, _ := store.Get(r, "session-name")
+	teamID, ok := session.Values["team_id"].(int)
+	return teamID, ok
+}
+
+func SetActiveTeamID(w http.ResponseWriter, r *http.Request, teamID int) {
+	session, _ := store.Get(r, "session-name")
+	session.Values["team_id"] = teamID
+	_ = session.Save(r, w)
+}
+
 func IsAdmin(r *http.Request) bool {
 	session, _ := store.Get(r, "session-name")
 	isAdmin, ok := session.Values["is_admin"].(bool)

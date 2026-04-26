@@ -1,0 +1,207 @@
+{{define "content"}}
+<div class="max-w-5xl mx-auto space-y-8">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div>
+            <h1 class="text-4xl font-bold text-white mb-2 tracking-tight">Workspaces</h1>
+            <p class="text-gray-400 text-sm">Manage your collaborative team environments and shared intelligence.</p>
+        </div>
+        <div class="flex gap-3">
+            <button onclick="showJoinModal()" class="bg-white/5 border border-white/10 text-gray-300 px-5 py-2.5 rounded-xl hover:bg-white/10 hover:text-white transition-all flex items-center gap-2 font-bold text-sm">
+                <span class="material-symbols-outlined text-sm">link</span> Join Workspace
+            </button>
+            <button onclick="showCreateModal()" class="bg-[#00daf3] text-[#00363d] px-5 py-2.5 rounded-xl hover:bg-[#00daf3]/80 transition-all flex items-center gap-2 font-bold text-sm shadow-lg shadow-[#00daf3]/20">
+                <span class="material-symbols-outlined text-sm">add</span> New Team
+            </button>
+        </div>
+    </div>
+
+    <!-- Team Grid -->
+    {{if .Teams}}
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {{range .Teams}}
+        <div class="glass border border-white/10 p-6 rounded-3xl relative overflow-hidden group hover:border-[#00daf3]/30 transition-all duration-300">
+            <!-- Glassy background highlight -->
+            <div class="absolute -right-8 -top-8 w-32 h-32 bg-[#00daf3]/5 rounded-full blur-3xl group-hover:bg-[#00daf3]/10 transition-all"></div>
+            
+            <div class="flex justify-between items-start mb-6">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#00daf3] to-blue-600 flex items-center justify-center text-[#00363d] shadow-lg">
+                        <span class="material-symbols-outlined font-black">hub</span>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold text-white">{{.Name}}</h3>
+                        <span class="px-2 py-0.5 rounded-full bg-[#00daf3]/10 text-[#00daf3] text-[10px] font-black uppercase tracking-widest">{{.Role}}</span>
+                    </div>
+                </div>
+                
+                <!-- Action Menu Popup -->
+                <div class="relative action-menu">
+                    <button onclick="toggleMenu('menu-{{.ID}}')" class="w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/10 text-gray-500 hover:text-white transition-colors">
+                        <span class="material-symbols-outlined text-xl">more_vert</span>
+                    </button>
+                    <div id="menu-{{.ID}}" class="hidden absolute right-0 mt-2 w-48 bg-[#181c22] border border-white/10 rounded-xl shadow-2xl z-50 p-2 glass">
+                        <button onclick="copyToClipboard('{{.InviteCode}}')" class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-300 hover:bg-white/5 hover:text-white rounded-lg transition-all text-left">
+                            <span class="material-symbols-outlined text-sm">content_copy</span> Copy Invite
+                        </button>
+                        <button onclick="showLeaveConfirm('{{.ID}}', '{{.Name}}')" class="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 rounded-lg transition-all text-left">
+                            <span class="material-symbols-outlined text-sm">logout</span> Leave Team
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <div class="flex items-center justify-between text-sm text-gray-400">
+                    <span>Active Members</span>
+                    <div class="flex -space-x-2">
+                        <div class="w-7 h-7 rounded-full border-2 border-[#10141a] bg-gradient-to-tr from-gray-700 to-gray-600 flex items-center justify-center text-[8px] font-black">U1</div>
+                        <div class="w-7 h-7 rounded-full border-2 border-[#10141a] bg-gradient-to-tr from-[#00daf3] to-blue-500 flex items-center justify-center text-[8px] font-black text-[#00363d]">U2</div>
+                        <div class="w-7 h-7 rounded-full border-2 border-[#10141a] bg-white/5 flex items-center justify-center text-[8px] font-black text-gray-500">+1</div>
+                    </div>
+                </div>
+                
+                <div class="pt-4 border-t border-white/5 flex gap-2">
+                    <form action="/teams/switch" method="POST" class="w-full">
+                        {{$.csrfField}}
+                        <input type="hidden" name="team_id" value="{{.ID}}">
+                        <button type="submit" class="w-full py-2.5 rounded-xl border border-white/10 text-xs font-bold uppercase tracking-widest hover:bg-[#00daf3] hover:text-[#00363d] hover:border-transparent transition-all">
+                            Enter Workspace
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {{end}}
+    </div>
+    {{else}}
+    <!-- Empty State -->
+    <div class="glass border border-white/10 p-16 rounded-[2.5rem] text-center max-w-2xl mx-auto shadow-2xl">
+        <div class="w-24 h-24 rounded-3xl bg-white/5 flex items-center justify-center mx-auto mb-8 border border-white/10 rotate-3">
+            <span class="material-symbols-outlined text-5xl text-gray-600 -rotate-3">diversity_3</span>
+        </div>
+        <h2 class="text-3xl font-bold text-white mb-4">Start Collaborating</h2>
+        <p class="text-gray-400 mb-10 leading-relaxed">You haven't joined any team workspaces yet. Join an existing team with an invite code or create a new one to share vulnerability intelligence.</p>
+        <div class="flex flex-col sm:flex-row justify-center gap-4">
+            <button onclick="showJoinModal()" class="bg-white/5 border border-white/10 text-white px-8 py-3 rounded-2xl hover:bg-white/10 transition-all font-bold">Join via Code</button>
+            <button onclick="showCreateModal()" class="bg-[#00daf3] text-[#00363d] px-8 py-3 rounded-2xl hover:bg-[#00daf3]/80 transition-all font-bold shadow-lg shadow-[#00daf3]/20">Create New Team</button>
+        </div>
+    </div>
+    {{end}}
+</div>
+
+<script>
+    function toggleMenu(id) {
+        document.querySelectorAll('.action-menu div').forEach(el => {
+            if (el.id !== id) el.classList.add('hidden');
+        });
+        document.getElementById(id).classList.toggle('hidden');
+    }
+
+    // Close menus when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.action-menu')) {
+            document.querySelectorAll('.action-menu div').forEach(el => el.classList.add('hidden'));
+        }
+    });
+
+    function copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            vulfixx.toast('Invite code copied to clipboard!', 'success');
+        });
+    }
+
+    function showJoinModal() {
+        const content = `
+            <div class="space-y-4">
+                <p class="text-gray-400">Enter the 8-byte unique workspace code to join an existing team.</p>
+                <div class="relative">
+                    <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">vpn_key</span>
+                    <input id="join-code" type="text" placeholder="e.g. a1b2c3d4" class="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white focus:outline-none focus:border-[#00daf3] transition-all">
+                </div>
+            </div>
+        `;
+        vulfixx.modal('Join Workspace', content, [
+            { label: 'Cancel', onClick: 'vulfixx.closeModal()' },
+            { label: 'Join Team', primary: true, onClick: 'submitJoin()' }
+        ]);
+    }
+
+    async function submitJoin() {
+        const code = document.getElementById('join-code').value;
+        if (!code) return vulfixx.toast('Please enter a code', 'error');
+        
+        const data = await vulfixx.fetch('/teams/join', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: new URLSearchParams({
+                'invite_code': code,
+                '{{.csrfKey}}': '{{.csrfToken}}'
+            })
+        });
+        
+        if (data) setTimeout(() => window.location.reload(), 1000);
+    }
+
+    function showCreateModal() {
+        const content = `
+            <div class="space-y-4">
+                <p class="text-gray-400">Establish a new collaborative workspace. You will be assigned as the Team Owner.</p>
+                <div class="relative">
+                    <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">label</span>
+                    <input id="team-name" type="text" placeholder="Team Name" class="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white focus:outline-none focus:border-[#00daf3] transition-all">
+                </div>
+            </div>
+        `;
+        vulfixx.modal('Create New Team', content, [
+            { label: 'Cancel', onClick: 'vulfixx.closeModal()' },
+            { label: 'Create Team', primary: true, onClick: 'submitCreate()' }
+        ]);
+    }
+
+    async function submitCreate() {
+        const name = document.getElementById('team-name').value;
+        if (!name) return vulfixx.toast('Please enter a name', 'error');
+        
+        const data = await vulfixx.fetch('/teams/create', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: new URLSearchParams({
+                'name': name,
+                '{{.csrfKey}}': '{{.csrfToken}}'
+            })
+        });
+        
+        if (data) setTimeout(() => window.location.reload(), 1000);
+    }
+
+    function showLeaveConfirm(id, name) {
+        vulfixx.modal('Leave Team', `Are you sure you want to leave <b>${name}</b>? You will lose access to all shared assets and remediation statuses.`, [
+            { label: 'Cancel', onClick: 'vulfixx.closeModal()' },
+            { label: 'Leave Now', primary: true, onClick: `submitLeave('${id}')` }
+        ]);
+    }
+
+    async function submitLeave(id) {
+        const data = await vulfixx.fetch('/teams/leave', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: new URLSearchParams({
+                'team_id': id,
+                '{{.csrfKey}}': '{{.csrfToken}}'
+            })
+        });
+        
+        if (data) setTimeout(() => window.location.reload(), 1000);
+    }
+</script>
+{{end}}

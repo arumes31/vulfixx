@@ -2,141 +2,150 @@
 
 {{define "content"}}
 <div class="space-y-8">
-    <header class="border-b border-outline-variant/30 pb-6">
-        <h1 class="text-3xl font-display font-medium tracking-tight mb-2">Alert Subscriptions</h1>
-        <p class="text-on-surface-variant font-label text-sm uppercase tracking-widest">Configure telemetry notifications</p>
+    <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-white/10 pb-8">
+        <div>
+            <h1 class="text-4xl font-bold text-white mb-2 tracking-tight">Alert Intelligence</h1>
+            <p class="text-gray-400 text-sm">Configure automated vulnerability telemetry mapping and delivery.</p>
+        </div>
     </header>
 
-    {{if .Error}}
-        <div class="bg-error-container/30 border border-error/30 text-error px-4 py-3 rounded-md text-sm mb-6 flex items-start gap-2">
-            <span class="material-symbols-outlined text-[18px]">warning</span>
-            <span>{{.Error}}</span>
-        </div>
-    {{end}}
-
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <!-- Add Subscription Form -->
+        <!-- Add Subscription -->
         <div class="lg:col-span-1">
-            <div class="bg-surface rounded-xl border border-outline-variant/30 overflow-hidden shadow-xl sticky top-6">
-                <div class="p-6 border-b border-outline-variant/30 bg-surface-container-low">
-                    <h3 class="font-display font-medium tracking-wide flex items-center gap-2">
-                        <span class="material-symbols-outlined text-tertiary">add_alert</span>
-                        New Subscription
-                    </h3>
-                </div>
-                <div class="p-6">
-                    <form action="/subscriptions" method="POST" class="space-y-5">
-                        {{.csrfField}}
-                        <div class="space-y-2">
-                            <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Target Keyword <span class="opacity-50 lowercase font-normal">(e.g. Fortigate)</span></label>
-                            <input type="text" name="keyword" class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-tertiary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors">
-                        </div>
-                        <div class="space-y-2">
-                            <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Min CVSS Score</label>
-                            <input type="number" step="0.1" name="min_severity" value="7.0" required class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-tertiary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
-                        </div>
-                        <div class="space-y-2">
-                            <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Webhook Endpoint <span class="opacity-50 lowercase font-normal">(optional)</span></label>
-                            <input type="url" name="webhook_url" placeholder="https://..." class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-tertiary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors">
-                        </div>
-                        <div class="space-y-3 pt-2">
-                            <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Notification Channels</label>
-                            
-                            <div class="flex items-center justify-between bg-surface-container/50 p-3 rounded-lg border border-outline-variant/30">
-                                <div class="flex items-center gap-3">
-                                    <span class="material-symbols-outlined text-[20px] text-primary">mail</span>
-                                    <span class="text-xs font-medium text-on-surface">Email Delivery</span>
-                                </div>
-                                <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" name="enable_email" value="true" checked class="sr-only peer">
-                                    <div class="w-11 h-6 bg-surface-container-high peer-focus:ring-2 peer-focus:ring-primary peer-focus:ring-offset-2 peer-focus:ring-offset-surface rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                                </label>
-                            </div>
+            <div class="glass border border-white/10 p-8 rounded-[2.5rem] sticky top-6 shadow-2xl">
+                <h3 class="text-xl font-bold text-white mb-6 flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-[#00daf3]/10 flex items-center justify-center text-[#00daf3]">
+                        <span class="material-symbols-outlined">add_alert</span>
+                    </div>
+                    New Monitor
+                </h3>
+                
+                <form action="/subscriptions" method="POST" class="space-y-6" onsubmit="return submitSubscription(this)">
+                    {{.csrfField}}
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Target Infrastructure</label>
+                        <input type="text" name="keyword" placeholder="e.g. Cisco, nginx, vcenter" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#00daf3] transition-all">
+                    </div>
+                    
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Minimum CVSS Severity</label>
+                        <input type="number" step="0.1" name="min_severity" value="7.0" required class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#00daf3] transition-all font-mono">
+                    </div>
 
-                            <div class="flex items-center justify-between bg-surface-container/50 p-3 rounded-lg border border-outline-variant/30">
-                                <div class="flex items-center gap-3">
-                                    <span class="material-symbols-outlined text-[20px] text-secondary">webhook</span>
-                                    <span class="text-xs font-medium text-on-surface">Webhook Sync</span>
-                                </div>
-                                <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" name="enable_webhook" value="true" class="sr-only peer">
-                                    <div class="w-11 h-6 bg-surface-container-high peer-focus:ring-2 peer-focus:ring-secondary peer-focus:ring-offset-2 peer-focus:ring-offset-surface rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-secondary"></div>
-                                </label>
+                    <div class="space-y-3 pt-2">
+                        <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Notification Pipelines</label>
+                        
+                        <label class="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/10 transition-all">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-gray-400">mail</span>
+                                <span class="text-xs font-bold text-gray-300">Direct Email</span>
                             </div>
-                        </div>
+                            <input type="checkbox" name="enable_email" value="true" checked class="hidden peer">
+                            <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-[#00daf3] after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6"></div>
+                        </label>
 
-                        <button type="submit" class="w-full bg-surface-container-high hover:bg-tertiary hover:text-on-primary border border-outline-variant/50 hover:border-tertiary text-on-surface font-label font-bold uppercase tracking-widest text-xs py-3 rounded transition-all duration-200 mt-4">
-                            Deploy Monitor
-                        </button>
-                    </form>
-                </div>
+                        <label class="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/10 transition-all">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-gray-400">webhook</span>
+                                <span class="text-xs font-bold text-gray-300">Webhook Sync</span>
+                            </div>
+                            <input type="checkbox" name="enable_webhook" value="true" class="hidden peer">
+                            <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-blue-500 after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6"></div>
+                        </label>
+                    </div>
+
+                    <div id="webhook-field" class="space-y-2 hidden">
+                        <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Webhook URL</label>
+                        <input type="url" name="webhook_url" placeholder="https://hooks.slack.com/..." class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#00daf3] transition-all">
+                    </div>
+
+                    <button type="submit" class="w-full bg-[#00daf3] text-[#00363d] font-black uppercase tracking-widest text-xs py-4 rounded-2xl shadow-lg shadow-[#00daf3]/20 hover:bg-[#00daf3]/80 transition-all active:scale-95">
+                        Initialize Monitor
+                    </button>
+                </form>
             </div>
         </div>
 
-        <!-- Current Subscriptions -->
+        <!-- Monitors Grid -->
         <div class="lg:col-span-2">
-            <div class="bg-surface rounded-xl border border-outline-variant/30 overflow-hidden shadow-xl">
-                <div class="p-6 border-b border-outline-variant/30 bg-surface-container-low">
-                    <h3 class="font-display font-medium tracking-wide flex items-center gap-2">
-                        <span class="material-symbols-outlined text-primary">monitoring</span>
-                        Active Monitors
-                    </h3>
-                </div>
-
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {{if .Subscriptions}}
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="bg-surface-container-lowest border-b border-outline-variant/30">
-                                <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Keyword</th>
-                                <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Severity</th>
-                                <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Channels</th>
-                                <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant text-right">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-outline-variant/10">
-                            {{range .Subscriptions}}
-                            <tr class="hover:bg-surface-container transition-colors duration-150">
-                                <td class="px-6 py-4">
-                                    {{if .Keyword}}
-                                        <span class="font-mono text-sm text-on-surface">{{.Keyword}}</span>
-                                    {{else}}
-                                        <span class="text-xs text-on-surface-variant uppercase tracking-widest">Global</span>
-                                    {{end}}
-                                </td>
-                                <td class="px-6 py-4">
-                                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-surface-container-high text-on-surface border border-outline-variant/30 text-[10px] font-bold tracking-wider font-mono">
-                                        &ge; {{.MinSeverity}}
-                                    </span>
-                                </td>
-                                <td class="px-6 py-4">
-                                    <div class="flex items-center gap-3 text-on-surface-variant">
-                                        <span class="material-symbols-outlined text-[18px] {{if .EnableEmail}}text-primary{{else}}opacity-20{{end}}" title="{{if .EnableEmail}}Email Enabled{{else}}Email Disabled{{end}}">mail</span>
-                                        <span class="material-symbols-outlined text-[18px] {{if .EnableWebhook}}text-secondary{{else}}opacity-20{{end}}" title="{{if .EnableWebhook}}Webhook Enabled{{else}}Webhook Disabled{{end}}">webhook</span>
-                                    </div>
-                                </td>
-                                <td class="px-6 py-4 text-right">
-                                    <form action="/subscriptions/delete" method="POST" class="inline">
-                                        {{$.csrfField}}
-                                        <input type="hidden" name="id" value="{{.ID}}">
-                                        <button type="submit" class="p-2 text-error hover:bg-error-container/30 rounded transition-colors" title="Remove Monitor" aria-label="Remove Monitor">
-                                            <span class="material-symbols-outlined text-[18px]">delete</span>
-                                        </button>
-                                    </form>
-                                </td>
-                            </tr>
-                            {{end}}
-                        </tbody>
-                    </table>
-                </div>
+                    {{range .Subscriptions}}
+                    <div class="glass border border-white/10 p-6 rounded-3xl relative group hover:border-[#00daf3]/30 transition-all">
+                        <div class="flex justify-between items-start mb-6">
+                            <div class="flex items-center gap-4">
+                                <div class="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-[#00daf3] border border-white/10">
+                                    <span class="material-symbols-outlined">analytics</span>
+                                </div>
+                                <div>
+                                    <h3 class="text-lg font-bold text-white">{{if .Keyword}}{{.Keyword}}{{else}}Global Feed{{end}}</h3>
+                                    <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">CVSS &ge; {{.MinSeverity}}</span>
+                                </div>
+                            </div>
+                            <button onclick="deleteMonitor('{{.ID}}')" class="w-8 h-8 rounded-full flex items-center justify-center text-red-400/50 hover:bg-red-400/10 hover:text-red-400 transition-all">
+                                <span class="material-symbols-outlined text-xl">delete</span>
+                            </button>
+                        </div>
+
+                        <div class="flex items-center gap-3">
+                            <span class="flex items-center gap-1.5 text-[10px] font-bold {{if .EnableEmail}}text-[#00daf3]{{else}}text-gray-700{{end}} uppercase">
+                                <span class="material-symbols-outlined text-[14px]">mail</span> Email
+                            </span>
+                            <span class="w-1 h-1 rounded-full bg-gray-800"></span>
+                            <span class="flex items-center gap-1.5 text-[10px] font-bold {{if .EnableWebhook}}text-blue-400{{else}}text-gray-700{{end}} uppercase">
+                                <span class="material-symbols-outlined text-[14px]">webhook</span> Webhook
+                            </span>
+                        </div>
+                    </div>
+                    {{end}}
                 {{else}}
-                <div class="p-12 text-center flex flex-col items-center">
-                    <span class="material-symbols-outlined text-6xl text-outline-variant/50 mb-4" style="font-variation-settings: 'wght' 200;">scan_delete</span>
-                    <p class="text-on-surface-variant font-label tracking-widest uppercase text-sm">No monitors deployed</p>
+                <div class="col-span-full py-24 text-center glass border border-white/10 rounded-[3rem]">
+                    <span class="material-symbols-outlined text-6xl text-gray-700 mb-4">notifications_off</span>
+                    <h2 class="text-2xl font-bold text-white mb-2">No Active Monitors</h2>
+                    <p class="text-gray-500 max-w-sm mx-auto">Deploy your first telemetry monitor to start receiving intelligence updates.</p>
                 </div>
                 {{end}}
             </div>
         </div>
     </div>
 </div>
+
+<script>
+    document.querySelector('input[name="enable_webhook"]').onchange = function() {
+        document.getElementById('webhook-field').classList.toggle('hidden', !this.checked);
+    };
+
+    async function submitSubscription(form) {
+        const formData = new FormData(form);
+        const data = await vulfixx.fetch('/subscriptions', {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: new URLSearchParams(formData)
+        });
+        
+        if (data) setTimeout(() => window.location.reload(), 1000);
+        return false;
+    }
+
+    async function deleteMonitor(id) {
+        vulfixx.modal('Remove Monitor', 'Are you sure you want to disable this telemetry pipeline?', [
+            { label: 'Cancel', onClick: 'vulfixx.closeModal()' },
+            { label: 'Confirm Removal', primary: true, onClick: `confirmDelete('${id}')` }
+        ]);
+    }
+
+    async function confirmDelete(id) {
+        const data = await vulfixx.fetch('/subscriptions/delete', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-Token': '{{.csrfToken}}'
+            },
+            body: new URLSearchParams({ id: id })
+        });
+        
+        if (data) setTimeout(() => window.location.reload(), 1000);
+    }
+</script>
 {{end}}
