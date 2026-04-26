@@ -22,6 +22,30 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 - **Rich Email Alerts**: Premium HTML notifications with OSINT links, Vendor advisories, and Risk gauges.
 - **Modern UI**: High-density dashboard with glassmorphism aesthetics and Material Symbol integration.
 
+## 🏗️ Architecture
+The application follows a modular architecture designed to prevent monolithic files and improve domain separation.
+
+### Web Layer (`internal/web`)
+- **`base.go`**: Core middlewares (Auth, Admin, Proxy, Security), template rendering, and global stats caching.
+- **`auth_handlers.go`**: User identity, registration, and email verification.
+- **`dashboard_handlers.go`**: CVE monitoring, status updates, and notes management.
+- **`subscription_handlers.go`**: Keyword subscriptions, RSS feeds, and alert actions.
+- **`asset_handlers.go`**: IT Asset inventory and keyword mapping.
+- **`activity_handlers.go`**: Audit logging and JSON activity exports.
+- **`alert_handlers.go`**: Chronological notification history.
+- **`admin_handlers.go`**: Administrative user management.
+
+### Worker Layer (`internal/worker`)
+- **`alert_worker.go`**: CVE queue processing and multi-variable filtering.
+- **`alert_buffer.go`**: Redis-backed digest creation and delivery delay logic.
+- **`notifier.go`**: Multi-channel dispatcher (Email, Webhooks) with SSRF/DNS protection.
+- **`email_worker.go`**: SMTP delivery and verification email queue.
+- **`sync_nvd.go`**: NVD CVE data synchronization with incremental backoff.
+- **`sync_github.go`**: GitHub Social Buzz and PoC discovery tracking.
+- **`sync_cisa.go`**: Automated CISA KEV catalog synchronization.
+- **`sync_epss.go`**: Probability-based risk scoring (FIRST EPSS).
+- **`cron_worker.go`**: Scheduled tasks (Weekly summaries).
+
 ## Getting Started
 
 ### Prerequisites
