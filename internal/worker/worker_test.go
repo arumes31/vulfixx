@@ -34,93 +34,17 @@ func TestWorkerFunctions(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := NVDResponse{
 			TotalResults: 1,
-			Vulnerabilities: []struct {
-				CVE struct {
-					ID           string `json:"id"`
-					Published    string `json:"published"`
-					LastModified string `json:"lastModified"`
-					Descriptions []struct {
-						Lang  string `json:"lang"`
-						Value string `json:"value"`
-					} `json:"descriptions"`
-					References []struct {
-						URL string `json:"url"`
-					} `json:"references"`
-					Metrics struct {
-						CvssMetricV31 []struct {
-							CvssData struct {
-								BaseScore    float64 `json:"baseScore"`
-								VectorString string  `json:"vectorString"`
-							} `json:"cvssData"`
-						} `json:"cvssMetricV31"`
-						CvssMetricV30 []struct {
-							CvssData struct {
-								BaseScore    float64 `json:"baseScore"`
-								VectorString string  `json:"vectorString"`
-							} `json:"cvssData"`
-						} `json:"cvssMetricV30"`
-						CvssMetricV2 []struct {
-							CvssData struct {
-								BaseScore    float64 `json:"baseScore"`
-								VectorString string  `json:"vectorString"`
-							} `json:"cvssData"`
-						} `json:"cvssMetricV2"`
-					} `json:"metrics"`
-					Weaknesses []struct {
-						Description []struct {
-							Lang  string `json:"lang"`
-							Value string `json:"value"`
-						} `json:"description"`
-					} `json:"weaknesses"`
-				} `json:"cve"`
-			}{
+			Vulnerabilities: []NVDCVEEntry{
 				{
-					CVE: struct {
-						ID           string `json:"id"`
-						Published    string `json:"published"`
-						LastModified string `json:"lastModified"`
-						Descriptions []struct {
-							Lang  string `json:"lang"`
-							Value string `json:"value"`
-						} `json:"descriptions"`
-						References []struct {
-							URL string `json:"url"`
-						} `json:"references"`
-						Metrics struct {
-							CvssMetricV31 []struct {
-								CvssData struct {
-									BaseScore    float64 `json:"baseScore"`
-									VectorString string  `json:"vectorString"`
-								} `json:"cvssData"`
-							} `json:"cvssMetricV31"`
-							CvssMetricV30 []struct {
-								CvssData struct {
-									BaseScore    float64 `json:"baseScore"`
-									VectorString string  `json:"vectorString"`
-								} `json:"cvssData"`
-							} `json:"cvssMetricV30"`
-							CvssMetricV2 []struct {
-								CvssData struct {
-									BaseScore    float64 `json:"baseScore"`
-									VectorString string  `json:"vectorString"`
-								} `json:"cvssData"`
-							} `json:"cvssMetricV2"`
-						} `json:"metrics"`
-						Weaknesses []struct {
-							Description []struct {
-								Lang  string `json:"lang"`
-								Value string `json:"value"`
-							} `json:"description"`
-						} `json:"weaknesses"`
-					}{
-						ID:           "CVE-2023-0001",
-						Published:    "2023-01-01T00:00:00Z",
-						LastModified: "2023-01-01T00:00:00Z",
+					CVE: NVDCVE{
+						ID:           "CVE-2023-1234",
+						Published:    time.Now().Format(time.RFC3339),
+						LastModified: time.Now().Format(time.RFC3339),
 						Descriptions: []struct {
 							Lang  string `json:"lang"`
 							Value string `json:"value"`
 						}{
-							{Lang: "en", Value: "Test description"},
+							{Lang: "en", Value: "Test vulnerability"},
 						},
 						References: []struct {
 							URL string `json:"url"`

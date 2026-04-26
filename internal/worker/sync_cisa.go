@@ -1,0 +1,96 @@
+package worker
+
+import (
+	"context"
+	"cve-tracker/internal/db"
+	"encoding/json"
+	"log"
+	"net/http"
+	"time"
+)
+
+var defaultCISAKEVURL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+
+type CISAKEVResponse struct {
+	Vulnerabilities []struct {
+		CVEID string `json:"cveID"`
+	} `json:"vulnerabilities"`
+}
+
+func fetchCISAKEVPeriodically(ctx context.Context) {
+	fetchFromCISAKEV(ctx)
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			fetchFromCISAKEV(ctx)
+		}
+	}
+}
+
+func fetchFromCISAKEV(ctx context.Context) {
+	log.Println("Worker: [SYNC] Fetching CISA KEV catalog...")
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, "GET", defaultCISAKEVURL, nil)
+	if err != nil {
+		log.Printf("Worker: [ERROR] Failed to create CISA KEV request: %v", err)
+		return
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Worker: [ERROR] Failed to fetch CISA KEV: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Worker: [ERROR] CISA KEV API returned status %d", resp.StatusCode)
+		return
+	}
+
+	var kevResp CISAKEVResponse
+	if err := json.NewDecoder(resp.Body).Decode(&kevResp); err != nil {
+		log.Printf("Worker: [ERROR] Failed to decode CISA KEV: %v", err)
+		return
+	}
+
+	total := len(kevResp.Vulnerabilities)
+	log.Printf("Worker: [SYNC] Updating %d CISA KEV records...", total)
+
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		log.Printf("Worker: [ERROR] Failed to start KEV transaction: %v", err)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, "UPDATE cves SET cisa_kev = false"); err != nil {
+		log.Printf("Worker: [ERROR] Failed to reset CISA KEV status: %v", err)
+		return
+	}
+
+	batchSize := 100
+	for i := 0; i < total; i += batchSize {
+		end := i + batchSize
+		if end > total {
+			end = total
+		}
+		ids := make([]string, 0, batchSize)
+		for _, v := range kevResp.Vulnerabilities[i:end] {
+			ids = append(ids, v.CVEID)
+		}
+		_, err := tx.Exec(ctx, "UPDATE cves SET cisa_kev = true WHERE cve_id = ANY($1)", ids)
+		if err != nil {
+			log.Printf("Worker: [ERROR] Failed to update KEV batch: %v", err)
+			return
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		log.Printf("Worker: [ERROR] Failed to commit KEV transaction: %v", err)
+		return
+	}
+	log.Println("Worker: [SYNC] CISA KEV update complete.")
+}

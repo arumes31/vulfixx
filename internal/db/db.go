@@ -90,7 +90,7 @@ func migrate(ctx context.Context) error {
 		);`,
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS vector_string TEXT;",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS \"references\" TEXT[];",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS epss_score NUMERIC(4,3);",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS epss_score NUMERIC(6,5);",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS cwe_id VARCHAR(50);",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS cwe_name TEXT;",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS github_poc_count INTEGER DEFAULT 0;",

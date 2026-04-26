@@ -51,7 +51,10 @@ func redactURL(u string) string {
 }
 
 // sendMailWithTimeout is a replacement for smtp.SendMail that supports deadlines.
-func sendMailWithTimeout(host, port, user, password string, to []string, msg []byte) error {
+func sendMailWithTimeout(host, port, user, password, from string, to []string, msg []byte) error {
+	if len(to) == 0 {
+		return fmt.Errorf("no recipients specified")
+	}
 	addr := net.JoinHostPort(host, port)
 	// #nosec G704 -- Host and port are from controlled environment variables
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
@@ -87,7 +90,7 @@ func sendMailWithTimeout(host, port, user, password string, to []string, msg []b
 		}
 	}
 
-	if err := client.Mail(to[0]); err != nil {
+	if err := client.Mail(from); err != nil {
 		return err
 	}
 	for _, addr := range to {

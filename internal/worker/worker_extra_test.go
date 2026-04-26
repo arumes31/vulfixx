@@ -52,85 +52,9 @@ func TestUpsertCVEs(t *testing.T) {
 	defer mock.Close()
 
 	ctx := context.Background()
-	vulns := []struct {
-		CVE struct {
-			ID           string `json:"id"`
-			Published    string `json:"published"`
-			LastModified string `json:"lastModified"`
-			Descriptions []struct {
-				Lang  string `json:"lang"`
-				Value string `json:"value"`
-			} `json:"descriptions"`
-			References []struct {
-				URL string `json:"url"`
-			} `json:"references"`
-			Metrics struct {
-				CvssMetricV31 []struct {
-					CvssData struct {
-						BaseScore    float64 `json:"baseScore"`
-						VectorString string  `json:"vectorString"`
-					} `json:"cvssData"`
-				} `json:"cvssMetricV31"`
-				CvssMetricV30 []struct {
-					CvssData struct {
-						BaseScore    float64 `json:"baseScore"`
-						VectorString string  `json:"vectorString"`
-					} `json:"cvssData"`
-				} `json:"cvssMetricV30"`
-				CvssMetricV2 []struct {
-					CvssData struct {
-						BaseScore    float64 `json:"baseScore"`
-						VectorString string  `json:"vectorString"`
-					} `json:"cvssData"`
-				} `json:"cvssMetricV2"`
-			} `json:"metrics"`
-			Weaknesses []struct {
-				Description []struct {
-					Lang  string `json:"lang"`
-					Value string `json:"value"`
-				} `json:"description"`
-			} `json:"weaknesses"`
-		} `json:"cve"`
-	}{
+	vulns := []NVDCVEEntry{
 		{
-			CVE: struct {
-				ID           string `json:"id"`
-				Published    string `json:"published"`
-				LastModified string `json:"lastModified"`
-				Descriptions []struct {
-					Lang  string `json:"lang"`
-					Value string `json:"value"`
-				} `json:"descriptions"`
-				References []struct {
-					URL string `json:"url"`
-				} `json:"references"`
-				Metrics struct {
-					CvssMetricV31 []struct {
-						CvssData struct {
-							BaseScore    float64 `json:"baseScore"`
-							VectorString string  `json:"vectorString"`
-						} `json:"cvssData"`
-					} `json:"cvssMetricV31"`
-					CvssMetricV30 []struct {
-						CvssData struct {
-							BaseScore    float64 `json:"baseScore"`
-							VectorString string  `json:"vectorString"`
-						} `json:"cvssData"`
-					} `json:"cvssMetricV30"`
-					CvssMetricV2 []struct {
-						CvssData struct {
-							BaseScore    float64 `json:"baseScore"`
-							VectorString string  `json:"vectorString"`
-						} `json:"cvssData"`
-					} `json:"cvssMetricV2"`
-				} `json:"metrics"`
-				Weaknesses []struct {
-					Description []struct {
-						Lang  string `json:"lang"`
-						Value string `json:"value"`
-					} `json:"description"`
-				} `json:"weaknesses"`
-			}{
+			CVE: NVDCVE{
 				ID:           "CVE-UPD-TEST",
 				Published:    time.Now().Format(time.RFC3339),
 				LastModified: time.Now().Format(time.RFC3339),

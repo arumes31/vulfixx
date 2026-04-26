@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -15,12 +16,15 @@ func fetchOSINTLinks(ctx context.Context, cveID string) map[string]interface{} {
 
 	// Hacker News
 	hnURL := fmt.Sprintf("https://hn.algolia.com/api/v1/search?query=%s&tags=story", cveID)
-	req, _ := http.NewRequestWithContext(ctx, "GET", hnURL, nil)
-	if resp, err := client.Do(req); err == nil {
+	req, err := http.NewRequestWithContext(ctx, "GET", hnURL, nil)
+	if err != nil {
+		log.Printf("Failed to create HN request: %v", err)
+	} else if resp, err := client.Do(req); err == nil {
+		defer resp.Body.Close()
 		var hnResp struct {
 			Hits []struct {
-				Title string `json:"title"`
-				URL   string `json:"url"`
+				Title    string `json:"title"`
+				URL      string `json:"url"`
 				ObjectID string `json:"objectID"`
 			} `json:"hits"`
 		}
@@ -32,33 +36,36 @@ func fetchOSINTLinks(ctx context.Context, cveID string) map[string]interface{} {
 			}
 			data["hn"] = links
 		}
-		resp.Body.Close()
 	}
 
 	// Reddit
 	redditURL := fmt.Sprintf("https://www.reddit.com/search.json?q=%s&sort=relevance&t=all", cveID)
-	req, _ = http.NewRequestWithContext(ctx, "GET", redditURL, nil)
-	req.Header.Set("User-Agent", "Vulfixx-Threat-Intel-Bot/1.0")
-	if resp, err := client.Do(req); err == nil {
-		var rResp struct {
-			Data struct {
-				Children []struct {
-					Data struct {
-						Title string `json:"title"`
-						Permalink string `json:"permalink"`
-					} `json:"data"`
-				} `json:"children"`
-			} `json:"data"`
-		}
-		if json.NewDecoder(resp.Body).Decode(&rResp) == nil {
-			links := []map[string]string{}
-			for _, child := range rResp.Data.Children {
-				redditLink := fmt.Sprintf("https://www.reddit.com%s", child.Data.Permalink)
-				links = append(links, map[string]string{"title": child.Data.Title, "url": redditLink})
+	req, err = http.NewRequestWithContext(ctx, "GET", redditURL, nil)
+	if err != nil {
+		log.Printf("Failed to create Reddit request: %v", err)
+	} else {
+		req.Header.Set("User-Agent", "Vulfixx-Threat-Intel-Bot/1.0")
+		if resp, err := client.Do(req); err == nil {
+			defer resp.Body.Close()
+			var rResp struct {
+				Data struct {
+					Children []struct {
+						Data struct {
+							Title     string `json:"title"`
+							Permalink string `json:"permalink"`
+						} `json:"data"`
+					} `json:"children"`
+				} `json:"data"`
 			}
-			data["reddit"] = links
+			if json.NewDecoder(resp.Body).Decode(&rResp) == nil {
+				links := []map[string]string{}
+				for _, child := range rResp.Data.Children {
+					redditLink := fmt.Sprintf("https://www.reddit.com%s", child.Data.Permalink)
+					links = append(links, map[string]string{"title": child.Data.Title, "url": redditLink})
+				}
+				data["reddit"] = links
+			}
 		}
-		resp.Body.Close()
 	}
 
 	return data
