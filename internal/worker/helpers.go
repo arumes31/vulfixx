@@ -14,13 +14,13 @@ import (
 // sanitizeEmail validates and sanitizes an email address to prevent
 // SMTP header injection (gosec G707). Uses net/mail for proper parsing.
 func sanitizeEmail(email string) (string, error) {
-	// Strip any CR/LF first
-	s := strings.ReplaceAll(email, "\r", "")
-	s = strings.ReplaceAll(s, "\n", "")
+	if strings.ContainsAny(email, "\r\n") {
+		return "", fmt.Errorf("invalid email address: contains CR or LF characters")
+	}
 	// Validate with net/mail
-	addr, err := mail.ParseAddress(s)
+	addr, err := mail.ParseAddress(email)
 	if err != nil {
-		return "", fmt.Errorf("invalid email address %q: %w", s, err)
+		return "", fmt.Errorf("invalid email address %q: %w", email, err)
 	}
 	return addr.Address, nil
 }
@@ -98,7 +98,7 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 	}
 	defer func() { _ = client.Quit() }()
 
-	// Negotiate STARTTLS if supported (G706 hardening)
+	hasTLS := false
 	if ok, _ := client.Extension("STARTTLS"); ok {
 		config := &tls.Config{
 			ServerName: host,
@@ -106,9 +106,13 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 		if err := client.StartTLS(config); err != nil {
 			return fmt.Errorf("starttls: %w", err)
 		}
+		hasTLS = true
 	}
 
 	if user != "" && password != "" {
+		if !hasTLS {
+			return fmt.Errorf("TLS is required for authentication but not supported by host %s", host)
+		}
 		auth := smtp.PlainAuth("", user, password, host)
 		if err := client.Auth(auth); err != nil {
 			return fmt.Errorf("auth: %w", err)

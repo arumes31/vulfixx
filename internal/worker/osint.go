@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -13,9 +14,10 @@ import (
 func fetchOSINTLinks(ctx context.Context, cveID string) map[string]interface{} {
 	data := make(map[string]interface{})
 	client := &http.Client{Timeout: 5 * time.Second}
+	encodedID := url.QueryEscape(cveID)
 
 	// Hacker News
-	hnURL := fmt.Sprintf("https://hn.algolia.com/api/v1/search?query=%s&tags=story", cveID)
+	hnURL := fmt.Sprintf("https://hn.algolia.com/api/v1/search?query=%s&tags=story", encodedID)
 	req, err := http.NewRequestWithContext(ctx, "GET", hnURL, nil)
 	if err != nil {
 		log.Printf("Failed to create HN request: %v", err)
@@ -45,7 +47,7 @@ func fetchOSINTLinks(ctx context.Context, cveID string) map[string]interface{} {
 	}
 
 	// Reddit
-	redditURL := fmt.Sprintf("https://www.reddit.com/search.json?q=%s&sort=relevance&t=all", cveID)
+	redditURL := fmt.Sprintf("https://www.reddit.com/search.json?q=%s&sort=relevance&t=all", encodedID)
 	req, err = http.NewRequestWithContext(ctx, "GET", redditURL, nil)
 	if err != nil {
 		log.Printf("Failed to create Reddit request: %v", err)

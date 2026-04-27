@@ -1,7 +1,6 @@
 package web
 
 import (
-	"context"
 	"cve-tracker/internal/db"
 	"log"
 	"net/http"
@@ -22,8 +21,9 @@ func AlertHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		WHERE ah.user_id = $1
 		ORDER BY ah.sent_at DESC LIMIT 100
 	`
-	rows, err := db.Pool.Query(context.Background(), query, userID)
+	rows, err := db.Pool.Query(r.Context(), query, userID)
 	if err != nil {
+		log.Printf("failed to fetch alert history: %v", err)
 		http.Error(w, "Error fetching alert history", http.StatusInternalServerError)
 		return
 	}

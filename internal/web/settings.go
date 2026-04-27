@@ -6,10 +6,11 @@ import (
 	"cve-tracker/internal/db"
 	"encoding/json"
 	"net/http"
-
 	"encoding/base64"
-	"github.com/pquerna/otp/totp"
 	"log"
+	"time"
+
+	"github.com/pquerna/otp/totp"
 	"rsc.io/qr"
 )
 
@@ -63,6 +64,11 @@ func GenerateTOTPHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	session, _ := store.Get(r, "vulfixx-session")
+	session.Values["totp_setup_ts"] = time.Now().Unix()
+	session.Values["totp_setup_attempts"] = 0
+	_ = session.Save(r, w)
+
 	// Generate QR
 	code, err := qr.Encode(key.URL(), qr.M)
 	if err != nil {
@@ -100,11 +106,39 @@ func VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	session, _ := store.Get(r, "vulfixx-session")
+	setupTS, _ := session.Values["totp_setup_ts"].(int64)
+	attempts, _ := session.Values["totp_setup_attempts"].(int)
+
+	if time.Now().Unix()-setupTS > 600 {
+		delete(session.Values, "totp_setup_ts")
+		delete(session.Values, "totp_setup_attempts")
+		_ = session.Save(r, w)
+		_, _ = db.Pool.Exec(context.Background(), "UPDATE users SET totp_secret = NULL WHERE id = $1 AND is_totp_enabled = FALSE", userID)
+		http.Redirect(w, r, "/settings?error=Setup+expired", http.StatusFound)
+		return
+	}
+
+	if attempts >= 5 {
+		delete(session.Values, "totp_setup_ts")
+		delete(session.Values, "totp_setup_attempts")
+		_ = session.Save(r, w)
+		_, _ = db.Pool.Exec(context.Background(), "UPDATE users SET totp_secret = NULL WHERE id = $1 AND is_totp_enabled = FALSE", userID)
+		http.Redirect(w, r, "/settings?error=Too+many+attempts", http.StatusFound)
+		return
+	}
+
 	valid := totp.Validate(code, secret)
 	if valid {
 		if _, err := db.Pool.Exec(context.Background(), "UPDATE users SET is_totp_enabled = TRUE WHERE id = $1", userID); err != nil {
 			log.Printf("Error enabling TOTP: %v", err)
 		}
+		delete(session.Values, "totp_setup_ts")
+		delete(session.Values, "totp_setup_attempts")
+		_ = session.Save(r, w)
+	} else {
+		session.Values["totp_setup_attempts"] = attempts + 1
+		_ = session.Save(r, w)
 	}
 
 	http.Redirect(w, r, "/settings", http.StatusFound)
@@ -270,7 +304,7 @@ func DeleteAccountHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Clear session
-	session, _ := store.Get(r, "session-name")
+	session, _ := store.Get(r, "vulfixx-session")
 	session.Options.MaxAge = -1
 	if err := session.Save(r, w); err != nil {
 		log.Printf("Error saving session: %v", err)

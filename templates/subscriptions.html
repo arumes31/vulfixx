@@ -82,7 +82,7 @@
                                     <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">CVSS &ge; {{.MinSeverity}}</span>
                                 </div>
                             </div>
-                            <button onclick="deleteMonitor('{{.ID}}')" class="w-8 h-8 rounded-full flex items-center justify-center text-red-400/50 hover:bg-red-400/10 hover:text-red-400 transition-all">
+                            <button data-id="{{.ID}}" class="delete-monitor-btn w-8 h-8 rounded-full flex items-center justify-center text-red-400/50 hover:bg-red-400/10 hover:text-red-400 transition-all">
                                 <span class="material-symbols-outlined text-xl">delete</span>
                             </button>
                         </div>
@@ -132,7 +132,10 @@
         const formData = new FormData(form);
         const data = await vulfixx.fetch('/subscriptions', {
             method: 'POST',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            headers: { 
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-Token': form.querySelector('input[name="gorilla.csrf.Token"]')?.value
+            },
             body: new URLSearchParams(formData)
         });
         
@@ -164,5 +167,10 @@
         
         if (data) setTimeout(() => window.location.reload(), 1000);
     }
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.delete-monitor-btn').forEach(btn => {
+            btn.addEventListener('click', () => deleteMonitor(btn.dataset.id));
+        });
+    });
 </script>
 {{end}}

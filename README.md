@@ -112,6 +112,8 @@ The application follows a modular architecture designed to prevent monolithic fi
 | `NVD_API_KEY`| NIST NVD API Key (for higher rate limits) | `(empty)` |
 | `NVD_API_URL`| Custom NVD API endpoint (optional) | `https://...` |
 
+> **Security Warning:** The default seed values for `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and `ADMIN_TOTP_SECRET` are insecure and must be changed before deploying to production. Please generate a strong password and a unique base32 TOTP secret. It is highly recommended to rotate the seeded admin credentials and remove defaults from any production configuration.
+
    *Note: The above is a partial list of key configurations. See `docker-compose.yml` for all available options.*
 ## Development
 

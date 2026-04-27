@@ -31,14 +31,25 @@ func syncGitHubBuzz(ctx context.Context) {
 		log.Printf("Worker: [ERROR] Failed to fetch CVEs for GitHub sync: %v", err)
 		return
 	}
-	defer rows.Close()
-	client := &http.Client{Timeout: 10 * time.Second}
+	
+	var cveIDs []string
 	for rows.Next() {
 		var cveID string
 		if err := rows.Scan(&cveID); err != nil {
 			log.Printf("Worker: Error scanning CVE row for GitHub sync: %v", err)
 			continue
 		}
+		cveIDs = append(cveIDs, cveID)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Worker: [ERROR] Row iteration error in syncGitHubBuzz: %v", err)
+	}
+	rows.Close()
+
+	start := time.Now()
+	client := &http.Client{Timeout: 10 * time.Second}
+	for _, cveID := range cveIDs {
+
 
 		select {
 		case <-ctx.Done():
@@ -47,7 +58,11 @@ func syncGitHubBuzz(ctx context.Context) {
 		}
 
 		githubURL := fmt.Sprintf("https://api.github.com/search/repositories?q=%s", cveID)
-		req, _ := http.NewRequestWithContext(ctx, "GET", githubURL, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", githubURL, nil)
+		if err != nil {
+			log.Printf("Worker: [ERROR] Failed to create GitHub request for %s: %v", cveID, err)
+			continue
+		}
 		req.Header.Set("Accept", "application/vnd.github.v3+json")
 		req.Header.Set("User-Agent", "Vulfixx-Threat-Intel")
 		resp, err := client.Do(req)
@@ -78,10 +93,11 @@ func syncGitHubBuzz(ctx context.Context) {
 		if err != nil {
 			log.Printf("Worker: [ERROR] Failed to update GitHub buzz for %s: %v", cveID, err)
 		}
-		time.Sleep(7 * time.Second)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(7 * time.Second):
+		}
 	}
-	if err := rows.Err(); err != nil {
-		log.Printf("Worker: [ERROR] Row iteration error in syncGitHubBuzz: %v", err)
-	}
-	log.Println("Worker: [SYNC] GitHub Social Buzz synchronization complete.")
+	log.Printf("Worker: [SYNC] GitHub Social Buzz synchronization complete. Duration: %v", time.Since(start))
 }

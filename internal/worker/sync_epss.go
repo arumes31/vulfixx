@@ -31,13 +31,30 @@ func syncEPSS(ctx context.Context) {
 		log.Printf("Worker: [ERROR] Failed to fetch CVEs for EPSS sync: %v", err)
 		return
 	}
-	defer rows.Close()
-	client := &http.Client{Timeout: 10 * time.Second}
+	
+	var cveIDs []string
 	for rows.Next() {
 		var cveID string
 		if err := rows.Scan(&cveID); err != nil {
+			log.Printf("Worker: Error scanning CVE ID: %v", err)
 			continue
 		}
+		cveIDs = append(cveIDs, cveID)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Worker: [ERROR] Row iteration error in syncEPSS: %v", err)
+	}
+	rows.Close()
+
+	start := time.Now()
+	client := &http.Client{Timeout: 10 * time.Second}
+	for _, cveID := range cveIDs {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
 		epssURL := fmt.Sprintf("https://api.first.org/data/v1/epss?cve=%s", cveID)
 		req, err := http.NewRequestWithContext(ctx, "GET", epssURL, nil)
 		if err != nil {
@@ -79,10 +96,11 @@ func syncEPSS(ctx context.Context) {
 				log.Printf("Worker: [ERROR] Failed to update EPSS for %s: %v", cveID, err)
 			}
 		}
-		time.Sleep(100 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
-	if err := rows.Err(); err != nil {
-		log.Printf("Worker: [ERROR] Row iteration error in syncEPSS: %v", err)
-	}
-	log.Println("Worker: [SYNC] EPSS score synchronization complete.")
+	log.Printf("Worker: [SYNC] EPSS score synchronization complete. Duration: %v", time.Since(start))
 }

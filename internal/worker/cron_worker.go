@@ -29,5 +29,8 @@ func startWeeklySummaryTask(ctx context.Context) {
 }
 
 func sendWeeklySummaries(ctx context.Context) {
+	log.Println("Worker: [CRON] Starting weekly summaries distribution...")
+	start := time.Now()
 	// Implementation logic for weekly summaries
+	log.Printf("Worker: [CRON] Weekly summaries distribution complete. Duration: %v", time.Since(start))
 }

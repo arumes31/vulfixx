@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -75,10 +76,17 @@ func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 		enableWebhook := r.FormValue("enable_webhook") == "on" || r.FormValue("enable_webhook") == "true"
 
 		if enableWebhook {
-			if webhookUrl == "" || (!strings.HasPrefix(webhookUrl, "http://") && !strings.HasPrefix(webhookUrl, "https://")) {
+			if webhookUrl == "" {
+				SendResponse(w, r, false, "", "", "A webhook URL is required")
+				return
+			}
+			parsed, err := url.ParseRequestURI(webhookUrl)
+			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 				SendResponse(w, r, false, "", "", "A valid HTTP/HTTPS webhook URL is required")
 				return
 			}
+			webhookUrl = parsed.String()
+			
 			if len(webhookUrl) > 2048 {
 				SendResponse(w, r, false, "", "", "Webhook URL is too long")
 				return
@@ -206,7 +214,7 @@ func HandleAlertAction(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	action := r.URL.Query().Get("action")
 
-	if token == "" || action == "" {
+	if token == "" || (action != "acknowledge" && action != "mute") {
 		http.Error(w, "Invalid action request", http.StatusBadRequest)
 		return
 	}

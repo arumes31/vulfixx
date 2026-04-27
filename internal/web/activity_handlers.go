@@ -1,7 +1,6 @@
 package web
 
 import (
-	"context"
 	"cve-tracker/internal/db"
 	"encoding/json"
 	"log"
@@ -22,14 +21,14 @@ func ActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 		WHERE user_id = $1
 		ORDER BY created_at DESC LIMIT 100
 	`
-	rows, err := db.Pool.Query(context.Background(), query, userID)
+	rows, err := db.Pool.Query(r.Context(), query, userID)
 	if err != nil {
 		http.Error(w, "Error fetching activity logs", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	var logs []map[string]interface{}
+	logs := make([]map[string]interface{}, 0)
 	for rows.Next() {
 		var l struct {
 			ID           int
@@ -72,14 +71,14 @@ func ExportActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 		WHERE user_id = $1
 		ORDER BY created_at DESC LIMIT 1000
 	`
-	rows, err := db.Pool.Query(context.Background(), query, userID)
+	rows, err := db.Pool.Query(r.Context(), query, userID)
 	if err != nil {
 		http.Error(w, "Error fetching activity logs", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	var logs []map[string]interface{}
+	logs := make([]map[string]interface{}, 0)
 	for rows.Next() {
 		var l struct {
 			ID           int
@@ -102,11 +101,18 @@ func ExportActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := rows.Err(); err != nil {
 		log.Printf("Error iterating activity logs for export: %v", err)
+		http.Error(w, "Error fetching activity logs", http.StatusInternalServerError)
+		return
+	}
+
+	buf, err := json.Marshal(logs)
+	if err != nil {
+		log.Printf("Error encoding activity log export: %v", err)
+		http.Error(w, "Error generating export", http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition", "attachment;filename=activity_log.json")
-	if err := json.NewEncoder(w).Encode(logs); err != nil {
-		log.Printf("Error encoding activity log export: %v", err)
-	}
+	_, _ = w.Write(buf)
 }

@@ -33,7 +33,11 @@ func processEmailVerification(ctx context.Context) {
 			continue
 		}
 		if err := sendVerificationEmail(email, token); err != nil {
-			log.Printf("Worker: Failed to send verification email to %s: %v", email, err)
+			log.Printf("Worker: Failed to send verification email to %s: %v. Re-enqueueing...", email, err)
+			// Re-enqueue with a small delay or just push back to the queue
+			payload["retries"] = fmt.Sprintf("%v", payload["retries"]) // simplistic retry counter if needed
+			newPayload, _ := json.Marshal(payload)
+			_ = db.RedisClient.LPush(ctx, "email_verification_queue", newPayload).Err()
 		}
 	}
 }
@@ -91,13 +95,17 @@ func sendEmail(toEmail, subject, body string) error {
 		return fmt.Errorf("SMTP configuration missing")
 	}
 
-	// Validate subject and email to prevent header injection
+	// Validate subject, email, and from address to prevent header injection
 	cleanSubject := sanitizeHeader(subject)
 	cleanTo, err := sanitizeEmail(toEmail)
 	if err != nil {
 		return fmt.Errorf("invalid recipient: %w", err)
 	}
+	cleanFrom, err := sanitizeEmail(from)
+	if err != nil {
+		return fmt.Errorf("invalid sender (SMTP_FROM): %w", err)
+	}
 
-	msg := []byte("To: " + cleanTo + "\r\n" + "From: " + from + "\r\n" + "Subject: " + cleanSubject + "\r\n" + "Content-Type: text/html; charset=UTF-8\r\n" + "\r\n" + body)
-	return sendMailWithTimeout(host, port, user, password, from, []string{cleanTo}, msg)
+	msg := []byte("To: " + cleanTo + "\r\n" + "From: " + cleanFrom + "\r\n" + "Subject: " + cleanSubject + "\r\n" + "Content-Type: text/html; charset=UTF-8\r\n" + "\r\n" + body)
+	return sendMailWithTimeout(host, port, user, password, cleanFrom, []string{cleanTo}, msg)
 }

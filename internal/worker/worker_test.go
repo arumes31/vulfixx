@@ -37,7 +37,7 @@ func TestWorkerFunctions(t *testing.T) {
 			Vulnerabilities: []NVDCVEEntry{
 				{
 					CVE: NVDCVE{
-						ID:           "CVE-2023-1234",
+						ID:           "CVE-2023-0001",
 						Published:    time.Now().Format(time.RFC3339),
 						LastModified: time.Now().Format(time.RFC3339),
 						Descriptions: []struct {
@@ -170,9 +170,13 @@ func TestWorkerFunctions(t *testing.T) {
 
 func TestWorkerHelpers(t *testing.T) {
 	t.Run("SanitizeEmail", func(t *testing.T) {
-		email, err := sanitizeEmail("test@example.com\r\n")
+		email, err := sanitizeEmail("test@example.com")
 		if err != nil || email != "test@example.com" {
 			t.Errorf("sanitizeEmail failed: %v, %s", err, email)
+		}
+		_, err = sanitizeEmail("test@example.com\r\n")
+		if err == nil {
+			t.Error("expected error for email with CRLF")
 		}
 		_, err = sanitizeEmail("invalid-email")
 		if err == nil {

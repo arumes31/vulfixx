@@ -5,6 +5,7 @@ import (
 	"context"
 	"cve-tracker/internal/db"
 	"encoding/json"
+	"errors"
 	"html/template"
 	"log"
 	"net"
@@ -19,9 +20,19 @@ import (
 
 var templateMap map[string]*template.Template
 
+var cancelStats context.CancelFunc
+
 func InitTemplates() {
 	InitTemplatesWithFuncs()
-	go StartStatsTicker()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancelStats = cancel
+	go StartStatsTicker(ctx)
+}
+
+func StopStatsTicker() {
+	if cancelStats != nil {
+		cancelStats()
+	}
 }
 
 type globalCVEStatsCache struct {
@@ -45,20 +56,20 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		var isVerified bool
 		err := db.Pool.QueryRow(r.Context(), "SELECT is_email_verified FROM users WHERE id = $1", userID).Scan(&isVerified)
 		if err != nil {
-			if err == pgx.ErrNoRows {
+			if errors.Is(err, pgx.ErrNoRows) {
 				http.Redirect(w, r, "/login", http.StatusFound)
 				return
 			}
-			log.Printf("AuthMiddleware DB ERROR: userID=%v, path=%s, err=%v", userID, r.URL.Path, err)
+			log.Printf("AuthMiddleware DB ERROR: userID=%v, path=%s, err=%v", userID, sanitizeForLog(r.URL.Path), err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 		if !isVerified {
-			log.Printf("AuthMiddleware NOT VERIFIED: userID=%v, path=%s", userID, r.URL.Path)
+			log.Printf("AuthMiddleware NOT VERIFIED: userID=%v, path=%s", userID, sanitizeForLog(r.URL.Path))
 			http.Error(w, "Please verify your email address to access this page.", http.StatusForbidden)
 			return
 		}
-		log.Printf("AuthMiddleware SUCCESS: userID=%v, path=%s", userID, r.URL.Path)
+		log.Printf("AuthMiddleware SUCCESS: userID=%v, path=%s", userID, sanitizeForLog(r.URL.Path))
 
 		next.ServeHTTP(w, r)
 	})
@@ -74,7 +85,12 @@ func AdminMiddleware(next http.Handler) http.Handler {
 
 		var isAdmin bool
 		err := db.Pool.QueryRow(r.Context(), "SELECT is_admin FROM users WHERE id = $1", userID).Scan(&isAdmin)
-		if err != nil || !isAdmin {
+		if err != nil {
+			log.Printf("AdminMiddleware DB ERROR: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		if !isAdmin {
 			http.Error(w, "Forbidden: Admin access required", http.StatusForbidden)
 			return
 		}
@@ -143,9 +159,9 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 			var teams []map[string]interface{}
 			for teamRows.Next() {
 				var id int
-				var name string
-				if err := teamRows.Scan(&id, &name); err == nil {
-					teams = append(teams, map[string]interface{}{"ID": id, "Name": name})
+				var teamName string
+				if err := teamRows.Scan(&id, &teamName); err == nil {
+					teams = append(teams, map[string]interface{}{"ID": id, "Name": teamName})
 				}
 			}
 			if err := teamRows.Err(); err != nil {
@@ -157,9 +173,13 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 		activeTeamID, ok := GetActiveTeamID(r)
 		if ok && activeTeamID != 0 {
 			var teamName string
-			_ = db.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
+			err := db.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
+			if err != nil {
+				log.Printf("Error fetching active team name: %v", err)
+			} else {
+				data["ActiveTeamName"] = teamName
+			}
 			data["ActiveTeamID"] = activeTeamID
-			data["ActiveTeamName"] = teamName
 		} else {
 			data["ActiveTeamID"] = 0
 			data["ActiveTeamName"] = "Private Workspace"
@@ -187,14 +207,14 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 	_, _ = w.Write(buf.Bytes())
 }
 
-func StartStatsTicker() {
+func StartStatsTicker(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
 	refresh := func() {
 		var total, new24h int
-		err1 := db.Pool.QueryRow(context.Background(), "SELECT COUNT(*) FROM cves").Scan(&total)
-		err2 := db.Pool.QueryRow(context.Background(), "SELECT COUNT(*) FROM cves WHERE updated_date >= NOW() - INTERVAL '24 hours'").Scan(&new24h)
+		err1 := db.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM cves").Scan(&total)
+		err2 := db.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM cves WHERE updated_date >= NOW() - INTERVAL '24 hours'").Scan(&new24h)
 		
 		if err1 == nil && err2 == nil {
 			statsCache.Lock()
@@ -213,6 +233,8 @@ func StartStatsTicker() {
 
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case <-ticker.C:
 			refresh()
 		}
@@ -241,5 +263,15 @@ func SendResponse(w http.ResponseWriter, r *http.Request, success bool, message 
 		http.Error(w, errMsg, http.StatusBadRequest)
 		return
 	}
+	if redirect == "" {
+		redirect = "/"
+	}
 	http.Redirect(w, r, redirect, http.StatusFound)
+}
+
+func sanitizeForLog(s string) string {
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.ReplaceAll(s, "\n", "")
+	s = strings.ReplaceAll(s, string(rune(0)), "")
+	return s
 }

@@ -40,7 +40,7 @@
                     <button data-menu="menu-{{.ID}}" class="menu-trigger w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/10 text-gray-500 hover:text-white transition-colors">
                         <span class="material-symbols-outlined text-xl">more_vert</span>
                     </button>
-                    <div id="menu-{{.ID}}" class="hidden absolute right-0 mt-2 w-48 bg-[#181c22] border border-white/10 rounded-xl shadow-2xl z-50 p-2 glass">
+                    <div id="menu-{{.ID}}" class="action-menu-dropdown hidden absolute right-0 mt-2 w-48 bg-[#181c22] border border-white/10 rounded-xl shadow-2xl z-50 p-2 glass">
                         <button data-invite="{{.InviteCode}}" class="copy-invite w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-300 hover:bg-white/5 hover:text-white rounded-lg transition-all text-left">
                             <span class="material-symbols-outlined text-sm">content_copy</span> Copy Invite
                         </button>
@@ -92,10 +92,11 @@
 
 <script>
     function toggleMenu(id) {
-        document.querySelectorAll('.action-menu div').forEach(el => {
+        document.querySelectorAll('.action-menu-dropdown').forEach(el => {
             if (el.id !== id) el.classList.add('hidden');
         });
-        document.getElementById(id).classList.toggle('hidden');
+        const menu = document.getElementById(id);
+        if (menu) menu.classList.toggle('hidden');
     }
 
     function copyToClipboard(text) {
@@ -263,7 +264,7 @@
         // Close menus when clicking outside
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.action-menu')) {
-                document.querySelectorAll('.action-menu div').forEach(el => el.classList.add('hidden'));
+                document.querySelectorAll('.action-menu-dropdown').forEach(el => el.classList.add('hidden'));
             }
         });
     });

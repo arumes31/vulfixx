@@ -70,15 +70,17 @@ func AssetsHandler(w http.ResponseWriter, r *http.Request) {
 		var teamID *int
 		if teamIDStr != "" && teamIDStr != "0" {
 			tid, err := strconv.Atoi(teamIDStr)
-			if err == nil {
-				teamID = &tid
-				// Verify membership
-				var isMember bool
-				err := db.Pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", tid, userID).Scan(&isMember)
-				if err != nil || !isMember {
-					SendResponse(w, r, false, "", "", "You are not a member of this team")
-					return
-				}
+			if err != nil {
+				SendResponse(w, r, false, "", "", "Invalid team_id")
+				return
+			}
+			teamID = &tid
+			// Verify membership
+			var isMember bool
+			err = db.Pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", tid, userID).Scan(&isMember)
+			if err != nil || !isMember {
+				SendResponse(w, r, false, "", "", "You are not a member of this team")
+				return
 			}
 		}
 
@@ -98,15 +100,16 @@ func AssetsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		tx, err := db.Pool.Begin(r.Context())
+		ctx := r.Context()
+		tx, err := db.Pool.Begin(ctx)
 		if err != nil {
 			SendResponse(w, r, false, "", "", "Internal server error")
 			return
 		}
-		defer func() { _ = tx.Rollback(r.Context()) }()
+		defer func() { _ = tx.Rollback(ctx) }()
 
 		var assetID int
-		err = tx.QueryRow(r.Context(), `
+		err = tx.QueryRow(ctx, `
 			INSERT INTO assets (user_id, team_id, name, type) VALUES ($1, $2, $3, $4) RETURNING id
 		`, userID, teamID, name, assetType).Scan(&assetID)
 		if err != nil {
@@ -120,7 +123,7 @@ func AssetsHandler(w http.ResponseWriter, r *http.Request) {
 			for _, kw := range kwList {
 				kw = strings.TrimSpace(kw)
 				if kw != "" {
-					_, err = tx.Exec(r.Context(), `
+					_, err = tx.Exec(ctx, `
 						INSERT INTO asset_keywords (asset_id, keyword) VALUES ($1, $2)
 						ON CONFLICT DO NOTHING
 					`, assetID, kw)
@@ -132,14 +135,17 @@ func AssetsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		if err = tx.Commit(r.Context()); err != nil {
+		if err = tx.Commit(ctx); err != nil {
 			SendResponse(w, r, false, "", "", "Internal server error")
 			return
 		}
 
-		LogActivity(r.Context(), userID, "asset_registered", fmt.Sprintf("Registered asset %q", name), r.RemoteAddr, r.UserAgent())
+		LogActivity(ctx, userID, "asset_registered", fmt.Sprintf("Registered asset %q", name), r.RemoteAddr, r.UserAgent())
 		SendResponse(w, r, true, "Asset registered successfully", "/assets", "")
+		return
 	}
+
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 }
 
 func DeleteAssetHandler(w http.ResponseWriter, r *http.Request) {

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/pquerna/otp/totp"
 )
@@ -41,11 +42,57 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	preAuthUserID, hasPreAuth := session.Values["pre_auth_user_id"].(int)
 
 	if hasPreAuth && totpCode != "" {
-		// User is submitting TOTP after providing valid password
+		preAuthTS, _ := session.Values["pre_auth_ts"].(int64)
+		attempts, _ := session.Values["pre_auth_attempts"].(int)
+
+		if time.Now().Unix()-preAuthTS > 300 {
+			delete(session.Values, "pre_auth_user_id")
+			delete(session.Values, "pre_auth_ts")
+			delete(session.Values, "pre_auth_attempts")
+			if err := session.Save(r, w); err != nil {
+				log.Printf("Error saving session: %v", err)
+			}
+			RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Session expired"})
+			return
+		}
+
+		if attempts >= 5 {
+			delete(session.Values, "pre_auth_user_id")
+			delete(session.Values, "pre_auth_ts")
+			delete(session.Values, "pre_auth_attempts")
+			if err := session.Save(r, w); err != nil {
+				log.Printf("Error saving session: %v", err)
+			}
+			RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Too many attempts"})
+			return
+		}
+
 		var isTOTPEnabled bool
 		var secret string
 		err := db.Pool.QueryRow(r.Context(), "SELECT is_totp_enabled, COALESCE(totp_secret, '') FROM users WHERE id = $1", preAuthUserID).Scan(&isTOTPEnabled, &secret)
-		if err != nil || !isTOTPEnabled || !totp.Validate(totpCode, secret) {
+		if err != nil {
+			log.Printf("DB error fetching TOTP secret: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		if !isTOTPEnabled || secret == "" {
+			log.Printf("User %d in pre-auth but TOTP not enabled or secret missing", preAuthUserID)
+			delete(session.Values, "pre_auth_user_id")
+			delete(session.Values, "pre_auth_ts")
+			delete(session.Values, "pre_auth_attempts")
+			if err := session.Save(r, w); err != nil {
+				log.Printf("Error saving session: %v", err)
+			}
+			RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "2FA is not properly configured"})
+			return
+		}
+
+		if !totp.Validate(totpCode, secret) {
+			session.Values["pre_auth_attempts"] = attempts + 1
+			if err := session.Save(r, w); err != nil {
+				log.Printf("Error saving session: %v", err)
+			}
 			RenderTemplate(w, r, "login.html", map[string]interface{}{
 				"Error":       "Invalid TOTP code",
 				"RequireTOTP": true,
@@ -55,10 +102,15 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Success! Clear pre-auth and set full auth
 		delete(session.Values, "pre_auth_user_id")
+		delete(session.Values, "pre_auth_ts")
+		delete(session.Values, "pre_auth_attempts")
 		session.Values["user_id"] = preAuthUserID
 
 		var isAdmin bool
-		_ = db.Pool.QueryRow(r.Context(), "SELECT is_admin FROM users WHERE id = $1", preAuthUserID).Scan(&isAdmin)
+		err = db.Pool.QueryRow(r.Context(), "SELECT is_admin FROM users WHERE id = $1", preAuthUserID).Scan(&isAdmin)
+		if err != nil {
+			log.Printf("DB error fetching is_admin: %v", err)
+		}
 		session.Values["is_admin"] = isAdmin
 
 		if err := session.Save(r, w); err != nil {
@@ -79,6 +131,8 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	if user.IsTOTPEnabled {
 		session.Values["pre_auth_user_id"] = user.ID
+		session.Values["pre_auth_ts"] = time.Now().Unix()
+		session.Values["pre_auth_attempts"] = 0
 		if err := session.Save(r, w); err != nil {
 			log.Printf("Error saving session: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -137,7 +191,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error marshaling verification payload: %v", err)
 		// Rollback: delete the user we just created since we can't send verification
 		if _, delErr := db.Pool.Exec(r.Context(), "DELETE FROM users WHERE email = $1", email); delErr != nil {
-			log.Printf("Error rolling back user creation for %q: %v", redactEmail(email), delErr)
+			log.Printf("Error rolling back user creation for %q: %v", sanitizeForLog(redactEmail(email)), delErr)
 		}
 		RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
 		return
@@ -146,12 +200,12 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error enqueueing verification payload: %v", err)
 		// Rollback: delete the user we just created since we can't send verification
 		if _, delErr := db.Pool.Exec(r.Context(), "DELETE FROM users WHERE email = $1", email); delErr != nil {
-			log.Printf("Error rolling back user creation for %q: %v", redactEmail(email), delErr)
+			log.Printf("Error rolling back user creation for %q: %v", sanitizeForLog(redactEmail(email)), delErr)
 		}
 		RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
 		return
 	}
-	log.Printf("Verification queued for %q", redactEmail(email))
+	log.Printf("Verification queued for %q", sanitizeForLog(redactEmail(email)))
 
 	RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Registration successful. Please check your email to verify your account."})
 }

@@ -43,19 +43,19 @@ func bufferAlert(ctx context.Context, userID int, cve *models.CVE, email, assetN
 			bufferTime = 1 * time.Minute
 		}
 
-		go func(bTime time.Duration) {
+		go func(bTime time.Duration, procCtx context.Context) {
 			defer func() {
-				cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				cleanupCtx, cancel := context.WithTimeout(procCtx, 5*time.Second)
 				defer cancel()
 				db.RedisClient.Del(cleanupCtx, processingKey)
 			}()
 			select {
 			case <-time.After(bTime):
-				processUserBuffer(context.Background(), userID)
-			case <-ctx.Done():
+				processUserBuffer(procCtx, userID)
+			case <-procCtx.Done():
 				return
 			}
-		}(bufferTime)
+		}(bufferTime, ctx)
 	}
 	return true
 }

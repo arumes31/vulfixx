@@ -21,17 +21,24 @@ func ReadyzHandler(w http.ResponseWriter, r *http.Request) {
 		"redis":    "up",
 	}
 	
+	isDown := false
+
 	// Check DB
 	if err := db.Pool.Ping(r.Context()); err != nil {
 		status["database"] = "down"
-		w.WriteHeader(http.StatusServiceUnavailable)
+		isDown = true
 	}
 	
 	// Check Redis
 	if err := db.RedisClient.Ping(r.Context()).Err(); err != nil {
 		status["redis"] = "down"
-		w.WriteHeader(http.StatusServiceUnavailable)
+		isDown = true
 	}
 	
+	if isDown {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	} else {
+		w.WriteHeader(http.StatusOK)
+	}
 	_ = json.NewEncoder(w).Encode(status)
 }

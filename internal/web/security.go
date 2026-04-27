@@ -19,7 +19,7 @@ func SecurityHeadersMiddleware(next http.Handler) http.Handler {
 
 		// Cross-Site Scripting protection (modern approach is CSP)
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:;")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; font-src 'self' data:; img-src 'self' data:;")
 
 		next.ServeHTTP(w, r)
 	})

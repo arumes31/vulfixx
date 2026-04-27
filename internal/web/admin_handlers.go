@@ -1,11 +1,15 @@
 package web
 
 import (
+	"crypto/rand"
+	"crypto/subtle"
 	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
+	"encoding/hex"
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 func AdminUserManagementHandler(w http.ResponseWriter, r *http.Request) {
@@ -29,8 +33,32 @@ func AdminUserManagementHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error iterating user rows: %v", err)
 	}
 
+	session, err := store.Get(r, "vulfixx-session")
+	if err != nil {
+		log.Printf("AdminUserManagementHandler: session get error: %v", err)
+		http.Error(w, "Session error", http.StatusInternalServerError)
+		return
+	}
+	csrfToken, ok := session.Values["admin_csrf_token"].(string)
+	if !ok || csrfToken == "" {
+		b := make([]byte, 32)
+		if _, randErr := rand.Read(b); randErr != nil {
+			log.Printf("AdminUserManagementHandler: rand.Read error: %v", randErr)
+			http.Error(w, "Failed to generate CSRF token", http.StatusInternalServerError)
+			return
+		}
+		csrfToken = hex.EncodeToString(b)
+		session.Values["admin_csrf_token"] = csrfToken
+		if saveErr := session.Save(r, w); saveErr != nil {
+			log.Printf("AdminUserManagementHandler: session save error: %v", saveErr)
+			http.Error(w, "Failed to save session", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	RenderTemplate(w, r, "admin_users.html", map[string]interface{}{
-		"Users": users,
+		"Users":          users,
+		"AdminCSRFToken": csrfToken,
 	})
 }
 
@@ -42,6 +70,19 @@ func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Invalid form", http.StatusBadRequest)
+		return
+	}
+
+	csrfToken := r.FormValue("csrf_token")
+	session, err := store.Get(r, "vulfixx-session")
+	if err != nil {
+		log.Printf("AdminDeleteUserHandler: session get error: %v", err)
+		http.Error(w, "Session error", http.StatusInternalServerError)
+		return
+	}
+	expectedToken, ok := session.Values["admin_csrf_token"].(string)
+	if !ok || expectedToken == "" || subtle.ConstantTimeCompare([]byte(csrfToken), []byte(expectedToken)) != 1 {
+		http.Error(w, "Forbidden: Invalid CSRF token", http.StatusForbidden)
 		return
 	}
 
@@ -70,8 +111,18 @@ func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	res, err := db.Pool.Exec(r.Context(), "DELETE FROM users WHERE id = $1 AND is_admin = FALSE", id)
 	if err != nil {
+		log.Printf("Failed to delete user %d: %v", id, err)
 		http.Error(w, "Failed to delete user", http.StatusInternalServerError)
 		return
+	}
+
+	if res.RowsAffected() > 0 {
+		_, auditErr := db.Pool.Exec(r.Context(), 
+			"INSERT INTO user_activity_logs (user_id, activity_type, description, ip_address, created_at) VALUES ($1, $2, $3, $4, $5)", 
+			currentUserID, "user_delete", "Deleted user ID "+strconv.Itoa(id), r.RemoteAddr, time.Now())
+		if auditErr != nil {
+			log.Printf("Failed to insert audit log: %v", auditErr)
+		}
 	}
 
 	if res.RowsAffected() == 0 {

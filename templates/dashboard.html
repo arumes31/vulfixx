@@ -164,6 +164,10 @@
 
 <script>
     function explainVector(vector) {
+        if (!vector || typeof vector !== 'string') {
+            vulfixx.toast('CVSS vector data unavailable for this CVE', 'info');
+            return;
+        }
         const parts = vector.split('/');
         const container = document.createElement('div');
         container.className = 'space-y-6';

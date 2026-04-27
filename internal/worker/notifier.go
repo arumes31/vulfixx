@@ -20,7 +20,7 @@ import (
 )
 
 func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName string) bool {
-	log.Printf("ALERT: Sending to %s for %s\n", email, cve.CVEID)
+	log.Printf("ALERT: Sending to %s for %s\n", redactEmail(email), cve.CVEID)
 	var wg sync.WaitGroup
 	successChan := make(chan bool, 2)
 	if sub.EnableWebhook && sub.WebhookURL != "" {
@@ -158,6 +158,10 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName st
 
 			baseURL := os.Getenv("BASE_URL")
 			if baseURL == "" { baseURL = "http://localhost:8080" }
+			if u, err := url.Parse(baseURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+				log.Printf("Worker: Invalid BASE_URL %q, defaulting to localhost", baseURL)
+				baseURL = "http://localhost:8080"
+			}
 
 			buttonsHTML := fmt.Sprintf(`
 				<div style="margin-top: 30px; display: table; width: 100%%; border-collapse: separate; border-spacing: 10px 0;">
@@ -197,4 +201,14 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName st
 		}
 	}
 	return hasSuccess
+}
+func redactEmail(email string) string {
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return "[invalid-email]"
+	}
+	if len(parts[0]) <= 2 {
+		return "*@" + parts[1]
+	}
+	return parts[0][:2] + "****@" + parts[1]
 }

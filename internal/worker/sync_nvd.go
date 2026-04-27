@@ -124,7 +124,7 @@ func runFullSync(ctx context.Context, isBackfill bool) {
 		// #nosec G704 -- baseURL is either constant or from admin-controlled environment variable
 		req, err := http.NewRequestWithContext(ctx, "GET", nvdURL, nil)
 		if err != nil {
-			log.Println("Error creating NVD request:", err)
+			log.Println("Error creating NVD request:", sanitizeForLog(err.Error()))
 			return
 		}
 		if apiKey := os.Getenv("NVD_API_KEY"); apiKey != "" {
@@ -149,12 +149,12 @@ func runFullSync(ctx context.Context, isBackfill bool) {
 				}
 				break
 			}
-			log.Printf("Worker: [ERROR] NVD API call failed: %v, retrying (%d/%d)...", retryErr, retry+1, maxRetries)
+			log.Printf("Worker: [ERROR] NVD API call failed: %v, retrying (%d/%d)...", sanitizeForLog(retryErr.Error()), retry+1, maxRetries)
 			time.Sleep(delay * time.Duration(retry+1))
 		}
 
 		if retryErr != nil {
-			log.Println("Error fetching from NVD after retries:", retryErr)
+			log.Println("Error fetching from NVD after retries:", sanitizeForLog(retryErr.Error()))
 			return
 		}
 
@@ -180,7 +180,7 @@ func runFullSync(ctx context.Context, isBackfill bool) {
 		var nvdResp NVDResponse
 		if err := json.NewDecoder(resp.Body).Decode(&nvdResp); err != nil {
 			_ = resp.Body.Close()
-			log.Println("Error decoding NVD response:", err)
+			log.Println("Error decoding NVD response:", sanitizeForLog(err.Error()))
 			return
 		}
 		_ = resp.Body.Close()
@@ -240,12 +240,12 @@ func upsertCVEs(ctx context.Context, vulnerabilities []NVDCVEEntry, sendAlerts b
 		}
 		pubDate, err1 := time.Parse(time.RFC3339, cveData.Published)
 		if err1 != nil {
-			log.Printf("Worker: [WARN] Failed to parse published date for %s (%q): %v", cveData.ID, cveData.Published, err1)
+			log.Printf("Worker: [WARN] Failed to parse published date for %s (%q): %v", sanitizeForLog(cveData.ID), sanitizeForLog(cveData.Published), sanitizeForLog(err1.Error()))
 			continue
 		}
 		modDate, err2 := time.Parse(time.RFC3339, cveData.LastModified)
 		if err2 != nil {
-			log.Printf("Worker: [WARN] Failed to parse modified date for %s (%q): %v", cveData.ID, cveData.LastModified, err2)
+			log.Printf("Worker: [WARN] Failed to parse modified date for %s (%q): %v", sanitizeForLog(cveData.ID), sanitizeForLog(cveData.LastModified), sanitizeForLog(err2.Error()))
 			continue
 		}
 		cwe := ""
@@ -294,18 +294,18 @@ func upsertCVEs(ctx context.Context, vulnerabilities []NVDCVEEntry, sendAlerts b
 				updated++
 			}
 		} else {
-			log.Printf("Worker: [ERROR] Failed to upsert CVE %s: %v", cve.CVEID, err)
+			log.Printf("Worker: [ERROR] Failed to upsert CVE %s: %v", sanitizeForLog(cve.CVEID), sanitizeForLog(err.Error()))
 			_ = db.Pool.QueryRow(ctx, "SELECT id FROM cves WHERE cve_id = $1", cve.CVEID).Scan(&id)
 		}
 		if id > 0 && sendAlerts {
 			cve.ID = id
 			alertJob, err := json.Marshal(cve)
 			if err != nil {
-				log.Printf("Worker: [ERROR] Failed to marshal alert for %s: %v", cve.CVEID, err)
+				log.Printf("Worker: [ERROR] Failed to marshal alert for %s: %v", sanitizeForLog(cve.CVEID), sanitizeForLog(err.Error()))
 				continue
 			}
 			if err := db.RedisClient.LPush(ctx, "cve_alerts_queue", alertJob).Err(); err != nil {
-				log.Printf("Worker: [ERROR] Failed to enqueue alert for %d (%s): %v", id, cve.CVEID, err)
+				log.Printf("Worker: [ERROR] Failed to enqueue alert for %d (%s): %v", id, sanitizeForLog(cve.CVEID), sanitizeForLog(err.Error()))
 			}
 		}
 	}
@@ -333,8 +333,15 @@ func setLastSyncTime(ctx context.Context, t time.Time) {
 		ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()
 	`, val)
 	if err != nil {
-		log.Printf("Worker: Failed to update sync_state: %v", err)
+		log.Printf("Worker: Failed to update sync_state: %v", sanitizeForLog(err.Error()))
 	}
+}
+
+func sanitizeForLog(s string) string {
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.ReplaceAll(s, "\n", "")
+	s = strings.ReplaceAll(s, string(rune(0)), "")
+	return s
 }
 
 func nvdAPIDelay() time.Duration {

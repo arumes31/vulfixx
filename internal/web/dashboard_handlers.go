@@ -222,6 +222,12 @@ func UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	allowedStatuses := map[string]bool{"active": true, "in_progress": true, "resolved": true, "ignored": true}
+	if !allowedStatuses[req.Status] {
+		SendResponse(w, r, false, "", "", "Invalid status")
+		return
+	}
+
 	if activeTeamID > 0 {
 		var isMember bool
 		err := db.Pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", activeTeamID, userID).Scan(&isMember)
@@ -357,6 +363,12 @@ func BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	allowedStatuses := map[string]bool{"active": true, "in_progress": true, "resolved": true, "ignored": true}
+	if !allowedStatuses[req.Status] {
+		SendResponse(w, r, false, "", "", "Invalid status")
+		return
+	}
+
 	if len(req.CVEIDs) == 0 {
 		SendResponse(w, r, true, "No CVEs selected", "", "")
 		return
@@ -389,21 +401,31 @@ func BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = tx.Rollback(r.Context()) }()
 
 	var query string
-	if activeTeamID > 0 {
-		query = `
-			INSERT INTO user_cve_status (user_id, team_id, cve_id, status)
-			SELECT $1, $2, id, $3 FROM unnest($4::int[]) AS id
-			ON CONFLICT (team_id, cve_id) WHERE team_id IS NOT NULL DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
-		`
+	if req.Status == "active" {
+		if activeTeamID > 0 {
+			query = "DELETE FROM user_cve_status WHERE cve_id = ANY($1::int[]) AND team_id = $2"
+			_, err = tx.Exec(r.Context(), query, req.CVEIDs, activeTeamID)
+		} else {
+			query = "DELETE FROM user_cve_status WHERE cve_id = ANY($1::int[]) AND user_id = $2 AND team_id IS NULL"
+			_, err = tx.Exec(r.Context(), query, req.CVEIDs, userID)
+		}
 	} else {
-		query = `
-			INSERT INTO user_cve_status (user_id, team_id, cve_id, status)
-			SELECT $1, $2, id, $3 FROM unnest($4::int[]) AS id
-			ON CONFLICT (user_id, cve_id) WHERE team_id IS NULL DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
-		`
+		if activeTeamID > 0 {
+			query = `
+				INSERT INTO user_cve_status (user_id, team_id, cve_id, status)
+				SELECT $1, $2, id, $3 FROM unnest($4::int[]) AS id
+				ON CONFLICT (team_id, cve_id) WHERE team_id IS NOT NULL DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
+			`
+		} else {
+			query = `
+				INSERT INTO user_cve_status (user_id, team_id, cve_id, status)
+				SELECT $1, $2, id, $3 FROM unnest($4::int[]) AS id
+				ON CONFLICT (user_id, cve_id) WHERE team_id IS NULL DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
+			`
+		}
+		_, err = tx.Exec(r.Context(), query, userID, teamPtr, req.Status, req.CVEIDs)
 	}
 
-	_, err = tx.Exec(r.Context(), query, userID, teamPtr, req.Status, req.CVEIDs)
 	if err != nil {
 		log.Printf("BulkUpdate Error: %v", err)
 		SendResponse(w, r, false, "", "", "Internal server error")

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -87,6 +88,10 @@ func CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 	var teamID int
 	err = tx.QueryRow(r.Context(), "INSERT INTO teams (name, invite_code) VALUES ($1, $2) RETURNING id", name, inviteCode).Scan(&teamID)
 	if err != nil {
+		if strings.Contains(err.Error(), "duplicate key value") || strings.Contains(err.Error(), "23505") {
+			SendResponse(w, r, false, "", "", "Team name already exists")
+			return
+		}
 		SendResponse(w, r, false, "", "", "Internal server error")
 		return
 	}

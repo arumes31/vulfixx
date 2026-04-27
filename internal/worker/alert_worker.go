@@ -9,8 +9,32 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
+
+var regexCache sync.Map
+
+func getKeywordRegex(keyword string) *regexp.Regexp {
+	pattern := `(?i)\b` + regexp.QuoteMeta(keyword) + `\b`
+	if val, ok := regexCache.Load(pattern); ok {
+		return val.(*regexp.Regexp)
+	}
+	re := regexp.MustCompile(pattern)
+	regexCache.Store(pattern, re)
+	return re
+}
+
+func getPatternRegex(pattern string) (*regexp.Regexp, error) {
+	if val, ok := regexCache.Load(pattern); ok {
+		return val.(*regexp.Regexp), nil
+	}
+	re, err := regexp.Compile(pattern)
+	if err == nil {
+		regexCache.Store(pattern, re)
+	}
+	return re, err
+}
 
 func processAlerts(ctx context.Context) {
 	for {
@@ -84,7 +108,7 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 			if notifiedUsers[userID] {
 				continue
 			}
-			if strings.Contains(strings.ToLower(cve.Description), strings.ToLower(keyword)) {
+			if getKeywordRegex(keyword).MatchString(cve.Description) {
 				sub := models.UserSubscription{EnableEmail: true, EnableWebhook: true}
 				if notifyIfNew(ctx, userID, cve, sub, email, assetName) {
 					notifiedUsers[userID] = true
@@ -94,7 +118,7 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 }
 
 func matchCVE(cve *models.CVE, sub models.UserSubscription) bool {
-	if sub.Keyword != "" && !strings.Contains(strings.ToLower(cve.Description), strings.ToLower(sub.Keyword)) {
+	if sub.Keyword != "" && !getKeywordRegex(sub.Keyword).MatchString(cve.Description) {
 		return false
 	}
 	if sub.MinSeverity > 0 && cve.CVSSScore < sub.MinSeverity {
@@ -142,7 +166,7 @@ func evaluateComplexFilter(logic string, cve *models.CVE) bool {
 		case "regex:":
 			if i+1 < len(tokens) {
 				pattern := tokens[i+1]
-				re, err := regexp.Compile(pattern)
+				re, err := getPatternRegex(pattern)
 				if err == nil && !re.MatchString(cve.Description) {
 					return false
 				}
