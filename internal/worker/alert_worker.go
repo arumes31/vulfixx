@@ -6,6 +6,7 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"log"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -13,23 +14,21 @@ import (
 
 func processAlerts(ctx context.Context) {
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			result, err := db.RedisClient.BRPop(ctx, 0, "cve_alerts_queue").Result()
-			if err != nil {
-				log.Println("Error reading from alerts queue:", err)
-				time.Sleep(1 * time.Second)
-				continue
+		result, err := db.RedisClient.BRPop(ctx, 0, "cve_alerts_queue").Result()
+		if err != nil {
+			if ctx.Err() != nil {
+				return
 			}
-			var cve models.CVE
-			if err := json.Unmarshal([]byte(result[1]), &cve); err != nil {
-				log.Printf("Error unmarshaling alert job: %v", err)
-				continue
-			}
-			evaluateSubscriptions(ctx, &cve)
+			log.Println("Error reading from alerts queue:", err)
+			time.Sleep(1 * time.Second)
+			continue
 		}
+		var cve models.CVE
+		if err := json.Unmarshal([]byte(result[1]), &cve); err != nil {
+			log.Printf("Error unmarshaling alert job: %v", err)
+			continue
+		}
+		evaluateSubscriptions(ctx, &cve)
 	}
 }
 
@@ -39,7 +38,9 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		FROM user_subscriptions s
 		JOIN users u ON s.user_id = u.id
 		WHERE u.is_email_verified = TRUE
-	`)
+		  AND s.min_severity <= $1
+		  AND (s.keyword = '' OR $2 ILIKE '%' || s.keyword || '%')
+	`, cve.CVSSScore, cve.Description)
 	if err != nil {
 		log.Println("Error fetching subscriptions:", err)
 		return
@@ -67,7 +68,8 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		JOIN assets a ON ak.asset_id = a.id
 		JOIN users u ON a.user_id = u.id
 		WHERE u.is_email_verified = TRUE
-	`)
+		  AND $1 ILIKE '%' || ak.keyword || '%'
+	`, cve.Description)
 	if err != nil {
 		log.Println("Error fetching asset keywords:", err)
 		return
@@ -141,6 +143,21 @@ func evaluateComplexFilter(logic string, cve *models.CVE) bool {
 			return false
 		}
 	}
+
+	// Regex Filter support
+	if strings.Contains(logic, "regex:") {
+		parts := strings.Split(logic, "regex:")
+		if len(parts) > 1 {
+			pattern := strings.TrimSpace(strings.Split(parts[1], " ")[0])
+			re, err := regexp.Compile(pattern)
+			if err == nil {
+				if !re.MatchString(cve.Description) {
+					return false
+				}
+			}
+		}
+	}
+
 	return true
 }
 

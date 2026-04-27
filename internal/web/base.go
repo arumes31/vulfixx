@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"cve-tracker/internal/db"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gorilla/csrf"
+	"github.com/jackc/pgx/v5"
 )
 
 var templateMap map[string]*template.Template
@@ -42,8 +44,12 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		var isVerified bool
 		err := db.Pool.QueryRow(r.Context(), "SELECT is_email_verified FROM users WHERE id = $1", userID).Scan(&isVerified)
 		if err != nil {
+			if err == pgx.ErrNoRows {
+				http.Redirect(w, r, "/login", http.StatusFound)
+				return
+			}
 			log.Printf("AuthMiddleware DB ERROR: userID=%v, path=%s, err=%v", userID, r.URL.Path, err)
-			http.Error(w, "Please verify your email address to access this page.", http.StatusForbidden)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 		if !isVerified {
@@ -73,9 +79,11 @@ func AdminMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Optionally refresh session state to keep UI consistent
-		session, _ := store.Get(r, "session-name")
+		session, _ := store.Get(r, "vulfixx-session")
 		session.Values["is_admin"] = isAdmin
-		_ = session.Save(r, w)
+		if err := session.Save(r, w); err != nil {
+			log.Printf("AdminMiddleware session save error: %v", err)
+		}
 
 		next.ServeHTTP(w, r)
 	})
@@ -130,6 +138,7 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 			WHERE tm.user_id = $1
 		`, userID)
 		if err == nil {
+			defer teamRows.Close()
 			var teams []map[string]interface{}
 			for teamRows.Next() {
 				var id int
@@ -138,7 +147,9 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 					teams = append(teams, map[string]interface{}{"ID": id, "Name": name})
 				}
 			}
-			teamRows.Close()
+			if err := teamRows.Err(); err != nil {
+				log.Printf("RenderTemplate teamRows ERR: %v", err)
+			}
 			data["UserTeams"] = teams
 		}
 
@@ -159,8 +170,11 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 			statsCache.RUnlock()
 			statsCache.Lock()
 			if time.Since(statsCache.lastUpdated) > 5*time.Minute {
-				_ = db.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM cves").Scan(&statsCache.total)
-				_ = db.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM cves WHERE updated_date >= NOW() - INTERVAL '24 hours'").Scan(&statsCache.newLast24h)
+				err1 := db.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM cves").Scan(&statsCache.total)
+				err2 := db.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM cves WHERE updated_date >= NOW() - INTERVAL '24 hours'").Scan(&statsCache.newLast24h)
+				if err1 != nil || err2 != nil {
+					log.Printf("Error refreshing stats cache: %v, %v", err1, err2)
+				}
 				statsCache.lastUpdated = time.Now()
 			}
 			data["GlobalTotalCVEs"] = statsCache.total
@@ -179,10 +193,13 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
+	buf := new(bytes.Buffer)
+	if err := tmpl.ExecuteTemplate(buf, "base", data); err != nil {
 		log.Printf("Error executing template %s: %v", name, err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
 	}
+	_, _ = w.Write(buf.Bytes())
 }
 func SendResponse(w http.ResponseWriter, r *http.Request, success bool, message string, redirect string, errMsg string) {
 	if r.Header.Get("X-Requested-With") == "XMLHttpRequest" || strings.Contains(r.Header.Get("Accept"), "application/json") {

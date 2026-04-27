@@ -1,19 +1,24 @@
 package web
 
 import (
-	"context"
 	"cve-tracker/internal/auth"
 	"cve-tracker/internal/db"
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/pquerna/otp/totp"
 )
 
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "GET" {
+	if r.Method == http.MethodGet {
 		RenderTemplate(w, r, "login.html", nil)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -25,9 +30,11 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 	totpCode := r.FormValue("totp_code")
 
-	session, err := store.Get(r, "session-name")
+	session, err := store.Get(r, "vulfixx-session")
 	if err != nil {
 		log.Printf("Error getting session: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
 	}
 
 	// Check if this is a TOTP submission for a pre-authenticated user
@@ -98,8 +105,13 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func RegisterHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "GET" {
+	if r.Method == http.MethodGet {
 		RenderTemplate(w, r, "register.html", nil)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -110,7 +122,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	email := r.FormValue("email")
 	password := r.FormValue("password")
 
-	token, err := auth.Register(context.Background(), email, password)
+	token, err := auth.Register(r.Context(), email, password)
 	if err != nil {
 		RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
 		return
@@ -125,7 +137,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error marshaling verification payload: %v", err)
 		// Rollback: delete the user we just created since we can't send verification
 		if _, delErr := db.Pool.Exec(r.Context(), "DELETE FROM users WHERE email = $1", email); delErr != nil {
-			log.Printf("Error rolling back user creation for %q: %v", email, delErr)
+			log.Printf("Error rolling back user creation for %q: %v", redactEmail(email), delErr)
 		}
 		RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
 		return
@@ -134,20 +146,26 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error enqueueing verification payload: %v", err)
 		// Rollback: delete the user we just created since we can't send verification
 		if _, delErr := db.Pool.Exec(r.Context(), "DELETE FROM users WHERE email = $1", email); delErr != nil {
-			log.Printf("Error rolling back user creation for %q: %v", email, delErr)
+			log.Printf("Error rolling back user creation for %q: %v", redactEmail(email), delErr)
 		}
 		RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
 		return
 	}
-	log.Printf("Verification queued for %q", email)
+	log.Printf("Verification queued for %q", redactEmail(email))
 
 	RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Registration successful. Please check your email to verify your account."})
 }
 
 func LogoutHandler(w http.ResponseWriter, r *http.Request) {
-	session, err := store.Get(r, "session-name")
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	session, err := store.Get(r, "vulfixx-session")
 	if err != nil {
 		log.Printf("Error getting session: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
 	}
 	session.Options.MaxAge = -1
 	if err := session.Save(r, w); err != nil {
@@ -181,16 +199,27 @@ func ConfirmEmailChangeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	confirmed, newEmail, confirmedUserID, err := auth.ConfirmEmailChange(r.Context(), token)
+	confirmed, _, confirmedUserID, err := auth.ConfirmEmailChange(r.Context(), token)
 	if err != nil {
 		http.Error(w, "Invalid or expired token", http.StatusBadRequest)
 		return
 	}
 
 	if confirmed {
-		LogActivity(r.Context(), confirmedUserID, "email_change", "Successfully changed email to "+newEmail, r.RemoteAddr, r.UserAgent())
+		LogActivity(r.Context(), confirmedUserID, "email_change", "Successfully changed email", r.RemoteAddr, r.UserAgent())
 		RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Email changed successfully! Please login with your new email."})
 	} else {
 		RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Email change half-confirmed. Please confirm on the other email address as well."})
 	}
+}
+
+func redactEmail(email string) string {
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return "[invalid-email]"
+	}
+	if len(parts[0]) <= 2 {
+		return "*@" + parts[1]
+	}
+	return parts[0][:2] + "****@" + parts[1]
 }

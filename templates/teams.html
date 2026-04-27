@@ -7,10 +7,10 @@
             <p class="text-gray-400 text-sm">Manage your collaborative team environments and shared intelligence.</p>
         </div>
         <div class="flex gap-3">
-            <button onclick="showJoinModal()" class="bg-white/5 border border-white/10 text-gray-300 px-5 py-2.5 rounded-xl hover:bg-white/10 hover:text-white transition-all flex items-center gap-2 font-bold text-sm">
+            <button id="btn-join-workspace" class="bg-white/5 border border-white/10 text-gray-300 px-5 py-2.5 rounded-xl hover:bg-white/10 hover:text-white transition-all flex items-center gap-2 font-bold text-sm">
                 <span class="material-symbols-outlined text-sm">link</span> Join Workspace
             </button>
-            <button onclick="showCreateModal()" class="bg-[#00daf3] text-[#00363d] px-5 py-2.5 rounded-xl hover:bg-[#00daf3]/80 transition-all flex items-center gap-2 font-bold text-sm shadow-lg shadow-[#00daf3]/20">
+            <button id="btn-create-team" class="bg-[#00daf3] text-[#00363d] px-5 py-2.5 rounded-xl hover:bg-[#00daf3]/80 transition-all flex items-center gap-2 font-bold text-sm shadow-lg shadow-[#00daf3]/20">
                 <span class="material-symbols-outlined text-sm">add</span> New Team
             </button>
         </div>
@@ -37,14 +37,14 @@
                 
                 <!-- Action Menu Popup -->
                 <div class="relative action-menu">
-                    <button onclick="toggleMenu('menu-{{.ID}}')" class="w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/10 text-gray-500 hover:text-white transition-colors">
+                    <button data-menu="menu-{{.ID}}" class="menu-trigger w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/10 text-gray-500 hover:text-white transition-colors">
                         <span class="material-symbols-outlined text-xl">more_vert</span>
                     </button>
                     <div id="menu-{{.ID}}" class="hidden absolute right-0 mt-2 w-48 bg-[#181c22] border border-white/10 rounded-xl shadow-2xl z-50 p-2 glass">
-                        <button onclick="copyToClipboard('{{.InviteCode}}')" class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-300 hover:bg-white/5 hover:text-white rounded-lg transition-all text-left">
+                        <button data-invite="{{.InviteCode}}" class="copy-invite w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-300 hover:bg-white/5 hover:text-white rounded-lg transition-all text-left">
                             <span class="material-symbols-outlined text-sm">content_copy</span> Copy Invite
                         </button>
-                        <button onclick="showLeaveConfirm('{{.ID}}', '{{.Name}}')" class="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 rounded-lg transition-all text-left">
+                        <button data-id="{{.ID}}" data-name="{{.Name}}" class="leave-team w-full flex items-center gap-3 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 rounded-lg transition-all text-left">
                             <span class="material-symbols-outlined text-sm">logout</span> Leave Team
                         </button>
                     </div>
@@ -53,11 +53,11 @@
 
             <div class="space-y-4">
                 <div class="flex items-center justify-between text-sm text-gray-400">
-                    <span>Active Members</span>
+                    <span>Workspace Members</span>
                     <div class="flex -space-x-2">
-                        <div class="w-7 h-7 rounded-full border-2 border-[#10141a] bg-gradient-to-tr from-gray-700 to-gray-600 flex items-center justify-center text-[8px] font-black">U1</div>
-                        <div class="w-7 h-7 rounded-full border-2 border-[#10141a] bg-gradient-to-tr from-[#00daf3] to-blue-500 flex items-center justify-center text-[8px] font-black text-[#00363d]">U2</div>
-                        <div class="w-7 h-7 rounded-full border-2 border-[#10141a] bg-white/5 flex items-center justify-center text-[8px] font-black text-gray-500">+1</div>
+                        <div class="w-7 h-7 rounded-full border-2 border-[#10141a] bg-white/5 flex items-center justify-center text-[8px] font-black text-gray-500">
+                            <span class="material-symbols-outlined text-[12px]">group</span>
+                        </div>
                     </div>
                 </div>
                 
@@ -83,8 +83,8 @@
         <h2 class="text-3xl font-bold text-white mb-4">Start Collaborating</h2>
         <p class="text-gray-400 mb-10 leading-relaxed">You haven't joined any team workspaces yet. Join an existing team with an invite code or create a new one to share vulnerability intelligence.</p>
         <div class="flex flex-col sm:flex-row justify-center gap-4">
-            <button onclick="showJoinModal()" class="bg-white/5 border border-white/10 text-white px-8 py-3 rounded-2xl hover:bg-white/10 transition-all font-bold">Join via Code</button>
-            <button onclick="showCreateModal()" class="bg-[#00daf3] text-[#00363d] px-8 py-3 rounded-2xl hover:bg-[#00daf3]/80 transition-all font-bold shadow-lg shadow-[#00daf3]/20">Create New Team</button>
+            <button id="empty-join-btn" class="bg-white/5 border border-white/10 text-white px-8 py-3 rounded-2xl hover:bg-white/10 transition-all font-bold">Join via Code</button>
+            <button id="empty-create-btn" class="bg-[#00daf3] text-[#00363d] px-8 py-3 rounded-2xl hover:bg-[#00daf3]/80 transition-all font-bold shadow-lg shadow-[#00daf3]/20">Create New Team</button>
         </div>
     </div>
     {{end}}
@@ -98,13 +98,6 @@
         document.getElementById(id).classList.toggle('hidden');
     }
 
-    // Close menus when clicking outside
-    document.addEventListener('click', (e) => {
-        if (!e.target.closest('.action-menu')) {
-            document.querySelectorAll('.action-menu div').forEach(el => el.classList.add('hidden'));
-        }
-    });
-
     function copyToClipboard(text) {
         navigator.clipboard.writeText(text).then(() => {
             vulfixx.toast('Invite code copied to clipboard!', 'success');
@@ -112,18 +105,34 @@
     }
 
     function showJoinModal() {
-        const content = `
-            <div class="space-y-4">
-                <p class="text-gray-400">Enter the 8-byte unique workspace code to join an existing team.</p>
-                <div class="relative">
-                    <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">vpn_key</span>
-                    <input id="join-code" type="text" placeholder="e.g. a1b2c3d4" class="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white focus:outline-none focus:border-[#00daf3] transition-all">
-                </div>
-            </div>
-        `;
-        vulfixx.modal('Join Workspace', content, [
-            { label: 'Cancel', onClick: 'vulfixx.closeModal()' },
-            { label: 'Join Team', primary: true, onClick: 'submitJoin()' }
+        const container = document.createElement('div');
+        container.className = 'space-y-4';
+
+        const desc = document.createElement('p');
+        desc.className = 'text-gray-400';
+        desc.textContent = 'Enter the 8-byte unique workspace code to join an existing team.';
+        container.appendChild(desc);
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'relative';
+
+        const icon = document.createElement('span');
+        icon.className = 'material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-500';
+        icon.textContent = 'vpn_key';
+        wrapper.appendChild(icon);
+
+        const input = document.createElement('input');
+        input.id = 'join-code';
+        input.type = 'text';
+        input.placeholder = 'e.g. a1b2c3d4';
+        input.className = 'w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white focus:outline-none focus:border-[#00daf3] transition-all';
+        wrapper.appendChild(input);
+
+        container.appendChild(wrapper);
+
+        vulfixx.modal('Join Workspace', container, [
+            { label: 'Cancel', onClick: () => vulfixx.closeModal() },
+            { label: 'Join Team', primary: true, onClick: () => submitJoin() }
         ]);
     }
 
@@ -147,18 +156,34 @@
     }
 
     function showCreateModal() {
-        const content = `
-            <div class="space-y-4">
-                <p class="text-gray-400">Establish a new collaborative workspace. You will be assigned as the Team Owner.</p>
-                <div class="relative">
-                    <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">label</span>
-                    <input id="team-name" type="text" placeholder="Team Name" class="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white focus:outline-none focus:border-[#00daf3] transition-all">
-                </div>
-            </div>
-        `;
-        vulfixx.modal('Create New Team', content, [
-            { label: 'Cancel', onClick: 'vulfixx.closeModal()' },
-            { label: 'Create Team', primary: true, onClick: 'submitCreate()' }
+        const container = document.createElement('div');
+        container.className = 'space-y-4';
+
+        const desc = document.createElement('p');
+        desc.className = 'text-gray-400';
+        desc.textContent = 'Establish a new collaborative workspace. You will be assigned as the Team Owner.';
+        container.appendChild(desc);
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'relative';
+
+        const icon = document.createElement('span');
+        icon.className = 'material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-500';
+        icon.textContent = 'label';
+        wrapper.appendChild(icon);
+
+        const input = document.createElement('input');
+        input.id = 'team-name';
+        input.type = 'text';
+        input.placeholder = 'Team Name';
+        input.className = 'w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white focus:outline-none focus:border-[#00daf3] transition-all';
+        wrapper.appendChild(input);
+
+        container.appendChild(wrapper);
+
+        vulfixx.modal('Create New Team', container, [
+            { label: 'Cancel', onClick: () => vulfixx.closeModal() },
+            { label: 'Create Team', primary: true, onClick: () => submitCreate() }
         ]);
     }
 
@@ -182,9 +207,16 @@
     }
 
     function showLeaveConfirm(id, name) {
-        vulfixx.modal('Leave Team', `Are you sure you want to leave <b>${name}</b>? You will lose access to all shared assets and remediation statuses.`, [
-            { label: 'Cancel', onClick: 'vulfixx.closeModal()' },
-            { label: 'Leave Now', primary: true, onClick: `submitLeave('${id}')` }
+        const container = document.createElement('div');
+        container.className = 'space-y-2';
+        
+        const p = document.createElement('p');
+        p.textContent = `Are you sure you want to leave ${name}? You will lose access to all shared assets and remediation statuses.`;
+        container.appendChild(p);
+
+        vulfixx.modal('Leave Team', container, [
+            { label: 'Cancel', onClick: () => vulfixx.closeModal() },
+            { label: 'Leave Now', primary: true, onClick: () => submitLeave(id) }
         ]);
     }
 
@@ -203,5 +235,34 @@
         
         if (data) setTimeout(() => window.location.reload(), 1000);
     }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('btn-join-workspace')?.addEventListener('click', showJoinModal);
+        document.getElementById('empty-join-btn')?.addEventListener('click', showJoinModal);
+        document.getElementById('btn-create-team')?.addEventListener('click', showCreateModal);
+        document.getElementById('empty-create-btn')?.addEventListener('click', showCreateModal);
+
+        document.querySelectorAll('.menu-trigger').forEach(el => {
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleMenu(el.dataset.menu);
+            });
+        });
+
+        document.querySelectorAll('.copy-invite').forEach(el => {
+            el.addEventListener('click', () => copyToClipboard(el.dataset.invite));
+        });
+
+        document.querySelectorAll('.leave-team').forEach(el => {
+            el.addEventListener('click', () => showLeaveConfirm(el.dataset.id, el.dataset.name));
+        });
+
+        // Close menus when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.action-menu')) {
+                document.querySelectorAll('.action-menu div').forEach(el => el.classList.add('hidden'));
+            }
+        });
+    });
 </script>
 {{end}}

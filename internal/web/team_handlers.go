@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 func generateInviteCode() string {
@@ -37,14 +38,19 @@ func TeamsHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id int
 		var name, inviteCode, role string
-		if err := rows.Scan(&id, &name, &inviteCode, &role); err == nil {
-			teams = append(teams, map[string]interface{}{
-				"ID":         id,
-				"Name":       name,
-				"InviteCode": inviteCode,
-				"Role":       role,
-			})
+		if err := rows.Scan(&id, &name, &inviteCode, &role); err != nil {
+			log.Printf("Error scanning team row: %v", err)
+			continue
 		}
+		teams = append(teams, map[string]interface{}{
+			"ID":         id,
+			"Name":       name,
+			"InviteCode": inviteCode,
+			"Role":       role,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating team rows: %v", err)
 	}
 
 	RenderTemplate(w, r, "teams.html", map[string]interface{}{
@@ -134,9 +140,30 @@ func LeaveTeamHandler(w http.ResponseWriter, r *http.Request) {
 
 	userID, _ := GetUserID(r)
 	teamIDStr := r.FormValue("team_id")
-	teamID, _ := strconv.Atoi(teamIDStr)
+	teamID, err := strconv.Atoi(teamIDStr)
+	if err != nil {
+		SendResponse(w, r, false, "", "", "Invalid team ID")
+		return
+	}
 
-	_, err := db.Pool.Exec(r.Context(), "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2", teamID, userID)
+	// Prevent orphaning: Check if user is the last owner
+	var role string
+	err = db.Pool.QueryRow(r.Context(), "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2", teamID, userID).Scan(&role)
+	if err != nil {
+		SendResponse(w, r, false, "", "", "You are not a member of this team")
+		return
+	}
+
+	if role == "owner" {
+		var ownerCount int
+		_ = db.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM team_members WHERE team_id = $1 AND role = 'owner'", teamID).Scan(&ownerCount)
+		if ownerCount <= 1 {
+			SendResponse(w, r, false, "", "", "You are the last owner. Please promote another member to owner before leaving.")
+			return
+		}
+	}
+
+	_, err = db.Pool.Exec(r.Context(), "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2", teamID, userID)
 	if err != nil {
 		SendResponse(w, r, false, "", "", "Internal server error")
 		return
@@ -172,5 +199,10 @@ func SwitchTeamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	SetActiveTeamID(w, r, teamID)
-	http.Redirect(w, r, r.Referer(), http.StatusFound)
+	
+	redirect := r.Referer()
+	if redirect == "" || !strings.Contains(redirect, r.Host) {
+		redirect = "/dashboard"
+	}
+	http.Redirect(w, r, redirect, http.StatusFound)
 }

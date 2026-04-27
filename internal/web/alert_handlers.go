@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"cve-tracker/internal/db"
+	"log"
 	"net/http"
 	"time"
 )
@@ -37,6 +38,7 @@ func AlertHistoryHandler(w http.ResponseWriter, r *http.Request) {
 			CVSSScore   float64
 		}
 		if err := rows.Scan(&a.SentAt, &a.CVEID, &a.Description, &a.CVSSScore); err != nil {
+			log.Printf("Error scanning alert history row: %v", err)
 			continue
 		}
 		alerts = append(alerts, map[string]interface{}{
@@ -45,6 +47,9 @@ func AlertHistoryHandler(w http.ResponseWriter, r *http.Request) {
 			"Description": a.Description,
 			"CVSSScore":   a.CVSSScore,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating alert history rows: %v", err)
 	}
 
 	RenderTemplate(w, r, "alert_history.html", map[string]interface{}{

@@ -67,18 +67,19 @@ func fetchFromCISAKEV(ctx context.Context) {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if _, err := tx.Exec(ctx, "UPDATE cves SET cisa_kev = false"); err != nil {
+	// Optimization: Reset and then set true only for those in the feed
+	if _, err := tx.Exec(ctx, "UPDATE cves SET cisa_kev = false WHERE cisa_kev = true"); err != nil {
 		log.Printf("Worker: [ERROR] Failed to reset CISA KEV status: %v", err)
 		return
 	}
 
-	batchSize := 100
+	batchSize := 200
 	for i := 0; i < total; i += batchSize {
 		end := i + batchSize
 		if end > total {
 			end = total
 		}
-		ids := make([]string, 0, batchSize)
+		ids := make([]string, 0, end-i)
 		for _, v := range kevResp.Vulnerabilities[i:end] {
 			ids = append(ids, v.CVEID)
 		}

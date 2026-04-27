@@ -45,9 +45,13 @@ func AssetsHandler(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var a AssetWithKeywords
 			if err := rows.Scan(&a.ID, &a.Name, &a.Type, &a.CreatedAt, &a.Keywords, &a.TeamName); err != nil {
+				log.Printf("Error scanning asset row: %v", err)
 				continue
 			}
 			assets = append(assets, a)
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("Error iterating asset rows: %v", err)
 		}
 		RenderTemplate(w, r, "assets.html", map[string]interface{}{"Assets": assets})
 		return
@@ -68,6 +72,13 @@ func AssetsHandler(w http.ResponseWriter, r *http.Request) {
 			tid, err := strconv.Atoi(teamIDStr)
 			if err == nil {
 				teamID = &tid
+				// Verify membership
+				var isMember bool
+				err := db.Pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", tid, userID).Scan(&isMember)
+				if err != nil || !isMember {
+					SendResponse(w, r, false, "", "", "You are not a member of this team")
+					return
+				}
 			}
 		}
 
@@ -147,9 +158,13 @@ func DeleteAssetHandler(w http.ResponseWriter, r *http.Request) {
 		SendResponse(w, r, false, "", "", "Invalid asset ID")
 		return
 	}
-	_, err = db.Pool.Exec(r.Context(), "DELETE FROM assets WHERE id = $1 AND (user_id = $2 OR team_id IN (SELECT team_id FROM team_members WHERE user_id = $2 AND role IN ('owner', 'admin')))", assetID, userID)
+	commandTag, err := db.Pool.Exec(r.Context(), "DELETE FROM assets WHERE id = $1 AND (user_id = $2 OR team_id IN (SELECT team_id FROM team_members WHERE user_id = $2 AND role IN ('owner', 'admin')))", assetID, userID)
 	if err != nil {
 		SendResponse(w, r, false, "", "", "Error deleting asset")
+		return
+	}
+	if commandTag.RowsAffected() == 0 {
+		SendResponse(w, r, false, "", "", "Asset not found or access denied")
 		return
 	}
 

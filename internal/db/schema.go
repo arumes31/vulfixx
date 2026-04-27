@@ -60,11 +60,7 @@ CREATE TABLE IF NOT EXISTS asset_keywords (
     keyword VARCHAR(255) NOT NULL
 );
 
--- Note: user_subscriptions already exists, we just add the column via migration in InitDB
--- But for a clean schema.go, I'll update the definitions.
-
-DROP TABLE IF EXISTS user_subscriptions CASCADE;
-CREATE TABLE user_subscriptions (
+CREATE TABLE IF NOT EXISTS user_subscriptions (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
@@ -77,28 +73,22 @@ CREATE TABLE user_subscriptions (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-DROP TABLE IF EXISTS user_cve_status CASCADE;
-CREATE TABLE user_cve_status (
+CREATE TABLE IF NOT EXISTS user_cve_status (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
     cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,
     status VARCHAR(50) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT unique_user_status UNIQUE (user_id, cve_id) WHERE team_id IS NULL,
-    CONSTRAINT unique_team_status UNIQUE (team_id, cve_id) WHERE team_id IS NOT NULL
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-DROP TABLE IF EXISTS cve_notes CASCADE;
-CREATE TABLE cve_notes (
+CREATE TABLE IF NOT EXISTS cve_notes (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
     cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,
     notes TEXT,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT unique_user_notes UNIQUE (user_id, cve_id) WHERE team_id IS NULL,
-    CONSTRAINT unique_team_notes UNIQUE (team_id, cve_id) WHERE team_id IS NOT NULL
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS alert_history (
@@ -144,4 +134,11 @@ CREATE INDEX IF NOT EXISTS idx_cves_cvss_score ON cves (cvss_score);
 CREATE INDEX IF NOT EXISTS idx_cves_updated_date ON cves (updated_date DESC);
 CREATE INDEX IF NOT EXISTS idx_assets_team_id ON assets(team_id);
 CREATE INDEX IF NOT EXISTS idx_user_cve_status_team_id ON user_cve_status(team_id);
+
+-- Partial Unique Indexes for status and notes
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_status ON user_cve_status (user_id, cve_id) WHERE team_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_team_status ON user_cve_status (team_id, cve_id) WHERE team_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_notes ON cve_notes (user_id, cve_id) WHERE team_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_team_notes ON cve_notes (team_id, cve_id) WHERE team_id IS NOT NULL;
+
 `

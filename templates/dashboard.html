@@ -14,10 +14,10 @@
             </div>
         </div>
         <div class="flex items-center gap-3">
-            <form action="/teams/switch" method="POST" class="flex items-center gap-2 bg-white/5 border border-white/10 p-1 rounded-lg">
+            <form id="team-switch-form" action="/teams/switch" method="POST" class="flex items-center gap-2 bg-white/5 border border-white/10 p-1 rounded-lg">
                 {{.csrfField}}
                 <span class="material-symbols-outlined text-gray-500 ml-2 text-sm">hub</span>
-                <select name="team_id" onchange="this.form.submit()" class="bg-transparent text-xs font-bold text-[#00daf3] focus:outline-none pr-4 py-1 cursor-pointer">
+                <select name="team_id" id="team-selector" class="bg-transparent text-xs font-bold text-[#00daf3] focus:outline-none pr-4 py-1 cursor-pointer">
                     <option value="0" {{if eq .ActiveTeamID 0}}selected{{end}}>Private Workspace</option>
                     {{range .UserTeams}}
                     <option value="{{.ID}}" {{if eq $.ActiveTeamID .ID}}selected{{end}}>Team: {{.Name}}</option>
@@ -95,13 +95,13 @@
                         <td class="px-6 py-6">
                             <div class="flex flex-col gap-1.5">
                                 {{if ge .CVSSScore 9.0}}
-                                    <span onclick="explainVector('{{.VectorString}}')" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-500/10 text-red-500 border border-red-500/20 text-[10px] font-black tracking-widest uppercase cursor-help"><span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> CRITICAL ({{.CVSSScore}})</span>
+                                    <span data-vector="{{.VectorString}}" class="vector-trigger inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-500/10 text-red-500 border border-red-500/20 text-[10px] font-black tracking-widest uppercase cursor-help"><span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> CRITICAL ({{.CVSSScore}})</span>
                                 {{else if ge .CVSSScore 7.0}}
-                                    <span onclick="explainVector('{{.VectorString}}')" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-orange-500/10 text-orange-500 border border-orange-500/20 text-[10px] font-black tracking-widest uppercase cursor-help">HIGH ({{.CVSSScore}})</span>
+                                    <span data-vector="{{.VectorString}}" class="vector-trigger inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-orange-500/10 text-orange-500 border border-orange-500/20 text-[10px] font-black tracking-widest uppercase cursor-help">HIGH ({{.CVSSScore}})</span>
                                 {{else if ge .CVSSScore 4.0}}
-                                    <span onclick="explainVector('{{.VectorString}}')" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-black tracking-widest uppercase cursor-help">MEDIUM ({{.CVSSScore}})</span>
+                                    <span data-vector="{{.VectorString}}" class="vector-trigger inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-black tracking-widest uppercase cursor-help">MEDIUM ({{.CVSSScore}})</span>
                                 {{else}}
-                                    <span onclick="explainVector('{{.VectorString}}')" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 text-gray-500 border border-white/10 text-[10px] font-black tracking-widest uppercase cursor-help">LOW ({{.CVSSScore}})</span>
+                                    <span data-vector="{{.VectorString}}" class="vector-trigger inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 text-gray-500 border border-white/10 text-[10px] font-black tracking-widest uppercase cursor-help">LOW ({{.CVSSScore}})</span>
                                 {{end}}
                             </div>
                         </td>
@@ -110,7 +110,7 @@
                                 {{if .CISAKEV}}
                                 <span class="inline-flex items-center px-2 py-0.5 rounded bg-red-600 text-white text-[9px] font-black uppercase tracking-widest shadow-lg shadow-red-600/20">KEV</span>
                                 {{end}}
-                                <button onclick="showNotes('{{.ID}}', '{{.CVEID}}', '{{.Notes}}')" class="material-symbols-outlined {{if .Notes}}text-[#00daf3] opacity-100{{else}}text-gray-600 opacity-40 hover:opacity-100{{end}} transition-all" title="Remediation Notes">description</button>
+                                <button data-id="{{.ID}}" data-cve="{{.CVEID}}" data-notes="{{.Notes}}" class="notes-trigger material-symbols-outlined {{if .Notes}}text-[#00daf3] opacity-100{{else}}text-gray-600 opacity-40 hover:opacity-100{{end}} transition-all" title="Remediation Notes">description</button>
                             </div>
                         </td>
                         <td class="px-6 py-6">
@@ -125,7 +125,7 @@
                             {{end}}
                         </td>
                         <td class="px-6 py-6 text-right">
-                            <select onchange="updateCVEStatus('{{.ID}}', this.value)" class="bg-[#181c22] text-[10px] font-black uppercase tracking-widest py-2 px-3 rounded-xl border border-white/10 text-gray-300 focus:outline-none focus:border-[#00daf3] transition-all hover:bg-white/5 cursor-pointer">
+                            <select data-id="{{.ID}}" class="status-selector bg-[#181c22] text-[10px] font-black uppercase tracking-widest py-2 px-3 rounded-xl border border-white/10 text-gray-300 focus:outline-none focus:border-[#00daf3] transition-all hover:bg-white/5 cursor-pointer">
                                 <option value="active" {{if eq .Status "active"}}selected{{end}}>Active</option>
                                 <option value="in_progress" {{if eq .Status "in_progress"}}selected{{end}}>Progress</option>
                                 <option value="resolved" {{if eq .Status "resolved"}}selected{{end}}>Resolve</option>
@@ -143,8 +143,16 @@
 <script>
     function explainVector(vector) {
         const parts = vector.split('/');
-        let content = `<div class="p-4 bg-white/5 rounded-2xl font-mono text-[10px] border border-white/10 mb-6">${vector}</div>`;
-        content += `<div class="space-y-3">`;
+        const container = document.createElement('div');
+        container.className = 'space-y-6';
+
+        const vectorDisplay = document.createElement('div');
+        vectorDisplay.className = 'p-4 bg-white/5 rounded-2xl font-mono text-[10px] border border-white/10';
+        vectorDisplay.textContent = vector;
+        container.appendChild(vectorDisplay);
+
+        const list = document.createElement('div');
+        list.className = 'space-y-3';
         
         const mappings = {
             'AV': { 'name': 'Attack Vector', 'N': 'Network', 'A': 'Adjacent', 'L': 'Local', 'P': 'Physical' },
@@ -160,29 +168,46 @@
         parts.forEach(p => {
             const [k, v] = p.split(':');
             if (mappings[k]) {
-                content += `
-                    <div class="flex justify-between items-center py-2 border-b border-white/5">
-                        <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">${mappings[k].name}</span>
-                        <span class="text-xs font-bold text-[#00daf3]">${mappings[k][v] || v}</span>
-                    </div>
-                `;
+                const row = document.createElement('div');
+                row.className = 'flex justify-between items-center py-2 border-b border-white/5';
+                
+                const label = document.createElement('span');
+                label.className = 'text-[10px] font-black uppercase tracking-widest text-gray-500';
+                label.textContent = mappings[k].name;
+                
+                const val = document.createElement('span');
+                val.className = 'text-xs font-bold text-[#00daf3]';
+                val.textContent = mappings[k][v] || v;
+                
+                row.appendChild(label);
+                row.appendChild(val);
+                list.appendChild(row);
             }
         });
-        content += `</div>`;
+        container.appendChild(list);
         
-        vulfixx.modal('CVSS Vector Analysis', content, [{ label: 'Dismiss', onClick: 'vulfixx.closeModal()' }]);
+        vulfixx.modal('CVSS Vector Analysis', container, [{ label: 'Dismiss', onClick: () => vulfixx.closeModal() }]);
     }
 
     function showNotes(id, cveId, notes) {
-        const content = `
-            <div class="space-y-4">
-                <p class="text-gray-400 text-xs">Record remediation progress, ticket references, or internal findings for this vulnerability.</p>
-                <textarea id="notes-text" rows="6" class="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white focus:outline-none focus:border-[#00daf3] transition-all text-sm">${notes === 'null' ? '' : notes}</textarea>
-            </div>
-        `;
-        vulfixx.modal(`Notes: ${cveId}`, content, [
-            { label: 'Cancel', onClick: 'vulfixx.closeModal()' },
-            { label: 'Save Changes', primary: true, onClick: `submitNotes('${id}')` }
+        const container = document.createElement('div');
+        container.className = 'space-y-4';
+
+        const desc = document.createElement('p');
+        desc.className = 'text-gray-400 text-xs';
+        desc.textContent = 'Record remediation progress, ticket references, or internal findings for this vulnerability.';
+        container.appendChild(desc);
+
+        const textarea = document.createElement('textarea');
+        textarea.id = 'notes-text';
+        textarea.rows = 6;
+        textarea.className = 'w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white focus:outline-none focus:border-[#00daf3] transition-all text-sm';
+        textarea.value = (notes === 'null' || !notes) ? '' : notes;
+        container.appendChild(textarea);
+
+        vulfixx.modal(`Notes: ${cveId}`, container, [
+            { label: 'Cancel', onClick: () => vulfixx.closeModal() },
+            { label: 'Save Changes', primary: true, onClick: () => submitNotes(id) }
         ]);
     }
 
@@ -214,5 +239,22 @@
         
         if (data) setTimeout(() => window.location.reload(), 1000);
     }
-</script>
+
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('team-selector')?.addEventListener('change', (e) => {
+            e.target.form.submit();
+        });
+
+        document.querySelectorAll('.vector-trigger').forEach(el => {
+            el.addEventListener('click', () => explainVector(el.dataset.vector));
+        });
+
+        document.querySelectorAll('.notes-trigger').forEach(el => {
+            el.addEventListener('click', () => showNotes(el.dataset.id, el.dataset.cve, el.dataset.notes));
+        });
+
+        document.querySelectorAll('.status-selector').forEach(el => {
+            el.addEventListener('change', (e) => updateCVEStatus(el.dataset.id, e.target.value));
+        });
+    });
 {{end}}

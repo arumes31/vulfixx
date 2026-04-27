@@ -25,6 +25,16 @@ func sanitizeEmail(email string) (string, error) {
 	return addr.Address, nil
 }
 
+// sanitizeHeader removes CR/LF from strings to prevent header injection.
+func sanitizeHeader(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\r' || r == '\n' {
+			return -1
+		}
+		return r
+	}, s)
+}
+
 // redactToken safely redacts a token for logging.
 func redactToken(token string) string {
 	n := 8

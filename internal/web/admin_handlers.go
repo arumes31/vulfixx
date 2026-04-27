@@ -3,6 +3,7 @@ package web
 import (
 	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
+	"log"
 	"net/http"
 	"strconv"
 )
@@ -19,9 +20,13 @@ func AdminUserManagementHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var u models.User
 		if err := rows.Scan(&u.ID, &u.Email, &u.IsEmailVerified, &u.IsAdmin, &u.CreatedAt); err != nil {
+			log.Printf("Error scanning user row: %v", err)
 			continue
 		}
 		users = append(users, u)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating user rows: %v", err)
 	}
 
 	RenderTemplate(w, r, "admin_users.html", map[string]interface{}{
@@ -53,7 +58,11 @@ func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Prevent admin from deleting themselves
-	currentUserID, _ := GetUserID(r)
+	currentUserID, ok := GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 	if id == currentUserID {
 		http.Error(w, "Cannot delete yourself", http.StatusBadRequest)
 		return

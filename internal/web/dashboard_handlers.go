@@ -47,7 +47,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	statusJoinCond := "ucs.user_id = $1 AND ucs.team_id IS NULL"
 	if activeTeamID > 0 {
-		statusJoinCond = fmt.Sprintf("ucs.team_id = %d", activeTeamID)
+		statusJoinCond = "ucs.team_id = $8"
 	}
 
 	metricsQuery := fmt.Sprintf(`
@@ -92,14 +92,14 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fullMetricsQuery := metricsQuery + whereClause
-	err := db.Pool.QueryRow(r.Context(), fullMetricsQuery, userID, searchQuery, startDate, endDate, 0, 0, statusFilter).Scan(&totalItems, &kevCount, &critCount, &progressCount)
+	err := db.Pool.QueryRow(r.Context(), fullMetricsQuery, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID).Scan(&totalItems, &kevCount, &critCount, &progressCount)
 	if err != nil {
 		log.Printf("Dashboard metrics error: %v", err)
 	}
 
 	notesJoinCond := "ucn.user_id = $1 AND ucn.team_id IS NULL"
 	if activeTeamID > 0 {
-		notesJoinCond = fmt.Sprintf("ucn.team_id = %d", activeTeamID)
+		notesJoinCond = "ucn.team_id = $8"
 	}
 
 	query := fmt.Sprintf(`
@@ -116,7 +116,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	query += whereClause
 	query += " ORDER BY c.published_date DESC LIMIT $5 OFFSET $6 "
 
-	rows, err := db.Pool.Query(r.Context(), query, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter)
+	rows, err := db.Pool.Query(r.Context(), query, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID)
 	if err != nil {
 		log.Printf("Dashboard query error: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -129,10 +129,15 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		var c models.CVE
 		var notes sql.NullString
 		err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &notes)
-		if err == nil {
-			c.Notes = notes.String
-			cves = append(cves, c)
+		if err != nil {
+			log.Printf("Error scanning dashboard CVE: %v", err)
+			continue
 		}
+		c.Notes = notes.String
+		cves = append(cves, c)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating dashboard CVEs: %v", err)
 	}
 
 	threatLevel := "LOW"
@@ -179,6 +184,15 @@ func UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		SendResponse(w, r, false, "", "", "Bad request")
 		return
+	}
+
+	if activeTeamID > 0 {
+		var isMember bool
+		err := db.Pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", activeTeamID, userID).Scan(&isMember)
+		if err != nil || !isMember {
+			SendResponse(w, r, false, "", "", "Forbidden: You are not a member of this team")
+			return
+		}
 	}
 
 	if req.Status == "active" {
@@ -246,6 +260,20 @@ func UpdateCVENoteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(req.Notes) > 10000 {
+		SendResponse(w, r, false, "", "", "Notes too long (max 10000 characters)")
+		return
+	}
+
+	if activeTeamID > 0 {
+		var isMember bool
+		err := db.Pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", activeTeamID, userID).Scan(&isMember)
+		if err != nil || !isMember {
+			SendResponse(w, r, false, "", "", "Forbidden: You are not a member of this team")
+			return
+		}
+	}
+
 	var teamPtr *int
 	if activeTeamID > 0 {
 		teamPtr = &activeTeamID
@@ -291,6 +319,20 @@ func BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		SendResponse(w, r, false, "", "", "Bad request")
 		return
+	}
+
+	if len(req.CVEIDs) > 1000 {
+		SendResponse(w, r, false, "", "", "Too many CVE IDs (max 1000)")
+		return
+	}
+
+	if activeTeamID > 0 {
+		var isMember bool
+		err := db.Pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", activeTeamID, userID).Scan(&isMember)
+		if err != nil || !isMember {
+			SendResponse(w, r, false, "", "", "Forbidden: You are not a member of this team")
+			return
+		}
 	}
 
 	tx, err := db.Pool.Begin(r.Context())

@@ -26,7 +26,7 @@ func syncEPSSPeriodically(ctx context.Context) {
 
 func syncEPSS(ctx context.Context) {
 	log.Println("Worker: [SYNC] Starting EPSS score synchronization...")
-	rows, err := db.Pool.Query(ctx, "SELECT cve_id FROM cves WHERE created_at > NOW() - INTERVAL '30 days'")
+	rows, err := db.Pool.Query(ctx, "SELECT cve_id FROM cves WHERE published_date > NOW() - INTERVAL '30 days'")
 	if err != nil {
 		log.Printf("Worker: [ERROR] Failed to fetch CVEs for EPSS sync: %v", err)
 		return
@@ -49,16 +49,25 @@ func syncEPSS(ctx context.Context) {
 			log.Printf("Worker: [ERROR] Failed to fetch EPSS for %s: %v", cveID, err)
 			continue
 		}
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("Worker: [WARN] EPSS API returned status %d for %s", resp.StatusCode, cveID)
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusTooManyRequests {
+				time.Sleep(5 * time.Second)
+			}
+			continue
+		}
 		var epssResp struct {
 			Data []struct {
 				EPSS string `json:"epss"`
 			} `json:"data"`
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&epssResp); err != nil {
-			_ = resp.Body.Close()
+		err = json.NewDecoder(resp.Body).Decode(&epssResp)
+		resp.Body.Close()
+		if err != nil {
+			log.Printf("Worker: [ERROR] Failed to decode EPSS for %s: %v", cveID, err)
 			continue
 		}
-		_ = resp.Body.Close()
 		if len(epssResp.Data) > 0 {
 			score := 0.0
 			if _, err := fmt.Sscanf(epssResp.Data[0].EPSS, "%f", &score); err != nil {
@@ -71,6 +80,9 @@ func syncEPSS(ctx context.Context) {
 			}
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Worker: [ERROR] Row iteration error in syncEPSS: %v", err)
 	}
 	log.Println("Worker: [SYNC] EPSS score synchronization complete.")
 }

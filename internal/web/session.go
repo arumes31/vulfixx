@@ -1,6 +1,7 @@
 package web
 
 import (
+	"log"
 	"net/http"
 	"os"
 
@@ -32,25 +33,40 @@ func InitSession() {
 }
 
 func GetUserID(r *http.Request) (int, bool) {
-	session, _ := store.Get(r, "session-name")
+	session, err := store.Get(r, "vulfixx-session")
+	if err != nil {
+		return 0, false
+	}
 	userID, ok := session.Values["user_id"].(int)
 	return userID, ok
 }
 
 func GetActiveTeamID(r *http.Request) (int, bool) {
-	session, _ := store.Get(r, "session-name")
+	session, err := store.Get(r, "vulfixx-session")
+	if err != nil {
+		return 0, false
+	}
 	teamID, ok := session.Values["team_id"].(int)
 	return teamID, ok
 }
 
 func SetActiveTeamID(w http.ResponseWriter, r *http.Request, teamID int) {
-	session, _ := store.Get(r, "session-name")
+	session, err := store.Get(r, "vulfixx-session")
+	if err != nil {
+		log.Printf("SetActiveTeamID error getting session: %v", err)
+		return
+	}
 	session.Values["team_id"] = teamID
-	_ = session.Save(r, w)
+	if err := session.Save(r, w); err != nil {
+		log.Printf("SetActiveTeamID error saving session: %v", err)
+	}
 }
 
 func IsAdmin(r *http.Request) bool {
-	session, _ := store.Get(r, "session-name")
+	session, err := store.Get(r, "vulfixx-session")
+	if err != nil {
+		return false
+	}
 	isAdmin, ok := session.Values["is_admin"].(bool)
 	return ok && isAdmin
 }

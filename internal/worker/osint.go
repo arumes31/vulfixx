@@ -21,20 +21,26 @@ func fetchOSINTLinks(ctx context.Context, cveID string) map[string]interface{} {
 		log.Printf("Failed to create HN request: %v", err)
 	} else if resp, err := client.Do(req); err == nil {
 		defer resp.Body.Close()
-		var hnResp struct {
-			Hits []struct {
-				Title    string `json:"title"`
-				URL      string `json:"url"`
-				ObjectID string `json:"objectID"`
-			} `json:"hits"`
-		}
-		if json.NewDecoder(resp.Body).Decode(&hnResp) == nil {
-			links := []map[string]string{}
-			for _, hit := range hnResp.Hits {
-				hnLink := fmt.Sprintf("https://news.ycombinator.com/item?id=%s", hit.ObjectID)
-				links = append(links, map[string]string{"title": hit.Title, "url": hnLink})
+		if resp.StatusCode == http.StatusOK {
+			var hnResp struct {
+				Hits []struct {
+					Title    string `json:"title"`
+					URL      string `json:"url"`
+					ObjectID string `json:"objectID"`
+				} `json:"hits"`
 			}
-			data["hn"] = links
+			if err := json.NewDecoder(resp.Body).Decode(&hnResp); err == nil {
+				links := []map[string]string{}
+				for _, hit := range hnResp.Hits {
+					hnLink := fmt.Sprintf("https://news.ycombinator.com/item?id=%s", hit.ObjectID)
+					links = append(links, map[string]string{"title": hit.Title, "url": hnLink})
+				}
+				data["hn"] = links
+			} else {
+				log.Printf("Failed to decode HN response for %s: %v", cveID, err)
+			}
+		} else {
+			log.Printf("HN API returned status %d for %s", resp.StatusCode, cveID)
 		}
 	}
 
@@ -47,23 +53,29 @@ func fetchOSINTLinks(ctx context.Context, cveID string) map[string]interface{} {
 		req.Header.Set("User-Agent", "Vulfixx-Threat-Intel-Bot/1.0")
 		if resp, err := client.Do(req); err == nil {
 			defer resp.Body.Close()
-			var rResp struct {
-				Data struct {
-					Children []struct {
-						Data struct {
-							Title     string `json:"title"`
-							Permalink string `json:"permalink"`
-						} `json:"data"`
-					} `json:"children"`
-				} `json:"data"`
-			}
-			if json.NewDecoder(resp.Body).Decode(&rResp) == nil {
-				links := []map[string]string{}
-				for _, child := range rResp.Data.Children {
-					redditLink := fmt.Sprintf("https://www.reddit.com%s", child.Data.Permalink)
-					links = append(links, map[string]string{"title": child.Data.Title, "url": redditLink})
+			if resp.StatusCode == http.StatusOK {
+				var rResp struct {
+					Data struct {
+						Children []struct {
+							Data struct {
+								Title     string `json:"title"`
+								Permalink string `json:"permalink"`
+							} `json:"data"`
+						} `json:"children"`
+					} `json:"data"`
 				}
-				data["reddit"] = links
+				if err := json.NewDecoder(resp.Body).Decode(&rResp); err == nil {
+					links := []map[string]string{}
+					for _, child := range rResp.Data.Children {
+						redditLink := fmt.Sprintf("https://www.reddit.com%s", child.Data.Permalink)
+						links = append(links, map[string]string{"title": child.Data.Title, "url": redditLink})
+					}
+					data["reddit"] = links
+				} else {
+					log.Printf("Failed to decode Reddit response for %s: %v", cveID, err)
+				}
+			} else if resp.StatusCode != http.StatusNotFound {
+				log.Printf("Reddit API returned status %d for %s", resp.StatusCode, cveID)
 			}
 		}
 	}

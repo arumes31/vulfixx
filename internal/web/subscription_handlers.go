@@ -1,7 +1,6 @@
 package web
 
 import (
-	"context"
 	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
 	"encoding/json"
@@ -22,7 +21,7 @@ func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == "GET" {
 		query := `SELECT id, keyword, min_severity, webhook_url, enable_email, enable_webhook FROM user_subscriptions WHERE user_id = $1`
-		rows, err := db.Pool.Query(context.Background(), query, userID)
+		rows, err := db.Pool.Query(r.Context(), query, userID)
 		if err != nil {
 			log.Printf("Error fetching subscriptions: %v", err)
 			RenderTemplate(w, r, "subscriptions.html", map[string]interface{}{"Error": "Error fetching subscriptions"})
@@ -38,6 +37,9 @@ func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			subs = append(subs, s)
 		}
+		if err := rows.Err(); err != nil {
+			log.Printf("Error iterating subscriptions: %v", err)
+		}
 		RenderTemplate(w, r, "subscriptions.html", map[string]interface{}{"Subscriptions": subs})
 		return
 	}
@@ -49,11 +51,24 @@ func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 		keyword := r.FormValue("keyword")
 		minSeverityStr := r.FormValue("min_severity")
 		webhookUrl := r.FormValue("webhook_url")
-		minSeverity, _ := strconv.ParseFloat(minSeverityStr, 64)
+		minSeverity, err := strconv.ParseFloat(minSeverityStr, 64)
+		if err != nil || minSeverity < 0 || minSeverity > 10 {
+			SendResponse(w, r, false, "", "", "Invalid severity score (must be 0-10)")
+			return
+		}
+
+		// Enforce limit
+		var count int
+		err = db.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1", userID).Scan(&count)
+		if err == nil && count >= 20 {
+			SendResponse(w, r, false, "", "", "Maximum of 20 subscriptions allowed")
+			return
+		}
+
 		enableEmail := r.FormValue("enable_email") == "on" || r.FormValue("enable_email") == "true"
 		enableWebhook := r.FormValue("enable_webhook") == "on" || r.FormValue("enable_webhook") == "true"
 
-		_, err := db.Pool.Exec(context.Background(), `
+		_, err = db.Pool.Exec(r.Context(), `
 			INSERT INTO user_subscriptions (user_id, keyword, min_severity, webhook_url, enable_email, enable_webhook)
 			VALUES ($1, $2, $3, $4, $5, $6)
 		`, userID, keyword, minSeverity, webhookUrl, enableEmail, enableWebhook)
@@ -83,7 +98,7 @@ func DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err = db.Pool.Exec(context.Background(), "DELETE FROM user_subscriptions WHERE id = $1 AND user_id = $2", subID, userID); err != nil {
+	if _, err = db.Pool.Exec(r.Context(), "DELETE FROM user_subscriptions WHERE id = $1 AND user_id = $2", subID, userID); err != nil {
 		SendResponse(w, r, false, "", "", "Error deleting subscription")
 		return
 	}
@@ -102,7 +117,7 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var userID int
-	err := db.Pool.QueryRow(context.Background(), "SELECT id FROM users WHERE rss_feed_token = $1", token).Scan(&userID)
+	err := db.Pool.QueryRow(r.Context(), "SELECT id FROM users WHERE rss_feed_token = $1", token).Scan(&userID)
 	if err != nil {
 		http.Error(w, "Invalid token", http.StatusUnauthorized)
 		return
@@ -117,11 +132,14 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 		SELECT DISTINCT c.cve_id, c.description, c.cvss_score, c.published_date
 		FROM cves c
 		INNER JOIN user_subscriptions us ON us.user_id = $1
-		WHERE (c.cvss_score >= us.min_severity OR c.cvss_score >= $2)
-		  AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%' OR $3 = '' OR c.description ILIKE '%' || $3 || '%')
+		WHERE (
+			(c.cvss_score >= us.min_severity AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%'))
+			OR
+			($2 > 0 AND c.cvss_score >= $2 AND ($3 = '' OR c.description ILIKE '%' || $3 || '%'))
+		)
 		ORDER BY c.published_date DESC LIMIT 50
 	`
-	rows, err := db.Pool.Query(context.Background(), query, userID, minSeverity, keyword)
+	rows, err := db.Pool.Query(r.Context(), query, userID, minSeverity, keyword)
 	if err != nil {
 		http.Error(w, "Error fetching CVEs", http.StatusInternalServerError)
 		return
@@ -145,6 +163,7 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 			PublishedAt time.Time
 		}
 		if err := rows.Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.PublishedAt); err != nil {
+			log.Printf("Error scanning RSS CVE: %v", err)
 			continue
 		}
 		_, _ = fmt.Fprintf(w, `
@@ -155,6 +174,9 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
     <pubDate>%s</pubDate>
     <guid>%s</guid>
   </item>`, cve.CVEID, cve.CVSSScore, cve.CVEID, template.HTMLEscapeString(cve.Description), cve.PublishedAt.Format(time.RFC1123Z), cve.CVEID)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating RSS CVEs: %v", err)
 	}
 
 	_, _ = fmt.Fprintf(w, `
@@ -209,7 +231,7 @@ func HandleAlertAction(w http.ResponseWriter, r *http.Request) {
 		_, err = db.Pool.Exec(ctx, `
 			INSERT INTO user_cve_status (user_id, cve_id, status)
 			VALUES ($1, $2, 'in_progress')
-			ON CONFLICT (user_id, cve_id) DO UPDATE SET status = 'in_progress', updated_at = CURRENT_TIMESTAMP
+			ON CONFLICT (user_id, cve_id) WHERE team_id IS NULL DO UPDATE SET status = 'in_progress', updated_at = CURRENT_TIMESTAMP
 		`, data.UserID, data.CVEID)
 		if err != nil {
 			http.Error(w, "Failed to acknowledge alert", http.StatusInternalServerError)
