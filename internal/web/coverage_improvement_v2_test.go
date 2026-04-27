@@ -38,8 +38,7 @@ func TestAuthHandlers_TOTP_V2(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		mock.ExpectExec("INSERT INTO user_activity_logs").WillReturnResult(pgxmock.NewResult("INSERT", 1))
-
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		app.LoginHandler(rr, req)
 
 		if rr.Code != http.StatusOK {
@@ -82,8 +81,7 @@ func TestAuthHandlers_TOTP_V2(t *testing.T) {
 			WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"is_admin"}).AddRow(false))
 
-		mock.ExpectExec("INSERT INTO user_activity_logs").WillReturnResult(pgxmock.NewResult("INSERT", 1))
-
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		rr := httptest.NewRecorder()
 		app.LoginHandler(rr, req)
 
@@ -411,8 +409,7 @@ func TestSubscriptionHandlers_V2(t *testing.T) {
 			WithArgs(userID, "test", 7.0, "", true, false).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-		mock.ExpectExec("INSERT INTO user_activity_logs").WillReturnResult(pgxmock.NewResult("INSERT", 1))
-
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		rr := httptest.NewRecorder()
 		app.SubscriptionsHandler(rr, req)
 
