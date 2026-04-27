@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"log"
@@ -36,9 +35,9 @@ func getPatternRegex(pattern string) (*regexp.Regexp, error) {
 	return re, err
 }
 
-func processAlerts(ctx context.Context) {
+func (w *Worker) processAlerts(ctx context.Context) {
 	for {
-		result, err := db.RedisClient.BRPop(ctx, 0, "cve_alerts_queue").Result()
+		result, err := w.Redis.BRPop(ctx, 0, "cve_alerts_queue").Result()
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -52,12 +51,12 @@ func processAlerts(ctx context.Context) {
 			log.Printf("Error unmarshaling alert job: %v", err)
 			continue
 		}
-		evaluateSubscriptions(ctx, &cve)
+		w.evaluateSubscriptions(ctx, &cve)
 	}
 }
 
-func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
-	rows, err := db.Pool.Query(ctx, `
+func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
+	rows, err := w.Pool.Query(ctx, `
 		SELECT s.id, s.user_id, s.keyword, s.min_severity, s.webhook_url, s.enable_email, s.enable_webhook, s.filter_logic, u.email
 		FROM user_subscriptions s
 		JOIN users u ON s.user_id = u.id
@@ -80,13 +79,13 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 			continue
 		}
 		if matchCVE(cve, sub) {
-			if notifyIfNew(ctx, sub.UserID, cve, sub, email, "") {
+			if w.notifyIfNew(ctx, sub.UserID, cve, sub, email, "") {
 				notifiedUsers[sub.UserID] = true
 			}
 		}
 	}
 
-	assetRows, err := db.Pool.Query(ctx, `
+	assetRows, err := w.Pool.Query(ctx, `
 		SELECT ak.keyword, a.user_id, u.email, a.name
 		FROM asset_keywords ak
 		JOIN assets a ON ak.asset_id = a.id
@@ -100,20 +99,20 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 	}
 	defer assetRows.Close()
 	for assetRows.Next() {
-			var keyword, email, assetName string
-			var userID int
-			if err := assetRows.Scan(&keyword, &userID, &email, &assetName); err != nil {
-				continue
+		var keyword, email, assetName string
+		var userID int
+		if err := assetRows.Scan(&keyword, &userID, &email, &assetName); err != nil {
+			continue
+		}
+		if notifiedUsers[userID] {
+			continue
+		}
+		if getKeywordRegex(keyword).MatchString(cve.Description) {
+			sub := models.UserSubscription{EnableEmail: true, EnableWebhook: true}
+			if w.notifyIfNew(ctx, userID, cve, sub, email, assetName) {
+				notifiedUsers[userID] = true
 			}
-			if notifiedUsers[userID] {
-				continue
-			}
-			if getKeywordRegex(keyword).MatchString(cve.Description) {
-				sub := models.UserSubscription{EnableEmail: true, EnableWebhook: true}
-				if notifyIfNew(ctx, userID, cve, sub, email, assetName) {
-					notifiedUsers[userID] = true
-				}
-			}
+		}
 	}
 }
 
@@ -178,8 +177,8 @@ func evaluateComplexFilter(logic string, cve *models.CVE) bool {
 	return true
 }
 
-func notifyIfNew(ctx context.Context, userID int, cve *models.CVE, sub models.UserSubscription, email, assetName string) bool {
-	res, err := db.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id, created_at) VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING", userID, cve.ID)
+func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, sub models.UserSubscription, email, assetName string) bool {
+	res, err := w.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id, created_at) VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING", userID, cve.ID)
 	if err != nil {
 		log.Printf("Failed to record alert history: %v", err)
 		return false
@@ -188,12 +187,12 @@ func notifyIfNew(ctx context.Context, userID int, cve *models.CVE, sub models.Us
 		return false
 	}
 
-	// If the CVE object passed in doesn't have some extended fields (unlikely given how evaluateSubscriptions is called), 
+	// If the CVE object passed in doesn't have some extended fields (unlikely given how evaluateSubscriptions is called),
 	// we would fetch them here, but we've already done the query in evaluateSubscriptions if needed.
-	// However, processAlerts job might only have partial data. 
+	// However, processAlerts job might only have partial data.
 	// Let's ensure it has what bufferAlert needs.
 	if cve.Description == "" || cve.CVSSScore == 0 {
-		err = db.Pool.QueryRow(ctx, `
+		err = w.Pool.QueryRow(ctx, `
 			SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, github_poc_count, published_date, "references" 
 			FROM cves WHERE id = $1
 		`, cve.ID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.VectorString, &cve.CISAKEV, &cve.EPSSScore, &cve.CWEID, &cve.GitHubPoCCount, &cve.PublishedDate, &cve.References)
@@ -203,6 +202,6 @@ func notifyIfNew(ctx context.Context, userID int, cve *models.CVE, sub models.Us
 		}
 	}
 
-	cve.OSINTData = fetchOSINTLinks(ctx, cve.CVEID)
-	return bufferAlert(ctx, userID, cve, email, assetName)
+	cve.OSINTData = w.fetchOSINTLinks(ctx, cve.CVEID)
+	return w.bufferAlert(ctx, userID, cve, email, assetName)
 }

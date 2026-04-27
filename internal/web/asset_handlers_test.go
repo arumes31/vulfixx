@@ -14,9 +14,13 @@ import (
 
 func TestAssetsHandler(t *testing.T) {
 	t.Run("GET_Unauthenticated", func(t *testing.T) {
+		mock, _ := db.SetupTestDB()
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
 		req := httptest.NewRequest("GET", "/assets", nil)
 		rr := httptest.NewRecorder()
-		AssetsHandler(rr, req)
+		app.AssetsHandler(rr, req)
 		if rr.Code != http.StatusFound {
 			t.Errorf("expected 302, got %d", rr.Code)
 		}
@@ -25,18 +29,19 @@ func TestAssetsHandler(t *testing.T) {
 	t.Run("GET_Success", func(t *testing.T) {
 		mock, _ := db.SetupTestDB()
 		defer mock.Close()
+		app := setupTestApp(t, mock)
 
 		mock.ExpectQuery("SELECT a.id, a.name, a.type, a.created_at").
 			WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "name", "type", "created_at", "keywords", "team_name"}).
 				AddRow(1, "Server 1", "Server", time.Now(), []string{"prod"}, "Team A"))
-		
+
 		// RenderTemplate expectations
 		mock.ExpectQuery("SELECT t.id, t.name").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(1, "Team A"))
 
 		req := httptest.NewRequest("GET", "/assets", nil)
-		session, _ := store.Get(req, "vulfixx-session")
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
@@ -47,7 +52,7 @@ func TestAssetsHandler(t *testing.T) {
 		}
 
 		rr2 := httptest.NewRecorder()
-		AssetsHandler(rr2, req)
+		app.AssetsHandler(rr2, req)
 		if rr2.Code != http.StatusOK {
 			t.Errorf("expected 200, got %d", rr2.Code)
 		}
@@ -117,12 +122,13 @@ func TestAssetsHandler(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				mock, _ := db.SetupTestDB()
 				defer mock.Close()
+				app := setupTestApp(t, mock)
 				tt.mockExpect(mock)
 
 				req := httptest.NewRequest("POST", "/assets", strings.NewReader(tt.form.Encode()))
 				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 				req.Header.Set("Accept", "application/json")
-				session, _ := store.Get(req, "vulfixx-session")
+				session, _ := app.SessionStore.Get(req, "vulfixx-session")
 				session.Values["user_id"] = 1
 				rr := httptest.NewRecorder()
 				_ = session.Save(req, rr)
@@ -135,7 +141,7 @@ func TestAssetsHandler(t *testing.T) {
 				}
 
 				rr2 := httptest.NewRecorder()
-				AssetsHandler(rr2, req)
+				app.AssetsHandler(rr2, req)
 
 				if rr2.Code != tt.expectedStatus {
 					t.Errorf("expected status %d, got %d", tt.expectedStatus, rr2.Code)
@@ -183,13 +189,14 @@ func TestDeleteAssetHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mock, _ := db.SetupTestDB()
 			defer mock.Close()
+			app := setupTestApp(t, mock)
 			tt.mockExpect(mock)
 
 			req := httptest.NewRequest(tt.method, "/assets/delete", strings.NewReader(tt.form.Encode()))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			req.Header.Set("Accept", "application/json")
 			if tt.userID != 0 {
-				session, _ := store.Get(req, "vulfixx-session")
+				session, _ := app.SessionStore.Get(req, "vulfixx-session")
 				session.Values["user_id"] = tt.userID
 				rr := httptest.NewRecorder()
 				_ = session.Save(req, rr)
@@ -203,7 +210,7 @@ func TestDeleteAssetHandler(t *testing.T) {
 			}
 
 			rr2 := httptest.NewRecorder()
-			DeleteAssetHandler(rr2, req)
+			app.DeleteAssetHandler(rr2, req)
 
 			if rr2.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr2.Code)
@@ -217,3 +224,4 @@ func TestDeleteAssetHandler(t *testing.T) {
 		})
 	}
 }
+

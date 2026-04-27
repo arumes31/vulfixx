@@ -1,7 +1,6 @@
 package web
 
 import (
-	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
 	"database/sql"
 	"encoding/json"
@@ -14,14 +13,14 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func DashboardHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := GetUserID(r)
+func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := a.GetUserID(r)
 	if !ok {
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
 
-	activeTeamID, _ := GetActiveTeamID(r)
+	activeTeamID, _ := a.GetActiveTeamID(r)
 
 	pageStr := r.URL.Query().Get("page")
 	page, _ := strconv.Atoi(pageStr)
@@ -95,7 +94,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fullMetricsQuery := metricsQuery + whereClause
-	err := db.Pool.QueryRow(r.Context(), fullMetricsQuery, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss).Scan(&totalItems, &kevCount, &critCount, &progressCount)
+	err := a.Pool.QueryRow(r.Context(), fullMetricsQuery, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss).Scan(&totalItems, &kevCount, &critCount, &progressCount)
 	if err != nil {
 		log.Printf("Dashboard metrics error: %v", err)
 	}
@@ -119,7 +118,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	query += whereClause
 	query += " ORDER BY c.published_date DESC LIMIT $5 OFFSET $6 "
 
-	rows, err := db.Pool.Query(r.Context(), query, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss)
+	rows, err := a.Pool.Query(r.Context(), query, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss)
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -157,7 +156,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		Medium   int
 		Low      int
 	}
-	_ = db.Pool.QueryRow(r.Context(), `
+	_ = a.Pool.QueryRow(r.Context(), `
 		SELECT 
 			COUNT(*) FILTER (WHERE cvss_score >= 9.0),
 			COUNT(*) FILTER (WHERE cvss_score >= 7.0 AND cvss_score < 9.0),
@@ -182,9 +181,9 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		FROM cves c
 		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s
 	`, statusJoinCond)
-	_ = db.Pool.QueryRow(r.Context(), statusQuery, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
+	_ = a.Pool.QueryRow(r.Context(), statusQuery, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
 
-	RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
+	a.RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
 		"CVEs":           cves,
 		"Total":          totalItems,
 		"KevCount":       kevCount,
@@ -205,35 +204,35 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := GetUserID(r)
+func (a *App) UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := a.GetUserID(r)
 	if !ok {
-		SendResponse(w, r, false, "", "", "Unauthorized")
+		a.SendResponse(w, r, false, "", "", "Unauthorized")
 		return
 	}
 
-	activeTeamID, _ := GetActiveTeamID(r)
+	activeTeamID, _ := a.GetActiveTeamID(r)
 
 	var req struct {
 		CVEID  int    `json:"cve_id"`
 		Status string `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		SendResponse(w, r, false, "", "", "Bad request")
+		a.SendResponse(w, r, false, "", "", "Bad request")
 		return
 	}
 
 	allowedStatuses := map[string]bool{"active": true, "in_progress": true, "resolved": true, "ignored": true}
 	if !allowedStatuses[req.Status] {
-		SendResponse(w, r, false, "", "", "Invalid status")
+		a.SendResponse(w, r, false, "", "", "Invalid status")
 		return
 	}
 
 	if activeTeamID > 0 {
 		var isMember bool
-		err := db.Pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", activeTeamID, userID).Scan(&isMember)
+		err := a.Pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", activeTeamID, userID).Scan(&isMember)
 		if err != nil || !isMember {
-			SendResponse(w, r, false, "", "", "Forbidden: You are not a member of this team")
+			a.SendResponse(w, r, false, "", "", "Forbidden: You are not a member of this team")
 			return
 		}
 	}
@@ -242,16 +241,16 @@ func UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 		query := "DELETE FROM user_cve_status WHERE cve_id = $1 AND "
 		if activeTeamID > 0 {
 			query += "team_id = $2"
-			_, err := db.Pool.Exec(r.Context(), query, req.CVEID, activeTeamID)
+			_, err := a.Pool.Exec(r.Context(), query, req.CVEID, activeTeamID)
 			if err != nil {
-				SendResponse(w, r, false, "", "", "Internal server error")
+				a.SendResponse(w, r, false, "", "", "Internal server error")
 				return
 			}
 		} else {
 			query += "user_id = $2 AND team_id IS NULL"
-			_, err := db.Pool.Exec(r.Context(), query, req.CVEID, userID)
+			_, err := a.Pool.Exec(r.Context(), query, req.CVEID, userID)
 			if err != nil {
-				SendResponse(w, r, false, "", "", "Internal server error")
+				a.SendResponse(w, r, false, "", "", "Internal server error")
 				return
 			}
 		}
@@ -260,7 +259,7 @@ func UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 		if activeTeamID > 0 {
 			teamPtr = &activeTeamID
 		}
-		
+
 		query := `
 			INSERT INTO user_cve_status (user_id, team_id, cve_id, status)
 			VALUES ($1, $2, $3, $4)
@@ -273,46 +272,46 @@ func UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 				ON CONFLICT (team_id, cve_id) WHERE team_id IS NOT NULL DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
 			`
 		}
-		_, err := db.Pool.Exec(r.Context(), query, userID, teamPtr, req.CVEID, req.Status)
+		_, err := a.Pool.Exec(r.Context(), query, userID, teamPtr, req.CVEID, req.Status)
 		if err != nil {
 			log.Printf("UpdateStatus Error: %v", err)
-			SendResponse(w, r, false, "", "", "Internal server error")
+			a.SendResponse(w, r, false, "", "", "Internal server error")
 			return
 		}
 	}
 
-	LogActivity(r.Context(), userID, "cve_status_updated", fmt.Sprintf("Updated CVE ID %d status to %s", req.CVEID, req.Status), r.RemoteAddr, r.UserAgent())
-	SendResponse(w, r, true, "Remediation status updated", "", "")
+	a.LogActivity(r.Context(), userID, "cve_status_updated", fmt.Sprintf("Updated CVE ID %d status to %s", req.CVEID, req.Status), r.RemoteAddr, r.UserAgent())
+	a.SendResponse(w, r, true, "Remediation status updated", "", "")
 }
 
-func UpdateCVENoteHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := GetUserID(r)
+func (a *App) UpdateCVENoteHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := a.GetUserID(r)
 	if !ok {
-		SendResponse(w, r, false, "", "", "Unauthorized")
+		a.SendResponse(w, r, false, "", "", "Unauthorized")
 		return
 	}
 
-	activeTeamID, _ := GetActiveTeamID(r)
+	activeTeamID, _ := a.GetActiveTeamID(r)
 
 	var req struct {
 		CVEID int    `json:"cve_id"`
 		Notes string `json:"notes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		SendResponse(w, r, false, "", "", "Bad request")
+		a.SendResponse(w, r, false, "", "", "Bad request")
 		return
 	}
 
 	if len(req.Notes) > 10000 {
-		SendResponse(w, r, false, "", "", "Notes too long (max 10000 characters)")
+		a.SendResponse(w, r, false, "", "", "Notes too long (max 10000 characters)")
 		return
 	}
 
 	if activeTeamID > 0 {
 		var isMember bool
-		err := db.Pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", activeTeamID, userID).Scan(&isMember)
+		err := a.Pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", activeTeamID, userID).Scan(&isMember)
 		if err != nil || !isMember {
-			SendResponse(w, r, false, "", "", "Forbidden: You are not a member of this team")
+			a.SendResponse(w, r, false, "", "", "Forbidden: You are not a member of this team")
 			return
 		}
 	}
@@ -335,56 +334,56 @@ func UpdateCVENoteHandler(w http.ResponseWriter, r *http.Request) {
 		`
 	}
 
-	_, err := db.Pool.Exec(r.Context(), query, userID, teamPtr, req.CVEID, req.Notes)
+	_, err := a.Pool.Exec(r.Context(), query, userID, teamPtr, req.CVEID, req.Notes)
 	if err != nil {
 		log.Printf("UpdateNote Error: %v", err)
-		SendResponse(w, r, false, "", "", "Internal server error")
+		a.SendResponse(w, r, false, "", "", "Internal server error")
 		return
 	}
 
-	LogActivity(r.Context(), userID, "cve_note_updated", fmt.Sprintf("Updated notes for CVE ID %d", req.CVEID), r.RemoteAddr, r.UserAgent())
-	SendResponse(w, r, true, "Notes saved successfully", "", "")
+	a.LogActivity(r.Context(), userID, "cve_note_updated", fmt.Sprintf("Updated notes for CVE ID %d", req.CVEID), r.RemoteAddr, r.UserAgent())
+	a.SendResponse(w, r, true, "Notes saved successfully", "", "")
 }
 
-func BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := GetUserID(r)
+func (a *App) BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := a.GetUserID(r)
 	if !ok {
-		SendResponse(w, r, false, "", "", "Unauthorized")
+		a.SendResponse(w, r, false, "", "", "Unauthorized")
 		return
 	}
 
-	activeTeamID, _ := GetActiveTeamID(r)
+	activeTeamID, _ := a.GetActiveTeamID(r)
 
 	var req struct {
 		CVEIDs []int  `json:"cve_ids"`
 		Status string `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		SendResponse(w, r, false, "", "", "Bad request")
+		a.SendResponse(w, r, false, "", "", "Bad request")
 		return
 	}
 
 	allowedStatuses := map[string]bool{"active": true, "in_progress": true, "resolved": true, "ignored": true}
 	if !allowedStatuses[req.Status] {
-		SendResponse(w, r, false, "", "", "Invalid status")
+		a.SendResponse(w, r, false, "", "", "Invalid status")
 		return
 	}
 
 	if len(req.CVEIDs) == 0 {
-		SendResponse(w, r, true, "No CVEs selected", "", "")
+		a.SendResponse(w, r, true, "No CVEs selected", "", "")
 		return
 	}
 
 	if len(req.CVEIDs) > 1000 {
-		SendResponse(w, r, false, "", "", "Too many CVE IDs (max 1000)")
+		a.SendResponse(w, r, false, "", "", "Too many CVE IDs (max 1000)")
 		return
 	}
 
 	if activeTeamID > 0 {
 		var isMember bool
-		err := db.Pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", activeTeamID, userID).Scan(&isMember)
+		err := a.Pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", activeTeamID, userID).Scan(&isMember)
 		if err != nil || !isMember {
-			SendResponse(w, r, false, "", "", "Forbidden: You are not a member of this team")
+			a.SendResponse(w, r, false, "", "", "Forbidden: You are not a member of this team")
 			return
 		}
 	}
@@ -394,9 +393,9 @@ func BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 		teamPtr = &activeTeamID
 	}
 
-	tx, err := db.Pool.Begin(r.Context())
+	tx, err := a.Pool.Begin(r.Context())
 	if err != nil {
-		SendResponse(w, r, false, "", "", "Internal server error")
+		a.SendResponse(w, r, false, "", "", "Internal server error")
 		return
 	}
 	defer func() { _ = tx.Rollback(r.Context()) }()
@@ -429,20 +428,20 @@ func BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Printf("BulkUpdate Error: %v", err)
-		SendResponse(w, r, false, "", "", "Internal server error")
+		a.SendResponse(w, r, false, "", "", "Internal server error")
 		return
 	}
 
 	if err := tx.Commit(r.Context()); err != nil {
-		SendResponse(w, r, false, "", "", "Internal server error")
+		a.SendResponse(w, r, false, "", "", "Internal server error")
 		return
 	}
 
-	LogActivity(r.Context(), userID, "cve_status_bulk_updated", fmt.Sprintf("Bulk updated %d CVEs to %s", len(req.CVEIDs), req.Status), r.RemoteAddr, r.UserAgent())
-	SendResponse(w, r, true, fmt.Sprintf("Updated %d CVEs", len(req.CVEIDs)), "", "")
+	a.LogActivity(r.Context(), userID, "cve_status_bulk_updated", fmt.Sprintf("Bulk updated %d CVEs to %s", len(req.CVEIDs), req.Status), r.RemoteAddr, r.UserAgent())
+	a.SendResponse(w, r, true, fmt.Sprintf("Updated %d CVEs", len(req.CVEIDs)), "", "")
 }
 
-func PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
+func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	pageStr := r.URL.Query().Get("page")
 	page, _ := strconv.Atoi(pageStr)
 	if page < 1 {
@@ -478,7 +477,7 @@ func PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	`
 
 	whereClause := " WHERE (1=1) "
-	
+
 	// Arguments for public view: $1=search, $2=start, $3=end, $4=min, $5=max
 	whereClause += " AND ($1 = '' OR c.cve_id ILIKE '%%' || $1 || '%%' OR c.description ILIKE '%%' || $1 || '%%') "
 	if kevOnly {
@@ -498,7 +497,7 @@ func PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fullMetricsQuery := metricsQuery + whereClause
-	err := db.Pool.QueryRow(r.Context(), fullMetricsQuery, searchQuery, startDate, endDate, minCvss, maxCvss).Scan(&totalItems, &kevCount, &critCount)
+	err := a.Pool.QueryRow(r.Context(), fullMetricsQuery, searchQuery, startDate, endDate, minCvss, maxCvss).Scan(&totalItems, &kevCount, &critCount)
 	if err != nil {
 		log.Printf("Public dashboard metrics error: %v", err)
 	}
@@ -513,7 +512,7 @@ func PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	query += " ORDER BY c.published_date DESC LIMIT $6 OFFSET $7 "
 
 	// Final args: 1-5 same, $6=pageSize, $7=offset
-	rows, err := db.Pool.Query(r.Context(), query, searchQuery, startDate, endDate, minCvss, maxCvss, pageSize, offset)
+	rows, err := a.Pool.Query(r.Context(), query, searchQuery, startDate, endDate, minCvss, maxCvss, pageSize, offset)
 	if err != nil {
 		log.Printf("Public dashboard query error: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -549,7 +548,7 @@ func PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		Medium   int
 		Low      int
 	}
-	_ = db.Pool.QueryRow(r.Context(), `
+	_ = a.Pool.QueryRow(r.Context(), `
 		SELECT 
 			COUNT(*) FILTER (WHERE cvss_score >= 9.0),
 			COUNT(*) FILTER (WHERE cvss_score >= 7.0 AND cvss_score < 9.0),
@@ -558,30 +557,30 @@ func PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		FROM cves
 	`).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
 
-	RenderTemplate(w, r, "public_dashboard.html", map[string]interface{}{
-		"CVEs":           cves,
-		"Total":          totalItems,
-		"KevCount":       kevCount,
-		"CritCount":      critCount,
-		"ThreatLevel":    threatLevel,
-		"ThreatColor":    threatColor,
-		"Page":           page,
-		"TotalPages":     totalPages,
-		"Query":          searchQuery,
-		"StartDate":      startDate,
-		"EndDate":        endDate,
-		"KevOnly":        kevOnly,
-		"MinCvss":        minCvss,
-		"MaxCvss":        maxCvss,
-		"SeverityCounts": severityCounts,
-		"MetaTitle":      "Vulfixx - Public CVE Tracker & Threat Intelligence",
+	a.RenderTemplate(w, r, "public_dashboard.html", map[string]interface{}{
+		"CVEs":            cves,
+		"Total":           totalItems,
+		"KevCount":        kevCount,
+		"CritCount":       critCount,
+		"ThreatLevel":     threatLevel,
+		"ThreatColor":     threatColor,
+		"Page":            page,
+		"TotalPages":      totalPages,
+		"Query":           searchQuery,
+		"StartDate":       startDate,
+		"EndDate":         endDate,
+		"KevOnly":         kevOnly,
+		"MinCvss":         minCvss,
+		"MaxCvss":         maxCvss,
+		"SeverityCounts":  severityCounts,
+		"MetaTitle":       "Vulfixx - Public CVE Tracker & Threat Intelligence",
 		"MetaDescription": "Monitor real-time vulnerability data, CISA KEV listings, and critical security advisories. The ultimate tracker for security professionals.",
-		"Trending":       getTrendingCVEs(r),
+		"Trending":        a.getTrendingCVEs(r),
 	})
 }
 
-func getTrendingCVEs(r *http.Request) []models.CVE {
-	rows, err := db.Pool.Query(r.Context(), `
+func (a *App) getTrendingCVEs(r *http.Request) []models.CVE {
+	rows, err := a.Pool.Query(r.Context(), `
 		SELECT 
 			id, cve_id, description, cvss_score, cvss_vector, cisa_kev, 
 			published_date, updated_date, 'active' as status, references, '' as notes
@@ -604,12 +603,12 @@ func getTrendingCVEs(r *http.Request) []models.CVE {
 	return cves
 }
 
-func CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
+func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	cveID := vars["id"]
 
 	var c models.CVE
-	err := db.Pool.QueryRow(r.Context(), `
+	err := a.Pool.QueryRow(r.Context(), `
 		SELECT 
 			id, cve_id, description, cvss_score, cvss_vector, cisa_kev, 
 			published_date, updated_date, 'active' as status, references, 
@@ -630,9 +629,9 @@ func CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Generate JSON-LD safely
 	jsonLD := map[string]interface{}{
-		"@context": "https://schema.org",
-		"@type":    "WebPage",
-		"name":     fmt.Sprintf("%s Vulnerability Details", c.CVEID),
+		"@context":    "https://schema.org",
+		"@type":       "WebPage",
+		"name":        fmt.Sprintf("%s Vulnerability Details", c.CVEID),
 		"description": c.Description,
 		"mainEntity": map[string]interface{}{
 			"@type":         "CreativeWork",
@@ -648,7 +647,7 @@ func CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonLDBytes, _ := json.Marshal(jsonLD)
 
-	RenderTemplate(w, r, "cve_detail.html", map[string]interface{}{
+	a.RenderTemplate(w, r, "cve_detail.html", map[string]interface{}{
 		"CVE":             c,
 		"MetaTitle":       fmt.Sprintf("%s - %s | Vulfixx Threat Intel", c.CVEID, c.Description),
 		"MetaDescription": fmt.Sprintf("Security analysis of %s. Severity: %.1f. %s", c.CVEID, c.CVSSScore, c.Description),

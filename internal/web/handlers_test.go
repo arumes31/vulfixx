@@ -1,7 +1,7 @@
 package web
 
 import (
-	"cve-tracker/internal/db"
+
 	"database/sql"
 	"net/http"
 	"net/http/httptest"
@@ -119,7 +119,7 @@ func TestDashboardHandler(t *testing.T) {
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
-		
+
 		req = httptest.NewRequest("GET", "/dashboard", nil)
 		for _, c := range rr.Result().Cookies() {
 			req.AddCookie(c)
@@ -143,7 +143,7 @@ func TestDashboardHandler(t *testing.T) {
 
 		rr2 := httptest.NewRecorder()
 		DashboardHandler(rr2, req)
-		
+
 		if rr2.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr2.Code)
 		}
@@ -168,7 +168,7 @@ func TestUpdateCVEStatusHandler(t *testing.T) {
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
-		
+
 		req = httptest.NewRequest("POST", "/api/status", strings.NewReader(`{"cve_ids": [101], "status": "resolved"}`))
 		req.Header.Set("Accept", "application/json")
 		for _, c := range rr.Result().Cookies() {
@@ -177,7 +177,7 @@ func TestUpdateCVEStatusHandler(t *testing.T) {
 
 		rr2 := httptest.NewRecorder()
 		BulkUpdateCVEStatusHandler(rr2, req)
-		
+
 		if rr2.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr2.Code)
 		}
@@ -200,7 +200,7 @@ func TestBulkUpdateCVEStatusHandler(t *testing.T) {
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
-		
+
 		req = httptest.NewRequest("POST", "/api/status/bulk", strings.NewReader(`{"cve_ids": [101, 102], "status": "resolved"}`))
 		req.Header.Set("Accept", "application/json")
 		for _, c := range rr.Result().Cookies() {
@@ -209,7 +209,7 @@ func TestBulkUpdateCVEStatusHandler(t *testing.T) {
 
 		rr2 := httptest.NewRecorder()
 		BulkUpdateCVEStatusHandler(rr2, req)
-		
+
 		if rr2.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr2.Code)
 		}
@@ -226,7 +226,7 @@ func TestActivityLogHandler(t *testing.T) {
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
-		
+
 		req = httptest.NewRequest("GET", "/activity", nil)
 		for _, c := range rr.Result().Cookies() {
 			req.AddCookie(c)
@@ -238,7 +238,7 @@ func TestActivityLogHandler(t *testing.T) {
 
 		rr2 := httptest.NewRecorder()
 		ActivityLogHandler(rr2, req)
-		
+
 		if rr2.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr2.Code)
 		}
@@ -255,7 +255,7 @@ func TestAlertHistoryHandler(t *testing.T) {
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
-		
+
 		req = httptest.NewRequest("GET", "/alerts", nil)
 		for _, c := range rr.Result().Cookies() {
 			req.AddCookie(c)
@@ -283,7 +283,7 @@ func TestSettingsHandler(t *testing.T) {
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
-		
+
 		req = httptest.NewRequest("GET", "/settings", nil)
 		for _, c := range rr.Result().Cookies() {
 			req.AddCookie(c)
@@ -319,7 +319,7 @@ func TestChangePasswordHandler(t *testing.T) {
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
-		
+
 		req = httptest.NewRequest("POST", "/settings/password", strings.NewReader(form))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		for _, c := range rr.Result().Cookies() {
@@ -346,7 +346,7 @@ func TestVerifyTOTPHandler(t *testing.T) {
 		session.Values["totp_setup_ts"] = time.Now().Unix()
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
-		
+
 		req = httptest.NewRequest("POST", "/settings/totp/verify", strings.NewReader("totp_code=123456"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		for _, c := range rr.Result().Cookies() {

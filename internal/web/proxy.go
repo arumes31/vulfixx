@@ -11,8 +11,6 @@ import (
 	"sync"
 )
 
-
-
 const clientIPKey contextKey = "ClientIP"
 
 var (

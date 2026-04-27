@@ -1,7 +1,7 @@
 package web
 
 import (
-	"cve-tracker/internal/db"
+
 	"net/http"
 	"net/http/httptest"
 	"os"

@@ -38,10 +38,11 @@ func TestAdminUserManagementHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mock, _ := db.SetupTestDB()
 			defer mock.Close()
+			app := setupTestApp(t, mock)
 			tt.mockExpect(mock)
 
 			req := httptest.NewRequest("GET", "/admin/users", nil)
-			session, _ := store.Get(req, "vulfixx-session")
+			session, _ := app.SessionStore.Get(req, "vulfixx-session")
 			session.Values["user_id"] = 1
 			session.Values["is_admin"] = true
 			rr := httptest.NewRecorder()
@@ -53,7 +54,7 @@ func TestAdminUserManagementHandler(t *testing.T) {
 			}
 
 			rr2 := httptest.NewRecorder()
-			AdminUserManagementHandler(rr2, req)
+			app.AdminUserManagementHandler(rr2, req)
 
 			if rr2.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr2.Code)
@@ -76,11 +77,11 @@ func TestAdminDeleteUserHandler(t *testing.T) {
 		expectedStatus int
 	}{
 		{
-			name:   "Success",
-			method: "POST",
-			form:   url.Values{"id": {"2"}, "csrf_token": {"correct"}},
-			userID: 1,
-			csrfInSession:  "correct",
+			name:          "Success",
+			method:        "POST",
+			form:          url.Values{"id": {"2"}, "csrf_token": {"correct"}},
+			userID:        1,
+			csrfInSession: "correct",
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("DELETE FROM users WHERE id =").
 					WithArgs(2).
@@ -97,12 +98,13 @@ func TestAdminDeleteUserHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mock, _ := db.SetupTestDB()
 			defer mock.Close()
+			app := setupTestApp(t, mock)
 			tt.mockExpect(mock)
 
 			req := httptest.NewRequest(tt.method, "/admin/users/delete", strings.NewReader(tt.form.Encode()))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			
-			session, _ := store.Get(req, "vulfixx-session")
+
+			session, _ := app.SessionStore.Get(req, "vulfixx-session")
 			if tt.userID != 0 {
 				session.Values["user_id"] = tt.userID
 				session.Values["is_admin"] = true
@@ -120,7 +122,7 @@ func TestAdminDeleteUserHandler(t *testing.T) {
 			}
 
 			rr2 := httptest.NewRecorder()
-			AdminDeleteUserHandler(rr2, req)
+			app.AdminDeleteUserHandler(rr2, req)
 
 			if rr2.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr2.Code)
@@ -131,3 +133,4 @@ func TestAdminDeleteUserHandler(t *testing.T) {
 		})
 	}
 }
+

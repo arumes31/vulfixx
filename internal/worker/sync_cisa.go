@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/db"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -17,8 +16,8 @@ type CISAKEVResponse struct {
 	} `json:"vulnerabilities"`
 }
 
-func fetchCISAKEVPeriodically(ctx context.Context) {
-	fetchFromCISAKEV(ctx)
+func (w *Worker) fetchCISAKEVPeriodically(ctx context.Context) {
+	w.fetchFromCISAKEV(ctx)
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 	for {
@@ -26,20 +25,19 @@ func fetchCISAKEVPeriodically(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			fetchFromCISAKEV(ctx)
+			w.fetchFromCISAKEV(ctx)
 		}
 	}
 }
 
-func fetchFromCISAKEV(ctx context.Context) {
+func (w *Worker) fetchFromCISAKEV(ctx context.Context) {
 	log.Println("Worker: [SYNC] Fetching CISA KEV catalog...")
-	client := GlobalHTTPClient
 	req, err := http.NewRequestWithContext(ctx, "GET", defaultCISAKEVURL, nil)
 	if err != nil {
 		log.Printf("Worker: [ERROR] Failed to create CISA KEV request: %v", err)
 		return
 	}
-	resp, err := client.Do(req)
+	resp, err := w.HTTP.Do(req)
 	if err != nil {
 		log.Printf("Worker: [ERROR] Failed to fetch CISA KEV: %v", err)
 		return
@@ -60,7 +58,7 @@ func fetchFromCISAKEV(ctx context.Context) {
 	total := len(kevResp.Vulnerabilities)
 	log.Printf("Worker: [SYNC] Updating %d CISA KEV records...", total)
 
-	tx, err := db.Pool.Begin(ctx)
+	tx, err := w.Pool.Begin(ctx)
 	if err != nil {
 		log.Printf("Worker: [ERROR] Failed to start KEV transaction: %v", err)
 		return

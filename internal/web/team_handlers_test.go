@@ -1,7 +1,7 @@
 package web
 
 import (
-	"cve-tracker/internal/db"
+
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -408,10 +408,10 @@ func TestLeaveTeamHandler(t *testing.T) {
 			expectedBody:   "You are the last owner",
 		},
 		{
-			name:   "Success Leave (Not Active)",
-			method: "POST",
-			form:   url.Values{"team_id": {"10"}},
-			userID: 1,
+			name:         "Success Leave (Not Active)",
+			method:       "POST",
+			form:         url.Values{"team_id": {"10"}},
+			userID:       1,
 			activeTeamID: 20,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectQuery("SELECT role FROM team_members").
@@ -428,10 +428,10 @@ func TestLeaveTeamHandler(t *testing.T) {
 			expectedBody:   "Left workspace",
 		},
 		{
-			name:   "Success Leave (Active)",
-			method: "POST",
-			form:   url.Values{"team_id": {"10"}},
-			userID: 1,
+			name:         "Success Leave (Active)",
+			method:       "POST",
+			form:         url.Values{"team_id": {"10"}},
+			userID:       1,
 			activeTeamID: 10,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectQuery("SELECT role FROM team_members").
@@ -532,10 +532,10 @@ func TestSwitchTeamHandler(t *testing.T) {
 			expectedStatus: http.StatusForbidden,
 		},
 		{
-			name:   "Success Switch to Team",
-			method: "POST",
-			form:   url.Values{"team_id": {"10"}},
-			userID: 1,
+			name:    "Success Switch to Team",
+			method:  "POST",
+			form:    url.Values{"team_id": {"10"}},
+			userID:  1,
 			referer: "/some-page",
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectQuery("SELECT EXISTS").
@@ -545,11 +545,11 @@ func TestSwitchTeamHandler(t *testing.T) {
 			expectedStatus: http.StatusFound,
 		},
 		{
-			name:   "Success Switch to Private",
-			method: "POST",
-			form:   url.Values{"team_id": {"0"}},
-			userID: 1,
-			mockExpect: func(mock pgxmock.PgxPoolIface) {},
+			name:           "Success Switch to Private",
+			method:         "POST",
+			form:           url.Values{"team_id": {"0"}},
+			userID:         1,
+			mockExpect:     func(mock pgxmock.PgxPoolIface) {},
 			expectedStatus: http.StatusFound,
 		},
 		{

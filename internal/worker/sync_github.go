@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/db"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,8 +9,8 @@ import (
 	"time"
 )
 
-func syncGitHubBuzzPeriodically(ctx context.Context) {
-	syncGitHubBuzz(ctx)
+func (w *Worker) syncGitHubBuzzPeriodically(ctx context.Context) {
+	w.syncGitHubBuzz(ctx)
 	ticker := time.NewTicker(4 * time.Hour)
 	defer ticker.Stop()
 	for {
@@ -19,19 +18,20 @@ func syncGitHubBuzzPeriodically(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			syncGitHubBuzz(ctx)
+			w.syncGitHubBuzz(ctx)
 		}
 	}
 }
 
-func syncGitHubBuzz(ctx context.Context) {
+func (w *Worker) syncGitHubBuzz(ctx context.Context) {
 	log.Println("Worker: [SYNC] Starting GitHub Social Buzz synchronization...")
-	rows, err := db.Pool.Query(ctx, "SELECT cve_id FROM cves WHERE published_date > NOW() - INTERVAL '14 days' ORDER BY published_date DESC")
+	rows, err := w.Pool.Query(ctx, "SELECT cve_id FROM cves WHERE published_date > NOW() - INTERVAL '14 days' ORDER BY published_date DESC")
 	if err != nil {
 		log.Printf("Worker: [ERROR] Failed to fetch CVEs for GitHub sync: %v", err)
 		return
 	}
-	
+	defer rows.Close()
+
 	var cveIDs []string
 	for rows.Next() {
 		var cveID string
@@ -44,12 +44,9 @@ func syncGitHubBuzz(ctx context.Context) {
 	if err := rows.Err(); err != nil {
 		log.Printf("Worker: [ERROR] Row iteration error in syncGitHubBuzz: %v", err)
 	}
-	rows.Close()
 
 	start := time.Now()
-	client := GlobalHTTPClient
 	for _, cveID := range cveIDs {
-
 
 		select {
 		case <-ctx.Done():
@@ -65,7 +62,7 @@ func syncGitHubBuzz(ctx context.Context) {
 		}
 		req.Header.Set("Accept", "application/vnd.github.v3+json")
 		req.Header.Set("User-Agent", "Vulfixx-Threat-Intel")
-		resp, err := client.Do(req)
+		resp, err := w.HTTP.Do(req)
 		if err != nil {
 			log.Printf("Worker: [ERROR] Failed to fetch GitHub buzz for %s: %v", cveID, err)
 			continue
@@ -89,7 +86,7 @@ func syncGitHubBuzz(ctx context.Context) {
 			log.Printf("Worker: [ERROR] Failed to decode GitHub response for %s: %v", cveID, err)
 			continue
 		}
-		_, err = db.Pool.Exec(ctx, "UPDATE cves SET github_poc_count = $1 WHERE cve_id = $2", ghResp.TotalCount, cveID)
+		_, err = w.Pool.Exec(ctx, "UPDATE cves SET github_poc_count = $1 WHERE cve_id = $2", ghResp.TotalCount, cveID)
 		if err != nil {
 			log.Printf("Worker: [ERROR] Failed to update GitHub buzz for %s: %v", cveID, err)
 		}

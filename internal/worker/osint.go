@@ -7,12 +7,10 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"time"
 )
 
-func fetchOSINTLinks(ctx context.Context, cveID string) map[string]interface{} {
+func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) map[string]interface{} {
 	data := make(map[string]interface{})
-	client := &http.Client{Timeout: 5 * time.Second}
 	encodedID := url.QueryEscape(cveID)
 
 	// Hacker News
@@ -20,7 +18,7 @@ func fetchOSINTLinks(ctx context.Context, cveID string) map[string]interface{} {
 	req, err := http.NewRequestWithContext(ctx, "GET", hnURL, nil)
 	if err != nil {
 		log.Printf("Failed to create HN request: %v", err)
-	} else if resp, err := client.Do(req); err == nil {
+	} else if resp, err := w.HTTP.Do(req); err == nil {
 		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode == http.StatusOK {
 			var hnResp struct {
@@ -52,7 +50,7 @@ func fetchOSINTLinks(ctx context.Context, cveID string) map[string]interface{} {
 		log.Printf("Failed to create Reddit request: %v", err)
 	} else {
 		req.Header.Set("User-Agent", "Vulfixx-Threat-Intel-Bot/1.0")
-		if resp, err := client.Do(req); err == nil {
+		if resp, err := w.HTTP.Do(req); err == nil {
 			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode == http.StatusOK {
 				var rResp struct {

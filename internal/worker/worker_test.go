@@ -116,7 +116,7 @@ func TestWorkerFunctions(t *testing.T) {
 	// Mock expectations for fetchFromNVD
 	mock.ExpectQuery("SELECT value FROM sync_state WHERE key = 'last_nvd_sync'").
 		WillReturnError(fmt.Errorf("no sync")) // Trigger full backfill
-	
+
 	mock.ExpectQuery("WITH upsert AS").
 		WithArgs("CVE-2023-0001", pgxmock.AnyArg(), 7.5, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "tag"}).AddRow(1, "ins"))

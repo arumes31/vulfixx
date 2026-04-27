@@ -3,7 +3,7 @@ package web
 import (
 	"bytes"
 	"context"
-	"cve-tracker/internal/db"
+
 	"encoding/json"
 	"io"
 	"net/http"
@@ -51,7 +51,6 @@ func TestWebEndpointsCoverage(t *testing.T) {
 		t.Fatalf("failed to setup mock db: %v", err)
 	}
 	mock.MatchExpectationsInOrder(true)
-
 
 	mr, err := db.SetupTestRedis()
 	if err != nil {
@@ -119,7 +118,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	mock.ExpectExec("INSERT INTO users").
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
-	
+
 	// Seed user
 	ctx := context.Background()
 	_, _ = db.Pool.Exec(ctx, "DELETE FROM users WHERE email IN ('web_test2@example.com', 'new_web_test@example.com')")
@@ -244,7 +243,8 @@ func TestWebEndpointsCoverage(t *testing.T) {
 				t.Errorf("Request %s %s returned status %d, expected one of %v", method, path, res.StatusCode, expectedCodes)
 			}
 		} else if res.StatusCode >= 400 {
-			body, _ := io.ReadAll(res.Body); t.Errorf("Request %s %s returned error status: %d, body: %s", method, path, res.StatusCode, string(body))
+			body, _ := io.ReadAll(res.Body)
+			t.Errorf("Request %s %s returned error status: %d, body: %s", method, path, res.StatusCode, string(body))
 		}
 		t.Logf("Response %s %s: %d", method, path, res.StatusCode)
 		if res.StatusCode == http.StatusFound {
@@ -293,7 +293,8 @@ func TestWebEndpointsCoverage(t *testing.T) {
 				t.Errorf("Form request %s %s returned status %d, expected one of %v", method, path, res.StatusCode, expectedCodes)
 			}
 		} else if res.StatusCode >= 400 {
-			body, _ := io.ReadAll(res.Body); t.Errorf("Form request %s %s returned error status: %d, body: %s", method, path, res.StatusCode, string(body))
+			body, _ := io.ReadAll(res.Body)
+			t.Errorf("Form request %s %s returned error status: %d, body: %s", method, path, res.StatusCode, string(body))
 		}
 		t.Cleanup(func() { _ = res.Body.Close() })
 		return res
@@ -308,13 +309,13 @@ func TestWebEndpointsCoverage(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(DISTINCT c.id) as total_cves")).
 			WithArgs("", "", "", 0.0, 10.0).
 			WillReturnRows(pgxmock.NewRows([]string{"total_cves", "kev_count", "critical_count"}).AddRow(100, 10, 5))
-		
+
 		// Public CVE List
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.cve_id, c.description, c.cvss_score")).
 			WithArgs("", "", "", 0.0, 10.0, 20, 0).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "cvss_vector", "cisa_kev", "published_date", "updated_date", "status", "references", "notes"}).
 				AddRow(1, "CVE-2023-1234", "Test", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", true, time.Now(), time.Now(), "active", []string{}, ""))
-		
+
 		// Public Severity Distribution
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FILTER (WHERE cvss_score >= 9.0)")).
 			WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(5, 10, 20, 65))
@@ -346,26 +347,26 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	doAuthReq("GET", "/dashboard", nil, func() {
 		// Metrics (10 args)
 		mock.ExpectQuery("SELECT.*COUNT.*total_cves").WithArgs(
-			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), 
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit", "prog"}).AddRow(3, 0, 0, 0))
-		
+
 		// List (10 args)
 		mock.ExpectQuery("SELECT DISTINCT.*FROM cves").WithArgs(
-			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), 
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "desc", "score", "vector", "kev", "pub", "upd", "status", "refs", "notes"}).
 				AddRow(1, "CVE-2024-0001", "Test 1", 7.5, "V1", false, time.Now(), time.Now(), "active", []string{}, ""))
-		
+
 		// Severity Distribution (No args)
 		mock.ExpectQuery("SELECT.*COUNT.*FILTER.*WHERE cvss_score >= 9.0").WithArgs().
 			WillReturnRows(pgxmock.NewRows([]string{"critical", "high", "medium", "low"}).AddRow(0, 0, 0, 0))
 
 		// Status Distribution (10 args)
 		mock.ExpectQuery("SELECT.*COUNT.*FILTER.*WHERE.*ucs.status").WithArgs(
-			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), 
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnRows(pgxmock.NewRows([]string{"active", "in_progress", "resolved", "ignored"}).AddRow(0, 0, 0, 0))
@@ -397,7 +398,9 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	})
 
 	// 5. Settings
-	doAuthReq("GET", "/settings", nil, func() { mock.ExpectQuery("SELECT email, is_totp_enabled FROM users").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"email", "is_totp_enabled"}).AddRow("test@test.com", false)) })
+	doAuthReq("GET", "/settings", nil, func() {
+		mock.ExpectQuery("SELECT email, is_totp_enabled FROM users").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"email", "is_totp_enabled"}).AddRow("test@test.com", false))
+	})
 
 	// 6. Change Password
 	pwForm := url.Values{}
@@ -411,11 +414,17 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	})
 
 	// 7. Activity Log
-	doAuthReq("GET", "/activity", nil, func() { mock.ExpectQuery("SELECT id, activity_type").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"id", "activity_type", "description", "ip_address", "created_at"}).AddRow(1, "login", "desc", "127.0.0.1", time.Now())) })
-	doAuthReq("GET", "/activity/export", nil, func() { mock.ExpectQuery("SELECT id, activity_type").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"id", "activity_type", "description", "ip_address", "created_at"}).AddRow(1, "login", "desc", "127.0.0.1", time.Now())) })
+	doAuthReq("GET", "/activity", nil, func() {
+		mock.ExpectQuery("SELECT id, activity_type").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"id", "activity_type", "description", "ip_address", "created_at"}).AddRow(1, "login", "desc", "127.0.0.1", time.Now()))
+	})
+	doAuthReq("GET", "/activity/export", nil, func() {
+		mock.ExpectQuery("SELECT id, activity_type").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"id", "activity_type", "description", "ip_address", "created_at"}).AddRow(1, "login", "desc", "127.0.0.1", time.Now()))
+	})
 
 	// 8. Alert History
-	doAuthReq("GET", "/alerts", nil, func() { mock.ExpectQuery("SELECT ah.sent_at").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"sent_at", "cve_id", "description", "cvss_score"}).AddRow(time.Now(), "CVE-1", "desc", 5.0)) })
+	doAuthReq("GET", "/alerts", nil, func() {
+		mock.ExpectQuery("SELECT ah.sent_at").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"sent_at", "cve_id", "description", "cvss_score"}).AddRow(time.Now(), "CVE-1", "desc", 5.0))
+	})
 
 	// 9. Bulk Update
 	bulkBody, _ := json.Marshal(map[string]interface{}{"cve_ids": []int{1, 2}, "status": "resolved"})
@@ -470,7 +479,6 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	totpForm := url.Values{}
 	totpForm.Add("totp_code", "123456")
 	doAuthReqForm("POST", "/settings/totp/verify", totpForm, func() {
-
 
 	})
 
@@ -540,10 +548,10 @@ func TestWebEndpointsCoverage(t *testing.T) {
 }
 
 func TestInitTemplates(t *testing.T) {
-    if err := os.Chdir("../.."); err != nil {
+	if err := os.Chdir("../.."); err != nil {
 		t.Logf("Warning: Failed to chdir: %v", err)
 	}
 	defer func() { _ = os.Chdir("internal/web") }()
-    InitTemplates()
+	InitTemplates()
 	StopStatsTicker()
 }

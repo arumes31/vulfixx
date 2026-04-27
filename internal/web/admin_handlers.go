@@ -3,7 +3,7 @@ package web
 import (
 	"crypto/rand"
 	"crypto/subtle"
-	"cve-tracker/internal/db"
+
 	"cve-tracker/internal/models"
 	"encoding/hex"
 	"log"
@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-func AdminUserManagementHandler(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Pool.Query(r.Context(), "SELECT id, email, is_email_verified, is_admin, created_at FROM users ORDER BY created_at DESC")
+func (a *App) AdminUserManagementHandler(w http.ResponseWriter, r *http.Request) {
+	rows, err := a.Pool.Query(r.Context(), "SELECT id, email, is_email_verified, is_admin, created_at FROM users ORDER BY created_at DESC")
 	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
@@ -33,7 +33,7 @@ func AdminUserManagementHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error iterating user rows: %v", err)
 	}
 
-	session, err := store.Get(r, "vulfixx-session")
+	session, err := a.SessionStore.Get(r, "vulfixx-session")
 	if err != nil {
 		log.Printf("AdminUserManagementHandler: session get error: %v", err)
 		http.Error(w, "Session error", http.StatusInternalServerError)
@@ -56,13 +56,13 @@ func AdminUserManagementHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	RenderTemplate(w, r, "admin_users.html", map[string]interface{}{
+	a.RenderTemplate(w, r, "admin_users.html", map[string]interface{}{
 		"Users":          users,
 		"AdminCSRFToken": csrfToken,
 	})
 }
 
-func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
+func (a *App) AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -74,7 +74,7 @@ func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	csrfToken := r.FormValue("csrf_token")
-	session, err := store.Get(r, "vulfixx-session")
+	session, err := a.SessionStore.Get(r, "vulfixx-session")
 	if err != nil {
 		log.Printf("AdminDeleteUserHandler: session get error: %v", err)
 		http.Error(w, "Session error", http.StatusInternalServerError)
@@ -99,7 +99,7 @@ func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Prevent admin from deleting themselves
-	currentUserID, ok := GetUserID(r)
+	currentUserID, ok := a.GetUserID(r)
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -109,7 +109,7 @@ func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := db.Pool.Exec(r.Context(), "DELETE FROM users WHERE id = $1 AND is_admin = FALSE", id)
+	res, err := a.Pool.Exec(r.Context(), "DELETE FROM users WHERE id = $1 AND is_admin = FALSE", id)
 	if err != nil {
 		log.Printf("Failed to delete user %d: %v", id, err)
 		http.Error(w, "Failed to delete user", http.StatusInternalServerError)
@@ -117,8 +117,8 @@ func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if res.RowsAffected() > 0 {
-		_, auditErr := db.Pool.Exec(r.Context(), 
-			"INSERT INTO user_activity_logs (user_id, activity_type, description, ip_address, created_at) VALUES ($1, $2, $3, $4, $5)", 
+		_, auditErr := a.Pool.Exec(r.Context(),
+			"INSERT INTO user_activity_logs (user_id, activity_type, description, ip_address, created_at) VALUES ($1, $2, $3, $4, $5)",
 			currentUserID, "user_delete", "Deleted user ID "+strconv.Itoa(id), r.RemoteAddr, time.Now())
 		if auditErr != nil {
 			log.Printf("Failed to insert audit log: %v", auditErr)

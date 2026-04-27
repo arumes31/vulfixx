@@ -2,7 +2,6 @@ package web
 
 import (
 	"bytes"
-	"cve-tracker/internal/db"
 	"encoding/csv"
 	"fmt"
 	"log"
@@ -10,8 +9,8 @@ import (
 	"time"
 )
 
-func ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := GetUserID(r)
+func (a *App) ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := a.GetUserID(r)
 	if !ok {
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
@@ -28,7 +27,7 @@ func ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 		  AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%')
 		ORDER BY c.published_date DESC
 	`
-	rows, err := db.Pool.Query(r.Context(), query, userID)
+	rows, err := a.Pool.Query(r.Context(), query, userID)
 	if err != nil {
 		log.Printf("Error fetching CVEs for export: %v", err)
 		http.Error(w, "Error fetching CVEs", http.StatusInternalServerError)

@@ -8,8 +8,6 @@ import (
 	"net/http"
 )
 
-
-
 const NonceKey contextKey = "nonce"
 
 // SecurityHeadersMiddleware adds standard HTTP security headers to all responses.

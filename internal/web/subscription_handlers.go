@@ -1,7 +1,6 @@
 package web
 
 import (
-	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
@@ -14,18 +13,18 @@ import (
 	"time"
 )
 
-func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := GetUserID(r)
+func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := a.GetUserID(r)
 	if !ok {
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
 	if r.Method == "GET" {
 		query := `SELECT id, keyword, min_severity, webhook_url, enable_email, enable_webhook FROM user_subscriptions WHERE user_id = $1`
-		rows, err := db.Pool.Query(r.Context(), query, userID)
+		rows, err := a.Pool.Query(r.Context(), query, userID)
 		if err != nil {
 			log.Printf("Error fetching subscriptions: %v", err)
-			RenderTemplate(w, r, "subscriptions.html", map[string]interface{}{"Error": "Error fetching subscriptions"})
+			a.RenderTemplate(w, r, "subscriptions.html", map[string]interface{}{"Error": "Error fetching subscriptions"})
 			return
 		}
 		defer rows.Close()
@@ -41,12 +40,12 @@ func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Err(); err != nil {
 			log.Printf("Error iterating subscriptions: %v", err)
 		}
-		RenderTemplate(w, r, "subscriptions.html", map[string]interface{}{"Subscriptions": subs})
+		a.RenderTemplate(w, r, "subscriptions.html", map[string]interface{}{"Subscriptions": subs})
 		return
 	}
 	if r.Method == "POST" {
 		if err := r.ParseForm(); err != nil {
-			SendResponse(w, r, false, "", "", "Error parsing form")
+			a.SendResponse(w, r, false, "", "", "Error parsing form")
 			return
 		}
 		keyword := strings.TrimSpace(r.FormValue("keyword"))
@@ -54,21 +53,21 @@ func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 		webhookUrl := strings.TrimSpace(r.FormValue("webhook_url"))
 
 		if len(keyword) > 100 {
-			SendResponse(w, r, false, "", "", "Target infrastructure keyword too long (max 100 characters)")
+			a.SendResponse(w, r, false, "", "", "Target infrastructure keyword too long (max 100 characters)")
 			return
 		}
 
 		minSeverity, err := strconv.ParseFloat(minSeverityStr, 64)
 		if err != nil || minSeverity < 0 || minSeverity > 10 {
-			SendResponse(w, r, false, "", "", "Invalid severity score (must be 0-10)")
+			a.SendResponse(w, r, false, "", "", "Invalid severity score (must be 0-10)")
 			return
 		}
 
 		// Enforce limit
 		var count int
-		err = db.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1", userID).Scan(&count)
+		err = a.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1", userID).Scan(&count)
 		if err == nil && count >= 20 {
-			SendResponse(w, r, false, "", "", "Maximum of 20 subscriptions allowed")
+			a.SendResponse(w, r, false, "", "", "Maximum of 20 subscriptions allowed")
 			return
 		}
 
@@ -77,61 +76,61 @@ func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 
 		if enableWebhook {
 			if webhookUrl == "" {
-				SendResponse(w, r, false, "", "", "A webhook URL is required")
+				a.SendResponse(w, r, false, "", "", "A webhook URL is required")
 				return
 			}
 			parsed, err := url.ParseRequestURI(webhookUrl)
 			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-				SendResponse(w, r, false, "", "", "A valid HTTP/HTTPS webhook URL is required")
+				a.SendResponse(w, r, false, "", "", "A valid HTTP/HTTPS webhook URL is required")
 				return
 			}
 			webhookUrl = parsed.String()
-			
+
 			if len(webhookUrl) > 2048 {
-				SendResponse(w, r, false, "", "", "Webhook URL is too long")
+				a.SendResponse(w, r, false, "", "", "Webhook URL is too long")
 				return
 			}
 		}
 
-		_, err = db.Pool.Exec(r.Context(), `
+		_, err = a.Pool.Exec(r.Context(), `
 			INSERT INTO user_subscriptions (user_id, keyword, min_severity, webhook_url, enable_email, enable_webhook)
 			VALUES ($1, $2, $3, $4, $5, $6)
 		`, userID, keyword, minSeverity, webhookUrl, enableEmail, enableWebhook)
 		if err != nil {
-			SendResponse(w, r, false, "", "", "Error saving subscription")
+			a.SendResponse(w, r, false, "", "", "Error saving subscription")
 			return
 		}
-		LogActivity(r.Context(), userID, "subscription_added", "Added keyword: "+keyword, r.RemoteAddr, r.UserAgent())
-		SendResponse(w, r, true, "Telemetry monitor initialized", "/subscriptions", "")
+		a.LogActivity(r.Context(), userID, "subscription_added", "Added keyword: "+keyword, r.RemoteAddr, r.UserAgent())
+		a.SendResponse(w, r, true, "Telemetry monitor initialized", "/subscriptions", "")
 	}
 }
 
-func DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
+func (a *App) DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		SendResponse(w, r, false, "", "", "Method not allowed")
+		a.SendResponse(w, r, false, "", "", "Method not allowed")
 		return
 	}
-	userID, ok := GetUserID(r)
+	userID, ok := a.GetUserID(r)
 	if !ok {
-		SendResponse(w, r, false, "", "", "Unauthorized")
+		a.SendResponse(w, r, false, "", "", "Unauthorized")
 		return
 	}
 	subIDStr := r.FormValue("id")
 	subID, err := strconv.Atoi(subIDStr)
 	if err != nil {
-		SendResponse(w, r, false, "", "", "Invalid subscription ID")
+		a.SendResponse(w, r, false, "", "", "Invalid subscription ID")
 		return
 	}
 
-	if _, err = db.Pool.Exec(r.Context(), "DELETE FROM user_subscriptions WHERE id = $1 AND user_id = $2", subID, userID); err != nil {
-		SendResponse(w, r, false, "", "", "Error deleting subscription")
+	if _, err = a.Pool.Exec(r.Context(), "DELETE FROM user_subscriptions WHERE id = $1 AND user_id = $2", subID, userID); err != nil {
+		a.SendResponse(w, r, false, "", "", "Error deleting subscription")
 		return
 	}
-	LogActivity(r.Context(), userID, "subscription_deleted", "Deleted subscription ID: "+subIDStr, r.RemoteAddr, r.UserAgent())
-	SendResponse(w, r, true, "Telemetry pipeline removed", "/subscriptions", "")
+	a.LogActivity(r.Context(), userID, "subscription_deleted", "Deleted subscription ID: "+subIDStr, r.RemoteAddr, r.UserAgent())
+	a.SendResponse(w, r, true, "Telemetry pipeline removed", "/subscriptions", "")
 }
 
-func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
+func (a *App) RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	minSeverityStr := r.URL.Query().Get("min_cvss")
 	keyword := r.URL.Query().Get("q")
@@ -142,7 +141,7 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var userID int
-	err := db.Pool.QueryRow(r.Context(), "SELECT id FROM users WHERE rss_feed_token = $1", token).Scan(&userID)
+	err := a.Pool.QueryRow(r.Context(), "SELECT id FROM users WHERE rss_feed_token = $1", token).Scan(&userID)
 	if err != nil {
 		http.Error(w, "Invalid token", http.StatusUnauthorized)
 		return
@@ -165,7 +164,7 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 		  )
 		ORDER BY c.published_date DESC LIMIT 50
 	`
-	rows, err := db.Pool.Query(r.Context(), query, userID, minSeverity, keyword)
+	rows, err := a.Pool.Query(r.Context(), query, userID, minSeverity, keyword)
 	if err != nil {
 		http.Error(w, "Error fetching CVEs", http.StatusInternalServerError)
 		return
@@ -210,7 +209,7 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 </rss>`)
 }
 
-func HandleAlertAction(w http.ResponseWriter, r *http.Request) {
+func (a *App) HandleAlertAction(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	action := r.URL.Query().Get("action")
 
@@ -219,7 +218,7 @@ func HandleAlertAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dataBlob, err := db.RedisClient.Get(r.Context(), "alert_action:"+token).Result()
+	dataBlob, err := a.Redis.Get(r.Context(), "alert_action:"+token).Result()
 	if err != nil {
 		http.Error(w, "This action link has expired or is invalid.", http.StatusGone)
 		return
@@ -236,7 +235,7 @@ func HandleAlertAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == "GET" {
-		RenderTemplate(w, r, "confirm_action.html", map[string]interface{}{
+		a.RenderTemplate(w, r, "confirm_action.html", map[string]interface{}{
 			"Action":  action,
 			"Keyword": data.Keyword,
 			"CVEID":   data.CVEID,
@@ -253,7 +252,7 @@ func HandleAlertAction(w http.ResponseWriter, r *http.Request) {
 
 	switch action {
 	case "acknowledge":
-		_, err = db.Pool.Exec(ctx, `
+		_, err = a.Pool.Exec(ctx, `
 			INSERT INTO user_cve_status (user_id, cve_id, status)
 			VALUES ($1, $2, 'in_progress')
 			ON CONFLICT (user_id, cve_id) WHERE team_id IS NULL DO UPDATE SET status = 'in_progress', updated_at = CURRENT_TIMESTAMP
@@ -262,9 +261,9 @@ func HandleAlertAction(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Failed to acknowledge alert", http.StatusInternalServerError)
 			return
 		}
-		db.RedisClient.Del(ctx, "alert_action:"+token)
-		LogActivity(ctx, data.UserID, "remediation", fmt.Sprintf("Acknowledged CVE ID %d via email", data.CVEID), r.RemoteAddr, r.UserAgent())
-		RenderTemplate(w, r, "message.html", map[string]interface{}{
+		a.Redis.Del(ctx, "alert_action:"+token)
+		a.LogActivity(ctx, data.UserID, "remediation", fmt.Sprintf("Acknowledged CVE ID %d via email", data.CVEID), r.RemoteAddr, r.UserAgent())
+		a.RenderTemplate(w, r, "message.html", map[string]interface{}{
 			"Title":   "Alert Acknowledged",
 			"Message": "Vulnerability has been marked as 'In Progress'. View it in your dashboard for further analysis.",
 		})
@@ -274,14 +273,14 @@ func HandleAlertAction(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Invalid keyword for muting", http.StatusBadRequest)
 			return
 		}
-		_, err = db.Pool.Exec(ctx, "DELETE FROM user_subscriptions WHERE user_id = $1 AND keyword = $2", data.UserID, data.Keyword)
+		_, err = a.Pool.Exec(ctx, "DELETE FROM user_subscriptions WHERE user_id = $1 AND keyword = $2", data.UserID, data.Keyword)
 		if err != nil {
 			http.Error(w, "Failed to mute keyword", http.StatusInternalServerError)
 			return
 		}
-		db.RedisClient.Del(ctx, "alert_action:"+token)
-		LogActivity(ctx, data.UserID, "alert_action", fmt.Sprintf("Muted keyword '%s' via email", data.Keyword), r.RemoteAddr, r.UserAgent())
-		RenderTemplate(w, r, "message.html", map[string]interface{}{
+		a.Redis.Del(ctx, "alert_action:"+token)
+		a.LogActivity(ctx, data.UserID, "alert_action", fmt.Sprintf("Muted keyword '%s' via email", data.Keyword), r.RemoteAddr, r.UserAgent())
+		a.RenderTemplate(w, r, "message.html", map[string]interface{}{
 			"Title":   "Keyword Muted",
 			"Message": fmt.Sprintf("You will no longer receive alerts for the keyword '%s'.", data.Keyword),
 		})

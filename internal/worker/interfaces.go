@@ -16,10 +16,14 @@ type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
-// Default implementation for EmailSender
-type realEmailSender struct{}
+// RealEmailSender is the default implementation for EmailSender
+type RealEmailSender struct{}
 
-func (s *realEmailSender) SendEmail(toEmail, subject, body string) error {
+func NewEmailSender() EmailSender {
+	return &RealEmailSender{}
+}
+
+func (s *RealEmailSender) SendEmail(toEmail, subject, body string) error {
 	host := os.Getenv("SMTP_HOST")
 	port := os.Getenv("SMTP_PORT")
 	user := os.Getenv("SMTP_USER")
@@ -43,15 +47,3 @@ func (s *realEmailSender) SendEmail(toEmail, subject, body string) error {
 	msg := []byte("To: " + cleanTo + "\r\n" + "From: " + cleanFrom + "\r\n" + "Subject: " + cleanSubject + "\r\n" + "Content-Type: text/html; charset=UTF-8\r\n" + "\r\n" + body)
 	return sendMailWithTimeout(host, port, user, password, cleanFrom, []string{cleanTo}, msg)
 }
-
-var (
-	// GlobalEmailSender is the instance used by the worker.
-	GlobalEmailSender EmailSender = &realEmailSender{}
-
-	// GlobalHTTPClient is the instance used by the worker for outgoing requests.
-	GlobalHTTPClient HTTPClient = &http.Client{
-		Transport: &http.Transport{
-			// Basic security for outgoing requests
-		},
-	}
-)

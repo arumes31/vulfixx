@@ -6,14 +6,14 @@ import (
 	"time"
 )
 
-func startWeeklySummaryTask(ctx context.Context) {
+func (w *Worker) startWeeklySummaryTask(ctx context.Context) {
 	log.Println("Worker: [CRON] Weekly summary task started")
 	ticker := time.NewTicker(7 * 24 * time.Hour)
 	defer ticker.Stop()
 
 	// Run once immediately on startup
 	log.Println("Worker: [CRON] Executing initial weekly summary run...")
-	sendWeeklySummaries(ctx)
+	w.sendWeeklySummaries(ctx)
 
 	for {
 		select {
@@ -22,13 +22,13 @@ func startWeeklySummaryTask(ctx context.Context) {
 			return
 		case <-ticker.C:
 			log.Println("Worker: [CRON] Executing weekly summary run...")
-			sendWeeklySummaries(ctx)
+			w.sendWeeklySummaries(ctx)
 			log.Println("Worker: [CRON] Weekly summary run complete.")
 		}
 	}
 }
 
-func sendWeeklySummaries(ctx context.Context) {
+func (w *Worker) sendWeeklySummaries(ctx context.Context) {
 	log.Println("Worker: [CRON] Starting weekly summaries distribution...")
 	start := time.Now()
 	// Implementation logic for weekly summaries

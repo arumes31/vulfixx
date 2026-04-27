@@ -3,7 +3,7 @@ package web
 import (
 	"bytes"
 	"context"
-	"cve-tracker/internal/db"
+
 	"encoding/json"
 	"errors"
 	"net/http"

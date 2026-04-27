@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/db"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,8 +9,8 @@ import (
 	"time"
 )
 
-func syncEPSSPeriodically(ctx context.Context) {
-	syncEPSS(ctx)
+func (w *Worker) syncEPSSPeriodically(ctx context.Context) {
+	w.syncEPSS(ctx)
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 	for {
@@ -19,21 +18,22 @@ func syncEPSSPeriodically(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			syncEPSS(ctx)
+			w.syncEPSS(ctx)
 		}
 	}
 }
 
 var defaultEPSSBaseURL = "https://api.first.org/data/v1/epss"
 
-func syncEPSS(ctx context.Context) {
+func (w *Worker) syncEPSS(ctx context.Context) {
 	log.Println("Worker: [SYNC] Starting EPSS score synchronization...")
-	rows, err := db.Pool.Query(ctx, "SELECT cve_id FROM cves WHERE published_date > NOW() - INTERVAL '30 days'")
+	rows, err := w.Pool.Query(ctx, "SELECT cve_id FROM cves WHERE published_date > NOW() - INTERVAL '30 days'")
 	if err != nil {
 		log.Printf("Worker: [ERROR] Failed to fetch CVEs for EPSS sync: %v", err)
 		return
 	}
-	
+	defer rows.Close()
+
 	var cveIDs []string
 	for rows.Next() {
 		var cveID string
@@ -46,10 +46,8 @@ func syncEPSS(ctx context.Context) {
 	if err := rows.Err(); err != nil {
 		log.Printf("Worker: [ERROR] Row iteration error in syncEPSS: %v", err)
 	}
-	rows.Close()
 
 	start := time.Now()
-	client := GlobalHTTPClient
 	for _, cveID := range cveIDs {
 		select {
 		case <-ctx.Done():
@@ -63,7 +61,7 @@ func syncEPSS(ctx context.Context) {
 			log.Printf("Worker: [ERROR] Failed to create EPSS request for %s: %v", cveID, err)
 			continue
 		}
-		resp, err := client.Do(req)
+		resp, err := w.HTTP.Do(req)
 		if err != nil {
 			log.Printf("Worker: [ERROR] Failed to fetch EPSS for %s: %v", cveID, err)
 			continue
@@ -93,7 +91,7 @@ func syncEPSS(ctx context.Context) {
 				log.Printf("EPSS: Failed to parse score for %s: %v", cveID, err)
 				continue
 			}
-			_, err = db.Pool.Exec(ctx, "UPDATE cves SET epss_score = $1 WHERE cve_id = $2", score, cveID)
+			_, err = w.Pool.Exec(ctx, "UPDATE cves SET epss_score = $1 WHERE cve_id = $2", score, cveID)
 			if err != nil {
 				log.Printf("Worker: [ERROR] Failed to update EPSS for %s: %v", cveID, err)
 			}

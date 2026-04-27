@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func InitTemplatesWithFuncs() {
+func (a *App) InitTemplatesWithFuncs() {
 	funcs := template.FuncMap{
 		"map": func(values ...interface{}) map[string]interface{} {
 			if len(values)%2 != 0 {
@@ -30,13 +30,13 @@ func InitTemplatesWithFuncs() {
 			}
 			return int(float64(count) / float64(total) * 100)
 		},
-		"add":      func(a, b int) int { return a + b },
-		"subtract": func(a, b int) int { return a - b },
-		"multiply": func(a, b float64) float64 { return a * b },
+		"add":        func(a, b int) int { return a + b },
+		"subtract":   func(a, b int) int { return a - b },
+		"multiply":   func(a, b float64) float64 { return a * b },
 		"GetBaseURL": GetBaseURL,
 	}
 
-	templateMap = make(map[string]*template.Template)
+	a.TemplateMap = make(map[string]*template.Template)
 
 	files, err := filepath.Glob("templates/*.html")
 	if err != nil {
@@ -50,9 +50,9 @@ func InitTemplatesWithFuncs() {
 		if name == "base.html" {
 			continue
 		}
-		templateMap[name] = template.Must(template.New(name).Funcs(funcs).ParseFiles("templates/base.html", file))
+		a.TemplateMap[name] = template.Must(template.New(name).Funcs(funcs).ParseFiles("templates/base.html", file))
 	}
-	if len(templateMap) == 0 {
+	if len(a.TemplateMap) == 0 {
 		log.Fatalf("No renderable templates loaded")
 	}
 }

@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"cve-tracker/internal/auth"
-	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
@@ -19,7 +18,7 @@ import (
 	"time"
 )
 
-func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName string) bool {
+func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName string) bool {
 	log.Printf("ALERT: Sending to %s for %s\n", redactEmail(email), cve.CVEID)
 	var wg sync.WaitGroup
 	successChan := make(chan bool, 2)
@@ -27,7 +26,7 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName st
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			
+
 			// Robust Webhook Security
 			parsedURL, err := url.Parse(sub.WebhookURL)
 			redacted := redactURL(sub.WebhookURL)
@@ -86,7 +85,7 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName st
 			}
 			req.Header.Set("Content-Type", "application/json")
 
-			resp, err := GlobalHTTPClient.Do(req)
+			resp, err := w.HTTP.Do(req)
 			if err == nil {
 				_ = resp.Body.Close()
 				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
@@ -133,7 +132,7 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName st
 			if cve.EPSSScore > 0 {
 				epssDisplay = fmt.Sprintf("%.1f%%", cve.EPSSScore*100)
 			}
-			
+
 			actionToken, err := auth.GenerateToken()
 			if err != nil {
 				log.Printf("Error generating action token: %v", err)
@@ -144,13 +143,15 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName st
 				log.Printf("Error marshaling action data: %v", err)
 				return
 			}
-			if err := db.RedisClient.Set(context.Background(), "alert_action:"+actionToken, actionData, 24*time.Hour).Err(); err != nil {
+			if err := w.Redis.Set(context.Background(), "alert_action:"+actionToken, actionData, 24*time.Hour).Err(); err != nil {
 				log.Printf("Error storing action token in Redis: %v", err)
 				return
 			}
 
 			baseURL := os.Getenv("BASE_URL")
-			if baseURL == "" { baseURL = "http://localhost:8080" }
+			if baseURL == "" {
+				baseURL = "http://localhost:8080"
+			}
 			if u, err := url.Parse(baseURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 				// #nosec G706 -- baseURL is from admin-controlled environment variable
 				log.Printf("Worker: Invalid BASE_URL %q, defaulting to localhost", baseURL)
@@ -181,7 +182,7 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName st
 					</div>
 				</div>
 			`, html.EscapeString(cve.CVEID), kevBadge, advisoryHTML, severityColor, cve.CVSSScore, severity, epssDisplay, html.EscapeString(cve.Description), buttonsHTML, baseURL)
-			if err := GlobalEmailSender.SendEmail(email, "Security Alert: "+cve.CVEID, body); err == nil {
+			if err := w.Mailer.SendEmail(email, "Security Alert: "+cve.CVEID, body); err == nil {
 				successChan <- true
 			}
 		}()

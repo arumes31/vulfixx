@@ -2,7 +2,7 @@ package web
 
 import (
 	"context"
-	"cve-tracker/internal/db"
+
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -38,24 +38,24 @@ func TestAuthMiddleware(t *testing.T) {
 		session.Values["user_id"] = 1
 		// We can't easily save the session back to the recorder in a unit test without a real response writer
 		// But store.Get uses the request context/cookies.
-		
+
 		// Actually, store.Get works with the request.
 		// To simulate a cookie, we'd need to sign it.
 		// Easier to just mock GetUserID if we could.
-		
+
 		// But let's try to set the value in the session.
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
-		
+
 		// Re-create request with cookie
 		req = httptest.NewRequest("GET", "/dashboard", nil)
 		for _, c := range rr.Result().Cookies() {
 			req.AddCookie(c)
 		}
-		
+
 		mock.ExpectQuery("SELECT is_email_verified").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"is_email_verified"}).AddRow(false))
-		
+
 		rr2 := httptest.NewRecorder()
 		handler.ServeHTTP(rr2, req)
 		if rr2.Code != http.StatusForbidden {
@@ -69,15 +69,15 @@ func TestAuthMiddleware(t *testing.T) {
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
-		
+
 		req = httptest.NewRequest("GET", "/dashboard", nil)
 		for _, c := range rr.Result().Cookies() {
 			req.AddCookie(c)
 		}
-		
+
 		mock.ExpectQuery("SELECT is_email_verified").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"is_email_verified"}).AddRow(true))
-		
+
 		rr2 := httptest.NewRecorder()
 		handler.ServeHTTP(rr2, req)
 		if rr2.Code != http.StatusOK {
@@ -111,15 +111,15 @@ func TestAdminMiddleware(t *testing.T) {
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
-		
+
 		req = httptest.NewRequest("GET", "/admin", nil)
 		for _, c := range rr.Result().Cookies() {
 			req.AddCookie(c)
 		}
-		
+
 		mock.ExpectQuery("SELECT is_admin").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"is_admin"}).AddRow(false))
-		
+
 		rr2 := httptest.NewRecorder()
 		handler.ServeHTTP(rr2, req)
 		if rr2.Code != http.StatusForbidden {
@@ -133,15 +133,15 @@ func TestAdminMiddleware(t *testing.T) {
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
-		
+
 		req = httptest.NewRequest("GET", "/admin", nil)
 		for _, c := range rr.Result().Cookies() {
 			req.AddCookie(c)
 		}
-		
+
 		mock.ExpectQuery("SELECT is_admin").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"is_admin"}).AddRow(true))
-		
+
 		rr2 := httptest.NewRecorder()
 		handler.ServeHTTP(rr2, req)
 		if rr2.Code != http.StatusOK {
@@ -237,7 +237,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 		req := httptest.NewRequest("GET", "/", nil)
 		ctx := context.WithValue(req.Context(), clientIPKey, "2.2.2.2")
 		req = req.WithContext(ctx)
-		
+
 		// Burst is 10. Do 11 requests.
 		for i := 0; i < 11; i++ {
 			rr := httptest.NewRecorder()

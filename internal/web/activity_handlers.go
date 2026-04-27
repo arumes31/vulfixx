@@ -1,15 +1,15 @@
 package web
 
 import (
-	"cve-tracker/internal/db"
+
 	"encoding/json"
 	"log"
 	"net/http"
 	"time"
 )
 
-func ActivityLogHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := GetUserID(r)
+func (a *App) ActivityLogHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := a.GetUserID(r)
 	if !ok {
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
@@ -21,7 +21,7 @@ func ActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 		WHERE user_id = $1
 		ORDER BY created_at DESC LIMIT 100
 	`
-	rows, err := db.Pool.Query(r.Context(), query, userID)
+	rows, err := a.Pool.Query(r.Context(), query, userID)
 	if err != nil {
 		http.Error(w, "Error fetching activity logs", http.StatusInternalServerError)
 		return
@@ -53,13 +53,13 @@ func ActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error iterating activity logs: %v", err)
 	}
 
-	RenderTemplate(w, r, "activity_log.html", map[string]interface{}{
+	a.RenderTemplate(w, r, "activity_log.html", map[string]interface{}{
 		"Logs": logs,
 	})
 }
 
-func ExportActivityLogHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := GetUserID(r)
+func (a *App) ExportActivityLogHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := a.GetUserID(r)
 	if !ok {
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
@@ -71,7 +71,7 @@ func ExportActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 		WHERE user_id = $1
 		ORDER BY created_at DESC LIMIT 1000
 	`
-	rows, err := db.Pool.Query(r.Context(), query, userID)
+	rows, err := a.Pool.Query(r.Context(), query, userID)
 	if err != nil {
 		http.Error(w, "Error fetching activity logs", http.StatusInternalServerError)
 		return

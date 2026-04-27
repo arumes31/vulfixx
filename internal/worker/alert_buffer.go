@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
@@ -17,7 +16,7 @@ var (
 	bufferTimeStandard = 5 * time.Minute
 )
 
-func bufferAlert(ctx context.Context, userID int, cve *models.CVE, email, assetName string) bool {
+func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, email, assetName string) bool {
 	// Severity-Based Routing:
 	// Critical (>= 9.0) gets immediate delivery.
 	// High (>= 7.0) gets a short buffer (configurable, default 1 min).
@@ -25,7 +24,7 @@ func bufferAlert(ctx context.Context, userID int, cve *models.CVE, email, assetN
 
 	if cve.CVSSScore >= 9.0 {
 		sub := models.UserSubscription{EnableEmail: true, EnableWebhook: true}
-		return sendAlert(sub, cve, email, assetName)
+		return w.sendAlert(sub, cve, email, assetName)
 	}
 
 	key := fmt.Sprintf("alert_buffer:%d", userID)
@@ -35,13 +34,13 @@ func bufferAlert(ctx context.Context, userID int, cve *models.CVE, email, assetN
 		log.Printf("Error marshaling alert buffer data: %v", err)
 		return false
 	}
-	if err := db.RedisClient.RPush(ctx, key, blob).Err(); err != nil {
+	if err := w.Redis.RPush(ctx, key, blob).Err(); err != nil {
 		log.Printf("Error pushing to alert buffer: %v", err)
 		return false
 	}
 
 	processingKey := fmt.Sprintf("alert_processing:%d", userID)
-	set, _ := db.RedisClient.SetNX(ctx, processingKey, "true", 10*time.Minute).Result()
+	set, _ := w.Redis.SetNX(ctx, processingKey, "true", 10*time.Minute).Result()
 	if set {
 		bufferTime := bufferTimeStandard
 		if cve.CVSSScore >= 7.0 {
@@ -51,11 +50,11 @@ func bufferAlert(ctx context.Context, userID int, cve *models.CVE, email, assetN
 			defer func() {
 				cleanupCtx, cancel := context.WithTimeout(procCtx, 5*time.Second)
 				defer cancel()
-				db.RedisClient.Del(cleanupCtx, processingKey)
+				w.Redis.Del(cleanupCtx, processingKey)
 			}()
 			select {
 			case <-time.After(bTime):
-				processUserBuffer(procCtx, userID)
+				w.processUserBuffer(procCtx, userID)
 			case <-procCtx.Done():
 				return
 			}
@@ -64,10 +63,10 @@ func bufferAlert(ctx context.Context, userID int, cve *models.CVE, email, assetN
 	return true
 }
 
-func processUserBuffer(ctx context.Context, userID int) {
+func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 	key := fmt.Sprintf("alert_buffer:%d", userID)
 	// Atomic: Fetch all and delete
-	pipe := db.RedisClient.TxPipeline()
+	pipe := w.Redis.TxPipeline()
 	lrange := pipe.LRange(ctx, key, 0, -1)
 	pipe.Del(ctx, key)
 	_, err := pipe.Exec(ctx)
@@ -91,7 +90,7 @@ func processUserBuffer(ctx context.Context, userID int) {
 		}
 		if err := json.Unmarshal([]byte(blobs[0]), &data); err == nil {
 			sub := models.UserSubscription{EnableEmail: true, EnableWebhook: true}
-			sendAlert(sub, &data.CVE, data.Email, data.AssetName)
+			w.sendAlert(sub, &data.CVE, data.Email, data.AssetName)
 		}
 		return
 	}
@@ -188,7 +187,7 @@ func processUserBuffer(ctx context.Context, userID int) {
 		return
 	}
 
-	if err := sendEmail(email, "Threat Brief: Multiple Vulnerabilities Detected", body); err != nil {
+	if err := w.Mailer.SendEmail(email, "Threat Brief: Multiple Vulnerabilities Detected", body); err != nil {
 		log.Printf("Failed to send threat brief: %v", err)
 	}
 }
