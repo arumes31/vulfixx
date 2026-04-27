@@ -50,16 +50,18 @@ func GetActiveTeamID(r *http.Request) (int, bool) {
 	return teamID, ok
 }
 
-func SetActiveTeamID(w http.ResponseWriter, r *http.Request, teamID int) {
+func SetActiveTeamID(w http.ResponseWriter, r *http.Request, teamID int) error {
 	session, err := store.Get(r, "vulfixx-session")
 	if err != nil {
 		log.Printf("SetActiveTeamID error getting session: %v", err)
-		return
+		return err
 	}
 	session.Values["team_id"] = teamID
 	if err := session.Save(r, w); err != nil {
 		log.Printf("SetActiveTeamID error saving session: %v", err)
+		return err
 	}
+	return nil
 }
 
 func IsAdmin(r *http.Request) bool {

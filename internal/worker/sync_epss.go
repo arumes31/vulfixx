@@ -51,7 +51,7 @@ func syncEPSS(ctx context.Context) {
 		}
 		if resp.StatusCode != http.StatusOK {
 			log.Printf("Worker: [WARN] EPSS API returned status %d for %s", resp.StatusCode, cveID)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusTooManyRequests {
 				time.Sleep(5 * time.Second)
 			}
@@ -63,7 +63,7 @@ func syncEPSS(ctx context.Context) {
 			} `json:"data"`
 		}
 		err = json.NewDecoder(resp.Body).Decode(&epssResp)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil {
 			log.Printf("Worker: [ERROR] Failed to decode EPSS for %s: %v", cveID, err)
 			continue

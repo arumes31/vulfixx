@@ -48,9 +48,15 @@ func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 			SendResponse(w, r, false, "", "", "Error parsing form")
 			return
 		}
-		keyword := r.FormValue("keyword")
+		keyword := strings.TrimSpace(r.FormValue("keyword"))
 		minSeverityStr := r.FormValue("min_severity")
-		webhookUrl := r.FormValue("webhook_url")
+		webhookUrl := strings.TrimSpace(r.FormValue("webhook_url"))
+
+		if len(keyword) > 100 {
+			SendResponse(w, r, false, "", "", "Target infrastructure keyword too long (max 100 characters)")
+			return
+		}
+
 		minSeverity, err := strconv.ParseFloat(minSeverityStr, 64)
 		if err != nil || minSeverity < 0 || minSeverity > 10 {
 			SendResponse(w, r, false, "", "", "Invalid severity score (must be 0-10)")
@@ -67,6 +73,17 @@ func SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 
 		enableEmail := r.FormValue("enable_email") == "on" || r.FormValue("enable_email") == "true"
 		enableWebhook := r.FormValue("enable_webhook") == "on" || r.FormValue("enable_webhook") == "true"
+
+		if enableWebhook {
+			if webhookUrl == "" || (!strings.HasPrefix(webhookUrl, "http://") && !strings.HasPrefix(webhookUrl, "https://")) {
+				SendResponse(w, r, false, "", "", "A valid HTTP/HTTPS webhook URL is required")
+				return
+			}
+			if len(webhookUrl) > 2048 {
+				SendResponse(w, r, false, "", "", "Webhook URL is too long")
+				return
+			}
+		}
 
 		_, err = db.Pool.Exec(r.Context(), `
 			INSERT INTO user_subscriptions (user_id, keyword, min_severity, webhook_url, enable_email, enable_webhook)
@@ -132,11 +149,12 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 		SELECT DISTINCT c.cve_id, c.description, c.cvss_score, c.published_date
 		FROM cves c
 		INNER JOIN user_subscriptions us ON us.user_id = $1
-		WHERE (
+		WHERE us.user_id = $1
+		  AND (
 			(c.cvss_score >= us.min_severity AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%'))
 			OR
-			($2 > 0 AND c.cvss_score >= $2 AND ($3 = '' OR c.description ILIKE '%' || $3 || '%'))
-		)
+			( ($2 > 0 AND c.cvss_score >= $2) AND ($3 = '' OR c.description ILIKE '%' || $3 || '%') )
+		  )
 		ORDER BY c.published_date DESC LIMIT 50
 	`
 	rows, err := db.Pool.Query(r.Context(), query, userID, minSeverity, keyword)
@@ -224,7 +242,6 @@ func HandleAlertAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	defer db.RedisClient.Del(ctx, "alert_action:"+token)
 
 	switch action {
 	case "acknowledge":
@@ -237,6 +254,7 @@ func HandleAlertAction(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Failed to acknowledge alert", http.StatusInternalServerError)
 			return
 		}
+		db.RedisClient.Del(ctx, "alert_action:"+token)
 		LogActivity(ctx, data.UserID, "remediation", fmt.Sprintf("Acknowledged CVE ID %d via email", data.CVEID), r.RemoteAddr, r.UserAgent())
 		RenderTemplate(w, r, "message.html", map[string]interface{}{
 			"Title":   "Alert Acknowledged",
@@ -253,6 +271,7 @@ func HandleAlertAction(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Failed to mute keyword", http.StatusInternalServerError)
 			return
 		}
+		db.RedisClient.Del(ctx, "alert_action:"+token)
 		LogActivity(ctx, data.UserID, "alert_action", fmt.Sprintf("Muted keyword '%s' via email", data.Keyword), r.RemoteAddr, r.UserAgent())
 		RenderTemplate(w, r, "message.html", map[string]interface{}{
 			"Title":   "Keyword Muted",

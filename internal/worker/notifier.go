@@ -73,7 +73,11 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName st
 			if os.Getenv("WEBHOOK_INCLUDE_USER_EMAIL") == "true" {
 				payloadMap["user_email"] = email
 			}
-			payload, _ := json.Marshal(payloadMap)
+			payload, err := json.Marshal(payloadMap)
+			if err != nil {
+				log.Printf("Error marshaling webhook payload: %v", err)
+				return
+			}
 
 			client := &http.Client{
 				Timeout: 10 * time.Second,
@@ -136,19 +140,49 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName st
 			if cve.EPSSScore > 0 {
 				epssDisplay = fmt.Sprintf("%.1f%%", cve.EPSSScore*100)
 			}
-			actionToken, _ := auth.GenerateToken()
-			actionData, _ := json.Marshal(map[string]interface{}{"user_id": sub.UserID, "cve_id": cve.ID, "keyword": sub.Keyword})
-			db.RedisClient.Set(context.Background(), "alert_action:"+actionToken, actionData, 24*time.Hour)
+			
+			actionToken, err := auth.GenerateToken()
+			if err != nil {
+				log.Printf("Error generating action token: %v", err)
+				return
+			}
+			actionData, err := json.Marshal(map[string]interface{}{"user_id": sub.UserID, "cve_id": cve.ID, "keyword": sub.Keyword})
+			if err != nil {
+				log.Printf("Error marshaling action data: %v", err)
+				return
+			}
+			if err := db.RedisClient.Set(context.Background(), "alert_action:"+actionToken, actionData, 24*time.Hour).Err(); err != nil {
+				log.Printf("Error storing action token in Redis: %v", err)
+				return
+			}
+
+			baseURL := os.Getenv("BASE_URL")
+			if baseURL == "" { baseURL = "http://localhost:8080" }
+
+			buttonsHTML := fmt.Sprintf(`
+				<div style="margin-top: 30px; display: table; width: 100%%; border-collapse: separate; border-spacing: 10px 0;">
+					<div style="display: table-cell; width: 50%%;">
+						<a href="%s/alert-action?token=%s&action=acknowledge" style="display: block; background: #00daf3; color: #101418; text-align: center; padding: 12px 0; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 13px;">ACKNOWLEDGE</a>
+					</div>
+					<div style="display: table-cell; width: 50%%;">
+						<a href="%s/alert-action?token=%s&action=mute" style="display: block; background: #1c2026; color: #dfe2eb; text-align: center; padding: 12px 0; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 13px; border: 1px solid #232931;">MUTE KEYWORD</a>
+					</div>
+				</div>
+			`, baseURL, actionToken, baseURL, actionToken)
 			body := fmt.Sprintf(`
 				<div style="font-family: sans-serif; max-width: 600px; margin: auto; background: #101418; color: #dfe2eb; padding: 40px; border-radius: 12px; border: 1px solid #232931;">
-					<h1 style="color: #ffffff;">%s</h1>
+					<h1 style="color: #ffffff; margin-top: 0;">%s</h1>
 					%s %s
-					<div style="margin: 20px 0;">CVSS: <span style="color: %s;">%.1f (%s)</span> | EPSS: %s</div>
-					<p>%s</p>
+					<div style="margin: 20px 0; font-size: 14px; opacity: 0.8;">
+						CVSS: <span style="color: %s; font-weight: bold;">%.1f (%s)</span> | EPSS: <span style="font-weight: bold;">%s</span>
+					</div>
+					<p style="line-height: 1.6; margin-bottom: 25px;">%s</p>
 					%s
-					<a href="%s/dashboard" style="display: block; background: #00daf3; color: #101418; text-align: center; padding: 15px 0; border-radius: 8px; text-decoration: none; font-weight: bold;">View Details</a>
+					<div style="margin-top: 25px; border-top: 1px solid #232931; pt: 20px;">
+						<a href="%s/dashboard" style="display: block; text-align: center; color: #00daf3; text-decoration: none; font-size: 12px; font-weight: bold; padding-top: 20px;">OPEN DASHBOARD &rarr;</a>
+					</div>
 				</div>
-			`, html.EscapeString(cve.CVEID), kevBadge, advisoryHTML, severityColor, cve.CVSSScore, severity, epssDisplay, html.EscapeString(cve.Description), os.Getenv("BASE_URL"), os.Getenv("BASE_URL"))
+			`, html.EscapeString(cve.CVEID), kevBadge, advisoryHTML, severityColor, cve.CVSSScore, severity, epssDisplay, html.EscapeString(cve.Description), buttonsHTML, baseURL)
 			if err := sendEmail(email, "Security Alert: "+cve.CVEID, body); err == nil {
 				successChan <- true
 			}

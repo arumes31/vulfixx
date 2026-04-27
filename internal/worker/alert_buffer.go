@@ -25,8 +25,15 @@ func bufferAlert(ctx context.Context, userID int, cve *models.CVE, email, assetN
 
 	key := fmt.Sprintf("alert_buffer:%d", userID)
 	data := map[string]interface{}{"cve": cve, "email": email, "asset_name": assetName}
-	blob, _ := json.Marshal(data)
-	db.RedisClient.RPush(ctx, key, blob)
+	blob, err := json.Marshal(data)
+	if err != nil {
+		log.Printf("Error marshaling alert buffer data: %v", err)
+		return false
+	}
+	if err := db.RedisClient.RPush(ctx, key, blob).Err(); err != nil {
+		log.Printf("Error pushing to alert buffer: %v", err)
+		return false
+	}
 
 	processingKey := fmt.Sprintf("alert_processing:%d", userID)
 	set, _ := db.RedisClient.SetNX(ctx, processingKey, "true", 10*time.Minute).Result()
@@ -37,7 +44,11 @@ func bufferAlert(ctx context.Context, userID int, cve *models.CVE, email, assetN
 		}
 
 		go func(bTime time.Duration) {
-			defer db.RedisClient.Del(context.Background(), processingKey)
+			defer func() {
+				cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				db.RedisClient.Del(cleanupCtx, processingKey)
+			}()
 			select {
 			case <-time.After(bTime):
 				processUserBuffer(context.Background(), userID)
@@ -60,7 +71,11 @@ func processUserBuffer(ctx context.Context, userID int) {
 		log.Printf("Error processing alert buffer for user %d: %v", userID, err)
 		return
 	}
-	blobs, _ := lrange.Result()
+	blobs, err := lrange.Result()
+	if err != nil {
+		log.Printf("Error getting alert buffer result: %v", err)
+		return
+	}
 	if len(blobs) == 0 {
 		return
 	}
@@ -142,6 +157,11 @@ func processUserBuffer(ctx context.Context, userID int) {
 			</tr>
 		`, html.EscapeString(item.CVEID), assetInfo, html.EscapeString(buzzBadge), item.Score)
 	}
+	baseURL := os.Getenv("BASE_URL")
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
+
 	body := fmt.Sprintf(`
 		<div style="font-family: 'Inter', sans-serif; max-width: 600px; margin: auto; background: #101418; color: #dfe2eb; padding: 40px; border-radius: 12px; border: 1px solid #232931;">
 			<h2 style="color: #00daf3; margin-top: 0;">Intelligence Brief: %d New Threats</h2>
@@ -157,7 +177,13 @@ func processUserBuffer(ctx context.Context, userID int) {
 			</table>
 			<a href="%s/dashboard" style="display: block; width: 100%%; background: #00daf3; color: #101418; text-align: center; padding: 15px 0; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 14px; text-transform: uppercase;">Review All Threats</a>
 		</div>
-	`, len(items), rowsHTML, os.Getenv("BASE_URL"))
+	`, len(items), rowsHTML, baseURL)
+
+	if email == "" {
+		log.Printf("Error: No recipient email found for user %d digest", userID)
+		return
+	}
+
 	if err := sendEmail(email, "Threat Brief: Multiple Vulnerabilities Detected", body); err != nil {
 		log.Printf("Failed to send threat brief: %v", err)
 	}

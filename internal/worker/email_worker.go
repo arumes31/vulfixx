@@ -26,8 +26,14 @@ func processEmailVerification(ctx context.Context) {
 			log.Printf("Worker: Error unmarshaling email verification payload: %v", err)
 			continue
 		}
-		if err := sendVerificationEmail(payload["email"], payload["token"]); err != nil {
-			log.Printf("Worker: Failed to send verification email to %s: %v", payload["email"], err)
+		email := payload["email"]
+		token := payload["token"]
+		if email == "" || token == "" {
+			log.Printf("Worker: Invalid email verification payload: email=%q, token=%q", email, token)
+			continue
+		}
+		if err := sendVerificationEmail(email, token); err != nil {
+			log.Printf("Worker: Failed to send verification email to %s: %v", email, err)
 		}
 	}
 }
@@ -46,21 +52,32 @@ func processEmailChange(ctx context.Context) {
 			log.Printf("Worker: Error unmarshaling email change payload: %v", err)
 			continue
 		}
-		if err := sendEmailChangeNotification(payload["email"], payload["token"], payload["type"]); err != nil {
-			log.Printf("Worker: Failed to send email change notification to %s: %v", payload["email"], err)
+		email := payload["email"]
+		token := payload["token"]
+		emailType := payload["type"]
+		if email == "" || token == "" {
+			log.Printf("Worker: Invalid email change payload: email=%q, token=%q", email, token)
+			continue
+		}
+		if err := sendEmailChangeNotification(email, token, emailType); err != nil {
+			log.Printf("Worker: Failed to send email change notification to %s: %v", email, err)
 		}
 	}
 }
 
 func sendEmailChangeNotification(email, token, emailType string) error {
 	subject := "Confirm Your Email Change"
-	body := fmt.Sprintf("Please click the link below to confirm your new email address: %s/confirm-email-change?token=%s", os.Getenv("BASE_URL"), token)
+	baseURL := os.Getenv("BASE_URL")
+	if baseURL == "" { baseURL = "http://localhost:8080" }
+	body := fmt.Sprintf("<div style=\"font-family: sans-serif;\"><p>Please click the link below to confirm your new email address:</p><p><a href=\"%s/confirm-email-change?token=%s\">%s/confirm-email-change?token=%s</a></p></div>", baseURL, token, baseURL, token)
 	return sendEmail(email, subject, body)
 }
 
 func sendVerificationEmail(email, token string) error {
 	subject := "Verify Your Email Address"
-	body := fmt.Sprintf("Please click the link below to verify your email address: %s/verify-email?token=%s", os.Getenv("BASE_URL"), token)
+	baseURL := os.Getenv("BASE_URL")
+	if baseURL == "" { baseURL = "http://localhost:8080" }
+	body := fmt.Sprintf("<div style=\"font-family: sans-serif;\"><p>Welcome to Vulfixx! Please click the link below to verify your email address:</p><p><a href=\"%s/verify-email?token=%s\">%s/verify-email?token=%s</a></p></div>", baseURL, token, baseURL, token)
 	return sendEmail(email, subject, body)
 }
 
@@ -81,6 +98,6 @@ func sendEmail(toEmail, subject, body string) error {
 		return fmt.Errorf("invalid recipient: %w", err)
 	}
 
-	msg := []byte("To: " + cleanTo + "\r\n" + "Subject: " + cleanSubject + "\r\n" + "Content-Type: text/html; charset=UTF-8\r\n" + "\r\n" + body)
+	msg := []byte("To: " + cleanTo + "\r\n" + "From: " + from + "\r\n" + "Subject: " + cleanSubject + "\r\n" + "Content-Type: text/html; charset=UTF-8\r\n" + "\r\n" + body)
 	return sendMailWithTimeout(host, port, user, password, from, []string{cleanTo}, msg)
 }

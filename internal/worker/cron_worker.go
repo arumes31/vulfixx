@@ -10,6 +10,11 @@ func startWeeklySummaryTask(ctx context.Context) {
 	log.Println("Worker: [CRON] Weekly summary task started")
 	ticker := time.NewTicker(7 * 24 * time.Hour)
 	defer ticker.Stop()
+
+	// Run once immediately on startup
+	log.Println("Worker: [CRON] Executing initial weekly summary run...")
+	sendWeeklySummaries(ctx)
+
 	for {
 		select {
 		case <-ctx.Done():

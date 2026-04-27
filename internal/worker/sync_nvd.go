@@ -121,6 +121,7 @@ func runFullSync(ctx context.Context, isBackfill bool) {
 			nvdURL += fmt.Sprintf("&lastModEndDate=%s", url.QueryEscape(syncStart.Format("2006-01-02T15:04:05.000")))
 		}
 
+		// #nosec G704 -- baseURL is either constant or from admin-controlled environment variable
 		req, err := http.NewRequestWithContext(ctx, "GET", nvdURL, nil)
 		if err != nil {
 			log.Println("Error creating NVD request:", err)

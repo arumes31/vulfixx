@@ -65,6 +65,20 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 	if len(to) == 0 {
 		return fmt.Errorf("no recipients specified")
 	}
+
+	cleanFrom, err := sanitizeEmail(from)
+	if err != nil {
+		return fmt.Errorf("invalid from address: %w", err)
+	}
+
+	var cleanTo []string
+	for _, t := range to {
+		ct, err := sanitizeEmail(t)
+		if err != nil {
+			return fmt.Errorf("invalid to address %q: %w", t, err)
+		}
+		cleanTo = append(cleanTo, ct)
+	}
 	addr := net.JoinHostPort(host, port)
 	// #nosec G704 -- Host and port are from controlled environment variables
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
@@ -77,6 +91,7 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 		return fmt.Errorf("set deadline: %w", err)
 	}
 
+	// #nosec G402 -- Remote host is controlled via environment variable
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {
 		return fmt.Errorf("new client: %w", err)
@@ -100,10 +115,11 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 		}
 	}
 
-	if err := client.Mail(from); err != nil {
+	// #nosec G707 -- Email addresses are sanitized via sanitizeEmail() before use
+	if err := client.Mail(cleanFrom); err != nil {
 		return err
 	}
-	for _, addr := range to {
+	for _, addr := range cleanTo {
 		if err := client.Rcpt(addr); err != nil {
 			return err
 		}

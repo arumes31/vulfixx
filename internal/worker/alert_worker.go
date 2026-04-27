@@ -56,7 +56,7 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 			continue
 		}
 		if matchCVE(cve, sub) {
-			if notifyIfNew(ctx, sub.UserID, cve.ID, sub, email, "") {
+			if notifyIfNew(ctx, sub.UserID, cve, sub, email, "") {
 				notifiedUsers[sub.UserID] = true
 			}
 		}
@@ -86,7 +86,7 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 			}
 			if strings.Contains(strings.ToLower(cve.Description), strings.ToLower(keyword)) {
 				sub := models.UserSubscription{EnableEmail: true, EnableWebhook: true}
-				if notifyIfNew(ctx, userID, cve.ID, sub, email, assetName) {
+				if notifyIfNew(ctx, userID, cve, sub, email, assetName) {
 					notifiedUsers[userID] = true
 				}
 			}
@@ -107,53 +107,46 @@ func matchCVE(cve *models.CVE, sub models.UserSubscription) bool {
 }
 
 func evaluateComplexFilter(logic string, cve *models.CVE) bool {
-	logic = strings.ToLower(logic)
-	if strings.Contains(logic, "epss >") {
-		parts := strings.Split(logic, "epss >")
-		if len(parts) > 1 {
-			valStr := strings.TrimSpace(strings.Split(parts[1], " ")[0])
-			val, err := strconv.ParseFloat(valStr, 64)
-			if err != nil {
-				return false
-			}
-			if cve.EPSSScore <= val {
-				return false
-			}
-		} else {
-			return false
-		}
-	}
-	if strings.Contains(logic, "cisa == true") || strings.Contains(logic, "cisa = true") {
-		if !cve.CISAKEV {
-			return false
-		}
-	}
-	if strings.Contains(logic, "buzz >") {
-		parts := strings.Split(logic, "buzz >")
-		if len(parts) > 1 {
-			valStr := strings.TrimSpace(strings.Split(parts[1], " ")[0])
-			val, err := strconv.Atoi(valStr)
-			if err != nil {
-				return false
-			}
-			if cve.GitHubPoCCount <= val {
-				return false
-			}
-		} else {
-			return false
-		}
+	logic = strings.TrimSpace(strings.ToLower(logic))
+	if logic == "" {
+		return true
 	}
 
-	// Regex Filter support
-	if strings.Contains(logic, "regex:") {
-		parts := strings.Split(logic, "regex:")
-		if len(parts) > 1 {
-			pattern := strings.TrimSpace(strings.Split(parts[1], " ")[0])
-			re, err := regexp.Compile(pattern)
-			if err == nil {
-				if !re.MatchString(cve.Description) {
+	// Simple whitespace-based tokenizer
+	tokens := strings.Fields(logic)
+	for i := 0; i < len(tokens); i++ {
+		switch tokens[i] {
+		case "epss":
+			if i+2 < len(tokens) && (tokens[i+1] == ">" || tokens[i+1] == ">=") {
+				val, err := strconv.ParseFloat(tokens[i+2], 64)
+				if err == nil && cve.EPSSScore < val {
 					return false
 				}
+				i += 2
+			}
+		case "cisa":
+			if i+2 < len(tokens) && (tokens[i+1] == "==" || tokens[i+1] == "=") {
+				if tokens[i+2] == "true" && !cve.CISAKEV {
+					return false
+				}
+				i += 2
+			}
+		case "buzz":
+			if i+2 < len(tokens) && (tokens[i+1] == ">" || tokens[i+1] == ">=") {
+				val, err := strconv.Atoi(tokens[i+2])
+				if err == nil && cve.GitHubPoCCount < val {
+					return false
+				}
+				i += 2
+			}
+		case "regex:":
+			if i+1 < len(tokens) {
+				pattern := tokens[i+1]
+				re, err := regexp.Compile(pattern)
+				if err == nil && !re.MatchString(cve.Description) {
+					return false
+				}
+				i += 1
 			}
 		}
 	}
@@ -161,8 +154,8 @@ func evaluateComplexFilter(logic string, cve *models.CVE) bool {
 	return true
 }
 
-func notifyIfNew(ctx context.Context, userID, cveID int, sub models.UserSubscription, email, assetName string) bool {
-	res, err := db.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id, created_at) VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING", userID, cveID)
+func notifyIfNew(ctx context.Context, userID int, cve *models.CVE, sub models.UserSubscription, email, assetName string) bool {
+	res, err := db.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id, created_at) VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING", userID, cve.ID)
 	if err != nil {
 		log.Printf("Failed to record alert history: %v", err)
 		return false
@@ -170,15 +163,22 @@ func notifyIfNew(ctx context.Context, userID, cveID int, sub models.UserSubscrip
 	if res.RowsAffected() == 0 {
 		return false
 	}
-	var cve models.CVE
-	err = db.Pool.QueryRow(ctx, `
-		SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, github_poc_count, published_date, "references" 
-		FROM cves WHERE id = $1
-	`, cveID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.VectorString, &cve.CISAKEV, &cve.EPSSScore, &cve.CWEID, &cve.GitHubPoCCount, &cve.PublishedDate, &cve.References)
-	if err != nil {
-		log.Printf("Failed to fetch full CVE details for alert: %v", err)
-		return false
+
+	// If the CVE object passed in doesn't have some extended fields (unlikely given how evaluateSubscriptions is called), 
+	// we would fetch them here, but we've already done the query in evaluateSubscriptions if needed.
+	// However, processAlerts job might only have partial data. 
+	// Let's ensure it has what bufferAlert needs.
+	if cve.Description == "" || cve.CVSSScore == 0 {
+		err = db.Pool.QueryRow(ctx, `
+			SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, github_poc_count, published_date, "references" 
+			FROM cves WHERE id = $1
+		`, cve.ID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.VectorString, &cve.CISAKEV, &cve.EPSSScore, &cve.CWEID, &cve.GitHubPoCCount, &cve.PublishedDate, &cve.References)
+		if err != nil {
+			log.Printf("Failed to fetch full CVE details for alert: %v", err)
+			return false
+		}
 	}
+
 	cve.OSINTData = fetchOSINTLinks(ctx, cve.CVEID)
-	return bufferAlert(ctx, userID, &cve, email, assetName)
+	return bufferAlert(ctx, userID, cve, email, assetName)
 }

@@ -79,10 +79,10 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		whereClause += " AND c.cisa_kev = true "
 	}
 	if minCvss > 0 {
-		whereClause += fmt.Sprintf(" AND c.cvss_score >= %f ", minCvss)
+		whereClause += " AND c.cvss_score >= $9 "
 	}
 	if maxCvss < 10 {
-		whereClause += fmt.Sprintf(" AND c.cvss_score <= %f ", maxCvss)
+		whereClause += " AND c.cvss_score <= $10 "
 	}
 	if startDate != "" {
 		whereClause += " AND c.published_date >= $3 "
@@ -92,7 +92,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fullMetricsQuery := metricsQuery + whereClause
-	err := db.Pool.QueryRow(r.Context(), fullMetricsQuery, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID).Scan(&totalItems, &kevCount, &critCount, &progressCount)
+	err := db.Pool.QueryRow(r.Context(), fullMetricsQuery, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss).Scan(&totalItems, &kevCount, &critCount, &progressCount)
 	if err != nil {
 		log.Printf("Dashboard metrics error: %v", err)
 	}
@@ -116,7 +116,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	query += whereClause
 	query += " ORDER BY c.published_date DESC LIMIT $5 OFFSET $6 "
 
-	rows, err := db.Pool.Query(r.Context(), query, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID)
+	rows, err := db.Pool.Query(r.Context(), query, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss)
 	if err != nil {
 		log.Printf("Dashboard query error: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

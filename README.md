@@ -136,6 +136,24 @@ act -j test
 act -j lint
 ```
 
+## 🛡️ Security Hardening & Audit
+
+The codebase has undergone a comprehensive security audit using automated static analysis (`gosec`) and manual investigation.
+
+### Recent Remediation Actions
+- **SSRF Mitigation**: Implemented strict URL validation and scheme checks in all worker synchronization tasks.
+- **SMTP Injection Protection**: Centralized email sanitization (`sanitizeEmail`) with CR/LF stripping and proper RFC parsing.
+- **Context Propagation**: Goroutines have been updated to use derived, request-scoped contexts for reliable resource management and cancellation.
+- **Credential Sanitization**: Automated discovery and removal of hardcoded credentials across backend services and automation scripts.
+- **Session Security**: Hardened session handling with proper error propagation and secure redirect validation.
+- **SQL Injection Prevention**: Full parameterized query migration for all dynamic dashboard and subscription filters.
+
+### Automated Checks
+The CI pipeline automatically runs:
+- `golangci-lint`: For code quality and best practices.
+- `gosec`: For vulnerability scanning and static security analysis.
+- `go test`: Comprehensive unit and integration test suite.
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).

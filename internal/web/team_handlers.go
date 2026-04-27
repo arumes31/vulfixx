@@ -7,13 +7,17 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
-	"strings"
+	"time"
 )
 
 func generateInviteCode() string {
 	b := make([]byte, 8)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		log.Printf("CRITICAL: Failed to generate random invite code: %v", err)
+		return "fallback-" + strconv.FormatInt(time.Now().Unix(), 16)
+	}
 	return hex.EncodeToString(b)
 }
 
@@ -172,7 +176,7 @@ func LeaveTeamHandler(w http.ResponseWriter, r *http.Request) {
 	// Reset active team if it was the one left
 	activeID, _ := GetActiveTeamID(r)
 	if activeID == teamID {
-		SetActiveTeamID(w, r, 0)
+		_ = SetActiveTeamID(w, r, 0)
 	}
 
 	LogActivity(r.Context(), userID, "team_left", fmt.Sprintf("Left team ID %d", teamID), r.RemoteAddr, r.UserAgent())
@@ -198,10 +202,21 @@ func SwitchTeamHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	SetActiveTeamID(w, r, teamID)
+	if err := SetActiveTeamID(w, r, teamID); err != nil {
+		http.Error(w, "Failed to switch workspace", http.StatusInternalServerError)
+		return
+	}
 	
 	redirect := r.Referer()
-	if redirect == "" || !strings.Contains(redirect, r.Host) {
+	if redirect != "" {
+		if ref, err := url.Parse(redirect); err == nil {
+			if ref.Host != "" && ref.Host != r.Host {
+				redirect = "/dashboard"
+			}
+		} else {
+			redirect = "/dashboard"
+		}
+	} else {
 		redirect = "/dashboard"
 	}
 	http.Redirect(w, r, redirect, http.StatusFound)
