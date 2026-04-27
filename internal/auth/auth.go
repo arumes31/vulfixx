@@ -57,12 +57,20 @@ func VerifyEmail(ctx context.Context, token string) error {
 	return nil
 }
 
+var dummyHash []byte
+
+func init() {
+	dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy_password_for_timing_protection"), bcrypt.DefaultCost)
+}
+
 func Login(ctx context.Context, email, password string) (*models.User, error) {
 	var user models.User
 	// Make sure we scan all relevant fields needed
 	err := db.Pool.QueryRow(ctx, "SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE(totp_secret, ''), is_admin FROM users WHERE email = $1", email).
 		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsEmailVerified, &user.IsTOTPEnabled, &user.TOTPSecret, &user.IsAdmin)
 	if err != nil {
+		// Mitigate user enumeration via timing attack by performing a dummy hash comparison
+		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 		return nil, errors.New("invalid credentials")
 	}
 

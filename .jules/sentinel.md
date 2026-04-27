@@ -1,8 +1,4 @@
-## 2025-04-22 - [Add Security Headers]
-**Vulnerability:** Missing standard HTTP security headers (HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, X-XSS-Protection) across all responses, leaving the application slightly more vulnerable to clickjacking, MIME-sniffing, and downgrade attacks.
-**Learning:** The application was using gorilla/mux and had a proxy middleware, but lacked a generic middleware for enforcing security headers.
-**Prevention:** Added a `SecurityHeadersMiddleware` that gets applied to the global router in `cmd/cve-tracker/main.go` to ensure all responses get standard protection.
-## 2024-05-25 - Prevent DNS Rebinding / TOCTOU SSRF
-**Vulnerability:** DNS Rebinding / Time-Of-Check to Time-Of-Use (TOCTOU) Server-Side Request Forgery (SSRF) in webhook alerts.
-**Learning:** `net.DefaultResolver.LookupNetIP` was used to resolve IPs and check for safe IPs before launching an `http.Client`. However, the `http.Client` does its own separate DNS resolution at connection time. An attacker could exploit this gap by changing the DNS record to point to a private IP like 127.0.0.1 after the initial check passed. Also, when fixing this by using a custom `http.Transport`, one must call `defer transport.CloseIdleConnections()` to prevent FD leaks due to idle pooled connections when instantiating transports repeatedly.
-**Prevention:** Use a custom `net.Dialer` with a `Control` hook when instantiating the `http.Client`. This allows inspecting and validating the exact resolved IP precisely when the connection is being established, eliminating the TOCTOU window. Also remember to close idle connections when using custom `http.Transport` instances to prevent resource leaks.
+## 2024-05-18 - Fix timing attack in login endpoint
+**Vulnerability:** User enumeration via timing attack in login endpoint. An attacker could measure the response time of the login request to determine whether a given email address was registered. If the email existed, the server performed an expensive bcrypt computation (~100ms+), but if it did not exist, it returned an error immediately.
+**Learning:** This is a classic timing attack specific to authentication endpoints where the expensive hashing operation is skipped if the user is not found, leaking the existence of the user.
+**Prevention:** Ensured the login function performs a dummy bcrypt hash computation on a pre-generated hash with the provided password, ensuring the response time remains relatively constant whether the user exists or not.
