@@ -101,6 +101,9 @@
     function copyToClipboard(text) {
         navigator.clipboard.writeText(text).then(() => {
             vulfixx.toast('Invite code copied to clipboard!', 'success');
+        }).catch(err => {
+            console.error('Failed to copy text: ', err);
+            vulfixx.toast('Failed to copy invite code', 'error');
         });
     }
 

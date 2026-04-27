@@ -106,6 +106,7 @@ func runFullSync(ctx context.Context, isBackfill bool) {
 	syncStart := time.Now().UTC()
 	delay := nvdAPIDelay()
 
+	rateLimitRetries := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -131,7 +132,6 @@ func runFullSync(ctx context.Context, isBackfill bool) {
 
 		var resp *http.Response
 		maxRetries := 3
-		rateLimitRetries := 0
 		maxRateLimitRetries := 5
 		var retryErr error
 		for retry := 0; retry < maxRetries; retry++ {
@@ -265,6 +265,7 @@ func upsertCVEs(ctx context.Context, vulnerabilities []NVDCVEEntry, sendAlerts b
 			CVSSScore:     score,
 			VectorString:  vector,
 			CWEID:         cwe,
+			References:    refs,
 			PublishedDate: pubDate,
 			UpdatedDate:   modDate,
 		}

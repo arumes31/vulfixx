@@ -40,8 +40,8 @@
                                 <span class="material-symbols-outlined text-gray-400">mail</span>
                                 <span class="text-xs font-bold text-gray-300">Direct Email</span>
                             </div>
-                            <input type="checkbox" name="enable_email" value="true" checked class="hidden peer">
-                            <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-[#00daf3] after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6"></div>
+                            <input type="checkbox" name="enable_email" value="true" checked class="sr-only peer">
+                            <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-[#00daf3] after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6 peer-focus-visible:ring-2 peer-focus-visible:ring-[#00daf3] peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#10141a]"></div>
                         </label>
 
                         <label class="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/10 transition-all">
@@ -49,8 +49,8 @@
                                 <span class="material-symbols-outlined text-gray-400">webhook</span>
                                 <span class="text-xs font-bold text-gray-300">Webhook Sync</span>
                             </div>
-                            <input type="checkbox" name="enable_webhook" value="true" class="hidden peer">
-                            <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-blue-500 after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6"></div>
+                            <input type="checkbox" name="enable_webhook" value="true" class="sr-only peer">
+                            <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-blue-500 after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#10141a]"></div>
                         </label>
                     </div>
 
@@ -111,11 +111,24 @@
 </div>
 
 <script>
-    document.querySelector('input[name="enable_webhook"]').onchange = function() {
-        document.getElementById('webhook-field').classList.toggle('hidden', !this.checked);
-    };
+    const webhookToggle = document.querySelector('input[name="enable_webhook"]');
+    const webhookURLInput = document.querySelector('input[name="webhook_url"]');
+    
+    webhookToggle?.addEventListener('change', function() {
+        const field = document.getElementById('webhook-field');
+        if (field) {
+            field.classList.toggle('hidden', !this.checked);
+            if (webhookURLInput) {
+                webhookURLInput.required = this.checked;
+            }
+        }
+    });
 
     async function submitSubscription(form) {
+        if (webhookToggle?.checked && !webhookURLInput?.value) {
+            vulfixx.toast('Webhook URL is required when sync is enabled', 'error');
+            return false;
+        }
         const formData = new FormData(form);
         const data = await vulfixx.fetch('/subscriptions', {
             method: 'POST',
@@ -128,19 +141,23 @@
     }
 
     async function deleteMonitor(id) {
-        vulfixx.modal('Remove Monitor', 'Are you sure you want to disable this telemetry pipeline?', [
-            { label: 'Cancel', onClick: 'vulfixx.closeModal()' },
-            { label: 'Confirm Removal', primary: true, onClick: `confirmDelete('${id}')` }
+        const container = document.createElement('div');
+        container.textContent = 'Are you sure you want to disable this telemetry pipeline?';
+        
+        vulfixx.modal('Remove Monitor', container, [
+            { label: 'Cancel', onClick: () => vulfixx.closeModal() },
+            { label: 'Confirm Removal', primary: true, onClick: () => confirmDelete(id) }
         ]);
     }
 
     async function confirmDelete(id) {
+        const csrfToken = document.querySelector('input[name="gorilla.csrf.Token"]')?.value || '{{.csrfToken}}';
         const data = await vulfixx.fetch('/subscriptions/delete', {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/x-www-form-urlencoded',
                 'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-Token': '{{.csrfToken}}'
+                'X-CSRF-Token': csrfToken
             },
             body: new URLSearchParams({ id: id })
         });
