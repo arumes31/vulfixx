@@ -595,7 +595,7 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		}
 
 		if matchCVE(cve, sub.Keyword, sub.MinSeverity) {
-			if notifyIfNew(ctx, sub.UserID, cve.ID, sub, email) {
+			if notifyIfNew(ctx, sub.UserID, cve, sub, email) {
 				notifiedUsers[sub.UserID] = true
 			}
 		}
@@ -632,7 +632,7 @@ func evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 				EnableEmail:   true,
 				EnableWebhook: true,
 			}
-			if notifyIfNew(ctx, userID, cve.ID, sub, email) {
+			if notifyIfNew(ctx, userID, cve, sub, email) {
 				notifiedUsers[userID] = true
 			}
 		}
@@ -649,24 +649,21 @@ func matchCVE(cve *models.CVE, keyword string, minSeverity float64) bool {
 	return true
 }
 
-func notifyIfNew(ctx context.Context, userID, cveID int, sub models.UserSubscription, email string) bool {
+// notifyIfNew sends an alert for a CVE to a given user, but only if an alert for that specific CVE
+// hasn't already been sent.
+// ⚡ Bolt Performance Optimization: Accepts a pre-fetched `*models.CVE` instead of a `cveID`
+// to eliminate an N+1 query bottleneck, saving a DB roundtrip per matched user subscription.
+func notifyIfNew(ctx context.Context, userID int, cve *models.CVE, sub models.UserSubscription, email string) bool {
 	var exists bool
-	if err := db.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM alert_history WHERE user_id=$1 AND cve_id=$2)", userID, cveID).Scan(&exists); err != nil {
+	if err := db.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM alert_history WHERE user_id=$1 AND cve_id=$2)", userID, cve.ID).Scan(&exists); err != nil {
 		return false
 	}
 	if exists {
 		return false
 	}
 
-	// Fetch CVE for alert
-	var cve models.CVE
-	err := db.Pool.QueryRow(ctx, "SELECT cve_id, description, cvss_score FROM cves WHERE id = $1", cveID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore)
-	if err != nil {
-		return false
-	}
-
-	if sendAlert(sub, &cve, email) {
-		_, _ = db.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id) VALUES ($1, $2)", userID, cveID)
+	if sendAlert(sub, cve, email) {
+		_, _ = db.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id) VALUES ($1, $2)", userID, cve.ID)
 		return true
 	}
 	return false

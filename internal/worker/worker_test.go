@@ -186,8 +186,6 @@ func TestWorkerFunctions(t *testing.T) {
 
 	// notifyIfNew for first sub
 	mock.ExpectQuery("SELECT EXISTS").WithArgs(1, 1).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
-	mock.ExpectQuery("SELECT cve_id, description, cvss_score FROM cves").WithArgs(1).
-		WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score"}).AddRow("CVE-2023-0001", "Test description", 7.5))
 	mock.ExpectExec("INSERT INTO alert_history").WithArgs(1, 1).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	mock.ExpectQuery("SELECT ak.keyword, a.user_id").
@@ -196,8 +194,6 @@ func TestWorkerFunctions(t *testing.T) {
 
 	// notifyIfNew for second sub (asset match)
 	mock.ExpectQuery("SELECT EXISTS").WithArgs(2, 1).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
-	mock.ExpectQuery("SELECT cve_id, description, cvss_score FROM cves").WithArgs(1).
-		WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score"}).AddRow("CVE-2023-0001", "Test description", 7.5))
 	mock.ExpectExec("INSERT INTO alert_history").WithArgs(2, 1).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	cveBody := models.CVE{
