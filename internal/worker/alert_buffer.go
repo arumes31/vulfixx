@@ -40,25 +40,31 @@ func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, e
 	}
 
 	processingKey := fmt.Sprintf("alert_processing:%d", userID)
-	set, _ := w.Redis.SetNX(ctx, processingKey, "true", 10*time.Minute).Result()
+	set, err := w.Redis.SetNX(ctx, processingKey, "true", 10*time.Minute).Result()
+	if err != nil {
+		log.Printf("Error setting alert processing lock for key %s: %v", processingKey, err)
+		return false
+	}
 	if set {
 		bufferTime := bufferTimeStandard
 		if cve.CVSSScore >= 7.0 {
 			bufferTime = bufferTimeHigh
 		}
-		go func(bTime time.Duration, procCtx context.Context) {
+		go func(bTime time.Duration, pKey string, uid int) {
+			bgCtx := context.Background()
 			defer func() {
-				cleanupCtx, cancel := context.WithTimeout(procCtx, 5*time.Second)
+				cleanupCtx, cancel := context.WithTimeout(bgCtx, 5*time.Second)
 				defer cancel()
-				w.Redis.Del(cleanupCtx, processingKey)
+				w.Redis.Del(cleanupCtx, pKey)
 			}()
 			select {
 			case <-time.After(bTime):
-				w.processUserBuffer(procCtx, userID)
-			case <-procCtx.Done():
-				return
+				w.processUserBuffer(bgCtx, uid)
+			case <-ctx.Done():
+				// original request cancelled, but still flush via background context
+				w.processUserBuffer(bgCtx, uid)
 			}
-		}(bufferTime, ctx)
+		}(bufferTime, processingKey, userID)
 	}
 	return true
 }

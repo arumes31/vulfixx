@@ -4,6 +4,7 @@ import (
 	"cve-tracker/internal/models"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+	"github.com/jackc/pgx/v5"
 )
 
 func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
@@ -129,8 +131,8 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var c models.CVE
 		var notes sql.NullString
-		err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &notes)
-		if err != nil {
+		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &notes); err != nil {
+			log.Printf("Error scanning dashboard CVE row (CVEID=%s): %v", c.CVEID, err)
 			continue
 		}
 		c.Notes = notes.String
@@ -289,6 +291,10 @@ func (a *App) UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) UpdateCVENoteHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	userID, ok := a.GetUserID(r)
 	if !ok {
 		a.SendResponse(w, r, false, "", "", "Unauthorized")
@@ -626,7 +632,7 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			http.NotFound(w, r)
 		} else {
 			log.Printf("CVEDetailHandler error: %v", err)

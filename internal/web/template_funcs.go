@@ -39,35 +39,56 @@ func (a *App) InitTemplatesWithFuncs() {
 
 	a.TemplateMap = make(map[string]*template.Template)
 
-	// Try to find templates directory if not in current
-	origWD, _ := os.Getwd()
-	for i := 0; i < 4; i++ {
-		if matches, _ := filepath.Glob("templates/*.html"); len(matches) > 0 {
-			break
-		}
-		if err := os.Chdir(".."); err != nil {
-			break
-		}
-	}
-
-	files, _ := filepath.Glob("templates/*.html")
-	if len(files) == 0 {
-		log.Printf("No templates found in %s or its parents", origWD)
-		_ = os.Chdir(origWD)
+	// Locate the templates directory by walking up from the current working directory.
+	// This avoids os.Chdir which is not goroutine-safe.
+	templateDir := findTemplatesDir()
+	if templateDir == "" {
+		wd, _ := os.Getwd()
+		log.Printf("No templates found starting from %s", wd)
 		return
 	}
+
+	baseFile := filepath.Join(templateDir, "base.html")
+	pattern := filepath.Join(templateDir, "*.html")
+	files, _ := filepath.Glob(pattern)
+
 	for _, file := range files {
 		name := filepath.Base(file)
 		if name == "base.html" {
 			continue
 		}
-		a.TemplateMap[name] = template.Must(template.New(name).Funcs(funcs).ParseFiles("templates/base.html", file))
+		a.TemplateMap[name] = template.Must(template.New(name).Funcs(funcs).ParseFiles(baseFile, file))
 	}
-	
-	_ = os.Chdir(origWD)
 
 	if len(a.TemplateMap) == 0 {
-		log.Printf("No renderable templates loaded")
-		return
+		log.Printf("No renderable templates loaded from %s", templateDir)
 	}
+}
+
+// findTemplatesDir walks up from the current working directory looking for a
+// "templates" directory that contains at least one .html file. It checks up to
+// four levels to accommodate different working directories used by tests vs the
+// binary. No os.Chdir is performed.
+func findTemplatesDir() string {
+	start, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	candidate := start
+	for i := 0; i < 5; i++ {
+		dir := filepath.Join(candidate, "templates")
+		if matches, _ := filepath.Glob(filepath.Join(dir, "*.html")); len(matches) > 0 {
+			abs, err := filepath.Abs(dir)
+			if err == nil {
+				return abs
+			}
+			return dir
+		}
+		parent := filepath.Dir(candidate)
+		if parent == candidate {
+			break // filesystem root reached
+		}
+		candidate = parent
+	}
+	return ""
 }

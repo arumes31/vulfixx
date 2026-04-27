@@ -144,7 +144,16 @@ func TestInitRedisTable(t *testing.T) {
 			if tt.url != "" {
 				t.Setenv("REDIS_URL", tt.url)
 			} else {
+				// Capture original value and restore after test
+				origVal, origSet := os.LookupEnv("REDIS_URL")
 				os.Unsetenv("REDIS_URL")
+				t.Cleanup(func() {
+					if origSet {
+						os.Setenv("REDIS_URL", origVal)
+					} else {
+						os.Unsetenv("REDIS_URL")
+					}
+				})
 			}
 
 			err := InitRedis()

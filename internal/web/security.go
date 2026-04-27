@@ -38,6 +38,8 @@ func (a *App) SecurityHeadersMiddleware(next http.Handler) http.Handler {
 
 func generateNonce() string {
 	b := make([]byte, 16)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic(fmt.Sprintf("failed to generate nonce: %v", err))
+	}
 	return base64.StdEncoding.EncodeToString(b)
 }

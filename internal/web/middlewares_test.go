@@ -79,7 +79,10 @@ func TestAuthMiddleware(t *testing.T) {
 }
 
 func TestAdminMiddleware(t *testing.T) {
-	mock, _ := db.SetupTestDB()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
 	defer mock.Close()
 	app := setupTestApp(t, mock)
 

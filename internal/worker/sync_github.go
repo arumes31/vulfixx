@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -46,6 +48,7 @@ func (w *Worker) syncGitHubBuzz(ctx context.Context) {
 	}
 
 	start := time.Now()
+CVELoop:
 	for _, cveID := range cveIDs {
 
 		select {
@@ -54,39 +57,60 @@ func (w *Worker) syncGitHubBuzz(ctx context.Context) {
 		default:
 		}
 
-		githubURL := fmt.Sprintf("https://api.github.com/search/repositories?q=%s", cveID)
-		req, err := http.NewRequestWithContext(ctx, "GET", githubURL, nil)
-		if err != nil {
-			log.Printf("Worker: [ERROR] Failed to create GitHub request for %s: %v", cveID, err)
-			continue
-		}
-		req.Header.Set("Accept", "application/vnd.github.v3+json")
-		req.Header.Set("User-Agent", "Vulfixx-Threat-Intel")
-		resp, err := w.HTTP.Do(req)
-		if err != nil {
-			log.Printf("Worker: [ERROR] Failed to fetch GitHub buzz for %s: %v", cveID, err)
-			continue
-		}
-		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
-			_ = resp.Body.Close()
-			log.Printf("Worker: [WARN] GitHub API rate limited (status %d), pausing sync for %s", resp.StatusCode, cveID)
-			break
-		}
-		if resp.StatusCode != http.StatusOK {
-			log.Printf("Worker: [WARN] GitHub API returned status %d for %s", resp.StatusCode, cveID)
-			_ = resp.Body.Close()
-			continue
-		}
+		const maxGHRetries = 3
 		var ghResp struct {
 			TotalCount int `json:"total_count"`
 		}
-		err = json.NewDecoder(resp.Body).Decode(&ghResp)
-		_ = resp.Body.Close()
-		if err != nil {
-			log.Printf("Worker: [ERROR] Failed to decode GitHub response for %s: %v", cveID, err)
-			continue
+		for attempt := 0; attempt <= maxGHRetries; attempt++ {
+			githubURL := fmt.Sprintf("https://api.github.com/search/repositories?q=%s", cveID)
+			req, err := http.NewRequestWithContext(ctx, "GET", githubURL, nil)
+			if err != nil {
+				log.Printf("Worker: [ERROR] Failed to create GitHub request for %s: %v", cveID, err)
+				continue CVELoop
+			}
+			req.Header.Set("Accept", "application/vnd.github.v3+json")
+			req.Header.Set("User-Agent", "Vulfixx-Threat-Intel")
+			resp, err := w.HTTP.Do(req)
+			if err != nil {
+				log.Printf("Worker: [ERROR] Failed to fetch GitHub buzz for %s: %v", cveID, err)
+				continue CVELoop
+			}
+			if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
+				_ = resp.Body.Close()
+				var waitDur time.Duration
+				if reset := resp.Header.Get("X-RateLimit-Reset"); reset != "" {
+					if ts, err := strconv.ParseInt(reset, 10, 64); err == nil {
+						waitDur = time.Until(time.Unix(ts, 0))
+						if waitDur < 0 {
+							waitDur = 0
+						}
+					}
+				}
+				if waitDur == 0 {
+					waitDur = time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
+				}
+				log.Printf("Worker: [WARN] GitHub rate limited for %s, waiting %v (attempt %d/%d)", cveID, waitDur, attempt+1, maxGHRetries)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(waitDur):
+				}
+				continue // retry
+			}
+			if resp.StatusCode != http.StatusOK {
+				log.Printf("Worker: [WARN] GitHub API returned status %d for %s", resp.StatusCode, cveID)
+				_ = resp.Body.Close()
+				continue CVELoop
+			}
+			err = json.NewDecoder(resp.Body).Decode(&ghResp)
+			_ = resp.Body.Close()
+			if err != nil {
+				log.Printf("Worker: [ERROR] Failed to decode GitHub response for %s: %v", cveID, err)
+				continue CVELoop
+			}
+			break // success
 		}
-		_, err = w.Pool.Exec(ctx, "UPDATE cves SET github_poc_count = $1 WHERE cve_id = $2", ghResp.TotalCount, cveID)
+		_, err := w.Pool.Exec(ctx, "UPDATE cves SET github_poc_count = $1 WHERE cve_id = $2", ghResp.TotalCount, cveID)
 		if err != nil {
 			log.Printf("Worker: [ERROR] Failed to update GitHub buzz for %s: %v", cveID, err)
 		}

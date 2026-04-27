@@ -9,16 +9,14 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 )
 
-func generateInviteCode() string {
+func generateInviteCode() (string, error) {
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
-		log.Printf("CRITICAL: Failed to generate random invite code: %v", err)
-		return "fallback-" + strconv.FormatInt(time.Now().Unix(), 16)
+		return "", fmt.Errorf("failed to generate random invite code: %w", err)
 	}
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(b), nil
 }
 
 func (a *App) TeamsHandler(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +73,12 @@ func (a *App) CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	inviteCode := generateInviteCode()
+	inviteCode, err := generateInviteCode()
+	if err != nil {
+		log.Printf("CreateTeamHandler: %v", err)
+		a.SendResponse(w, r, false, "", "", "Internal server error")
+		return
+	}
 
 	tx, err := a.Pool.Begin(r.Context())
 	if err != nil {
@@ -195,7 +198,11 @@ func (a *App) SwitchTeamHandler(w http.ResponseWriter, r *http.Request) {
 
 	userID, _ := a.GetUserID(r)
 	teamIDStr := r.FormValue("team_id")
-	teamID, _ := strconv.Atoi(teamIDStr)
+	teamID, err := strconv.Atoi(teamIDStr)
+	if err != nil {
+		http.Error(w, "Bad Request: invalid team_id", http.StatusBadRequest)
+		return
+	}
 
 	if teamID != 0 {
 		var exists bool

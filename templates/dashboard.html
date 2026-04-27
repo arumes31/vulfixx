@@ -110,7 +110,7 @@
                     <tr class="hover:bg-white/[0.02] transition-colors group">
                         <td class="px-6 py-6">
                             <div class="flex flex-col">
-                                <a href="https://nvd.nist.gov/vuln/detail/{{.CVEID}}" target="_blank" class="text-sm font-bold text-[#00daf3] hover:underline transition-all">{{.CVEID}}</a>
+                                <a href="https://nvd.nist.gov/vuln/detail/{{.CVEID}}" target="_blank" rel="noopener noreferrer" class="text-sm font-bold text-[#00daf3] hover:underline transition-all">{{.CVEID}}</a>
                                 <span class="text-[10px] text-gray-600 mt-1 font-mono uppercase tracking-tighter">{{.PublishedDate.Format "Jan 02, 2006"}}</span>
                             </div>
                         </td>
@@ -238,6 +238,11 @@
     }
 
     async function submitNotes(id) {
+        const cveId = parseInt(id, 10);
+        if (!Number.isFinite(cveId) || cveId <= 0) {
+            vulfixx.toast('Invalid CVE ID', 'error');
+            return;
+        }
         const notes = document.getElementById('notes-text').value;
         const data = await vulfixx.fetch('/api/notes', {
             method: 'POST',
@@ -246,13 +251,18 @@
                 'X-Requested-With': 'XMLHttpRequest',
                 'X-CSRF-Token': '{{.csrfToken}}'
             },
-            body: JSON.stringify({ cve_id: Number(id), notes: notes })
+            body: JSON.stringify({ cve_id: cveId, notes: notes })
         });
         
         if (data) setTimeout(() => window.location.reload(), 1000);
     }
 
     async function updateCVEStatus(id, status) {
+        const cveId = parseInt(id, 10);
+        if (!Number.isFinite(cveId) || cveId <= 0) {
+            vulfixx.toast('Invalid CVE ID', 'error');
+            return;
+        }
         const data = await vulfixx.fetch('/api/status', {
             method: 'POST',
             headers: { 
@@ -260,7 +270,7 @@
                 'X-Requested-With': 'XMLHttpRequest',
                 'X-CSRF-Token': '{{.csrfToken}}'
             },
-            body: JSON.stringify({ cve_id: Number(id), status: status })
+            body: JSON.stringify({ cve_id: cveId, status: status })
         });
         
         if (data) setTimeout(() => window.location.reload(), 1000);

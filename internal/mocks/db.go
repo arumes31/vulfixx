@@ -40,11 +40,19 @@ func (m *DBPoolMock) Query(ctx context.Context, sql string, args ...any) (pgx.Ro
 	return nil, nil
 }
 
+// errorRow implements pgx.Row and always returns the stored error from Scan.
+type errorRow struct{ err error }
+
+func (e errorRow) Scan(dest ...any) error { return e.err }
+
 func (m *DBPoolMock) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	if m.InjectedErr != nil {
+		return errorRow{err: m.InjectedErr}
+	}
 	if m.QueryRowFunc != nil {
 		return m.QueryRowFunc(ctx, sql, args...)
 	}
-	return nil
+	return errorRow{err: nil}
 }
 
 func (m *DBPoolMock) Begin(ctx context.Context) (pgx.Tx, error) {

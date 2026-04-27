@@ -37,8 +37,14 @@ type CVE struct {
 type Team struct {
 	ID         int       `json:"id"`
 	Name       string    `json:"name"`
-	InviteCode string    `json:"invite_code"`
+	InviteCode string    `json:"-"`
 	CreatedAt  time.Time `json:"created_at"`
+}
+
+// TeamWithInviteCode is used only from admin/owner endpoints to expose the invite code.
+type TeamWithInviteCode struct {
+	Team
+	InviteCode string `json:"invite_code"`
 }
 
 type TeamMember struct {

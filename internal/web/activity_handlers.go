@@ -51,6 +51,8 @@ func (a *App) ActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := rows.Err(); err != nil {
 		log.Printf("Error iterating activity logs: %v", err)
+		http.Error(w, "Error fetching activity logs", http.StatusInternalServerError)
+		return
 	}
 
 	a.RenderTemplate(w, r, "activity_log.html", map[string]interface{}{

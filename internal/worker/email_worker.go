@@ -5,9 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
+
+const maxEmailRetries = 5
 
 func (w *Worker) processEmailVerification(ctx context.Context) {
 	for {
@@ -20,22 +25,36 @@ func (w *Worker) processEmailVerification(ctx context.Context) {
 			time.Sleep(1 * time.Second)
 			continue
 		}
-		var payload map[string]string
+		var payload map[string]interface{}
 		if err := json.Unmarshal([]byte(result[1]), &payload); err != nil {
 			log.Printf("Worker: Error unmarshaling email verification payload: %v", err)
 			continue
 		}
-		email := payload["email"]
-		token := payload["token"]
+		email, _ := payload["email"].(string)
+		token, _ := payload["token"].(string)
 		if email == "" || token == "" {
 			log.Printf("Worker: Invalid email verification payload: email=%q, token=%q", email, token)
 			continue
 		}
+
+		// Track retries
+		retries := 0
+		if r, ok := payload["retries"].(float64); ok {
+			retries = int(r)
+		}
+
 		if err := w.sendVerificationEmail(email, token); err != nil {
-			log.Printf("Worker: Failed to send verification email to %s: %v. Re-enqueueing...", email, err)
-			// Re-enqueue with a small delay or just push back to the queue
+			log.Printf("Worker: Failed to send verification email to %s (attempt %d): %v", email, retries+1, err)
+			if retries >= maxEmailRetries {
+				log.Printf("Worker: Permanently failed to send verification email to %s after %d attempts", email, maxEmailRetries)
+				continue
+			}
+			payload["retries"] = retries + 1
 			newPayload, _ := json.Marshal(payload)
-			_ = w.Redis.LPush(ctx, "email_verification_queue", newPayload).Err()
+			// Exponential backoff: push to delayed queue using ZADD with score=now+delay
+			delay := time.Duration(math.Pow(2, float64(retries))) * time.Second
+			score := float64(time.Now().Add(delay).UnixMilli())
+			_ = w.Redis.ZAdd(ctx, "email_verification_delayed", redis.Z{Score: score, Member: string(newPayload)}).Err()
 		}
 	}
 }
@@ -49,20 +68,35 @@ func (w *Worker) processEmailChange(ctx context.Context) {
 			}
 			continue
 		}
-		var payload map[string]string
+		var payload map[string]interface{}
 		if err := json.Unmarshal([]byte(result[1]), &payload); err != nil {
 			log.Printf("Worker: Error unmarshaling email change payload: %v", err)
 			continue
 		}
-		email := payload["email"]
-		token := payload["token"]
-		emailType := payload["type"]
+		email, _ := payload["email"].(string)
+		token, _ := payload["token"].(string)
+		emailType, _ := payload["type"].(string)
 		if email == "" || token == "" {
 			log.Printf("Worker: Invalid email change payload: email=%q, token=%q", email, token)
 			continue
 		}
+
+		retries := 0
+		if r, ok := payload["retries"].(float64); ok {
+			retries = int(r)
+		}
+
 		if err := w.sendEmailChangeNotification(email, token, emailType); err != nil {
-			log.Printf("Worker: Failed to send email change notification to %s: %v", email, err)
+			log.Printf("Worker: Failed to send email change notification to %s (attempt %d): %v", email, retries+1, err)
+			if retries >= maxEmailRetries {
+				log.Printf("Worker: Permanently failed to send email change notification to %s after %d attempts", email, maxEmailRetries)
+				continue
+			}
+			payload["retries"] = retries + 1
+			newPayload, _ := json.Marshal(payload)
+			delay := time.Duration(math.Pow(2, float64(retries))) * time.Second
+			score := float64(time.Now().Add(delay).UnixMilli())
+			_ = w.Redis.ZAdd(ctx, "email_change_delayed", redis.Z{Score: score, Member: string(newPayload)}).Err()
 		}
 	}
 }
@@ -87,6 +121,3 @@ func (w *Worker) sendVerificationEmail(email, token string) error {
 	return w.Mailer.SendEmail(email, subject, body)
 }
 
-func (w *Worker) sendEmail(toEmail, subject, body string) error {
-	return w.Mailer.SendEmail(toEmail, subject, body)
-}

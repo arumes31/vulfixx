@@ -36,7 +36,10 @@ func TestAdminUserManagementHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mock, _ := db.SetupTestDB()
+			mock, err := db.SetupTestDB()
+			if err != nil {
+				t.Fatalf("failed to setup mock db: %v", err)
+			}
 			defer mock.Close()
 			app := setupTestApp(t, mock)
 			tt.mockExpect(mock)
@@ -96,7 +99,10 @@ func TestAdminDeleteUserHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mock, _ := db.SetupTestDB()
+			mock, err := db.SetupTestDB()
+			if err != nil {
+				t.Fatalf("failed to setup mock db: %v", err)
+			}
 			defer mock.Close()
 			app := setupTestApp(t, mock)
 			tt.mockExpect(mock)

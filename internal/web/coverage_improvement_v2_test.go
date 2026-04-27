@@ -68,7 +68,9 @@ func TestAuthHandlers_TOTP_V2(t *testing.T) {
 		session.Values["pre_auth_ts"] = time.Now().Unix()
 		session.Values["pre_auth_attempts"] = 0
 		rr_session := httptest.NewRecorder()
-		session.Save(req, rr_session)
+		if err := session.Save(req, rr_session); err != nil {
+				t.Fatalf("session.Save: %v", err)
+		}
 		for _, c := range rr_session.Result().Cookies() {
 			req.AddCookie(c)
 		}
@@ -107,7 +109,9 @@ func TestAuthHandlers_TOTP_V2(t *testing.T) {
 		session.Values["pre_auth_ts"] = time.Now().Unix()
 		session.Values["pre_auth_attempts"] = 0
 		rr_session := httptest.NewRecorder()
-		session.Save(req, rr_session)
+		if err := session.Save(req, rr_session); err != nil {
+				t.Fatalf("session.Save: %v", err)
+		}
 		for _, c := range rr_session.Result().Cookies() {
 			req.AddCookie(c)
 		}
@@ -138,7 +142,9 @@ func TestAuthHandlers_TOTP_V2(t *testing.T) {
 		session.Values["pre_auth_user_id"] = 1
 		session.Values["pre_auth_ts"] = time.Now().Unix() - 600
 		rr_session := httptest.NewRecorder()
-		session.Save(req, rr_session)
+		if err := session.Save(req, rr_session); err != nil {
+				t.Fatalf("session.Save: %v", err)
+		}
 		for _, c := range rr_session.Result().Cookies() {
 			req.AddCookie(c)
 		}
@@ -166,7 +172,9 @@ func TestAuthHandlers_TOTP_V2(t *testing.T) {
 		session.Values["pre_auth_ts"] = time.Now().Unix()
 		session.Values["pre_auth_attempts"] = 5
 		rr_session := httptest.NewRecorder()
-		session.Save(req, rr_session)
+		if err := session.Save(req, rr_session); err != nil {
+				t.Fatalf("session.Save: %v", err)
+		}
 		for _, c := range rr_session.Result().Cookies() {
 			req.AddCookie(c)
 		}
@@ -440,7 +448,9 @@ func TestSubscriptionHandlers_V2(t *testing.T) {
 			"keyword": "test",
 		}
 		dataJSON, _ := json.Marshal(data)
-		mr.Set("alert_action:"+token, string(dataJSON))
+		if err := mr.Set("alert_action:"+token, string(dataJSON)); err != nil {
+			t.Fatalf("mr.Set: %v", err)
+		}
 
 		// GET confirmation page
 		reqGet := httptest.NewRequest("GET", "/alert-action?token="+token+"&action="+action, nil)

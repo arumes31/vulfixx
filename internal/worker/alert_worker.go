@@ -4,8 +4,10 @@ import (
 	"context"
 	"cve-tracker/internal/models"
 	"encoding/json"
+	"fmt"
 	"log"
 	"regexp"
+	"regexp/syntax"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,7 +26,20 @@ func getKeywordRegex(keyword string) *regexp.Regexp {
 	return re
 }
 
+const maxPatternLen = 2000
+
 func getPatternRegex(pattern string) (*regexp.Regexp, error) {
+	if len(pattern) > maxPatternLen {
+		return nil, fmt.Errorf("regex pattern too long (%d chars, max %d)", len(pattern), maxPatternLen)
+	}
+	// Validate the syntax tree to reject patterns with excessive nesting/quantifiers (ReDoS)
+	sre, err := syntax.Parse(pattern, syntax.Perl)
+	if err != nil {
+		return nil, fmt.Errorf("invalid regex pattern: %w", err)
+	}
+	if hasNestedQuantifiers(sre) {
+		return nil, fmt.Errorf("regex pattern has nested quantifiers (ReDoS risk): %s", pattern)
+	}
 	if val, ok := regexCache.Load(pattern); ok {
 		return val.(*regexp.Regexp), nil
 	}
@@ -33,6 +48,28 @@ func getPatternRegex(pattern string) (*regexp.Regexp, error) {
 		regexCache.Store(pattern, re)
 	}
 	return re, err
+}
+
+// hasNestedQuantifiers returns true if the syntax tree contains quantifiers (Star/Plus/Repeat)
+// nested inside other quantifiers, a common ReDoS pattern.
+func hasNestedQuantifiers(re *syntax.Regexp) bool {
+	if isQuantifier(re.Op) {
+		for _, sub := range re.Sub {
+			if isQuantifier(sub.Op) {
+				return true
+			}
+		}
+	}
+	for _, sub := range re.Sub {
+		if hasNestedQuantifiers(sub) {
+			return true
+		}
+	}
+	return false
+}
+
+func isQuantifier(op syntax.Op) bool {
+	return op == syntax.OpStar || op == syntax.OpPlus || op == syntax.OpRepeat || op == syntax.OpQuest
 }
 
 func (w *Worker) processAlerts(ctx context.Context) {
@@ -62,7 +99,7 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		JOIN users u ON s.user_id = u.id
 		WHERE u.is_email_verified = TRUE
 		  AND s.min_severity <= $1
-		  AND (s.keyword = '' OR $2 ILIKE '%' || s.keyword || '%')
+		  AND (s.keyword = '' OR $2 ILIKE '%' || REPLACE(REPLACE(s.keyword, '\', '\\'), '%', '\%') || '%' ESCAPE '\')
 	`, cve.CVSSScore, cve.Description)
 	if err != nil {
 		log.Println("Error fetching subscriptions:", err)
@@ -163,13 +200,14 @@ func evaluateComplexFilter(logic string, cve *models.CVE) bool {
 				i += 2
 			}
 		case "regex:":
+			// Consume the remainder of the token slice as the pattern (handles spaces)
 			if i+1 < len(tokens) {
-				pattern := tokens[i+1]
+				pattern := strings.Join(tokens[i+1:], " ")
 				re, err := getPatternRegex(pattern)
 				if err == nil && !re.MatchString(cve.Description) {
 					return false
 				}
-				i += 1
+				i = len(tokens) - 1 // consumed all remaining tokens
 			}
 		}
 	}

@@ -74,6 +74,22 @@ func LoadConfig() {
 			logPrintf("Warning: Using empty values for sensitive keys in development mode")
 		}
 	}
+
+	// Validate key lengths (even when not empty)
+	if len(AppConfig.CSRFKey) != 32 {
+		if appEnv != "development" {
+			logFatalf("Fatal: CSRFKey must be exactly 32 bytes (got %d)", len(AppConfig.CSRFKey))
+		} else {
+			logPrintf("Warning: CSRFKey should be exactly 32 bytes (got %d)", len(AppConfig.CSRFKey))
+		}
+	}
+	if len(AppConfig.SessionKey) > 0 && len(AppConfig.SessionKey) < 32 {
+		if appEnv != "development" {
+			logFatalf("Fatal: SessionKey must be at least 32 bytes (got %d)", len(AppConfig.SessionKey))
+		} else {
+			logPrintf("Warning: SessionKey should be at least 32 bytes (got %d)", len(AppConfig.SessionKey))
+		}
+	}
 }
 
 func getEnv(key, fallback string) string {

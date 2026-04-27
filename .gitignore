@@ -11,3 +11,14 @@ gosec_results*
 .Jules/
 *.log
 *.tmp
+
+# Coverage artifacts – never commit generated profiles
+*_cov
+*_coverage
+*_coverage.txt
+*coverage*
+*.coverprofile
+coverage_stats.txt
+health
+web_cov*
+worker_cov*

@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -32,7 +33,10 @@ var (
 func InitDB() error {
 	sslMode := os.Getenv("DB_SSLMODE")
 	if sslMode == "" {
-		sslMode = "disable"
+		sslMode = "require"
+	}
+	if sslMode == "disable" {
+		log.Println("WARNING: DB_SSLMODE is set to 'disable'. Database traffic is unencrypted.")
 	}
 
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",

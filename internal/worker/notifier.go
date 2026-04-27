@@ -78,7 +78,12 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 				return
 			}
 
-			req, err := http.NewRequestWithContext(ctx, "POST", sub.WebhookURL, strings.NewReader(string(payload)))
+
+			const webhookTimeout = 10 * time.Second
+			httpCtx, httpCancel := context.WithTimeout(context.Background(), webhookTimeout)
+			defer httpCancel()
+
+			req, err := http.NewRequestWithContext(httpCtx, "POST", sub.WebhookURL, strings.NewReader(string(payload)))
 			if err != nil {
 				log.Printf("Error creating webhook request: %v", err)
 				return

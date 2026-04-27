@@ -1,6 +1,8 @@
 package web
 
 import (
+	"bytes"
+	"encoding/xml"
 	"fmt"
 	"log"
 	"net/http"
@@ -40,7 +42,10 @@ func (a *App) SitemapHandler(w http.ResponseWriter, r *http.Request) {
 			var id string
 			var updated time.Time
 			if err := rows.Scan(&id, &updated); err == nil {
-				_, _ = fmt.Fprintf(w, "  <url>\n    <loc>%s/cve/%s</loc>\n    <lastmod>%s</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.6</priority>\n  </url>\n", baseURL, id, updated.Format("2006-01-02"))
+				var buf bytes.Buffer
+				_ = xml.EscapeText(&buf, []byte(id))
+				escapedID := buf.String()
+				_, _ = fmt.Fprintf(w, "  <url>\n    <loc>%s/cve/%s</loc>\n    <lastmod>%s</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.6</priority>\n  </url>\n", baseURL, escapedID, updated.Format("2006-01-02"))
 			}
 		}
 	}

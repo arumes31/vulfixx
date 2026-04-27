@@ -120,7 +120,7 @@
                 </thead>
                 <tbody class="divide-y divide-white/5">
                     {{range .CVEs}}
-                    <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer" onclick="window.location='/cve/{{.CVEID}}'">
+                    <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer" data-cve-url="/cve/{{.CVEID}}">
                         <td class="p-6">
                             <div class="flex items-center gap-3">
                                 <a href="/cve/{{.CVEID}}" class="text-sm font-black text-white group-hover:text-primary transition-colors">{{.CVEID}}</a>
@@ -143,7 +143,7 @@
                             <p class="text-xs text-gray-400 line-clamp-2 max-w-xl leading-relaxed">{{.Description}}</p>
                         </td>
                         <td class="p-6">
-                            <span class="text-[10px] font-mono text-gray-500">{{.PublishedDate.Format "2006-01-02"}}</span>
+                            <span class="text-[10px] font-mono text-gray-500">{{if not .PublishedDate.IsZero}}{{.PublishedDate.Format "2006-01-02"}}{{end}}</span>
                         </td>
                     </tr>
                     {{end}}
@@ -157,12 +157,12 @@
             <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Page {{.Page}} of {{.TotalPages}}</span>
             <div class="flex gap-2">
                 {{if gt .Page 1}}
-                <a href="/?page={{subtract .Page 1}}&q={{.Query}}&start_date={{.StartDate}}&end_date={{.EndDate}}&min_cvss={{.MinCvss}}&max_cvss={{.MaxCvss}}&kev={{.KevOnly}}" class="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all">
+                <a href="/?page={{subtract .Page 1}}&q={{urlquery .Query}}&start_date={{urlquery .StartDate}}&end_date={{urlquery .EndDate}}&min_cvss={{urlquery .MinCvss}}&max_cvss={{urlquery .MaxCvss}}&kev={{urlquery .KevOnly}}" class="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all">
                     <span class="material-symbols-outlined text-sm">chevron_left</span>
                 </a>
                 {{end}}
                 {{if lt .Page .TotalPages}}
-                <a href="/?page={{add .Page 1}}&q={{.Query}}&start_date={{.StartDate}}&end_date={{.EndDate}}&min_cvss={{.MinCvss}}&max_cvss={{.MaxCvss}}&kev={{.KevOnly}}" class="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all">
+                <a href="/?page={{add .Page 1}}&q={{urlquery .Query}}&start_date={{urlquery .StartDate}}&end_date={{urlquery .EndDate}}&min_cvss={{urlquery .MinCvss}}&max_cvss={{urlquery .MaxCvss}}&kev={{urlquery .KevOnly}}" class="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all">
                     <span class="material-symbols-outlined text-sm">chevron_right</span>
                 </a>
                 {{end}}
@@ -192,6 +192,16 @@ document.addEventListener('DOMContentLoaded', function() {
             responsive: true,
             maintainAspectRatio: false
         }
+    });
+
+    // Navigate rows safely without inline onclick
+    document.querySelectorAll('tr[data-cve-url]').forEach(function(row) {
+        row.addEventListener('click', function(e) {
+            // Don't navigate when the user clicks an anchor inside the row
+            if (e.target.closest('a')) return;
+            const url = row.getAttribute('data-cve-url');
+            if (url) window.location.href = url;
+        });
     });
 });
 </script>

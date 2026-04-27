@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -128,12 +129,25 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
 			req.Header.Set("apiKey", apiKey)
 		}
 
+		var retryCount int
+		const maxNVDRetries = 5
 		resp, err := w.HTTP.Do(req)
 		if err != nil {
-			log.Printf("Worker: Error fetching from NVD: %v", err)
-			time.Sleep(10 * time.Second)
+			retryCount++
+			log.Printf("Worker: Error fetching from NVD (attempt %d/%d): %v", retryCount, maxNVDRetries, err)
+			if retryCount >= maxNVDRetries {
+				log.Printf("Worker: Max NVD retries reached, aborting sync")
+				return
+			}
+			backoff := time.Duration(math.Pow(2, float64(retryCount))) * time.Second
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(backoff):
+			}
 			continue
 		}
+		retryCount = 0 // reset on success
 
 		if resp.StatusCode == 403 || resp.StatusCode == 429 {
 			log.Println("Worker: Rate limited by NVD, sleeping...")
@@ -221,8 +235,20 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry) {
 			references = append(references, ref.URL)
 		}
 
-		pubDate, _ := time.Parse("2006-01-02T15:04:05.000", strings.TrimSuffix(cve.Published, "Z"))
-		modDate, _ := time.Parse("2006-01-02T15:04:05.000", strings.TrimSuffix(cve.LastModified, "Z"))
+		pubDate, err := time.Parse(time.RFC3339Nano, cve.Published)
+		if err != nil {
+			pubDate, err = time.Parse(time.RFC3339, cve.Published)
+			if err != nil {
+				log.Printf("Worker: Invalid published date %q for %s: %v", cve.Published, cve.ID, err)
+			}
+		}
+		modDate, err := time.Parse(time.RFC3339Nano, cve.LastModified)
+		if err != nil {
+			modDate, err = time.Parse(time.RFC3339, cve.LastModified)
+			if err != nil {
+				log.Printf("Worker: Invalid lastModified date %q for %s: %v", cve.LastModified, cve.ID, err)
+			}
+		}
 
 		model := models.CVE{
 			CVEID:         cve.ID,
@@ -247,7 +273,7 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry) {
 				updated_date = EXCLUDED.updated_date,
 				updated_at = CURRENT_TIMESTAMP
 		`
-		_, err := w.Pool.Exec(ctx, query, model.CVEID, model.Description, model.CVSSScore, model.VectorString, model.CWEID, model.References, model.PublishedDate, model.UpdatedDate)
+		_, err = w.Pool.Exec(ctx, query, model.CVEID, model.Description, model.CVSSScore, model.VectorString, model.CWEID, model.References, model.PublishedDate, model.UpdatedDate)
 		if err != nil {
 			log.Printf("Worker: Error upserting CVE %s: %v", cve.ID, err)
 			continue

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -145,10 +146,11 @@ func TestLoadConfig(t *testing.T) {
 			// Reset AppConfig
 			AppConfig = Config{}
 
-			// Mock logging
+			// Mock logging — logFatalf panics so LoadConfig truly stops
 			fatalCalled := false
 			logFatalf = func(format string, v ...interface{}) {
 				fatalCalled = true
+				panic(fmt.Sprintf(format, v...))
 			}
 			warningCalled := false
 			logPrintf = func(format string, v ...interface{}) {
@@ -183,7 +185,16 @@ func TestLoadConfig(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			LoadConfig()
+			// Wrap LoadConfig in a recover so panics from logFatalf are caught
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						// panic was intentionally triggered by logFatalf mock; fatalCalled flag is already set
+						_ = r
+					}
+				}()
+				LoadConfig()
+			}()
 
 			if fatalCalled != tt.wantFatal {
 				t.Errorf("fatalCalled = %v, want %v", fatalCalled, tt.wantFatal)
@@ -211,6 +222,7 @@ func TestLoadConfig(t *testing.T) {
 		})
 	}
 }
+
 
 func TestGetEnv(t *testing.T) {
 	t.Run("Existing env", func(t *testing.T) {
