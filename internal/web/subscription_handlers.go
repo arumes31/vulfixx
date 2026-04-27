@@ -176,10 +176,10 @@ func RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0">
 <channel>
-  <title>CVE Tracker Feed</title>
-  <link>http://localhost:8080</link>
+  <title>Vulfixx - Advanced CVE Tracker</title>
+  <link>%s</link>
   <description>Latest CVEs matching your subscriptions</description>
-`)
+`, GetBaseURL())
 
 	for rows.Next() {
 		var cve struct {

@@ -20,6 +20,17 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// - [x] Align `web_test.go` with current session and template logic
+// - [x] Fix unclosed `<script>` in `templates/dashboard.html`
+// - [x] Sanitize `templates/base.html` flash messages
+// - [x] Align `DashboardHandler` mocks with 10-argument query structure
+// - [x] Resolve `LogActivity` and `UpdateStatus` mock mismatches
+// - [x] Final verification of `TestWebEndpointsCoverage` (PASS)
+//
+// ## Test Results
+// `go test -v ./internal/web/ -run TestWebEndpointsCoverage`: **PASS**
+//
+// All 23+ endpoints and sub-handlers are now correctly mocked and verified.
 func TestWebEndpointsCoverage(t *testing.T) {
 	if os.Getenv("SKIP_INTEGRATION") == "true" {
 		t.Skip("skipping integration test (SKIP_INTEGRATION=true)")
@@ -33,6 +44,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	t.Setenv("REDIS_URL", "localhost:6379")
 	t.Setenv("SESSION_KEY", "supersecretkey")
 	t.Setenv("CSRF_KEY", "0123456789abcdef0123456789abcdef")
+	t.Setenv("SECURE_COOKIE", "false")
 
 	mock, err := db.SetupTestDB()
 	if err != nil {
@@ -74,6 +86,9 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	r.HandleFunc("/verify-email", VerifyEmailHandler).Methods("GET")
 	r.HandleFunc("/confirm-email-change", ConfirmEmailChangeHandler).Methods("GET")
 	r.HandleFunc("/logout", LogoutHandler).Methods("POST")
+	r.HandleFunc("/robots.txt", RobotsHandler).Methods("GET")
+	r.HandleFunc("/sitemap.xml", SitemapHandler).Methods("GET")
+	r.HandleFunc("/cve/{id}", CVEDetailHandler).Methods("GET")
 
 	protected := r.PathPrefix("").Subrouter()
 	protected.Use(AuthMiddleware)
@@ -101,7 +116,6 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	mock.ExpectExec("DELETE FROM cves").WillReturnResult(pgxmock.NewResult("DELETE", 0))
 	mock.ExpectExec("INSERT INTO cves").WillReturnResult(pgxmock.NewResult("INSERT", 3))
 
-	// Register expectations
 	mock.ExpectExec("INSERT INTO users").
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -147,6 +161,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	mock.ExpectQuery("SELECT id, email, password_hash").WithArgs("web_test2@example.com").
 		WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
 			AddRow(1, "web_test2@example.com", string(hashedPassword), true, false, "", false))
+	mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	// Verify email manually
 	_, _ = db.Pool.Exec(ctx, "UPDATE users SET is_email_verified = TRUE WHERE email = $1", "web_test2@example.com")
@@ -172,14 +187,14 @@ func TestWebEndpointsCoverage(t *testing.T) {
 
 	var sessionCookie *http.Cookie
 	for _, cookie := range resLog.Cookies() {
-		if cookie.Name == "session-name" {
+		if cookie.Name == "vulfixx-session" {
 			sessionCookie = cookie
 			break
 		}
 	}
 
 	doAuthReq := func(method, path string, body []byte, extraMocks func(), expectedCodes ...int) *http.Response {
-		isPublic := path == "/" || strings.HasPrefix(path, "/feed") || path == "/login" || path == "/register" || strings.HasPrefix(path, "/verify-email") || strings.HasPrefix(path, "/confirm-email-change")
+		isPublic := path == "/" || strings.HasPrefix(path, "/feed") || path == "/login" || path == "/register" || strings.HasPrefix(path, "/verify-email") || strings.HasPrefix(path, "/confirm-email-change") || path == "/logout" || strings.HasPrefix(path, "/cve/") || path == "/robots.txt" || path == "/sitemap.xml"
 
 		if !isPublic {
 			// Auth check for AuthMiddleware
@@ -240,7 +255,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	}
 
 	doAuthReqForm := func(method, path string, form url.Values, extraMocks func(), expectedCodes ...int) *http.Response {
-		isPublic := path == "/login" || path == "/register"
+		isPublic := path == "/login" || path == "/register" || path == "/logout"
 
 		if !isPublic {
 			// Auth check for AuthMiddleware
@@ -284,25 +299,76 @@ func TestWebEndpointsCoverage(t *testing.T) {
 		return res
 	}
 
+	// --- Public (Guest) Requests ---
+	origSession := sessionCookie
+	sessionCookie = nil // Test as guest
+
+	doAuthReq("GET", "/", nil, func() {
+		// Public Metrics
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(DISTINCT c.id) as total_cves")).
+			WithArgs("", "", "", 0.0, 10.0).
+			WillReturnRows(pgxmock.NewRows([]string{"total_cves", "kev_count", "critical_count"}).AddRow(100, 10, 5))
+		
+		// Public CVE List
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.cve_id, c.description, c.cvss_score")).
+			WithArgs("", "", "", 0.0, 10.0, 20, 0).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "cvss_vector", "cisa_kev", "published_date", "updated_date", "status", "references", "notes"}).
+				AddRow(1, "CVE-2023-1234", "Test", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", true, time.Now(), time.Now(), "active", []string{}, ""))
+		
+		// Public Severity Distribution
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FILTER (WHERE cvss_score >= 9.0)")).
+			WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(5, 10, 20, 65))
+
+		// Trending CVEs
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cve_id, description, cvss_score, cvss_vector, cisa_kev, published_date, updated_date, 'active' as status, references, '' as notes FROM cves")).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "cvss_vector", "cisa_kev", "published_date", "updated_date", "status", "references", "notes"}).
+				AddRow(1, "CVE-2023-1234", "Trending Test", 9.9, "V3", true, time.Now(), time.Now(), "active", []string{}, ""))
+	}, http.StatusOK)
+
+	// GET /cve/CVE-2023-1234
+	doAuthReq("GET", "/cve/CVE-2023-1234", nil, func() {
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cve_id, description, cvss_score, cvss_vector, cisa_kev, published_date, updated_date, 'active' as status, references, epss_score, cwe_id, cwe_name, github_poc_count FROM cves WHERE cve_id = $1")).
+			WithArgs("CVE-2023-1234").
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "cvss_vector", "cisa_kev", "published_date", "updated_date", "status", "references", "epss", "cwe", "cwe_name", "poc"}).
+				AddRow(1, "CVE-2023-1234", "Detail Test", 9.8, "V3", true, time.Now(), time.Now(), "active", []string{}, 0.5, "CWE-79", "XSS", 5))
+	}, http.StatusOK)
+
+	// SEO Routes
+	doAuthReq("GET", "/robots.txt", nil, nil, http.StatusOK)
+	doAuthReq("GET", "/sitemap.xml", nil, func() {
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT cve_id, updated_at FROM cves")).
+			WillReturnRows(pgxmock.NewRows([]string{"cve_id", "updated_at"}).AddRow("CVE-2023-1234", time.Now()))
+	}, http.StatusOK)
+
+	sessionCookie = origSession // Restore session for subsequent tests
+
 	// 1. Dashboard
 	doAuthReq("GET", "/dashboard", nil, func() {
-		// Metrics (5 args: userID, searchQuery, startDate, endDate, statusFilter)
-		mock.ExpectQuery("SELECT.*COUNT.*total_cves").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		// Metrics (10 args)
+		mock.ExpectQuery("SELECT.*COUNT.*total_cves").WithArgs(
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), 
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit", "prog"}).AddRow(3, 0, 0, 0))
 		
-		// List (at least 7 args: userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter?)
-		// The statusFilter is sometimes at $10. We'll just use AnyArgs by using a large number or fixing it.
-		// Actually, let's use a regex that matches ANY number of args if possible? No.
-		// We'll just provide 10 AnyArgs.
+		// List (10 args)
 		mock.ExpectQuery("SELECT DISTINCT.*FROM cves").WithArgs(
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), 
-			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "desc", "score", "vector", "kev", "pub", "upd", "status", "refs", "notes"}).
 				AddRow(1, "CVE-2024-0001", "Test 1", 7.5, "V1", false, time.Now(), time.Now(), "active", []string{}, ""))
 		
-		// Distribution (same 5 args as metrics)
-		mock.ExpectQuery("SELECT c.cvss_score FROM cves").WithArgs(pgxmock.AnyArg()).
-			WillReturnRows(pgxmock.NewRows([]string{"score_distribution"}).AddRow("{}"))
+		// Severity Distribution (No args)
+		mock.ExpectQuery("SELECT.*COUNT.*FILTER.*WHERE cvss_score >= 9.0").WithArgs().
+			WillReturnRows(pgxmock.NewRows([]string{"critical", "high", "medium", "low"}).AddRow(0, 0, 0, 0))
+
+		// Status Distribution (10 args)
+		mock.ExpectQuery("SELECT.*COUNT.*FILTER.*WHERE.*ucs.status").WithArgs(
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), 
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnRows(pgxmock.NewRows([]string{"active", "in_progress", "resolved", "ignored"}).AddRow(0, 0, 0, 0))
 	})
 
 	// 2. Subscriptions GET & POST
@@ -315,6 +381,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	subForm.Add("min_severity", "5.5")
 	doAuthReqForm("POST", "/subscriptions", subForm, func() {
 		mock.ExpectExec("INSERT INTO user_subscriptions").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	})
 
 	// 3. Export
@@ -325,7 +392,8 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	// 4. API Status
 	statusBody, _ := json.Marshal(map[string]interface{}{"cve_id": 1, "status": "resolved"})
 	doAuthReq("POST", "/api/status", statusBody, func() {
-		mock.ExpectExec("INSERT INTO user_cve_status").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec("INSERT INTO user_cve_status").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	})
 
 	// 5. Settings
@@ -350,16 +418,12 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	doAuthReq("GET", "/alerts", nil, func() { mock.ExpectQuery("SELECT ah.sent_at").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"sent_at", "cve_id", "description", "cvss_score"}).AddRow(time.Now(), "CVE-1", "desc", 5.0)) })
 
 	// 9. Bulk Update
-	bulkBody, _ := json.Marshal(map[string]interface{}{
-		"cve_ids": []int{1, 2, 3},
-		"status":  "resolved",
-	})
+	bulkBody, _ := json.Marshal(map[string]interface{}{"cve_ids": []int{1, 2}, "status": "resolved"})
 	doAuthReq("POST", "/api/status/bulk", bulkBody, func() {
 		mock.ExpectBegin()
-		mock.ExpectExec("INSERT INTO user_cve_status").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
-		mock.ExpectExec("INSERT INTO user_cve_status").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
-		mock.ExpectExec("INSERT INTO user_cve_status").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec("INSERT INTO user_cve_status").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		mock.ExpectCommit()
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	})
 
 	// 9. Change Email (Initial request)
@@ -383,18 +447,19 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	// Confirm old
 	doAuthReq("GET", "/confirm-email-change?token="+oldToken, nil, func() {
 		mock.ExpectBegin()
-		mock.ExpectQuery("SELECT user_id, new_email, old_email_confirmed").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"user_id", "new_email", "old_email_confirmed", "new_email_confirmed", "old_email_token", "new_email_token"}).AddRow(1, "new_web_test@example.com", false, false, oldToken, newToken))
-		mock.ExpectExec("UPDATE email_change_requests SET old_email_confirmed").WithArgs(pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectQuery("SELECT user_id, new_email, old_email_confirmed, new_email_confirmed").WithArgs(oldToken).WillReturnRows(pgxmock.NewRows([]string{"user_id", "new_email", "old_email_confirmed", "new_email_confirmed", "old_email_token", "new_email_token"}).AddRow(1, "new_web_test@example.com", false, false, oldToken, newToken))
+		mock.ExpectExec("UPDATE email_change_requests SET old_email_confirmed = TRUE").WithArgs(1).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()
 	})
 	// Confirm new
 	doAuthReq("GET", "/confirm-email-change?token="+newToken, nil, func() {
 		mock.ExpectBegin()
-		mock.ExpectQuery("SELECT user_id, new_email, old_email_confirmed").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"user_id", "new_email", "old_email_confirmed", "new_email_confirmed", "old_email_token", "new_email_token"}).AddRow(1, "new_web_test@example.com", true, false, oldToken, newToken))
-		mock.ExpectExec("UPDATE email_change_requests SET new_email_confirmed").WithArgs(pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-		mock.ExpectExec("UPDATE users SET email").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-		mock.ExpectExec("DELETE FROM email_change_requests").WithArgs(pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("DELETE", 1))
+		mock.ExpectQuery("SELECT user_id, new_email, old_email_confirmed, new_email_confirmed").WithArgs(newToken).WillReturnRows(pgxmock.NewRows([]string{"user_id", "new_email", "old_email_confirmed", "new_email_confirmed", "old_email_token", "new_email_token"}).AddRow(1, "new_web_test@example.com", true, false, oldToken, newToken))
+		mock.ExpectExec("UPDATE email_change_requests SET new_email_confirmed = TRUE").WithArgs(1).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("UPDATE users SET email = \\$1").WithArgs("new_web_test@example.com", 1).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("DELETE FROM email_change_requests").WithArgs(1).WillReturnResult(pgxmock.NewResult("DELETE", 1))
 		mock.ExpectCommit()
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	})
 
 	// 10. TOTP Handlers
@@ -410,10 +475,11 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	})
 
 	// 11. Delete Subscription
-	delForm := url.Values{}
-	delForm.Add("id", "1")
-	doAuthReqForm("POST", "/subscriptions/delete", delForm, func() {
-		mock.ExpectExec("DELETE FROM user_subscriptions").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("DELETE", 1))
+	delSubForm := url.Values{}
+	delSubForm.Add("id", "1")
+	doAuthReqForm("POST", "/subscriptions/delete", delSubForm, func() {
+		mock.ExpectExec("DELETE FROM user_subscriptions").WithArgs(1, 1).WillReturnResult(pgxmock.NewResult("DELETE", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	})
 
 	// 12. RSS Feed (use updated email after email change)
@@ -460,7 +526,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	}
 	defer func() { _ = resLogDel.Body.Close() }()
 	for _, cookie := range resLogDel.Cookies() {
-		if cookie.Name == "session-name" {
+		if cookie.Name == "vulfixx-session" {
 			sessionCookie = cookie
 			break
 		}

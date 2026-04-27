@@ -6,9 +6,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"strconv"
+
+	"github.com/gorilla/mux"
 )
 
 func DashboardHandler(w http.ResponseWriter, r *http.Request) {
@@ -118,7 +121,6 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := db.Pool.Query(r.Context(), query, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss)
 	if err != nil {
-		log.Printf("Dashboard query error: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -130,7 +132,6 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		var notes sql.NullString
 		err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &notes)
 		if err != nil {
-			log.Printf("Error scanning dashboard CVE: %v", err)
 			continue
 		}
 		c.Notes = notes.String
@@ -439,4 +440,219 @@ func BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 
 	LogActivity(r.Context(), userID, "cve_status_bulk_updated", fmt.Sprintf("Bulk updated %d CVEs to %s", len(req.CVEIDs), req.Status), r.RemoteAddr, r.UserAgent())
 	SendResponse(w, r, true, fmt.Sprintf("Updated %d CVEs", len(req.CVEIDs)), "", "")
+}
+
+func PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
+	pageStr := r.URL.Query().Get("page")
+	page, _ := strconv.Atoi(pageStr)
+	if page < 1 {
+		page = 1
+	}
+	if page > 1000 { // Max depth for guest users
+		page = 1000
+	}
+	pageSize := 20
+	offset := (page - 1) * pageSize
+
+	searchQuery := r.URL.Query().Get("q")
+	startDate := r.URL.Query().Get("start_date")
+	endDate := r.URL.Query().Get("end_date")
+	kevOnly := r.URL.Query().Get("kev") == "true"
+	minCvssStr := r.URL.Query().Get("min_cvss")
+	maxCvssStr := r.URL.Query().Get("max_cvss")
+
+	minCvss, _ := strconv.ParseFloat(minCvssStr, 64)
+	maxCvss, _ := strconv.ParseFloat(maxCvssStr, 64)
+	if maxCvss == 0 {
+		maxCvss = 10.0
+	}
+
+	var totalItems, kevCount, critCount int
+
+	metricsQuery := `
+		SELECT
+			COUNT(DISTINCT c.id) as total_cves,
+			COUNT(DISTINCT CASE WHEN c.cisa_kev = true THEN c.id END) as kev_count,
+			COUNT(DISTINCT CASE WHEN c.cvss_score >= 9.0 THEN c.id END) as critical_count
+		FROM cves c
+	`
+
+	whereClause := " WHERE (1=1) "
+	
+	// Arguments for public view: $1=search, $2=start, $3=end, $4=min, $5=max
+	whereClause += " AND ($1 = '' OR c.cve_id ILIKE '%%' || $1 || '%%' OR c.description ILIKE '%%' || $1 || '%%') "
+	if kevOnly {
+		whereClause += " AND c.cisa_kev = true "
+	}
+	if minCvss > 0 {
+		whereClause += " AND c.cvss_score >= $4 "
+	}
+	if maxCvss < 10 {
+		whereClause += " AND c.cvss_score <= $5 "
+	}
+	if startDate != "" {
+		whereClause += " AND c.published_date >= $2 "
+	}
+	if endDate != "" {
+		whereClause += " AND c.published_date <= $3 "
+	}
+
+	fullMetricsQuery := metricsQuery + whereClause
+	err := db.Pool.QueryRow(r.Context(), fullMetricsQuery, searchQuery, startDate, endDate, minCvss, maxCvss).Scan(&totalItems, &kevCount, &critCount)
+	if err != nil {
+		log.Printf("Public dashboard metrics error: %v", err)
+	}
+
+	query := `
+		SELECT 
+			c.id, c.cve_id, c.description, c.cvss_score, c.cvss_vector, c.cisa_kev, 
+			c.published_date, c.updated_date, 'active' as status, c.references, '' as notes
+		FROM cves c
+	`
+	query += whereClause
+	query += " ORDER BY c.published_date DESC LIMIT $6 OFFSET $7 "
+
+	// Final args: 1-5 same, $6=pageSize, $7=offset
+	rows, err := db.Pool.Query(r.Context(), query, searchQuery, startDate, endDate, minCvss, maxCvss, pageSize, offset)
+	if err != nil {
+		log.Printf("Public dashboard query error: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var cves []models.CVE
+	for rows.Next() {
+		var c models.CVE
+		var notes sql.NullString
+		err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &notes)
+		if err != nil {
+			log.Printf("Error scanning public CVE: %v", err)
+			continue
+		}
+		c.Notes = notes.String
+		cves = append(cves, c)
+	}
+
+	threatLevel := "LOW"
+	threatColor := "text-blue-400"
+	if kevCount > 0 || critCount > 0 {
+		threatLevel = "HIGH"
+		threatColor = "text-red-500"
+	}
+
+	totalPages := (totalItems + pageSize - 1) / pageSize
+
+	var severityCounts struct {
+		Critical int
+		High     int
+		Medium   int
+		Low      int
+	}
+	_ = db.Pool.QueryRow(r.Context(), `
+		SELECT 
+			COUNT(*) FILTER (WHERE cvss_score >= 9.0),
+			COUNT(*) FILTER (WHERE cvss_score >= 7.0 AND cvss_score < 9.0),
+			COUNT(*) FILTER (WHERE cvss_score >= 4.0 AND cvss_score < 7.0),
+			COUNT(*) FILTER (WHERE cvss_score < 4.0)
+		FROM cves
+	`).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
+
+	RenderTemplate(w, r, "public_dashboard.html", map[string]interface{}{
+		"CVEs":           cves,
+		"Total":          totalItems,
+		"KevCount":       kevCount,
+		"CritCount":      critCount,
+		"ThreatLevel":    threatLevel,
+		"ThreatColor":    threatColor,
+		"Page":           page,
+		"TotalPages":     totalPages,
+		"Query":          searchQuery,
+		"StartDate":      startDate,
+		"EndDate":        endDate,
+		"KevOnly":        kevOnly,
+		"MinCvss":        minCvss,
+		"MaxCvss":        maxCvss,
+		"SeverityCounts": severityCounts,
+		"MetaTitle":      "Vulfixx - Public CVE Tracker & Threat Intelligence",
+		"MetaDescription": "Monitor real-time vulnerability data, CISA KEV listings, and critical security advisories. The ultimate tracker for security professionals.",
+		"Trending":       getTrendingCVEs(r),
+	})
+}
+
+func getTrendingCVEs(r *http.Request) []models.CVE {
+	rows, err := db.Pool.Query(r.Context(), `
+		SELECT 
+			id, cve_id, description, cvss_score, cvss_vector, cisa_kev, 
+			published_date, updated_date, 'active' as status, references, '' as notes
+		FROM cves 
+		WHERE cisa_kev = true OR cvss_score >= 9.5
+		ORDER BY published_date DESC LIMIT 4
+	`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var cves []models.CVE
+	for rows.Next() {
+		var c models.CVE
+		var notes sql.NullString
+		_ = rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &notes)
+		cves = append(cves, c)
+	}
+	return cves
+}
+
+func CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	cveID := vars["id"]
+
+	var c models.CVE
+	err := db.Pool.QueryRow(r.Context(), `
+		SELECT 
+			id, cve_id, description, cvss_score, cvss_vector, cisa_kev, 
+			published_date, updated_date, 'active' as status, references, 
+			epss_score, cwe_id, cwe_name, github_poc_count
+		FROM cves 
+		WHERE cve_id = $1
+	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.NotFound(w, r)
+		} else {
+			log.Printf("CVEDetailHandler error: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Generate JSON-LD safely
+	jsonLD := map[string]interface{}{
+		"@context": "https://schema.org",
+		"@type":    "WebPage",
+		"name":     fmt.Sprintf("%s Vulnerability Details", c.CVEID),
+		"description": c.Description,
+		"mainEntity": map[string]interface{}{
+			"@type":         "CreativeWork",
+			"name":          c.CVEID,
+			"description":   c.Description,
+			"datePublished": c.PublishedDate.Format("2006-01-02"),
+			"dateModified":  c.UpdatedDate.Format("2006-01-02"),
+			"author": map[string]interface{}{
+				"@type": "Organization",
+				"name":  "Vulfixx Threat Intelligence",
+			},
+		},
+	}
+	jsonLDBytes, _ := json.Marshal(jsonLD)
+
+	RenderTemplate(w, r, "cve_detail.html", map[string]interface{}{
+		"CVE":             c,
+		"MetaTitle":       fmt.Sprintf("%s - %s | Vulfixx Threat Intel", c.CVEID, c.Description),
+		"MetaDescription": fmt.Sprintf("Security analysis of %s. Severity: %.1f. %s", c.CVEID, c.CVSSScore, c.Description),
+		"Canonical":       fmt.Sprintf("/cve/%s", c.CVEID),
+		"JSONLD":          template.HTML(jsonLDBytes), // #nosec G203 -- JSON pre-marshaled and safe
+	})
 }

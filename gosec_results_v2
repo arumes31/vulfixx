@@ -1,0 +1,28 @@
+{
+	"Golang errors": {},
+	"Issues": [
+		{
+			"severity": "MEDIUM",
+			"confidence": "LOW",
+			"cwe": {
+				"id": "79",
+				"url": "https://cwe.mitre.org/data/definitions/79.html"
+			},
+			"rule_id": "G203",
+			"details": "The used method does not auto-escape HTML. This can potentially lead to 'Cross-site Scripting' vulnerabilities, in case the attacker controls the input.",
+			"file": "C:\\DR\\Nextcloud\\BUILD\\vulfixx\\internal\\web\\dashboard_handlers.go",
+			"code": "655: \t\t\"Canonical\":       fmt.Sprintf(\"/cve/%s\", c.CVEID),\n656: \t\t\"JSONLD\":          template.HTML(jsonLDBytes),\n657: \t})\n",
+			"line": "656",
+			"column": "22",
+			"nosec": false,
+			"suppressions": null
+		}
+	],
+	"Stats": {
+		"files": 38,
+		"lines": 5666,
+		"nosec": 16,
+		"found": 1
+	},
+	"GosecVersion": "dev"
+}

@@ -4,17 +4,34 @@
 <head>
     <meta charset="utf-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-    <title>CVE Tracker Appliance</title>
+    <title>{{if .MetaTitle}}{{.MetaTitle}}{{else}}Vulfixx - Advanced CVE Tracker{{end}}</title>
+    {{if .MetaDescription}}<meta name="description" content="{{.MetaDescription}}">{{end}}
     <link rel="stylesheet" href="/static/css/main.css">
     <link rel="stylesheet" href="/static/fonts/fonts.css">
     <script src="/static/js/chart.min.js"></script>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:;">
+    {{if .Canonical}}<link rel="canonical" href="{{GetBaseURL}}{{.Canonical}}">{{end}}
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #0a0e14; color: #dfe2eb; }
         h1, h2, h3, h4, h5, h6 { font-family: 'Space Grotesk', sans-serif; }
     </style>
 </head>
 <body class="bg-[#0a0e14] text-on-surface font-sans selection:bg-primary selection:text-on-primary">
+
+{{if not .UserLoggedIn}}
+<header class="fixed top-0 left-0 right-0 h-20 bg-[#0a0e14]/80 backdrop-blur-xl border-b border-white/5 z-[100]">
+    <div class="max-w-7xl mx-auto h-full px-6 flex items-center justify-between">
+        <a href="/" class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-[#00daf3]" style="font-variation-settings: 'FILL' 1;">shield</span>
+            <span class="text-lg font-black text-white font-['Space_Grotesk'] tracking-widest uppercase">Vulfixx</span>
+        </a>
+        <nav class="flex items-center gap-6">
+            <a href="/login" class="text-sm font-bold text-gray-400 hover:text-white transition-colors">Login</a>
+            <a href="/register" class="px-5 py-2 bg-white/5 border border-white/10 rounded-xl text-sm font-bold text-[#00daf3] hover:bg-white/10 transition-all">Get Started</a>
+        </nav>
+    </div>
+</header>
+<div class="h-20"></div> <!-- Spacer -->
+{{end}}
 
 {{if .UserLoggedIn}}
 <!-- Sidebar -->
@@ -148,7 +165,7 @@
     <div id="toast-container"></div>
     <div id="modal-container" class="hidden"></div>
 
-    <script>
+    <script nonce="{{.Nonce}}">
         const vulfixx = {
             toast: (message, type = 'info') => {
                 const container = document.getElementById('toast-container');
@@ -272,7 +289,7 @@
 
         // Handle native flash messages if injected by Go
         {{if .FlashMessage}}
-        vulfixx.toast("{{.FlashMessage}}", "{{.FlashType}}");
+        vulfixx.toast({{.FlashMessage}}, {{.FlashType}});
         {{end}}
 
         document.addEventListener('DOMContentLoaded', () => {

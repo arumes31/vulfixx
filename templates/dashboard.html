@@ -162,7 +162,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{.Nonce}}">
     function explainVector(vector) {
         if (!vector || typeof vector !== 'string') {
             vulfixx.toast('CVSS vector data unavailable for this CVE', 'info');
@@ -323,4 +323,5 @@
             options: commonOptions
         });
     });
+</script>
 {{end}}

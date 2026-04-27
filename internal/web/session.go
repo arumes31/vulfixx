@@ -29,6 +29,7 @@ func InitSession() {
 		MaxAge:   86400 * 7,
 		HttpOnly: true,
 		Secure:   os.Getenv("SECURE_COOKIE") == "true",
+		SameSite: http.SameSiteLaxMode,
 	}
 }
 

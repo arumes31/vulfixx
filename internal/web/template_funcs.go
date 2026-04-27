@@ -30,6 +30,10 @@ func InitTemplatesWithFuncs() {
 			}
 			return int(float64(count) / float64(total) * 100)
 		},
+		"add":      func(a, b int) int { return a + b },
+		"subtract": func(a, b int) int { return a - b },
+		"multiply": func(a, b float64) float64 { return a * b },
+		"GetBaseURL": GetBaseURL,
 	}
 
 	templateMap = make(map[string]*template.Template)

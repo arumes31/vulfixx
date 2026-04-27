@@ -60,19 +60,13 @@ func AuthMiddleware(next http.Handler) http.Handler {
 				http.Redirect(w, r, "/login", http.StatusFound)
 				return
 			}
-			// #nosec G706 -- sanitized via sanitizeForLog
-			log.Printf("AuthMiddleware DB ERROR: userID=%v, path=%s, err=%v", userID, sanitizeForLog(r.URL.Path), err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 		if !isVerified {
-			// #nosec G706 -- sanitized via sanitizeForLog
-			log.Printf("AuthMiddleware NOT VERIFIED: userID=%v, path=%s", userID, sanitizeForLog(r.URL.Path))
 			http.Error(w, "Please verify your email address to access this page.", http.StatusForbidden)
 			return
 		}
-		// #nosec G706 -- sanitized via sanitizeForLog
-		log.Printf("AuthMiddleware SUCCESS: userID=%v, path=%s", userID, sanitizeForLog(r.URL.Path))
 
 		next.ServeHTTP(w, r)
 	})
@@ -137,7 +131,7 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
 		return
 	}
-	http.Redirect(w, r, "/login", http.StatusFound)
+	PublicDashboardHandler(w, r)
 }
 
 func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data map[string]interface{}) {
@@ -188,13 +182,18 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 			data["ActiveTeamName"] = "Private Workspace"
 		}
 
-		// Fetch global CVE stats from cache
-		statsCache.RLock()
-		data["GlobalTotalCVEs"] = statsCache.total
-		data["GlobalNewCVEs"] = statsCache.newLast24h
-		statsCache.RUnlock()
 	}
+	
+	// Fetch global CVE stats from cache for all views
+	statsCache.RLock()
+	data["GlobalTotalCVEs"] = statsCache.total
+	data["GlobalNewCVEs"] = statsCache.newLast24h
+	statsCache.RUnlock()
+
 	data["csrfField"] = csrf.TemplateField(r)
+	if nonce, ok := r.Context().Value("nonce").(string); ok {
+		data["Nonce"] = nonce
+	}
 	tmpl, ok := templateMap[name]
 	if !ok {
 		log.Printf("Template %s not found", name)
