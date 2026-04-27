@@ -101,19 +101,20 @@ The application follows a modular architecture designed to prevent monolithic fi
 
    The application is configured via environment variables in the `docker-compose.yml` file:
 
-   | Variable | Description | Default |
-   |----------|-------------|---------|
-   | `DB_HOST` | PostgreSQL host | `db` |
-   | `DB_PORT` | PostgreSQL port | `5432` |
-   | `DB_USER` | PostgreSQL user | `cveuser` |
-   | `DB_PASSWORD`| PostgreSQL password | `cvepass` |
-   | `DB_NAME` | PostgreSQL database name | `cvetracker` |
-   | `REDIS_URL`| Redis connection URL | `redis:6379` |
-   | `SMTP_HOST`| External SMTP server | `smtp.example.com` |
-   | `SMTP_PORT`| SMTP server port | `587` |
-   | `SMTP_USER`| SMTP username | `user@example.com` |
-   | `SMTP_PASS`| SMTP password | `password` |
-   | `SESSION_KEY`| Session signing key | `supersecretkey...` |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DB_HOST` | PostgreSQL host | `db` |
+| `DB_PORT` | PostgreSQL port | `5432` |
+| `DB_USER` | PostgreSQL user | `cveuser` |
+| `DB_PASSWORD`| PostgreSQL password | `cvepass` |
+| `DB_NAME` | PostgreSQL database name | `cvetracker` |
+| `DB_SSLMODE` | PostgreSQL SSL mode (`disable`, `require`, `verify-full`) | `disable` |
+| `REDIS_URL`| Redis connection URL | `redis:6379` |
+| `SMTP_HOST`| External SMTP server | `smtp.example.com` |
+| `SMTP_PORT`| SMTP server port | `587` |
+| `SMTP_USER`| SMTP username | `user@example.com` |
+| `SMTP_PASS`| SMTP password | `password` |
+| `SESSION_KEY`| Session signing key | `supersecretkey...` |
 | `CSRF_KEY` | CSRF protection key (32 bytes) | `0123456789...` |
 | `SECURE_COOKIE` | Enable secure cookie flag (for HTTPS) | `true` |
 | `BASE_URL` | Application base URL | `http://localhost:8080` |
