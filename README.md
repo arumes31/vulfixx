@@ -52,7 +52,7 @@ The application follows a modular architecture designed to prevent monolithic fi
 
 - [Docker](https://www.docker.com/get-started)
 - [Docker Compose](https://docs.docker.com/compose/install/)
-- [Go 1.26](https://golang.org/dl/) (optional, for local development)
+- [Go 1.26.2](https://golang.org/dl/) (optional, for local development)
 - [act](https://github.com/nektos/act) (optional, for running GitHub Actions locally)
 
 ### Installation
@@ -103,8 +103,14 @@ The application follows a modular architecture designed to prevent monolithic fi
    | `SMTP_USER`| SMTP username | `user@example.com` |
    | `SMTP_PASS`| SMTP password | `password` |
    | `SESSION_KEY`| Session signing key | `supersecretkey...` |
-   | `CSRF_KEY` | CSRF protection key (32 bytes) | `0123456789...` |
-   | `BASE_URL` | Application base URL | `http://localhost:8080` |
+| `CSRF_KEY` | CSRF protection key (32 bytes) | `0123456789...` |
+| `SECURE_COOKIE` | Enable secure cookie flag (for HTTPS) | `false` |
+| `BASE_URL` | Application base URL | `http://localhost:8080` |
+| `ADMIN_EMAIL`| Seed administrator email | `admin@example.com` |
+| `ADMIN_PASSWORD`| Seed administrator password | `change-me` |
+| `ADMIN_TOTP_SECRET`| Seed administrator TOTP secret (base32) | `YOUR_SECRET` |
+| `NVD_API_KEY`| NIST NVD API Key (for higher rate limits) | `(empty)` |
+| `NVD_API_URL`| Custom NVD API endpoint (optional) | `https://...` |
 
    *Note: The above is a partial list of key configurations. See `docker-compose.yml` for all available options.*
 ## Development
@@ -116,10 +122,15 @@ To run the Go test suite:
 go test ./...
 ```
 
+Or use the automated test script with coverage:
+```bash
+./run_all_tests.sh
+```
+
 ### CI/CD Pipeline
 
 This project uses a modern GitHub Actions pipeline (`.github/workflows/docker-build.yml`) for continuous integration:
-- **Environment**: All CI jobs run in a **Go 1.26** containerized environment.
+- **Environment**: All CI jobs run in a **Go 1.26.2** containerized environment.
 - **Unit Testing**: Automated Go tests to ensure logic correctness.
 - **Linting**: Strict code quality checks with `golangci-lint` (v2.x).
 - **Security Scanning**: Vulnerability detection with `gosec`.
@@ -135,6 +146,14 @@ Or run specific jobs:
 act -j test
 act -j lint
 ```
+
+### Local Development Scripts
+
+For convenience, several shell scripts are provided to automate common tasks:
+- **`run_all_tests.sh`**: Runs all tests with coverage and displays a summary.
+- **`test_lint.sh`**: Executes `golangci-lint` with the project's configuration.
+- **`fix_worker_panic.sh`**: Utility for patching specific worker edge cases.
+- **`fix_errcheck.sh`**: Utility for automated error checking fixes.
 
 ## 🛡️ Security Hardening & Audit
 
