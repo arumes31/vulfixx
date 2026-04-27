@@ -205,6 +205,10 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	userID, ok := a.GetUserID(r)
 	if !ok {
 		a.SendResponse(w, r, false, "", "", "Unauthorized")
@@ -346,6 +350,10 @@ func (a *App) UpdateCVENoteHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	userID, ok := a.GetUserID(r)
 	if !ok {
 		a.SendResponse(w, r, false, "", "", "Unauthorized")

@@ -28,55 +28,57 @@ func TestSyncErrorConditions(t *testing.T) {
 	ctx := context.Background()
 	t.Setenv("NVD_API_KEY", "test")
 
+	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
+
 	t.Run("CISAKEV_Non200", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
+		ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+			rw.WriteHeader(http.StatusInternalServerError)
 		}))
 		defer ts.Close()
 		oldURL := defaultCISAKEVURL
 		defaultCISAKEVURL = ts.URL
 		defer func() { defaultCISAKEVURL = oldURL }()
-		fetchFromCISAKEV(ctx)
+		w.fetchFromCISAKEV(ctx)
 	})
 
 	t.Run("CISAKEV_InvalidJSON", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			fmt.Fprint(w, "{invalid json}")
+		ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(rw, "{invalid json}")
 		}))
 		defer ts.Close()
 		oldURL := defaultCISAKEVURL
 		defaultCISAKEVURL = ts.URL
 		defer func() { defaultCISAKEVURL = oldURL }()
-		fetchFromCISAKEV(ctx)
+		w.fetchFromCISAKEV(ctx)
 	})
 
 	t.Run("EPSS_Non200", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNotFound)
+		ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+			rw.WriteHeader(http.StatusNotFound)
 		}))
 		defer ts.Close()
 		oldURL := defaultEPSSBaseURL
 		defaultEPSSBaseURL = ts.URL
 		defer func() { defaultEPSSBaseURL = oldURL }()
 		mock.ExpectQuery("SELECT cve_id FROM cves").WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-1"))
-		syncEPSS(ctx)
+		w.syncEPSS(ctx)
 	})
 
 	t.Run("NVD_ErrorCodes", func(t *testing.T) {
 		codes := []int{http.StatusInternalServerError, http.StatusBadRequest}
 		for _, code := range codes {
 			t.Run(fmt.Sprintf("Status_%d", code), func(t *testing.T) {
-				ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					w.WriteHeader(code)
+				ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+					rw.WriteHeader(code)
 				}))
 				defer ts.Close()
 				oldURL := defaultNVDBaseURL
 				defaultNVDBaseURL = ts.URL
 				defer func() { defaultNVDBaseURL = oldURL }()
-				mock.ExpectQuery("SELECT value FROM sync_state").WillReturnError(fmt.Errorf("no sync"))
+				mock.ExpectQuery("SELECT last_run FROM worker_sync_stats WHERE task_name = 'nvd_sync'").WillReturnError(fmt.Errorf("no sync"))
 				shortCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
 				defer cancel()
-				runFullSync(shortCtx, true)
+				w.runFullSync(shortCtx, true)
 			})
 		}
 	})
@@ -118,24 +120,29 @@ func TestHelpersCoverage(t *testing.T) {
 func TestStartWorkerCleanExit(t *testing.T) {
 	mock, _ := db.SetupTestDB()
 	defer mock.Close()
-	mr, _ := db.SetupTestRedis()
-	defer mr.Close()
+	_, _ = db.SetupTestRedis()
+
+	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	StartWorker(ctx)
+	w.Start(ctx)
 }
 
 func TestFetchCVEsPeriodically_Cancel(t *testing.T) {
+	mock, _ := db.SetupTestDB()
+	_, _ = db.SetupTestRedis()
+	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	fetchCVEsPeriodically(ctx)
+	w.fetchCVEsPeriodically(ctx)
 }
 
 func TestEmailSender_Coverage(t *testing.T) {
 	t.Run("MissingConfig", func(t *testing.T) {
 		t.Setenv("SMTP_HOST", "")
-		sender := &realEmailSender{}
+		sender := &RealEmailSender{}
 		err := sender.SendEmail("to@example.com", "sub", "body")
 		if err == nil {
 			t.Error("expected error")
@@ -144,7 +151,7 @@ func TestEmailSender_Coverage(t *testing.T) {
 	t.Run("InvalidRecipient", func(t *testing.T) {
 		t.Setenv("SMTP_HOST", "localhost")
 		t.Setenv("SMTP_FROM", "from@example.com")
-		sender := &realEmailSender{}
+		sender := &RealEmailSender{}
 		err := sender.SendEmail("invalid\n", "sub", "body")
 		if err == nil {
 			t.Error("expected error")

@@ -1,7 +1,7 @@
 package web
 
 import (
-
+	"cve-tracker/internal/db"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -50,10 +50,11 @@ func TestTeamsHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mock, _ := db.SetupTestDB()
 			defer mock.Close()
+			app := setupTestApp(t, mock)
 			tt.mockExpect(mock)
 
 			req := httptest.NewRequest("GET", "/teams", nil)
-			session, _ := store.Get(req, "vulfixx-session")
+			session, _ := app.SessionStore.Get(req, "vulfixx-session")
 			session.Values["user_id"] = tt.userID
 			rr := httptest.NewRecorder()
 			_ = session.Save(req, rr)
@@ -64,7 +65,7 @@ func TestTeamsHandler(t *testing.T) {
 			}
 
 			rr2 := httptest.NewRecorder()
-			TeamsHandler(rr2, req)
+			app.TeamsHandler(rr2, req)
 
 			if rr2.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr2.Code)
@@ -206,12 +207,13 @@ func TestCreateTeamHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mock, _ := db.SetupTestDB()
 			defer mock.Close()
+			app := setupTestApp(t, mock)
 			tt.mockExpect(mock)
 
 			req := httptest.NewRequest(tt.method, "/teams/create", strings.NewReader(tt.form.Encode()))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			req.Header.Set("Accept", "application/json")
-			session, _ := store.Get(req, "vulfixx-session")
+			session, _ := app.SessionStore.Get(req, "vulfixx-session")
 			session.Values["user_id"] = tt.userID
 			rr := httptest.NewRecorder()
 			_ = session.Save(req, rr)
@@ -224,7 +226,7 @@ func TestCreateTeamHandler(t *testing.T) {
 			}
 
 			rr2 := httptest.NewRecorder()
-			CreateTeamHandler(rr2, req)
+			app.CreateTeamHandler(rr2, req)
 
 			if rr2.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr2.Code)
@@ -318,12 +320,13 @@ func TestJoinTeamHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mock, _ := db.SetupTestDB()
 			defer mock.Close()
+			app := setupTestApp(t, mock)
 			tt.mockExpect(mock)
 
 			req := httptest.NewRequest(tt.method, "/teams/join", strings.NewReader(tt.form.Encode()))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			req.Header.Set("Accept", "application/json")
-			session, _ := store.Get(req, "vulfixx-session")
+			session, _ := app.SessionStore.Get(req, "vulfixx-session")
 			session.Values["user_id"] = tt.userID
 			rr := httptest.NewRecorder()
 			_ = session.Save(req, rr)
@@ -336,7 +339,7 @@ func TestJoinTeamHandler(t *testing.T) {
 			}
 
 			rr2 := httptest.NewRecorder()
-			JoinTeamHandler(rr2, req)
+			app.JoinTeamHandler(rr2, req)
 
 			if rr2.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr2.Code)
@@ -469,12 +472,13 @@ func TestLeaveTeamHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mock, _ := db.SetupTestDB()
 			defer mock.Close()
+			app := setupTestApp(t, mock)
 			tt.mockExpect(mock)
 
 			req := httptest.NewRequest(tt.method, "/teams/leave", strings.NewReader(tt.form.Encode()))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			req.Header.Set("Accept", "application/json")
-			session, _ := store.Get(req, "vulfixx-session")
+			session, _ := app.SessionStore.Get(req, "vulfixx-session")
 			session.Values["user_id"] = tt.userID
 			session.Values["team_id"] = tt.activeTeamID
 			rr := httptest.NewRecorder()
@@ -488,7 +492,7 @@ func TestLeaveTeamHandler(t *testing.T) {
 			}
 
 			rr2 := httptest.NewRecorder()
-			LeaveTeamHandler(rr2, req)
+			app.LeaveTeamHandler(rr2, req)
 
 			if rr2.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr2.Code)
@@ -570,6 +574,7 @@ func TestSwitchTeamHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mock, _ := db.SetupTestDB()
 			defer mock.Close()
+			app := setupTestApp(t, mock)
 			tt.mockExpect(mock)
 
 			req := httptest.NewRequest(tt.method, "/teams/switch", strings.NewReader(tt.form.Encode()))
@@ -577,7 +582,7 @@ func TestSwitchTeamHandler(t *testing.T) {
 			if tt.referer != "" {
 				req.Header.Set("Referer", tt.referer)
 			}
-			session, _ := store.Get(req, "vulfixx-session")
+			session, _ := app.SessionStore.Get(req, "vulfixx-session")
 			session.Values["user_id"] = tt.userID
 			rr := httptest.NewRecorder()
 			_ = session.Save(req, rr)
@@ -592,7 +597,7 @@ func TestSwitchTeamHandler(t *testing.T) {
 			}
 
 			rr2 := httptest.NewRecorder()
-			SwitchTeamHandler(rr2, req)
+			app.SwitchTeamHandler(rr2, req)
 
 			if rr2.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr2.Code)
@@ -603,3 +608,4 @@ func TestSwitchTeamHandler(t *testing.T) {
 		})
 	}
 }
+

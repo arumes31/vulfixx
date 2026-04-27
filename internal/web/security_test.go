@@ -7,7 +7,8 @@ import (
 )
 
 func TestSecurityHeadersMiddleware(t *testing.T) {
-	handler := SecurityHeadersMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	app := &App{}
+	handler := app.SecurityHeadersMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
 	}))

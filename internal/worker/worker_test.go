@@ -113,21 +113,27 @@ func TestWorkerFunctions(t *testing.T) {
 
 	t.Setenv("SMTP_HOST", "") // disable real email
 
+	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
+
 	// Mock expectations for fetchFromNVD
-	mock.ExpectQuery("SELECT value FROM sync_state WHERE key = 'last_nvd_sync'").
+	mock.ExpectQuery("SELECT last_run FROM worker_sync_stats WHERE task_name = 'nvd_sync'").
 		WillReturnError(fmt.Errorf("no sync")) // Trigger full backfill
 
-	mock.ExpectQuery("WITH upsert AS").
-		WithArgs("CVE-2023-0001", pgxmock.AnyArg(), 7.5, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "tag"}).AddRow(1, "ins"))
+	mock.ExpectExec("INSERT INTO cves").
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 7.5, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-	mock.ExpectExec("INSERT INTO sync_state").
-		WithArgs(pgxmock.AnyArg()).
+	mock.ExpectQuery("SELECT id FROM cves WHERE cve_id = \\$1").
+		WithArgs("CVE-2023-0001").
+		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
+
+	mock.ExpectExec("INSERT INTO worker_sync_stats").
+		WithArgs().
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	// Calling the functions directly to increase coverage
 	defaultNVDBaseURL = ts.URL
-	fetchFromNVD(ctx)
+	w.fetchFromNVD(ctx)
 
 	// Test evaluateSubscriptions
 	mock.ExpectQuery("SELECT s.id, s.user_id").
@@ -152,13 +158,17 @@ func TestWorkerFunctions(t *testing.T) {
 		Description: "Test description",
 		CVSSScore:   7.5,
 	}
-	evaluateSubscriptions(ctx, &cveBody)
+	w.evaluateSubscriptions(ctx, &cveBody)
 
 	// Test worker loops briefly
-	go processAlerts(ctx)
+	go w.processAlerts(ctx)
 	db.RedisClient.LPush(ctx, "cve_alerts_queue", "{\"id\":1, \"cve_id\":\"CVE-2023-0001\", \"description\":\"test\"}")
 	time.Sleep(100 * time.Millisecond)
 }
+
+type EmailSenderMock struct{}
+
+func (m *EmailSenderMock) SendEmail(to, subject, body string) error { return nil }
 
 func TestWorkerHelpers(t *testing.T) {
 	t.Run("SanitizeEmail", func(t *testing.T) {

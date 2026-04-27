@@ -6,9 +6,14 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+var (
+	newPoolCall      = func() (pgxmock.PgxPoolIface, error) { return pgxmock.NewPool() }
+	miniredisRunCall = func() (*miniredis.Miniredis, error) { return miniredis.Run() }
+)
+
 // SetupTestDB initializes a mock DB pool for testing.
 func SetupTestDB() (pgxmock.PgxPoolIface, error) {
-	mock, err := pgxmock.NewPool()
+	mock, err := newPoolCall()
 	if err != nil {
 		return nil, err
 	}
@@ -18,7 +23,7 @@ func SetupTestDB() (pgxmock.PgxPoolIface, error) {
 
 // SetupTestRedis initializes a miniredis instance for testing.
 func SetupTestRedis() (*miniredis.Miniredis, error) {
-	mr, err := miniredis.Run()
+	mr, err := miniredisRunCall()
 	if err != nil {
 		return nil, err
 	}

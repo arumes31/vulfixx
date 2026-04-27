@@ -7,24 +7,29 @@ import (
 )
 
 type Config struct {
-	DBHost            string
-	DBPort            string
-	DBUser            string
-	DBPassword        string
-	DBName            string
-	RedisURL          string
-	SessionKey        string
-	CSRFKey           string
-	BaseURL           string
-	SMTPHost          string
-	SMTPPort          int
-	SMTPUser          string
-	SMTPPass          string
-	AdminEmail        string
-	AdminPassword     string
-	AdminTOTPSecret   string
-	SecureCookie      bool
+	DBHost          string
+	DBPort          string
+	DBUser          string
+	DBPassword      string
+	DBName          string
+	RedisURL        string
+	SessionKey      string
+	CSRFKey         string
+	BaseURL         string
+	SMTPHost        string
+	SMTPPort        int
+	SMTPUser        string
+	SMTPPass        string
+	AdminEmail      string
+	AdminPassword   string
+	AdminTOTPSecret string
+	SecureCookie    bool
 }
+
+var (
+	logFatalf = log.Fatalf
+	logPrintf = log.Printf
+)
 
 var AppConfig Config
 
@@ -49,14 +54,14 @@ func LoadConfig() {
 
 	port, err := strconv.Atoi(getEnv("SMTP_PORT", "587"))
 	if err != nil {
-		log.Printf("Invalid SMTP_PORT: %v. Defaulting to 587", err)
+		logPrintf("Invalid SMTP_PORT: %v. Defaulting to 587", err)
 		port = 587
 	}
 	AppConfig.SMTPPort = port
 
 	secureCookie, err := strconv.ParseBool(getEnv("SECURE_COOKIE", "true"))
 	if err != nil {
-		log.Printf("Invalid SECURE_COOKIE: %v. Defaulting to true", err)
+		logPrintf("Invalid SECURE_COOKIE: %v. Defaulting to true", err)
 		secureCookie = true
 	}
 	AppConfig.SecureCookie = secureCookie
@@ -64,9 +69,9 @@ func LoadConfig() {
 	appEnv := getEnv("APP_ENV", "production")
 	if AppConfig.DBPassword == "" || AppConfig.SessionKey == "" || AppConfig.CSRFKey == "" || AppConfig.SMTPPass == "" || AppConfig.AdminPassword == "" || AppConfig.AdminTOTPSecret == "" {
 		if appEnv != "development" {
-			log.Fatalf("Fatal: DBPassword, SessionKey, CSRFKey, SMTPPass, AdminPassword, and AdminTOTPSecret must be explicitly set in production mode")
+			logFatalf("Fatal: DBPassword, SessionKey, CSRFKey, SMTPPass, AdminPassword, and AdminTOTPSecret must be explicitly set in production mode")
 		} else {
-			log.Printf("Warning: Using empty values for sensitive keys in development mode")
+			logPrintf("Warning: Using empty values for sensitive keys in development mode")
 		}
 	}
 }

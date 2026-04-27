@@ -222,6 +222,7 @@ func ConfirmEmailChange(ctx context.Context, token string) (bool, string, int, e
 			return false, "", 0, err
 		}
 		_, err = tx.Exec(ctx, "DELETE FROM email_change_requests WHERE user_id = $1", userID)
+
 		if err != nil {
 			return false, "", 0, err
 		}

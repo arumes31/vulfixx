@@ -49,7 +49,7 @@ func getVisitor(ip string) *rate.Limiter {
 	return v.limiter
 }
 
-func RateLimitMiddleware(next http.Handler) http.Handler {
+func (a *App) RateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip, ok := r.Context().Value(clientIPKey).(string)
 		if !ok {

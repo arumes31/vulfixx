@@ -1,12 +1,12 @@
 /cve-tracker
-coverage*
+/auth
+*.cov
+*.out
 .env
 .qodo
 *.exe
 node_modules
 gosec_results*
-*coverage*
-auth
 .jules/
 .Jules/
 *.log

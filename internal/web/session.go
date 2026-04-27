@@ -35,6 +35,10 @@ func InitSession() *sessions.CookieStore {
 	return s
 }
 
+func GetSessionStore() sessions.Store {
+	return store
+}
+
 func (a *App) GetUserID(r *http.Request) (int, bool) {
 	session, err := a.SessionStore.Get(r, "vulfixx-session")
 	if err != nil {

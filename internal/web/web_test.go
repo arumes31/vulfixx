@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"context"
+	"cve-tracker/internal/db"
 
 	"encoding/json"
 	"io"
@@ -58,54 +59,40 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	}
 	defer mr.Close()
 
-	InitSession()
-
-	// Need to be at project root or templates/ won't load
-	origWD, wdErr := os.Getwd()
-	if wdErr != nil {
-		t.Fatalf("Failed to get working directory: %v", wdErr)
-	}
-	if err := os.Chdir("../.."); err != nil {
-		t.Fatalf("Failed to chdir: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := os.Chdir(origWD); err != nil {
-			t.Errorf("Failed to restore working directory: %v", err)
-		}
-	})
-	InitTemplatesWithFuncs()
+	app := setupTestApp(t, mock)
+	app.Redis = db.RedisClient
 
 	// Setup a router
 	r := mux.NewRouter()
-	r.Use(ProxyMiddleware)
-	r.HandleFunc("/", IndexHandler).Methods("GET")
-	r.HandleFunc("/feed", RSSFeedHandler).Methods("GET")
-	r.Handle("/login", RateLimitMiddleware(http.HandlerFunc(LoginHandler))).Methods("GET", "POST")
-	r.Handle("/register", RateLimitMiddleware(http.HandlerFunc(RegisterHandler))).Methods("GET", "POST")
-	r.HandleFunc("/verify-email", VerifyEmailHandler).Methods("GET")
-	r.HandleFunc("/confirm-email-change", ConfirmEmailChangeHandler).Methods("GET")
-	r.HandleFunc("/logout", LogoutHandler).Methods("POST")
-	r.HandleFunc("/robots.txt", RobotsHandler).Methods("GET")
-	r.HandleFunc("/sitemap.xml", SitemapHandler).Methods("GET")
-	r.HandleFunc("/cve/{id}", CVEDetailHandler).Methods("GET")
+	r.Use(app.ProxyMiddleware)
+	r.HandleFunc("/", app.IndexHandler).Methods("GET")
+	r.HandleFunc("/feed", app.RSSFeedHandler).Methods("GET")
+	r.Handle("/login", app.RateLimitMiddleware(http.HandlerFunc(app.LoginHandler))).Methods("GET", "POST")
+	r.Handle("/register", app.RateLimitMiddleware(http.HandlerFunc(app.RegisterHandler))).Methods("GET", "POST")
+	r.HandleFunc("/verify-email", app.VerifyEmailHandler).Methods("GET")
+	r.HandleFunc("/confirm-email-change", app.ConfirmEmailChangeHandler).Methods("GET")
+	r.HandleFunc("/logout", app.LogoutHandler).Methods("POST")
+	r.HandleFunc("/robots.txt", app.RobotsHandler).Methods("GET")
+	r.HandleFunc("/sitemap.xml", app.SitemapHandler).Methods("GET")
+	r.HandleFunc("/cve/{id}", app.CVEDetailHandler).Methods("GET")
 
 	protected := r.PathPrefix("").Subrouter()
-	protected.Use(AuthMiddleware)
-	protected.HandleFunc("/dashboard", DashboardHandler).Methods("GET")
-	protected.HandleFunc("/api/status", UpdateCVEStatusHandler).Methods("POST")
-	protected.HandleFunc("/api/status/bulk", BulkUpdateCVEStatusHandler).Methods("POST")
-	protected.HandleFunc("/subscriptions", SubscriptionsHandler).Methods("GET", "POST")
-	protected.HandleFunc("/subscriptions/delete", DeleteSubscriptionHandler).Methods("POST")
-	protected.HandleFunc("/export", ExportCVEsHandler).Methods("GET")
-	protected.HandleFunc("/activity", ActivityLogHandler).Methods("GET")
-	protected.HandleFunc("/activity/export", ExportActivityLogHandler).Methods("GET")
-	protected.HandleFunc("/alerts", AlertHistoryHandler).Methods("GET")
-	protected.HandleFunc("/settings", SettingsHandler).Methods("GET")
-	protected.HandleFunc("/settings/totp/generate", GenerateTOTPHandler).Methods("POST")
-	protected.Handle("/settings/totp/verify", RateLimitMiddleware(http.HandlerFunc(VerifyTOTPHandler))).Methods("POST")
-	protected.HandleFunc("/settings/password", ChangePasswordHandler).Methods("POST")
-	protected.HandleFunc("/settings/email", ChangeEmailHandler).Methods("POST")
-	protected.Handle("/settings/delete", RateLimitMiddleware(http.HandlerFunc(DeleteAccountHandler))).Methods("POST")
+	protected.Use(app.AuthMiddleware)
+	protected.HandleFunc("/dashboard", app.DashboardHandler).Methods("GET")
+	protected.HandleFunc("/api/status", app.UpdateCVEStatusHandler).Methods("POST")
+	protected.HandleFunc("/api/status/bulk", app.BulkUpdateCVEStatusHandler).Methods("POST")
+	protected.HandleFunc("/subscriptions", app.SubscriptionsHandler).Methods("GET", "POST")
+	protected.HandleFunc("/subscriptions/delete", app.DeleteSubscriptionHandler).Methods("POST")
+	protected.HandleFunc("/export", app.ExportCVEsHandler).Methods("GET")
+	protected.HandleFunc("/activity", app.ActivityLogHandler).Methods("GET")
+	protected.HandleFunc("/activity/export", app.ExportActivityLogHandler).Methods("GET")
+	protected.HandleFunc("/alerts", app.AlertHistoryHandler).Methods("GET")
+	protected.HandleFunc("/settings", app.SettingsHandler).Methods("GET")
+	protected.HandleFunc("/settings/totp/generate", app.GenerateTOTPHandler).Methods("POST")
+	protected.Handle("/settings/totp/verify", app.RateLimitMiddleware(http.HandlerFunc(app.VerifyTOTPHandler))).Methods("POST")
+	protected.HandleFunc("/settings/password", app.ChangePasswordHandler).Methods("POST")
+	protected.HandleFunc("/settings/email", app.ChangeEmailHandler).Methods("POST")
+	protected.Handle("/settings/delete", app.RateLimitMiddleware(http.HandlerFunc(app.DeleteAccountHandler))).Methods("POST")
 
 	ts := httptest.NewServer(r)
 	defer ts.Close()
@@ -548,10 +535,8 @@ func TestWebEndpointsCoverage(t *testing.T) {
 }
 
 func TestInitTemplates(t *testing.T) {
-	if err := os.Chdir("../.."); err != nil {
-		t.Logf("Warning: Failed to chdir: %v", err)
-	}
-	defer func() { _ = os.Chdir("internal/web") }()
-	InitTemplates()
+	mock, _ := db.SetupTestDB()
+	app := setupTestApp(t, mock)
+	app.InitTemplates()
 	StopStatsTicker()
 }

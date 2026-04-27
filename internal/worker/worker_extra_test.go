@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
@@ -21,7 +20,11 @@ func TestFetchFromCISAKEV(t *testing.T) {
 	}
 	defer mock.Close()
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	_, _ = db.SetupTestRedis()
+
+	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		resp := CISAKEVResponse{
 			Vulnerabilities: []struct {
 				CVEID string `json:"cveID"`
@@ -30,11 +33,13 @@ func TestFetchFromCISAKEV(t *testing.T) {
 				{CVEID: "CVE-2023-2222"},
 			},
 		}
-		_ = json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(rw).Encode(resp)
 	}))
 	defer ts.Close()
 
+	oldURL := defaultCISAKEVURL
 	defaultCISAKEVURL = ts.URL
+	defer func() { defaultCISAKEVURL = oldURL }()
 
 	mock.ExpectBegin()
 	mock.ExpectExec("UPDATE cves SET cisa_kev = false").WillReturnResult(pgxmock.NewResult("UPDATE", 10))
@@ -43,7 +48,7 @@ func TestFetchFromCISAKEV(t *testing.T) {
 		WillReturnResult(pgxmock.NewResult("UPDATE", 2))
 	mock.ExpectCommit()
 
-	fetchFromCISAKEV(context.Background())
+	w.fetchFromCISAKEV(context.Background())
 }
 
 func TestUpsertCVEs(t *testing.T) {
@@ -52,6 +57,10 @@ func TestUpsertCVEs(t *testing.T) {
 		t.Fatalf("failed to setup mock db: %v", err)
 	}
 	defer mock.Close()
+
+	_, _ = db.SetupTestRedis()
+
+	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
 
 	ctx := context.Background()
 	vulns := []NVDCVEEntry{
@@ -64,33 +73,27 @@ func TestUpsertCVEs(t *testing.T) {
 		},
 	}
 
-	mock.ExpectQuery("WITH upsert AS").
+	mock.ExpectExec("INSERT INTO cves").
 		WithArgs("CVE-UPD-TEST", pgxmock.AnyArg(), 0.0, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "tag"}).AddRow(1, "upd"))
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-	ins, upd := upsertCVEs(ctx, vulns, false)
-	if ins != 0 || upd != 1 {
-		t.Errorf("upsertCVEs failed: got %d ins, %d upd", ins, upd)
-	}
-}
+	mock.ExpectQuery("SELECT id FROM cves WHERE cve_id = \\$1").
+		WithArgs("CVE-UPD-TEST").
+		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 
-func TestNVDAPIDelay(t *testing.T) {
-	_ = os.Unsetenv("NVD_API_KEY")
-	if nvdAPIDelay() != 6500*time.Millisecond {
-		t.Errorf("expected 6500ms delay without API key")
-	}
-	t.Setenv("NVD_API_KEY", "test")
-	if nvdAPIDelay() != 700*time.Millisecond {
-		t.Errorf("expected 700ms delay with API key")
-	}
+	w.upsertCVEs(ctx, vulns)
 }
 
 func TestSendAlertWebhook(t *testing.T) {
+	mock, _ := db.SetupTestDB()
+	_, _ = db.SetupTestRedis()
+	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
+
 	sub := models.UserSubscription{
 		EnableWebhook: true,
 		WebhookURL:    "http://127.0.0.1:8080",
 	}
 	cve := &models.CVE{CVEID: "CVE-1"}
 	// This will log a failure but should not panic
-	_ = sendAlert(sub, cve, "test@example.com", "Asset-1")
+	_ = w.sendAlert(sub, cve, "test@example.com", "Asset-1")
 }

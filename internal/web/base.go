@@ -265,7 +265,13 @@ func (a *App) SendResponse(w http.ResponseWriter, r *http.Request, success bool,
 	}
 
 	if !success {
-		http.Error(w, errMsg, http.StatusBadRequest)
+		statusCode := http.StatusBadRequest
+		if errMsg == "Unauthorized" {
+			statusCode = http.StatusUnauthorized
+		} else if strings.HasPrefix(errMsg, "Forbidden") {
+			statusCode = http.StatusForbidden
+		}
+		http.Error(w, errMsg, statusCode)
 		return
 	}
 	if redirect == "" {

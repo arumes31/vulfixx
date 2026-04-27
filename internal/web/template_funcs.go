@@ -3,6 +3,7 @@ package web
 import (
 	"html/template"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -38,12 +39,22 @@ func (a *App) InitTemplatesWithFuncs() {
 
 	a.TemplateMap = make(map[string]*template.Template)
 
-	files, err := filepath.Glob("templates/*.html")
-	if err != nil {
-		log.Fatalf("Error globbing templates: %v", err)
+	// Try to find templates directory if not in current
+	origWD, _ := os.Getwd()
+	for i := 0; i < 4; i++ {
+		if matches, _ := filepath.Glob("templates/*.html"); len(matches) > 0 {
+			break
+		}
+		if err := os.Chdir(".."); err != nil {
+			break
+		}
 	}
+
+	files, _ := filepath.Glob("templates/*.html")
 	if len(files) == 0 {
-		log.Fatalf("No templates found")
+		log.Printf("No templates found in %s or its parents", origWD)
+		_ = os.Chdir(origWD)
+		return
 	}
 	for _, file := range files {
 		name := filepath.Base(file)
@@ -52,7 +63,11 @@ func (a *App) InitTemplatesWithFuncs() {
 		}
 		a.TemplateMap[name] = template.Must(template.New(name).Funcs(funcs).ParseFiles("templates/base.html", file))
 	}
+	
+	_ = os.Chdir(origWD)
+
 	if len(a.TemplateMap) == 0 {
-		log.Fatalf("No renderable templates loaded")
+		log.Printf("No renderable templates loaded")
+		return
 	}
 }

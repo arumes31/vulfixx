@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"cve-tracker/internal/db"
 
 	"net/http"
 	"net/http/httptest"
@@ -16,10 +17,9 @@ func TestAuthMiddleware(t *testing.T) {
 		t.Fatalf("failed to setup mock db: %v", err)
 	}
 	defer mock.Close()
+	app := setupTestApp(t, mock)
 
-	InitSession()
-
-	handler := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := app.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -34,16 +34,8 @@ func TestAuthMiddleware(t *testing.T) {
 
 	t.Run("AuthenticatedButUnverified", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/dashboard", nil)
-		session, _ := store.Get(req, "vulfixx-session")
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["user_id"] = 1
-		// We can't easily save the session back to the recorder in a unit test without a real response writer
-		// But store.Get uses the request context/cookies.
-
-		// Actually, store.Get works with the request.
-		// To simulate a cookie, we'd need to sign it.
-		// Easier to just mock GetUserID if we could.
-
-		// But let's try to set the value in the session.
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
 
@@ -65,7 +57,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 	t.Run("AuthenticatedAndVerified", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/dashboard", nil)
-		session, _ := store.Get(req, "vulfixx-session")
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
@@ -89,10 +81,9 @@ func TestAuthMiddleware(t *testing.T) {
 func TestAdminMiddleware(t *testing.T) {
 	mock, _ := db.SetupTestDB()
 	defer mock.Close()
+	app := setupTestApp(t, mock)
 
-	InitSession()
-
-	handler := AdminMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := app.AdminMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -107,7 +98,7 @@ func TestAdminMiddleware(t *testing.T) {
 
 	t.Run("AuthenticatedNotAdmin", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/admin", nil)
-		session, _ := store.Get(req, "vulfixx-session")
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
@@ -129,7 +120,7 @@ func TestAdminMiddleware(t *testing.T) {
 
 	t.Run("AuthenticatedIsAdmin", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/admin", nil)
-		session, _ := store.Get(req, "vulfixx-session")
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
@@ -151,8 +142,9 @@ func TestAdminMiddleware(t *testing.T) {
 }
 
 func TestProxyMiddleware(t *testing.T) {
+	app := &App{} // Minimized app for this test as it doesn't need DB/Redis
 	newHandler := func() http.Handler {
-		return ProxyMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		return app.ProxyMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := r.Context().Value(clientIPKey).(string)
 			w.Header().Set("X-Client-IP", ip)
 			w.WriteHeader(http.StatusOK)
@@ -218,7 +210,8 @@ func TestProxyMiddleware(t *testing.T) {
 }
 
 func TestRateLimitMiddleware(t *testing.T) {
-	handler := RateLimitMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	app := &App{}
+	handler := app.RateLimitMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -251,3 +244,4 @@ func TestRateLimitMiddleware(t *testing.T) {
 		}
 	})
 }
+
