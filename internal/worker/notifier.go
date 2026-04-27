@@ -79,21 +79,14 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName st
 				return
 			}
 
-			client := &http.Client{
-				Timeout: 10 * time.Second,
-				Transport: &http.Transport{
-					DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-						port := parsedURL.Port()
-						if port == "" {
-							if parsedURL.Scheme == "https" { port = "443" } else { port = "80" }
-						}
-						dialer := &net.Dialer{Timeout: 5 * time.Second}
-						return dialer.DialContext(ctx, network, net.JoinHostPort(safeIP.String(), port))
-					},
-				},
+			req, err := http.NewRequestWithContext(ctx, "POST", sub.WebhookURL, strings.NewReader(string(payload)))
+			if err != nil {
+				log.Printf("Error creating webhook request: %v", err)
+				return
 			}
+			req.Header.Set("Content-Type", "application/json")
 
-			resp, err := client.Post(sub.WebhookURL, "application/json", strings.NewReader(string(payload)))
+			resp, err := GlobalHTTPClient.Do(req)
 			if err == nil {
 				_ = resp.Body.Close()
 				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
@@ -188,7 +181,7 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName st
 					</div>
 				</div>
 			`, html.EscapeString(cve.CVEID), kevBadge, advisoryHTML, severityColor, cve.CVSSScore, severity, epssDisplay, html.EscapeString(cve.Description), buttonsHTML, baseURL)
-			if err := sendEmail(email, "Security Alert: "+cve.CVEID, body); err == nil {
+			if err := GlobalEmailSender.SendEmail(email, "Security Alert: "+cve.CVEID, body); err == nil {
 				successChan <- true
 			}
 		}()
@@ -203,6 +196,7 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName st
 	}
 	return hasSuccess
 }
+
 func redactEmail(email string) string {
 	parts := strings.Split(email, "@")
 	if len(parts) != 2 {

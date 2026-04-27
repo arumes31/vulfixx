@@ -144,3 +144,23 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 
 	return nil
 }
+
+func classifyVendorAdvisories(references []string) []string {
+	advisories := []string{}
+	keywords := []string{
+		"advisory", "bulletin", "security-advisories", "msrc", "security/notices",
+		"security/advisories", "kb", "security-center", "ghsa", "osv",
+		"security-guidance", "fixed", "patch",
+	}
+
+	for _, ref := range references {
+		lower := strings.ToLower(ref)
+		for _, kw := range keywords {
+			if strings.Contains(lower, kw) {
+				advisories = append(advisories, ref)
+				break
+			}
+		}
+	}
+	return advisories
+}

@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 )
 
@@ -83,23 +82,4 @@ func fetchOSINTLinks(ctx context.Context, cveID string) map[string]interface{} {
 	}
 
 	return data
-}
-
-func classifyVendorAdvisories(references []string) []string {
-	advisories := []string{}
-	keywords := []string{
-		"advisory", "bulletin", "security-advisories", "msrc", "security/notices",
-		"security/advisories", "kb", "security-center", "ghsa", "osv",
-	}
-	
-	for _, ref := range references {
-		lower := strings.ToLower(ref)
-		for _, kw := range keywords {
-			if strings.Contains(lower, kw) {
-				advisories = append(advisories, ref)
-				break
-			}
-		}
-	}
-	return advisories
 }

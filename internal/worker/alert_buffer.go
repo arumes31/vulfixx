@@ -12,12 +12,17 @@ import (
 	"time"
 )
 
+var (
+	bufferTimeHigh     = 1 * time.Minute
+	bufferTimeStandard = 5 * time.Minute
+)
+
 func bufferAlert(ctx context.Context, userID int, cve *models.CVE, email, assetName string) bool {
 	// Severity-Based Routing:
 	// Critical (>= 9.0) gets immediate delivery.
-	// High (>= 7.0) gets a short buffer (1 min).
-	// Others get a longer buffer (5 min) for digest creation.
-	
+	// High (>= 7.0) gets a short buffer (configurable, default 1 min).
+	// Others get a longer buffer (configurable, default 5 min) for digest creation.
+
 	if cve.CVSSScore >= 9.0 {
 		sub := models.UserSubscription{EnableEmail: true, EnableWebhook: true}
 		return sendAlert(sub, cve, email, assetName)
@@ -38,11 +43,10 @@ func bufferAlert(ctx context.Context, userID int, cve *models.CVE, email, assetN
 	processingKey := fmt.Sprintf("alert_processing:%d", userID)
 	set, _ := db.RedisClient.SetNX(ctx, processingKey, "true", 10*time.Minute).Result()
 	if set {
-		bufferTime := 5 * time.Minute
+		bufferTime := bufferTimeStandard
 		if cve.CVSSScore >= 7.0 {
-			bufferTime = 1 * time.Minute
+			bufferTime = bufferTimeHigh
 		}
-
 		go func(bTime time.Duration, procCtx context.Context) {
 			defer func() {
 				cleanupCtx, cancel := context.WithTimeout(procCtx, 5*time.Second)

@@ -99,7 +99,7 @@ func runFullSync(ctx context.Context, isBackfill bool) {
 	}
 
 	lastSync := getLastSyncTime(ctx)
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := GlobalHTTPClient
 	const pageSize = 2000
 	startIndex := 0
 	totalResults := -1

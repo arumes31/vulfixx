@@ -24,6 +24,8 @@ func syncEPSSPeriodically(ctx context.Context) {
 	}
 }
 
+var defaultEPSSBaseURL = "https://api.first.org/data/v1/epss"
+
 func syncEPSS(ctx context.Context) {
 	log.Println("Worker: [SYNC] Starting EPSS score synchronization...")
 	rows, err := db.Pool.Query(ctx, "SELECT cve_id FROM cves WHERE published_date > NOW() - INTERVAL '30 days'")
@@ -47,7 +49,7 @@ func syncEPSS(ctx context.Context) {
 	rows.Close()
 
 	start := time.Now()
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := GlobalHTTPClient
 	for _, cveID := range cveIDs {
 		select {
 		case <-ctx.Done():
@@ -55,7 +57,7 @@ func syncEPSS(ctx context.Context) {
 		default:
 		}
 
-		epssURL := fmt.Sprintf("https://api.first.org/data/v1/epss?cve=%s", cveID)
+		epssURL := fmt.Sprintf("%s?cve=%s", defaultEPSSBaseURL, cveID)
 		req, err := http.NewRequestWithContext(ctx, "GET", epssURL, nil)
 		if err != nil {
 			log.Printf("Worker: [ERROR] Failed to create EPSS request for %s: %v", cveID, err)

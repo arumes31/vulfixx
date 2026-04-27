@@ -3,10 +3,15 @@ package db
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/alicebob/miniredis/v2"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pashagolub/pgxmock/v3"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestInitDBMock(t *testing.T) {
@@ -41,7 +46,7 @@ func TestMigrate(t *testing.T) {
 	}
 	defer mock.Close()
 
-	// Mock base schema execution (schemaSQL starts with CREATE TABLE IF NOT EXISTS users)
+	// Mock base schema execution
 	mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
 	
 	// Expectations for each migration query in migrate()
@@ -67,7 +72,6 @@ func TestMigrate(t *testing.T) {
 	}
 
 	for _, q := range queries {
-		// Use regex match for just the beginning of each query
 		mock.ExpectExec(q).WillReturnResult(pgxmock.NewResult("ALTER", 0))
 	}
 
@@ -118,13 +122,221 @@ func TestCloseDB(t *testing.T) {
 	CloseDB()
 }
 
-func TestRedisErrors(t *testing.T) {
-	t.Setenv("REDIS_URL", "invalid:port")
-	err := InitRedis()
-	if err == nil {
-		t.Error("expected error for invalid redis url")
+func TestInitRedisTable(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+
+	tests := []struct {
+		name    string
+		url     string
+		wantErr bool
+	}{
+		{
+			name:    "Valid Redis URL",
+			url:     mr.Addr(),
+			wantErr: false,
+		},
+		{
+			name:    "Invalid Redis URL",
+			url:     "invalid-host:1234",
+			wantErr: true,
+		},
+		{
+			name:    "Empty URL (defaults to localhost:6379)",
+			url:     "",
+			wantErr: true,
+		},
 	}
-	
-	RedisClient = nil
-	CloseRedis() // Should not panic
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.url != "" {
+				t.Setenv("REDIS_URL", tt.url)
+			} else {
+				os.Unsetenv("REDIS_URL")
+			}
+
+			err := InitRedis()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("InitRedis() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestCloseRedis(t *testing.T) {
+	t.Run("Nil Client", func(t *testing.T) {
+		RedisClient = nil
+		CloseRedis() // should not panic
+	})
+
+	t.Run("Valid Client", func(t *testing.T) {
+		mr, _ := miniredis.Run()
+		defer mr.Close()
+		RedisClient = redis.NewClient(&redis.Options{Addr: mr.Addr()})
+		CloseRedis()
+	})
+}
+
+func TestInitDB_Complex(t *testing.T) {
+	tests := []struct {
+		name        string
+		envs        map[string]string
+		mockSetup   func(mock pgxmock.PgxPoolIface)
+		creatorFail bool
+		shortRetry  bool
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "Success Path - Default SSLMode and Ping Retry",
+			envs: map[string]string{"DB_HOST": "localhost"}, // DB_SSLMODE not set
+			mockSetup: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectPing().WillReturnError(fmt.Errorf("not ready yet"))
+				mock.ExpectPing().WillReturnError(fmt.Errorf("not ready yet"))
+				mock.ExpectPing() // Succeeds on 3rd try
+				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
+				for i := 0; i < 18; i++ {
+					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
+				}
+			},
+			shortRetry: true,
+			wantErr:    false,
+		},
+		{
+			name: "Success Path - Explicit SSLMode",
+			envs: map[string]string{"DB_HOST": "localhost", "DB_SSLMODE": "disable"},
+			mockSetup: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectPing()
+				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
+				for i := 0; i < 18; i++ {
+					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
+				}
+			},
+			wantErr: false,
+		},
+		{
+			name: "ParseConfig Error",
+			envs: map[string]string{"DB_SSLMODE": "invalid"},
+			wantErr:     true,
+			errContains: "unable to parse database URL",
+		},
+		{
+			name: "Pool Creator Error",
+			envs: map[string]string{"DB_HOST": "localhost"},
+			creatorFail: true,
+			wantErr:     true,
+			errContains: "unable to create connection pool",
+		},
+		{
+			name: "Ping Failure",
+			envs: map[string]string{"DB_HOST": "localhost"},
+			mockSetup: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectPing().WillReturnError(fmt.Errorf("ping fail"))
+				mock.ExpectPing().WillReturnError(fmt.Errorf("ping fail"))
+			},
+			shortRetry:  true,
+			wantErr:     true,
+			errContains: "database connection failed after retries",
+		},
+		{
+			name: "Migration Failure",
+			envs: map[string]string{"DB_HOST": "localhost"},
+			mockSetup: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectPing()
+				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnError(fmt.Errorf("migration fail"))
+			},
+			wantErr:     true,
+			errContains: "migration failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Save and restore globals
+			oldCreator := poolCreator
+			oldRetryCount := dbRetryCount
+			oldRetryDelay := dbRetryDelay
+			defer func() {
+				poolCreator = oldCreator
+				dbRetryCount = oldRetryCount
+				dbRetryDelay = oldRetryDelay
+			}()
+
+			if tt.name == "Success Path - Default SSLMode and Ping Retry" {
+				os.Unsetenv("DB_SSLMODE")
+				dbRetryCount = 5
+				dbRetryDelay = 1 * time.Millisecond
+			} else if tt.shortRetry {
+				dbRetryCount = 2
+				dbRetryDelay = 1 * time.Millisecond
+			} else {
+				dbRetryCount = 1
+				dbRetryDelay = 1 * time.Millisecond
+			}
+
+			mock, _ := pgxmock.NewPool()
+			if tt.mockSetup != nil {
+				tt.mockSetup(mock)
+			}
+
+			poolCreator = func(ctx context.Context, config *pgxpool.Config) (DBPool, error) {
+				if tt.creatorFail {
+					return nil, fmt.Errorf("creator fail")
+				}
+				return mock, nil
+			}
+
+			// Set envs with valid defaults
+			t.Setenv("DB_HOST", "localhost")
+			t.Setenv("DB_PORT", "5432")
+			t.Setenv("DB_USER", "user")
+			t.Setenv("DB_PASSWORD", "pass")
+			t.Setenv("DB_NAME", "db")
+			t.Setenv("DB_SSLMODE", "disable")
+
+			for k, v := range tt.envs {
+				t.Setenv(k, v)
+			}
+
+			// Special case to trigger ParseConfig error
+			if tt.name == "ParseConfig Error" {
+				// Using a malformed port that strconv.ParseUint will fail on
+				// pgx key-value parser is very lenient, but some values are validated
+				t.Setenv("DB_PORT", "65536") // Port out of range
+			}
+
+			err := InitDB()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("InitDB() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && err != nil && !strings.Contains(err.Error(), tt.errContains) {
+				t.Errorf("InitDB() error = %v, wantErr contains %v", err, tt.errContains)
+			}
+		})
+	}
+}
+
+func TestSetupHelpers(t *testing.T) {
+	t.Run("SetupTestDB", func(t *testing.T) {
+		mock, err := SetupTestDB()
+		if err != nil {
+			t.Errorf("SetupTestDB failed: %v", err)
+		}
+		if mock == nil || Pool != mock {
+			t.Error("SetupTestDB did not set Pool correctly")
+		}
+	})
+
+	t.Run("SetupTestRedis", func(t *testing.T) {
+		mr, err := SetupTestRedis()
+		if err != nil {
+			t.Errorf("SetupTestRedis failed: %v", err)
+		}
+		if mr == nil || RedisClient == nil {
+			t.Error("SetupTestRedis did not set RedisClient correctly")
+		}
+		mr.Close()
+	})
 }

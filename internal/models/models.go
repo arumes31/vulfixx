@@ -3,98 +3,98 @@ package models
 import "time"
 
 type User struct {
-	ID               int
-	Email            string
-	PasswordHash     string
-	IsEmailVerified  bool
-	EmailVerifyToken string
-	TOTPSecret       string
-	IsTOTPEnabled    bool
-	IsAdmin          bool
-	CreatedAt        time.Time
+	ID               int       `json:"id"`
+	Email            string    `json:"email"`
+	PasswordHash     string    `json:"-"`
+	IsEmailVerified  bool      `json:"is_email_verified"`
+	EmailVerifyToken string    `json:"-"`
+	TOTPSecret       string    `json:"-"`
+	IsTOTPEnabled    bool      `json:"is_totp_enabled"`
+	IsAdmin          bool      `json:"is_admin"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 type CVE struct {
-	ID            int
-	CVEID         string
-	Description   string
-	CVSSScore     float64
-	VectorString  string
-	CISAKEV       bool
-	EPSSScore     float64
-	CWEID         string
-	CWEName       string
-	GitHubPoCCount int
-	OSINTData     map[string]interface{}
-	Status        string
-	Notes         string
-	References    []string
-	PublishedDate time.Time
-	UpdatedDate   time.Time
-	CreatedAt     time.Time
+	ID             int                    `json:"id"`
+	CVEID          string                 `json:"cve_id"`
+	Description    string                 `json:"description"`
+	CVSSScore      float64                `json:"cvss_score"`
+	VectorString   string                 `json:"vector_string"`
+	CISAKEV        bool                   `json:"cisa_kev"`
+	EPSSScore      float64                `json:"epss_score"`
+	CWEID          string                 `json:"cwe_id"`
+	CWEName        string                 `json:"cwe_name"`
+	GitHubPoCCount int                    `json:"github_poc_count"`
+	OSINTData      map[string]interface{} `json:"osint_data"`
+	Status         string                 `json:"status"`
+	Notes          string                 `json:"notes"`
+	References     []string               `json:"references"`
+	PublishedDate  time.Time              `json:"published_date"`
+	UpdatedDate    time.Time              `json:"updated_date"`
+	CreatedAt      time.Time              `json:"created_at"`
 }
 
 type Team struct {
-	ID         int
-	Name       string
-	InviteCode string
-	CreatedAt  time.Time
+	ID         int       `json:"id"`
+	Name       string    `json:"name"`
+	InviteCode string    `json:"invite_code"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type TeamMember struct {
-	TeamID   int
-	UserID   int
-	Role     string // owner, admin, member
-	JoinedAt time.Time
+	TeamID   int       `json:"team_id"`
+	UserID   int       `json:"user_id"`
+	Role     string    `json:"role"` // owner, admin, member
+	JoinedAt time.Time `json:"joined_at"`
 }
 
 type UserSubscription struct {
-	ID            int
-	UserID        int
-	TeamID        *int
-	Keyword       string
-	MinSeverity   float64
-	WebhookURL    string
-	EnableEmail   bool
-	EnableWebhook bool
-	FilterLogic   string
-	CreatedAt     time.Time
+	ID            int       `json:"id"`
+	UserID        int       `json:"user_id"`
+	TeamID        *int      `json:"team_id"`
+	Keyword       string    `json:"keyword"`
+	MinSeverity   float64   `json:"min_severity"`
+	WebhookURL    string    `json:"webhook_url"`
+	EnableEmail   bool      `json:"enable_email"`
+	EnableWebhook bool      `json:"enable_webhook"`
+	FilterLogic   string    `json:"filter_logic"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 type UserCVEStatus struct {
-	UserID    int
-	TeamID    *int
-	CVEID     int
-	Status    string
-	UpdatedAt time.Time
+	UserID    int       `json:"user_id"`
+	TeamID    *int      `json:"team_id"`
+	CVEID     int       `json:"cve_id"`
+	Status    string    `json:"status"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type AlertHistory struct {
-	ID     int
-	UserID int
-	CVEID  int
-	SentAt time.Time
+	ID     int       `json:"id"`
+	UserID int       `json:"user_id"`
+	CVEID  int       `json:"cve_id"`
+	SentAt time.Time `json:"sent_at"`
 }
 
 type Asset struct {
-	ID        int
-	UserID    int
-	TeamID    *int
-	Name      string
-	Type      string // e.g., 'Server', 'Software', 'Network'
-	CreatedAt time.Time
+	ID        int       `json:"id"`
+	UserID    int       `json:"user_id"`
+	TeamID    *int      `json:"team_id"`
+	Name      string    `json:"name"`
+	Type      string    `json:"type"` // e.g., 'Server', 'Software', 'Network'
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type AssetKeyword struct {
-	ID      int
-	AssetID int
-	Keyword string
+	ID      int    `json:"id"`
+	AssetID int    `json:"asset_id"`
+	Keyword string `json:"keyword"`
 }
 
 type CVENote struct {
-	UserID    int
-	TeamID    *int
-	CVEID     int
-	Notes     string
-	UpdatedAt time.Time
+	UserID    int       `json:"user_id"`
+	TeamID    *int      `json:"team_id"`
+	CVEID     int       `json:"cve_id"`
+	Notes     string    `json:"notes"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

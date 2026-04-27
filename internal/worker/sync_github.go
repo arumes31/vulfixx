@@ -47,7 +47,7 @@ func syncGitHubBuzz(ctx context.Context) {
 	rows.Close()
 
 	start := time.Now()
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := GlobalHTTPClient
 	for _, cveID := range cveIDs {
 
 

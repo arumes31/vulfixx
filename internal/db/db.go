@@ -20,7 +20,14 @@ type DBPool interface {
 	Ping(ctx context.Context) error
 }
 
-var Pool DBPool
+var (
+	Pool         DBPool
+	dbRetryCount = 15
+	dbRetryDelay = 1 * time.Second
+	poolCreator  = func(ctx context.Context, config *pgxpool.Config) (DBPool, error) {
+		return pgxpool.NewWithConfig(ctx, config)
+	}
+)
 
 func InitDB() error {
 	sslMode := os.Getenv("DB_SSLMODE")
@@ -36,19 +43,19 @@ func InitDB() error {
 		return fmt.Errorf("unable to parse database URL: %w", err)
 	}
 
-	Pool, err = pgxpool.NewWithConfig(context.Background(), poolConfig)
+	Pool, err = poolCreator(context.Background(), poolConfig)
 	if err != nil {
 		return fmt.Errorf("unable to create connection pool: %w", err)
 	}
 
 	// Wait for database to be ready
 	var pingErr error
-	for i := 0; i < 15; i++ {
+	for i := 0; i < dbRetryCount; i++ {
 		pingErr = Pool.Ping(context.Background())
 		if pingErr == nil {
 			break
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(dbRetryDelay)
 	}
 	if pingErr != nil {
 		return fmt.Errorf("database connection failed after retries: %w", pingErr)

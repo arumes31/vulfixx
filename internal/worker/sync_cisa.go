@@ -33,7 +33,7 @@ func fetchCISAKEVPeriodically(ctx context.Context) {
 
 func fetchFromCISAKEV(ctx context.Context) {
 	log.Println("Worker: [SYNC] Fetching CISA KEV catalog...")
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := GlobalHTTPClient
 	req, err := http.NewRequestWithContext(ctx, "GET", defaultCISAKEVURL, nil)
 	if err != nil {
 		log.Printf("Worker: [ERROR] Failed to create CISA KEV request: %v", err)
