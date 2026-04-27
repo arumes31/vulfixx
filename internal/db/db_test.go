@@ -41,9 +41,10 @@ func TestMigrate(t *testing.T) {
 	}
 	defer mock.Close()
 
-	// Mock all queries in migrate
+	// Mock base schema execution (schemaSQL starts with CREATE TABLE IF NOT EXISTS users)
 	mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
 	
+	// Expectations for each migration query in migrate()
 	queries := []string{
 		"ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin",
 		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS enable_email",
@@ -56,10 +57,17 @@ func TestMigrate(t *testing.T) {
 		"CREATE TABLE IF NOT EXISTS asset_keywords",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS vector_string",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS \"references\"",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS epss_score",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS cwe_id",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS cwe_name",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS github_poc_count",
+		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS filter_logic",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS osint_data",
 		"CREATE TABLE IF NOT EXISTS user_cve_notes",
 	}
 
 	for _, q := range queries {
+		// Use regex match for just the beginning of each query
 		mock.ExpectExec(q).WillReturnResult(pgxmock.NewResult("ALTER", 0))
 	}
 

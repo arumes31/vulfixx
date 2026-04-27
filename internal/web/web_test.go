@@ -545,4 +545,5 @@ func TestInitTemplates(t *testing.T) {
 	}
 	defer func() { _ = os.Chdir("internal/web") }()
     InitTemplates()
+	StopStatsTicker()
 }

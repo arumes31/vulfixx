@@ -34,7 +34,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 	t.Run("AuthenticatedButUnverified", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/dashboard", nil)
-		session, _ := store.Get(req, "session-name")
+		session, _ := store.Get(req, "vulfixx-session")
 		session.Values["user_id"] = 1
 		// We can't easily save the session back to the recorder in a unit test without a real response writer
 		// But store.Get uses the request context/cookies.
@@ -65,7 +65,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 	t.Run("AuthenticatedAndVerified", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/dashboard", nil)
-		session, _ := store.Get(req, "session-name")
+		session, _ := store.Get(req, "vulfixx-session")
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
@@ -107,7 +107,7 @@ func TestAdminMiddleware(t *testing.T) {
 
 	t.Run("AuthenticatedNotAdmin", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/admin", nil)
-		session, _ := store.Get(req, "session-name")
+		session, _ := store.Get(req, "vulfixx-session")
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
@@ -129,7 +129,7 @@ func TestAdminMiddleware(t *testing.T) {
 
 	t.Run("AuthenticatedIsAdmin", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/admin", nil)
-		session, _ := store.Get(req, "session-name")
+		session, _ := store.Get(req, "vulfixx-session")
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
