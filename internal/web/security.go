@@ -17,8 +17,9 @@ func SecurityHeadersMiddleware(next http.Handler) http.Handler {
 		// Control referrer information
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 
-		// Cross-Site Scripting protection (modern approach is CSP, but this is a good fallback)
+		// Cross-Site Scripting protection (modern approach is CSP)
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:;")
 
 		next.ServeHTTP(w, r)
 	})

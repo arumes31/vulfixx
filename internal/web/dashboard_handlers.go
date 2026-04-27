@@ -149,22 +149,58 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	totalPages := (totalItems + pageSize - 1) / pageSize
 
+	// Fetch severity distribution
+	var severityCounts struct {
+		Critical int
+		High     int
+		Medium   int
+		Low      int
+	}
+	_ = db.Pool.QueryRow(r.Context(), `
+		SELECT 
+			COUNT(*) FILTER (WHERE cvss_score >= 9.0),
+			COUNT(*) FILTER (WHERE cvss_score >= 7.0 AND cvss_score < 9.0),
+			COUNT(*) FILTER (WHERE cvss_score >= 4.0 AND cvss_score < 7.0),
+			COUNT(*) FILTER (WHERE cvss_score < 4.0)
+		FROM cves
+	`).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
+
+	// Fetch status distribution for the current view
+	var statusCounts struct {
+		Active     int
+		InProgress int
+		Resolved   int
+		Ignored    int
+	}
+	statusQuery := fmt.Sprintf(`
+		SELECT 
+			COUNT(*) FILTER (WHERE COALESCE(ucs.status, 'active') = 'active'),
+			COUNT(*) FILTER (WHERE ucs.status = 'in_progress'),
+			COUNT(*) FILTER (WHERE ucs.status = 'resolved'),
+			COUNT(*) FILTER (WHERE ucs.status = 'ignored')
+		FROM cves c
+		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s
+	`, statusJoinCond)
+	_ = db.Pool.QueryRow(r.Context(), statusQuery, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
+
 	RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
-		"CVEs":          cves,
-		"Total":         totalItems,
-		"KevCount":      kevCount,
-		"CritCount":     critCount,
-		"ProgressCount": progressCount,
-		"ThreatLevel":   threatLevel,
-		"ThreatColor":   threatColor,
-		"CurrentPage":   page,
-		"TotalPages":    totalPages,
-		"HasPrev":       page > 1,
-		"HasNext":       page < totalPages,
-		"PrevPage":      page - 1,
-		"NextPage":      page + 1,
-		"Query":         searchQuery,
-		"ActiveTeamID":  activeTeamID,
+		"CVEs":           cves,
+		"Total":          totalItems,
+		"KevCount":       kevCount,
+		"CritCount":      critCount,
+		"ProgressCount":  progressCount,
+		"ThreatLevel":    threatLevel,
+		"ThreatColor":    threatColor,
+		"CurrentPage":    page,
+		"TotalPages":     totalPages,
+		"HasPrev":        page > 1,
+		"HasNext":        page < totalPages,
+		"PrevPage":       page - 1,
+		"NextPage":       page + 1,
+		"Query":          searchQuery,
+		"ActiveTeamID":   activeTeamID,
+		"SeverityCounts": severityCounts,
+		"StatusCounts":   statusCounts,
 	})
 }
 
@@ -321,6 +357,11 @@ func BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(req.CVEIDs) == 0 {
+		SendResponse(w, r, true, "No CVEs selected", "", "")
+		return
+	}
+
 	if len(req.CVEIDs) > 1000 {
 		SendResponse(w, r, false, "", "", "Too many CVE IDs (max 1000)")
 		return
@@ -335,6 +376,11 @@ func BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var teamPtr *int
+	if activeTeamID > 0 {
+		teamPtr = &activeTeamID
+	}
+
 	tx, err := db.Pool.Begin(r.Context())
 	if err != nil {
 		SendResponse(w, r, false, "", "", "Internal server error")
@@ -342,29 +388,26 @@ func BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = tx.Rollback(r.Context()) }()
 
-	for _, id := range req.CVEIDs {
-		var teamPtr *int
-		if activeTeamID > 0 {
-			teamPtr = &activeTeamID
-		}
-		
-		query := `
+	var query string
+	if activeTeamID > 0 {
+		query = `
 			INSERT INTO user_cve_status (user_id, team_id, cve_id, status)
-			VALUES ($1, $2, $3, $4)
+			SELECT $1, $2, id, $3 FROM unnest($4::int[]) AS id
+			ON CONFLICT (team_id, cve_id) WHERE team_id IS NOT NULL DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
+		`
+	} else {
+		query = `
+			INSERT INTO user_cve_status (user_id, team_id, cve_id, status)
+			SELECT $1, $2, id, $3 FROM unnest($4::int[]) AS id
 			ON CONFLICT (user_id, cve_id) WHERE team_id IS NULL DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
 		`
-		if activeTeamID > 0 {
-			query = `
-				INSERT INTO user_cve_status (user_id, team_id, cve_id, status)
-				VALUES ($1, $2, $3, $4)
-				ON CONFLICT (team_id, cve_id) WHERE team_id IS NOT NULL DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
-			`
-		}
-		_, err = tx.Exec(r.Context(), query, userID, teamPtr, id, req.Status)
-		if err != nil {
-			SendResponse(w, r, false, "", "", "Internal server error")
-			return
-		}
+	}
+
+	_, err = tx.Exec(r.Context(), query, userID, teamPtr, req.Status, req.CVEIDs)
+	if err != nil {
+		log.Printf("BulkUpdate Error: %v", err)
+		SendResponse(w, r, false, "", "", "Internal server error")
+		return
 	}
 
 	if err := tx.Commit(r.Context()); err != nil {
@@ -372,5 +415,6 @@ func BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	LogActivity(r.Context(), userID, "cve_status_bulk_updated", fmt.Sprintf("Bulk updated %d CVEs to %s", len(req.CVEIDs), req.Status), r.RemoteAddr, r.UserAgent())
 	SendResponse(w, r, true, fmt.Sprintf("Updated %d CVEs", len(req.CVEIDs)), "", "")
 }

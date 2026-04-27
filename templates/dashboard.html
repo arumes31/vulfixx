@@ -70,6 +70,28 @@
         </div>
     </div>
 
+    <!-- Charts Section -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="glass p-8 rounded-[2rem] border border-white/10">
+            <h3 class="text-xs font-black uppercase tracking-[0.2em] text-gray-500 mb-6 flex items-center gap-2">
+                <span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                Global Severity Distribution
+            </h3>
+            <div class="h-64">
+                <canvas id="severityChart"></canvas>
+            </div>
+        </div>
+        <div class="glass p-8 rounded-[2rem] border border-white/10">
+            <h3 class="text-xs font-black uppercase tracking-[0.2em] text-gray-500 mb-6 flex items-center gap-2">
+                <span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+                Remediation Status
+            </h3>
+            <div class="h-64">
+                <canvas id="statusChart"></canvas>
+            </div>
+        </div>
+    </div>
+
     <!-- Main Table -->
     <div class="glass rounded-[2rem] border border-white/10 overflow-hidden shadow-2xl">
         <div class="overflow-x-auto">
@@ -255,6 +277,46 @@
 
         document.querySelectorAll('.status-selector').forEach(el => {
             el.addEventListener('change', (e) => updateCVEStatus(el.dataset.id, e.target.value));
+        });
+
+        // Initialize Charts
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right',
+                    labels: { color: '#94a3b8', font: { family: 'Space Grotesk', weight: 'bold', size: 10 }, padding: 20 }
+                }
+            }
+        };
+
+        new Chart(document.getElementById('severityChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Critical', 'High', 'Medium', 'Low'],
+                datasets: [{
+                    data: [{{.SeverityCounts.Critical}}, {{.SeverityCounts.High}}, {{.SeverityCounts.Medium}}, {{.SeverityCounts.Low}}],
+                    backgroundColor: ['#ef4444', '#f97316', '#3b82f6', '#475569'],
+                    borderWidth: 0,
+                    spacing: 5
+                }]
+            },
+            options: commonOptions
+        });
+
+        new Chart(document.getElementById('statusChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Active', 'In Progress', 'Resolved', 'Ignored'],
+                datasets: [{
+                    data: [{{.StatusCounts.Active}}, {{.StatusCounts.InProgress}}, {{.StatusCounts.Resolved}}, {{.StatusCounts.Ignored}}],
+                    backgroundColor: ['#f87171', '#60a5fa', '#00daf3', '#4b5563'],
+                    borderWidth: 0,
+                    spacing: 5
+                }]
+            },
+            options: commonOptions
         });
     });
 {{end}}

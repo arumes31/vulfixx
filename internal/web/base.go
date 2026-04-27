@@ -21,6 +21,7 @@ var templateMap map[string]*template.Template
 
 func InitTemplates() {
 	InitTemplatesWithFuncs()
+	go StartStatsTicker()
 }
 
 type globalCVEStatsCache struct {
@@ -164,27 +165,11 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 			data["ActiveTeamName"] = "Private Workspace"
 		}
 
-		// Fetch global CVE stats
+		// Fetch global CVE stats from cache
 		statsCache.RLock()
-		if time.Since(statsCache.lastUpdated) > 5*time.Minute {
-			statsCache.RUnlock()
-			statsCache.Lock()
-			if time.Since(statsCache.lastUpdated) > 5*time.Minute {
-				err1 := db.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM cves").Scan(&statsCache.total)
-				err2 := db.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM cves WHERE updated_date >= NOW() - INTERVAL '24 hours'").Scan(&statsCache.newLast24h)
-				if err1 != nil || err2 != nil {
-					log.Printf("Error refreshing stats cache: %v, %v", err1, err2)
-				}
-				statsCache.lastUpdated = time.Now()
-			}
-			data["GlobalTotalCVEs"] = statsCache.total
-			data["GlobalNewCVEs"] = statsCache.newLast24h
-			statsCache.Unlock()
-		} else {
-			data["GlobalTotalCVEs"] = statsCache.total
-			data["GlobalNewCVEs"] = statsCache.newLast24h
-			statsCache.RUnlock()
-		}
+		data["GlobalTotalCVEs"] = statsCache.total
+		data["GlobalNewCVEs"] = statsCache.newLast24h
+		statsCache.RUnlock()
 	}
 	data["csrfField"] = csrf.TemplateField(r)
 	tmpl, ok := templateMap[name]
@@ -200,6 +185,38 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 		return
 	}
 	_, _ = w.Write(buf.Bytes())
+}
+
+func StartStatsTicker() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	refresh := func() {
+		var total, new24h int
+		err1 := db.Pool.QueryRow(context.Background(), "SELECT COUNT(*) FROM cves").Scan(&total)
+		err2 := db.Pool.QueryRow(context.Background(), "SELECT COUNT(*) FROM cves WHERE updated_date >= NOW() - INTERVAL '24 hours'").Scan(&new24h)
+		
+		if err1 == nil && err2 == nil {
+			statsCache.Lock()
+			statsCache.total = total
+			statsCache.newLast24h = new24h
+			statsCache.lastUpdated = time.Now()
+			statsCache.Unlock()
+			log.Printf("Global stats cache refreshed: Total=%d, New=%d", total, new24h)
+		} else {
+			log.Printf("Error refreshing global stats: %v, %v", err1, err2)
+		}
+	}
+
+	// Initial refresh
+	refresh()
+
+	for {
+		select {
+		case <-ticker.C:
+			refresh()
+		}
+	}
 }
 func SendResponse(w http.ResponseWriter, r *http.Request, success bool, message string, redirect string, errMsg string) {
 	if r.Header.Get("X-Requested-With") == "XMLHttpRequest" || strings.Contains(r.Header.Get("Accept"), "application/json") {

@@ -7,6 +7,8 @@
     <title>CVE Tracker Appliance</title>
     <link rel="stylesheet" href="/static/css/main.css">
     <link rel="stylesheet" href="/static/fonts/fonts.css">
+    <script src="/static/js/chart.min.js"></script>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:;">
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #0a0e14; color: #dfe2eb; }
         h1, h2, h3, h4, h5, h6 { font-family: 'Space Grotesk', sans-serif; }
@@ -58,6 +60,10 @@
             <span class="material-symbols-outlined" data-icon="settings">settings</span>
             <span>Settings</span>
         </a>
+        <button onclick="vulfixx.toggleTheme()" class="w-full flex items-center gap-4 px-4 py-3 text-[#dfe2eb] opacity-70 hover:bg-[#1c2026] hover:opacity-100 hover:text-[#00daf3] transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase border-none cursor-pointer bg-transparent">
+            <span class="material-symbols-outlined" id="theme-toggle-icon">light_mode</span>
+            <span>Switch Theme</span>
+        </button>
     </nav>
     <div class="px-4 py-2 space-y-3">
         <div class="bg-[#1c2026]/50 rounded-lg p-4 border border-outline-variant/20">
@@ -92,29 +98,44 @@
 
 <!-- Main Content Area -->
 <div class="{{if .UserLoggedIn}}md:ml-64{{end}} flex-1 min-h-screen flex flex-col">
-    <!-- Top Nav (Mobile) or spacing -->
+    <!-- Mobile Top Header -->
     {{if .UserLoggedIn}}
-    <header class="md:hidden flex items-center justify-between p-4 bg-[#10141a]">
+    <header class="md:hidden flex items-center justify-between p-4 bg-[#10141a] border-b border-white/5">
         <div class="flex items-center gap-2">
-            <span class="material-symbols-outlined text-primary">shield</span>
-            <span class="font-display font-bold">CVE Tracker</span>
+            <span class="material-symbols-outlined text-[#00daf3]">shield</span>
+            <span class="font-black text-[#dfe2eb] font-['Space_Grotesk'] tracking-widest uppercase text-sm">CVE Tracker</span>
         </div>
-        <div class="flex gap-2">
-            <a href="/dashboard" class="material-symbols-outlined" aria-label="Dashboard" title="Dashboard">dashboard</a>
-            <a href="/subscriptions" class="material-symbols-outlined" aria-label="Subscriptions" title="Subscriptions">star</a>
-            <a href="/assets" class="material-symbols-outlined" aria-label="Assets" title="Assets">inventory_2</a>
-            <a href="/settings" class="material-symbols-outlined" aria-label="Settings" title="Settings">settings</a>
-            <form action="/logout" method="POST" class="inline m-0 p-0">
-                {{.csrfField}}
-                <button type="submit" class="material-symbols-outlined bg-transparent border-none text-error cursor-pointer" aria-label="Logout" title="Logout">logout</button>
-            </form>
+        <div class="flex items-center gap-3">
+            <button onclick="vulfixx.toggleTheme()" class="material-symbols-outlined text-gray-400 text-xl">contrast</button>
         </div>
     </header>
     {{end}}
 
-    <main class="flex-1 p-6 md:p-10 max-w-7xl mx-auto w-full">
+    <main class="flex-1 p-6 md:p-10 max-w-7xl mx-auto w-full pb-24 md:pb-10">
         {{template "content" .}}
     </main>
+
+    <!-- Mobile Bottom Navigation -->
+    {{if .UserLoggedIn}}
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-[#10141a] border-t border-white/10 flex items-center justify-around py-3 px-2 z-[100] backdrop-blur-lg bg-opacity-90">
+        <a href="/dashboard" class="flex flex-col items-center gap-1 text-gray-500 hover:text-[#00daf3] transition-colors">
+            <span class="material-symbols-outlined text-xl">dashboard</span>
+            <span class="text-[9px] font-black uppercase tracking-widest">Dash</span>
+        </a>
+        <a href="/subscriptions" class="flex flex-col items-center gap-1 text-gray-500 hover:text-[#00daf3] transition-colors">
+            <span class="material-symbols-outlined text-xl">star</span>
+            <span class="text-[9px] font-black uppercase tracking-widest">Subs</span>
+        </a>
+        <a href="/assets" class="flex flex-col items-center gap-1 text-gray-500 hover:text-[#00daf3] transition-colors">
+            <span class="material-symbols-outlined text-xl">inventory_2</span>
+            <span class="text-[9px] font-black uppercase tracking-widest">Assets</span>
+        </a>
+        <a href="/settings" class="flex flex-col items-center gap-1 text-gray-500 hover:text-[#00daf3] transition-colors">
+            <span class="material-symbols-outlined text-xl">settings</span>
+            <span class="text-[9px] font-black uppercase tracking-widest">Set</span>
+        </a>
+    </nav>
+    {{end}}
 </div>
 
     <div id="toast-container"></div>
@@ -182,8 +203,6 @@
                     btn.onclick = () => {
                         if (typeof a.onClick === 'function') {
                             a.onClick();
-                        } else {
-                            eval(a.onClick);
                         }
                     };
                     actionsContainer.appendChild(btn);
@@ -199,6 +218,30 @@
             
             closeModal: () => {
                 document.getElementById('modal-container').classList.add('hidden');
+            },
+
+            toggleTheme: () => {
+                const html = document.documentElement;
+                const isDark = html.classList.toggle('dark');
+                localStorage.setItem('theme', isDark ? 'dark' : 'light');
+                vulfixx.updateThemeIcon();
+            },
+
+            updateThemeIcon: () => {
+                const icon = document.getElementById('theme-toggle-icon');
+                if (icon) {
+                    icon.textContent = document.documentElement.classList.contains('dark') ? 'light_mode' : 'dark_mode';
+                }
+            },
+
+            initTheme: () => {
+                const savedTheme = localStorage.getItem('theme');
+                if (savedTheme === 'light') {
+                    document.documentElement.classList.remove('dark');
+                } else {
+                    document.documentElement.classList.add('dark');
+                }
+                vulfixx.updateThemeIcon();
             },
 
             fetch: async (url, options = {}) => {
@@ -224,6 +267,10 @@
         {{if .FlashMessage}}
         vulfixx.toast("{{.FlashMessage}}", "{{.FlashType}}");
         {{end}}
+
+        document.addEventListener('DOMContentLoaded', () => {
+            vulfixx.initTheme();
+        });
     </script>
 </body>
 </html>
