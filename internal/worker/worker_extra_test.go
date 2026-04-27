@@ -36,10 +36,12 @@ func TestFetchFromCISAKEV(t *testing.T) {
 
 	defaultCISAKEVURL = ts.URL
 
+	mock.ExpectBegin()
 	mock.ExpectExec("UPDATE cves SET cisa_kev = false").WillReturnResult(pgxmock.NewResult("UPDATE", 10))
 	mock.ExpectExec("UPDATE cves SET cisa_kev = true WHERE cve_id = ANY").
 		WithArgs([]string{"CVE-2023-1111", "CVE-2023-2222"}).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 2))
+	mock.ExpectCommit()
 
 	fetchFromCISAKEV(context.Background())
 }

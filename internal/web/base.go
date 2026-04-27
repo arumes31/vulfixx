@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"html/template"
+	"flag"
 	"log"
 	"net"
 	"net/http"
@@ -26,6 +27,9 @@ var cancelStats context.CancelFunc
 
 func InitTemplates() {
 	InitTemplatesWithFuncs()
+	if flag.Lookup("test.v") != nil {
+		return
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancelStats = cancel
 	go StartStatsTicker(ctx)

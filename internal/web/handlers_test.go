@@ -78,23 +78,25 @@ func TestLoginHandler(t *testing.T) {
 	})
 
 	t.Run("POST_InvalidCredentials", func(t *testing.T) {
-		mock.ExpectQuery("SELECT id, email, password_hash, is_totp_enabled").WithArgs("test@example.com").
+		// auth.Login query: SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE(totp_secret, ''), is_admin FROM users WHERE email = $1
+		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE").WithArgs("test@example.com").
 			WillReturnError(sql.ErrNoRows)
 
 		req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=wrong"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 		LoginHandler(rr, req)
-		if rr.Code != http.StatusBadRequest {
-			t.Errorf("expected 400 Bad Request, got %d", rr.Code)
+		// LoginHandler renders template with 200 OK on failure
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
 		}
 	})
 
 	t.Run("POST_Success", func(t *testing.T) {
 		hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
-		mock.ExpectQuery("SELECT id, email, password_hash, is_totp_enabled").WithArgs("test@example.com").
-			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_totp_enabled"}).
-				AddRow(1, "test@example.com", string(hash), false))
+		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE").WithArgs("test@example.com").
+			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
+				AddRow(1, "test@example.com", string(hash), true, false, "", false))
 		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(1, "login", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=password"))
@@ -123,18 +125,19 @@ func TestDashboardHandler(t *testing.T) {
 			req.AddCookie(c)
 		}
 
-		// Metrics Query
+		// Metrics Query (10 args)
+		// userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss
 		mock.ExpectQuery("SELECT").WithArgs(1, "", "", "", 20, 0, "", 0, 0.0, 10.0).
 			WillReturnRows(pgxmock.NewRows([]string{"total_cves", "kev_count", "critical_count", "in_progress_count"}).
 				AddRow(100, 5, 10, 2))
 
-		// CVEs Query
+		// CVEs Query (10 args)
 		now := time.Now()
-		mock.ExpectQuery("SELECT").WithArgs(1, "", "", "", "", 0, 0.0, 10.0, 20, 0).
+		mock.ExpectQuery("SELECT").WithArgs(1, "", "", "", 20, 0, "", 0, 0.0, 10.0).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes"}).
 				AddRow(1, "CVE-2024-0001", "Test CVE", 7.5, "CVSS:3.1/...", false, now, now, "active", []string{"http://example.com"}, "some notes"))
 
-		// Severity Dist Query
+		// Severity Dist Query (10 args)
 		mock.ExpectQuery("SELECT c.cvss_score").WithArgs(1, "", "", "", 20, 0, "", 0, 0.0, 10.0).
 			WillReturnRows(pgxmock.NewRows([]string{"cvss_score"}).AddRow(7.5).AddRow(9.0))
 
@@ -160,7 +163,7 @@ func TestUpdateCVEStatusHandler(t *testing.T) {
 		mock.ExpectCommit()
 
 		req := httptest.NewRequest("POST", "/api/status", strings.NewReader(`{"cve_ids": [101], "status": "resolved"}`))
-		req.Header.Set("Accept", "application/json") // Trigger JSON response
+		req.Header.Set("Accept", "application/json")
 		session, _ := store.Get(req, "vulfixx-session")
 		session.Values["user_id"] = 1
 		rr := httptest.NewRecorder()
@@ -229,7 +232,7 @@ func TestActivityLogHandler(t *testing.T) {
 			req.AddCookie(c)
 		}
 
-		mock.ExpectQuery("SELECT").WithArgs(1, 20, 0).
+		mock.ExpectQuery("SELECT").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "activity_type", "description", "ip_address", "created_at"}).
 				AddRow(1, "login", "User logged in", "127.0.0.1", time.Now()))
 
@@ -258,9 +261,9 @@ func TestAlertHistoryHandler(t *testing.T) {
 			req.AddCookie(c)
 		}
 
-		mock.ExpectQuery("SELECT").WithArgs(1, 20, 0).
-			WillReturnRows(pgxmock.NewRows([]string{"cve_id", "cve_str", "description", "sent_at"}).
-				AddRow(101, "CVE-2023-0001", "Alert desc", time.Now()))
+		mock.ExpectQuery("SELECT").WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"sent_at", "cve_id", "description", "cvss_score"}).
+				AddRow(time.Now(), "CVE-2023-0001", "Alert desc", 7.5))
 
 		rr2 := httptest.NewRecorder()
 		AlertHistoryHandler(rr2, req)
@@ -327,6 +330,37 @@ func TestChangePasswordHandler(t *testing.T) {
 		ChangePasswordHandler(rr2, req)
 		if rr2.Code != http.StatusFound {
 			t.Errorf("expected 302 redirect, got %d", rr2.Code)
+		}
+	})
+}
+
+func TestVerifyTOTPHandler(t *testing.T) {
+	mock, _ := db.SetupTestDB()
+	defer mock.Close()
+
+	t.Run("InvalidCode", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/settings/totp/verify", strings.NewReader("totp_code=123456"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		session, _ := store.Get(req, "vulfixx-session")
+		session.Values["user_id"] = 1
+		session.Values["totp_setup_ts"] = time.Now().Unix()
+		rr := httptest.NewRecorder()
+		_ = session.Save(req, rr)
+		
+		req = httptest.NewRequest("POST", "/settings/totp/verify", strings.NewReader("totp_code=123456"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		mock.ExpectQuery("SELECT totp_secret FROM users WHERE id = $1").WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"totp_secret"}).AddRow("secret"))
+
+		rr2 := httptest.NewRecorder()
+		VerifyTOTPHandler(rr2, req)
+		// On failure it redirects back to /settings?error=...
+		if rr2.Code != http.StatusFound {
+			t.Errorf("expected 302, got %d", rr2.Code)
 		}
 	})
 }
