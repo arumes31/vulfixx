@@ -2,6 +2,13 @@
   <img src="static/img/logo.png" alt="Vulfixx Logo" width="200">
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/github/actions/workflow/status/arumes31/vulfixx/docker-build.yml?branch=v2_test&style=for-the-badge&logo=github" alt="Build Status">
+  <img src="https://img.shields.io/badge/Go-1.26.2-00ADD8?style=for-the-badge&logo=go" alt="Go Version">
+  <img src="https://img.shields.io/badge/Security-Gosec_Passed-brightgreen?style=for-the-badge&logo=shield" alt="Security Status">
+  <img src="https://img.shields.io/github/license/arumes31/vulfixx?style=for-the-badge" alt="License">
+</p>
+
 # Vulfixx - Advanced CVE Tracker
 
 A robust Go-based application for tracking and alerting on new Common Vulnerabilities and Exposures (CVEs) from the NIST NVD database.
