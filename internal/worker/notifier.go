@@ -159,6 +159,7 @@ func sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName st
 			baseURL := os.Getenv("BASE_URL")
 			if baseURL == "" { baseURL = "http://localhost:8080" }
 			if u, err := url.Parse(baseURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+				// #nosec G706 -- baseURL is from admin-controlled environment variable
 				log.Printf("Worker: Invalid BASE_URL %q, defaulting to localhost", baseURL)
 				baseURL = "http://localhost:8080"
 			}

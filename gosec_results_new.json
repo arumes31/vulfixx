@@ -1,0 +1,252 @@
+{
+	"Golang errors": {},
+	"Issues": [
+		{
+			"severity": "HIGH",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "918",
+				"url": "https://cwe.mitre.org/data/definitions/918.html"
+			},
+			"rule_id": "G704",
+			"details": "SSRF via taint analysis",
+			"file": "C:\\DR\\Nextcloud\\BUILD\\vulfixx\\internal\\worker\\sync_nvd.go",
+			"code": "138: \t\tfor retry := 0; retry \u003c maxRetries; retry++ {\n139: \t\t\tresp, retryErr = client.Do(req)\n140: \t\t\tif retryErr == nil {\n",
+			"line": "139",
+			"column": "30",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "LOW",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "117",
+				"url": "https://cwe.mitre.org/data/definitions/117.html"
+			},
+			"rule_id": "G706",
+			"details": "Log injection via taint analysis",
+			"file": "C:\\DR\\Nextcloud\\BUILD\\vulfixx\\internal\\worker\\sync_nvd.go",
+			"code": "175: \t\t\t_ = resp.Body.Close()\n176: \t\t\tlog.Printf(\"NVD API returned non-retriable status: %d\", resp.StatusCode)\n177: \t\t\treturn\n",
+			"line": "176",
+			"column": "14",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "LOW",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "117",
+				"url": "https://cwe.mitre.org/data/definitions/117.html"
+			},
+			"rule_id": "G706",
+			"details": "Log injection via taint analysis",
+			"file": "C:\\DR\\Nextcloud\\BUILD\\vulfixx\\internal\\worker\\sync_nvd.go",
+			"code": "167: \t\t\t}\n168: \t\t\tlog.Printf(\"Worker: NVD rate-limited (HTTP %d), backing off (%d/%d)...\", resp.StatusCode, rateLimitRetries, maxRateLimitRetries)\n169: \t\t\ttime.Sleep(30 * time.Second)\n",
+			"line": "168",
+			"column": "14",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "LOW",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "117",
+				"url": "https://cwe.mitre.org/data/definitions/117.html"
+			},
+			"rule_id": "G706",
+			"details": "Log injection via taint analysis",
+			"file": "C:\\DR\\Nextcloud\\BUILD\\vulfixx\\internal\\worker\\sync_nvd.go",
+			"code": "156: \t\tif retryErr != nil {\n157: \t\t\tlog.Println(\"Error fetching from NVD after retries:\", sanitizeForLog(retryErr.Error()))\n158: \t\t\treturn\n",
+			"line": "157",
+			"column": "15",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "LOW",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "117",
+				"url": "https://cwe.mitre.org/data/definitions/117.html"
+			},
+			"rule_id": "G706",
+			"details": "Log injection via taint analysis",
+			"file": "C:\\DR\\Nextcloud\\BUILD\\vulfixx\\internal\\worker\\sync_nvd.go",
+			"code": "151: \t\t\t}\n152: \t\t\tlog.Printf(\"Worker: [ERROR] NVD API call failed: %v, retrying (%d/%d)...\", sanitizeForLog(retryErr.Error()), retry+1, maxRetries)\n153: \t\t\ttime.Sleep(delay * time.Duration(retry+1))\n",
+			"line": "152",
+			"column": "14",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "LOW",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "117",
+				"url": "https://cwe.mitre.org/data/definitions/117.html"
+			},
+			"rule_id": "G706",
+			"details": "Log injection via taint analysis",
+			"file": "C:\\DR\\Nextcloud\\BUILD\\vulfixx\\internal\\worker\\sync_nvd.go",
+			"code": "145: \t\t\t\t\t_ = resp.Body.Close()\n146: \t\t\t\t\tlog.Printf(\"Worker: NVD API returned status %d, retrying (%d/%d)...\", resp.StatusCode, retry+1, maxRetries)\n147: \t\t\t\t\ttime.Sleep(delay * time.Duration(retry+1))\n",
+			"line": "146",
+			"column": "16",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "LOW",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "117",
+				"url": "https://cwe.mitre.org/data/definitions/117.html"
+			},
+			"rule_id": "G706",
+			"details": "Log injection via taint analysis",
+			"file": "C:\\DR\\Nextcloud\\BUILD\\vulfixx\\internal\\worker\\sync_nvd.go",
+			"code": "126: \t\tif err != nil {\n127: \t\t\tlog.Println(\"Error creating NVD request:\", sanitizeForLog(err.Error()))\n128: \t\t\treturn\n",
+			"line": "127",
+			"column": "15",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "LOW",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "117",
+				"url": "https://cwe.mitre.org/data/definitions/117.html"
+			},
+			"rule_id": "G706",
+			"details": "Log injection via taint analysis",
+			"file": "C:\\DR\\Nextcloud\\BUILD\\vulfixx\\internal\\worker\\notifier.go",
+			"code": "161: \t\t\tif u, err := url.Parse(baseURL); err != nil || (u.Scheme != \"http\" \u0026\u0026 u.Scheme != \"https\") {\n162: \t\t\t\tlog.Printf(\"Worker: Invalid BASE_URL %q, defaulting to localhost\", baseURL)\n163: \t\t\t\tbaseURL = \"http://localhost:8080\"\n",
+			"line": "162",
+			"column": "15",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "LOW",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "117",
+				"url": "https://cwe.mitre.org/data/definitions/117.html"
+			},
+			"rule_id": "G706",
+			"details": "Log injection via taint analysis",
+			"file": "C:\\DR\\Nextcloud\\BUILD\\vulfixx\\internal\\web\\base.go",
+			"code": "71: \t\t}\n72: \t\tlog.Printf(\"AuthMiddleware SUCCESS: userID=%v, path=%s\", userID, sanitizeForLog(r.URL.Path))\n73: \n",
+			"line": "72",
+			"column": "13",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "LOW",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "117",
+				"url": "https://cwe.mitre.org/data/definitions/117.html"
+			},
+			"rule_id": "G706",
+			"details": "Log injection via taint analysis",
+			"file": "C:\\DR\\Nextcloud\\BUILD\\vulfixx\\internal\\web\\base.go",
+			"code": "67: \t\tif !isVerified {\n68: \t\t\tlog.Printf(\"AuthMiddleware NOT VERIFIED: userID=%v, path=%s\", userID, sanitizeForLog(r.URL.Path))\n69: \t\t\thttp.Error(w, \"Please verify your email address to access this page.\", http.StatusForbidden)\n",
+			"line": "68",
+			"column": "14",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "LOW",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "117",
+				"url": "https://cwe.mitre.org/data/definitions/117.html"
+			},
+			"rule_id": "G706",
+			"details": "Log injection via taint analysis",
+			"file": "C:\\DR\\Nextcloud\\BUILD\\vulfixx\\internal\\web\\base.go",
+			"code": "62: \t\t\t}\n63: \t\t\tlog.Printf(\"AuthMiddleware DB ERROR: userID=%v, path=%s, err=%v\", userID, sanitizeForLog(r.URL.Path), err)\n64: \t\t\thttp.Error(w, \"Internal server error\", http.StatusInternalServerError)\n",
+			"line": "63",
+			"column": "14",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "LOW",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "117",
+				"url": "https://cwe.mitre.org/data/definitions/117.html"
+			},
+			"rule_id": "G706",
+			"details": "Log injection via taint analysis",
+			"file": "C:\\DR\\Nextcloud\\BUILD\\vulfixx\\internal\\web\\auth_handlers.go",
+			"code": "207: \t}\n208: \tlog.Printf(\"Verification queued for %q\", sanitizeForLog(redactEmail(email)))\n209: \n",
+			"line": "208",
+			"column": "12",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "LOW",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "117",
+				"url": "https://cwe.mitre.org/data/definitions/117.html"
+			},
+			"rule_id": "G706",
+			"details": "Log injection via taint analysis",
+			"file": "C:\\DR\\Nextcloud\\BUILD\\vulfixx\\internal\\web\\auth_handlers.go",
+			"code": "202: \t\tif _, delErr := db.Pool.Exec(r.Context(), \"DELETE FROM users WHERE email = $1\", email); delErr != nil {\n203: \t\t\tlog.Printf(\"Error rolling back user creation for %q: %v\", sanitizeForLog(redactEmail(email)), delErr)\n204: \t\t}\n",
+			"line": "203",
+			"column": "14",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "LOW",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "117",
+				"url": "https://cwe.mitre.org/data/definitions/117.html"
+			},
+			"rule_id": "G706",
+			"details": "Log injection via taint analysis",
+			"file": "C:\\DR\\Nextcloud\\BUILD\\vulfixx\\internal\\web\\auth_handlers.go",
+			"code": "193: \t\tif _, delErr := db.Pool.Exec(r.Context(), \"DELETE FROM users WHERE email = $1\", email); delErr != nil {\n194: \t\t\tlog.Printf(\"Error rolling back user creation for %q: %v\", sanitizeForLog(redactEmail(email)), delErr)\n195: \t\t}\n",
+			"line": "194",
+			"column": "14",
+			"nosec": false,
+			"suppressions": null
+		},
+		{
+			"severity": "LOW",
+			"confidence": "HIGH",
+			"cwe": {
+				"id": "117",
+				"url": "https://cwe.mitre.org/data/definitions/117.html"
+			},
+			"rule_id": "G706",
+			"details": "Log injection via taint analysis",
+			"file": "C:\\DR\\Nextcloud\\BUILD\\vulfixx\\internal\\web\\auth_handlers.go",
+			"code": "79: \t\tif !isTOTPEnabled || secret == \"\" {\n80: \t\t\tlog.Printf(\"User %d in pre-auth but TOTP not enabled or secret missing\", preAuthUserID)\n81: \t\t\tdelete(session.Values, \"pre_auth_user_id\")\n",
+			"line": "80",
+			"column": "14",
+			"nosec": false,
+			"suppressions": null
+		}
+	],
+	"Stats": {
+		"files": 37,
+		"lines": 5355,
+		"nosec": 4,
+		"found": 15
+	},
+	"GosecVersion": "dev"
+}

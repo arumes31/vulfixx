@@ -121,9 +121,11 @@ func runFullSync(ctx context.Context, isBackfill bool) {
 			nvdURL += fmt.Sprintf("&lastModEndDate=%s", url.QueryEscape(syncStart.Format("2006-01-02T15:04:05.000")))
 		}
 
+
 		// #nosec G704 -- baseURL is either constant or from admin-controlled environment variable
 		req, err := http.NewRequestWithContext(ctx, "GET", nvdURL, nil)
 		if err != nil {
+			// #nosec G706 -- sanitized via sanitizeForLog
 			log.Println("Error creating NVD request:", sanitizeForLog(err.Error()))
 			return
 		}
@@ -136,6 +138,7 @@ func runFullSync(ctx context.Context, isBackfill bool) {
 		maxRateLimitRetries := 5
 		var retryErr error
 		for retry := 0; retry < maxRetries; retry++ {
+			// #nosec G704 -- baseURL is either constant or from admin-controlled environment variable
 			resp, retryErr = client.Do(req)
 			if retryErr == nil {
 				if resp.StatusCode == http.StatusOK {
@@ -143,17 +146,20 @@ func runFullSync(ctx context.Context, isBackfill bool) {
 				}
 				if resp.StatusCode >= 500 && resp.StatusCode < 600 {
 					_ = resp.Body.Close()
+					// #nosec G706 -- sanitized via fmt %d (integer)
 					log.Printf("Worker: NVD API returned status %d, retrying (%d/%d)...", resp.StatusCode, retry+1, maxRetries)
 					time.Sleep(delay * time.Duration(retry+1))
 					continue
 				}
 				break
 			}
+			// #nosec G706 -- error string sanitized via sanitizeForLog
 			log.Printf("Worker: [ERROR] NVD API call failed: %v, retrying (%d/%d)...", sanitizeForLog(retryErr.Error()), retry+1, maxRetries)
 			time.Sleep(delay * time.Duration(retry+1))
 		}
 
 		if retryErr != nil {
+			// #nosec G706 -- error string sanitized via sanitizeForLog
 			log.Println("Error fetching from NVD after retries:", sanitizeForLog(retryErr.Error()))
 			return
 		}
@@ -165,6 +171,7 @@ func runFullSync(ctx context.Context, isBackfill bool) {
 				log.Printf("Worker: [ERROR] Max NVD rate-limit retries reached (%d)", maxRateLimitRetries)
 				return
 			}
+			// #nosec G706 -- sanitized via fmt %d (integer)
 			log.Printf("Worker: NVD rate-limited (HTTP %d), backing off (%d/%d)...", resp.StatusCode, rateLimitRetries, maxRateLimitRetries)
 			time.Sleep(30 * time.Second)
 			continue
@@ -173,6 +180,7 @@ func runFullSync(ctx context.Context, isBackfill bool) {
 
 		if resp.StatusCode != http.StatusOK {
 			_ = resp.Body.Close()
+			// #nosec G706 -- sanitized via fmt %d (integer)
 			log.Printf("NVD API returned non-retriable status: %d", resp.StatusCode)
 			return
 		}

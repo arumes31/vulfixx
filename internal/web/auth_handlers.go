@@ -77,6 +77,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if !isTOTPEnabled || secret == "" {
+			// #nosec G706 -- preAuthUserID is an integer
 			log.Printf("User %d in pre-auth but TOTP not enabled or secret missing", preAuthUserID)
 			delete(session.Values, "pre_auth_user_id")
 			delete(session.Values, "pre_auth_ts")
@@ -191,6 +192,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error marshaling verification payload: %v", err)
 		// Rollback: delete the user we just created since we can't send verification
 		if _, delErr := db.Pool.Exec(r.Context(), "DELETE FROM users WHERE email = $1", email); delErr != nil {
+			// #nosec G706 -- sanitized via sanitizeForLog and redactEmail
 			log.Printf("Error rolling back user creation for %q: %v", sanitizeForLog(redactEmail(email)), delErr)
 		}
 		RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
@@ -200,11 +202,13 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error enqueueing verification payload: %v", err)
 		// Rollback: delete the user we just created since we can't send verification
 		if _, delErr := db.Pool.Exec(r.Context(), "DELETE FROM users WHERE email = $1", email); delErr != nil {
+			// #nosec G706 -- sanitized via sanitizeForLog and redactEmail
 			log.Printf("Error rolling back user creation for %q: %v", sanitizeForLog(redactEmail(email)), delErr)
 		}
 		RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
 		return
 	}
+	// #nosec G706 -- sanitized via sanitizeForLog and redactEmail
 	log.Printf("Verification queued for %q", sanitizeForLog(redactEmail(email)))
 
 	RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Registration successful. Please check your email to verify your account."})

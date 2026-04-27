@@ -104,7 +104,7 @@ The application follows a modular architecture designed to prevent monolithic fi
    | `SMTP_PASS`| SMTP password | `password` |
    | `SESSION_KEY`| Session signing key | `supersecretkey...` |
 | `CSRF_KEY` | CSRF protection key (32 bytes) | `0123456789...` |
-| `SECURE_COOKIE` | Enable secure cookie flag (for HTTPS) | `false` |
+| `SECURE_COOKIE` | Enable secure cookie flag (for HTTPS) | `true` |
 | `BASE_URL` | Application base URL | `http://localhost:8080` |
 | `ADMIN_EMAIL`| Seed administrator email | `admin@example.com` |
 | `ADMIN_PASSWORD`| Seed administrator password | `change-me` |

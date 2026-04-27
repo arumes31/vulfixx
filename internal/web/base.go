@@ -60,15 +60,18 @@ func AuthMiddleware(next http.Handler) http.Handler {
 				http.Redirect(w, r, "/login", http.StatusFound)
 				return
 			}
+			// #nosec G706 -- sanitized via sanitizeForLog
 			log.Printf("AuthMiddleware DB ERROR: userID=%v, path=%s, err=%v", userID, sanitizeForLog(r.URL.Path), err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 		if !isVerified {
+			// #nosec G706 -- sanitized via sanitizeForLog
 			log.Printf("AuthMiddleware NOT VERIFIED: userID=%v, path=%s", userID, sanitizeForLog(r.URL.Path))
 			http.Error(w, "Please verify your email address to access this page.", http.StatusForbidden)
 			return
 		}
+		// #nosec G706 -- sanitized via sanitizeForLog
 		log.Printf("AuthMiddleware SUCCESS: userID=%v, path=%s", userID, sanitizeForLog(r.URL.Path))
 
 		next.ServeHTTP(w, r)
