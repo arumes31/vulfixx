@@ -22,7 +22,7 @@ func fetchOSINTLinks(ctx context.Context, cveID string) map[string]interface{} {
 	if err != nil {
 		log.Printf("Failed to create HN request: %v", err)
 	} else if resp, err := client.Do(req); err == nil {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode == http.StatusOK {
 			var hnResp struct {
 				Hits []struct {
@@ -54,7 +54,7 @@ func fetchOSINTLinks(ctx context.Context, cveID string) map[string]interface{} {
 	} else {
 		req.Header.Set("User-Agent", "Vulfixx-Threat-Intel-Bot/1.0")
 		if resp, err := client.Do(req); err == nil {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode == http.StatusOK {
 				var rResp struct {
 					Data struct {

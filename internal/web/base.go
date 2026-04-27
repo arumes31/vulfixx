@@ -18,6 +18,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+type contextKey string
+
 var templateMap map[string]*template.Template
 
 var cancelStats context.CancelFunc
@@ -191,7 +193,7 @@ func RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data ma
 	statsCache.RUnlock()
 
 	data["csrfField"] = csrf.TemplateField(r)
-	if nonce, ok := r.Context().Value("nonce").(string); ok {
+	if nonce, ok := r.Context().Value(NonceKey).(string); ok {
 		data["Nonce"] = nonce
 	}
 	tmpl, ok := templateMap[name]

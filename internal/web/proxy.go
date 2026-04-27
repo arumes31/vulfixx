@@ -11,7 +11,7 @@ import (
 	"sync"
 )
 
-type contextKey string
+
 
 const clientIPKey contextKey = "ClientIP"
 

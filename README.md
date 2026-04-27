@@ -1,4 +1,8 @@
-# CVE Tracker
+<p align="center">
+  <img src="static/img/logo.png" alt="Vulfixx Logo" width="200">
+</p>
+
+# Vulfixx - Advanced CVE Tracker
 
 A robust Go-based application for tracking and alerting on new Common Vulnerabilities and Exposures (CVEs) from the NIST NVD database.
 
@@ -157,17 +161,22 @@ For convenience, several shell scripts are provided to automate common tasks:
 - **`fix_worker_panic.sh`**: Utility for patching specific worker edge cases.
 - **`fix_errcheck.sh`**: Utility for automated error checking fixes.
 
+- **Public SEO Dashboard**: High-performance public threat intelligence portal with built-in Schema.org JSON-LD structured data and Open Graph meta-tags for search engine authority.
+- **Sitemap & Search Discovery**: Automated generation of `sitemap.xml` and `robots.txt` for efficient crawling of the top 1000 threats.
+- **CSP Nonce Hardening**: Advanced Content Security Policy implementation using unique per-request nonces for all inline script execution.
+
 ## 🛡️ Security Hardening & Audit
 
-The codebase has undergone a comprehensive security audit using automated static analysis (`gosec`) and manual investigation.
+The codebase has undergone a comprehensive security audit (April 2026) using automated static analysis (`gosec`), dependency scanning (`govulncheck`), and manual penetration testing of the public surface.
 
 ### Recent Remediation Actions
+- **XSS Mitigation (CSP Nonces)**: Implemented unique per-request cryptographic nonces for all inline scripts.
+- **Structured Data Protection**: Hardened JSON-LD generation with backend marshaling and `template.HTML` escaping.
+- **Public Surface Abuse Prevention**: Integrated `RateLimitMiddleware` on all public SEO routes and implemented strict pagination depth validation.
 - **SSRF Mitigation**: Implemented strict URL validation and scheme checks in all worker synchronization tasks.
 - **SMTP Injection Protection**: Centralized email sanitization (`sanitizeEmail`) with CR/LF stripping and proper RFC parsing.
-- **Context Propagation**: Goroutines have been updated to use derived, request-scoped contexts for reliable resource management and cancellation.
-- **Credential Sanitization**: Automated discovery and removal of hardcoded credentials across backend services and automation scripts.
-- **Session Security**: Hardened session handling with proper error propagation and secure redirect validation.
-- **SQL Injection Prevention**: Full parameterized query migration for all dynamic dashboard and subscription filters.
+- **Session Security**: Enforced `SameSite=Lax` cookie policy and made `sslmode` configurable for secure production database connections.
+- **SQL Injection Prevention**: 100% migration to parameterized queries via `pgx/v5` for all search and filter logic.
 
 ### Automated Checks
 The CI pipeline automatically runs:

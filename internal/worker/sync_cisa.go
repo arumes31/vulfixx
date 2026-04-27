@@ -44,7 +44,7 @@ func fetchFromCISAKEV(ctx context.Context) {
 		log.Printf("Worker: [ERROR] Failed to fetch CISA KEV: %v", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Worker: [ERROR] CISA KEV API returned status %d", resp.StatusCode)

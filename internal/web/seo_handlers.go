@@ -12,19 +12,19 @@ import (
 
 func RobotsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
-	fmt.Fprintf(w, "User-agent: *\nAllow: /\nSitemap: %s/sitemap.xml\n", GetBaseURL())
+	_, _ = fmt.Fprintf(w, "User-agent: *\nAllow: /\nSitemap: %s/sitemap.xml\n", GetBaseURL())
 }
 
 func SitemapHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/xml")
-	fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>`+"\n")
-	fmt.Fprintf(w, `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`+"\n")
+	_, _ = fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>`+"\n")
+	_, _ = fmt.Fprintf(w, `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`+"\n")
 
 	// Static pages
 	baseURL := GetBaseURL()
 	pages := []string{"", "/login", "/register"}
 	for _, p := range pages {
-		fmt.Fprintf(w, "  <url>\n    <loc>%s%s</loc>\n    <changefreq>daily</changefreq>\n    <priority>0.8</priority>\n  </url>\n", baseURL, p)
+		_, _ = fmt.Fprintf(w, "  <url>\n    <loc>%s%s</loc>\n    <changefreq>daily</changefreq>\n    <priority>0.8</priority>\n  </url>\n", baseURL, p)
 	}
 
 	// Recent/Critical CVEs (Top 1000)
@@ -41,12 +41,12 @@ func SitemapHandler(w http.ResponseWriter, r *http.Request) {
 			var id string
 			var updated time.Time
 			if err := rows.Scan(&id, &updated); err == nil {
-				fmt.Fprintf(w, "  <url>\n    <loc>%s/cve/%s</loc>\n    <lastmod>%s</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.6</priority>\n  </url>\n", baseURL, id, updated.Format("2006-01-02"))
+				_, _ = fmt.Fprintf(w, "  <url>\n    <loc>%s/cve/%s</loc>\n    <lastmod>%s</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.6</priority>\n  </url>\n", baseURL, id, updated.Format("2006-01-02"))
 			}
 		}
 	}
 
-	fmt.Fprintf(w, "</urlset>\n")
+	_, _ = fmt.Fprintf(w, "</urlset>\n")
 }
 
 func GetBaseURL() string {

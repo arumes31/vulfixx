@@ -8,11 +8,15 @@ import (
 	"net/http"
 )
 
+
+
+const NonceKey contextKey = "nonce"
+
 // SecurityHeadersMiddleware adds standard HTTP security headers to all responses.
 func SecurityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		nonce := generateNonce()
-		r = r.WithContext(context.WithValue(r.Context(), "nonce", nonce))
+		r = r.WithContext(context.WithValue(r.Context(), NonceKey, nonce))
 
 		// Prevent browsers from performing MIME sniffing
 		w.Header().Set("X-Content-Type-Options", "nosniff")
