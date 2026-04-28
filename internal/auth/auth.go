@@ -15,6 +15,13 @@ import (
 
 const MinPasswordLength = 8
 
+var dummyHash []byte
+
+func init() {
+	// Initialize a dummy hash for mitigating timing attacks during login enumeration
+	dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy_password"), bcrypt.DefaultCost)
+}
+
 func GenerateToken() (string, error) {
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
@@ -63,6 +70,8 @@ func Login(ctx context.Context, email, password string) (*models.User, error) {
 	err := db.Pool.QueryRow(ctx, "SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE(totp_secret, ''), is_admin FROM users WHERE email = $1", email).
 		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsEmailVerified, &user.IsTOTPEnabled, &user.TOTPSecret, &user.IsAdmin)
 	if err != nil {
+		// Mitigate timing attacks by performing a dummy bcrypt operation
+		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 		return nil, errors.New("invalid credentials")
 	}
 
