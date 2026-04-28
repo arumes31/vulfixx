@@ -49,12 +49,9 @@ func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) map[string]i
 
 	// Reddit
 	redditURL := fmt.Sprintf("https://www.reddit.com/search.json?q=%s&sort=relevance&t=all", encodedID)
-	req, err = http.NewRequestWithContext(ctx, "GET", redditURL, nil)
-	if err != nil {
-		log.Printf("Failed to create Reddit request: %v", err)
-	} else {
-		var resp *http.Response
-		for retries := 0; retries < 3; retries++ {
+
+	var resp *http.Response
+	for retries := 0; retries < 3; retries++ {
 			req, err = http.NewRequestWithContext(ctx, "GET", redditURL, nil)
 			if err != nil {
 				log.Printf("Failed to create Reddit request (retry %d): %v", retries, err)
@@ -116,7 +113,6 @@ func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) map[string]i
 				log.Printf("Reddit API returned status %d for %s", resp.StatusCode, cveID)
 			}
 		}
-	}
 
 	return data
 }

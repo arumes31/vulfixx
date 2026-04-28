@@ -182,8 +182,8 @@ func TestEmailWorker_Queues_Detailed(t *testing.T) {
 		w.processEmailVerification(ctx2)
         
         // It should have re-enqueued the item in delayed queue
-        opt := &redis.ZRangeBy{Min: "-inf", Max: "+inf"}
-        items, _ := rdb.ZRangeByScore(context.Background(), "email_verification_delayed", opt).Result()
+        args := redis.ZRangeArgs{Key: "email_verification_delayed", ByScore: true, Start: "-inf", Stop: "+inf"}
+        items, _ := rdb.ZRangeArgs(context.Background(), args).Result()
         if len(items) == 0 {
             t.Errorf("expected item to be re-enqueued on failure")
         }

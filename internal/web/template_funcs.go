@@ -41,6 +41,7 @@ func (a *App) InitTemplatesWithFuncs() {
 			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 				return template.URL("#invalid-url")
 			}
+			/* #nosec G203 */
 			return template.URL(s)
 		},
 		"severityColor": func(score float64) string {

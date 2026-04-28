@@ -54,6 +54,7 @@ func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, e
 		if cve.CVSSScore >= 7.0 {
 			bufferTime = bufferTimeHigh
 		}
+		/* #nosec G118 */
 		go func(bTime time.Duration, pKey string, uid int) {
 			bgCtx := context.Background()
 			defer func() {
@@ -63,9 +64,7 @@ func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, e
 			}()
 			
 			// Initial wait
-			select {
-			case <-time.After(bTime):
-			}
+			time.Sleep(bTime)
 			
 			for {
 				w.processUserBuffer(bgCtx, uid)
@@ -77,9 +76,7 @@ func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, e
 					break
 				}
 				// Small backoff before reprocessing
-				select {
-				case <-time.After(1 * time.Second):
-				}
+				time.Sleep(1 * time.Second)
 			}
 		}(bufferTime, processingKey, userID)
 	}

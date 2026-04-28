@@ -677,6 +677,7 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 		"MetaTitle":       fmt.Sprintf("%s - %s | Vulfixx Threat Intel", c.CVEID, c.Description),
 		"MetaDescription": fmt.Sprintf("Security analysis of %s. Severity: %.1f. %s", c.CVEID, c.CVSSScore, c.Description),
 		"Canonical":       fmt.Sprintf("/cve/%s", c.CVEID),
+		/* #nosec G203 */
 		"JSONLD":          template.JS(safeJSONLD), // safe: JSON-marshaled then </script>-escaped
 	})
 }

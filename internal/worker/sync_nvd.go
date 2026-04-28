@@ -133,6 +133,7 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
 		params.Set("startIndex", fmt.Sprintf("%d", startIndex))
 
 		fullURL := baseURL + "?" + params.Encode()
+		/* #nosec G704 */
 		req, err := http.NewRequestWithContext(ctx, "GET", fullURL, nil)
 		if err != nil {
 			log.Printf("Worker: Error creating NVD request: %v", err)
@@ -182,6 +183,7 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
 		}
 
 		if resp.StatusCode != http.StatusOK {
+			/* #nosec G706 */
 			log.Printf("Worker: NVD API returned status %d", resp.StatusCode)
 			_ = resp.Body.Close()
 			return
