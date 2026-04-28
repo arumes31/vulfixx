@@ -20,7 +20,9 @@ func TestFetchFromCISAKEV(t *testing.T) {
 	}
 	defer mock.Close()
 
-	_, _ = db.SetupTestRedis()
+	if _, err := db.SetupTestRedis(); err != nil {
+		t.Fatalf("failed to setup test redis: %v", err)
+	}
 
 	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
 
@@ -49,6 +51,10 @@ func TestFetchFromCISAKEV(t *testing.T) {
 	mock.ExpectCommit()
 
 	w.fetchFromCISAKEV(context.Background())
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet DB expectations after fetchFromCISAKEV: %v", err)
+	}
 }
 
 func TestUpsertCVEs(t *testing.T) {
@@ -58,7 +64,9 @@ func TestUpsertCVEs(t *testing.T) {
 	}
 	defer mock.Close()
 
-	_, _ = db.SetupTestRedis()
+	if _, err := db.SetupTestRedis(); err != nil {
+		t.Fatalf("failed to setup test redis: %v", err)
+	}
 
 	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
 
@@ -82,11 +90,23 @@ func TestUpsertCVEs(t *testing.T) {
 		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 
 	w.upsertCVEs(ctx, vulns)
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet DB expectations after upsertCVEs: %v", err)
+	}
 }
 
 func TestSendAlertWebhook(t *testing.T) {
-	mock, _ := db.SetupTestDB()
-	_, _ = db.SetupTestRedis()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	if _, err := db.SetupTestRedis(); err != nil {
+		t.Fatalf("failed to setup test redis: %v", err)
+	}
+
 	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
 
 	sub := models.UserSubscription{

@@ -13,6 +13,15 @@ import (
 	"time"
 )
 
+// escapeLikePattern escapes backslash, percent, and underscore so the value can
+// be safely embedded in a PostgreSQL ILIKE pattern using ESCAPE '\'.
+func escapeLikePattern(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	s = strings.ReplaceAll(s, `_`, `\_`)
+	return s
+}
+
 func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := a.GetUserID(r)
 	if !ok {
@@ -152,19 +161,19 @@ func (a *App) RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 		minSeverity, _ = strconv.ParseFloat(minSeverityStr, 64)
 	}
 
+	escapedKeyword := escapeLikePattern(keyword)
 	query := `
 		SELECT DISTINCT c.cve_id, c.description, c.cvss_score, c.published_date
 		FROM cves c
 		INNER JOIN user_subscriptions us ON us.user_id = $1
-		WHERE us.user_id = $1
-		  AND (
-			(c.cvss_score >= us.min_severity AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%'))
+		WHERE (
+			(c.cvss_score >= us.min_severity AND (us.keyword = '' OR c.description ILIKE '%' || REPLACE(REPLACE(REPLACE(us.keyword, '\', '\\'), '%', '\%'), '_', '\_') || '%' ESCAPE '\'))
 			OR
-			( ($2 > 0 AND c.cvss_score >= $2) AND ($3 = '' OR c.description ILIKE '%' || $3 || '%') )
-		  )
+			($2 > 0 AND c.cvss_score >= $2 AND ($3 = '' OR c.description ILIKE '%' || $3 || '%' ESCAPE '\'))
+		)
 		ORDER BY c.published_date DESC LIMIT 50
 	`
-	rows, err := a.Pool.Query(r.Context(), query, userID, minSeverity, keyword)
+	rows, err := a.Pool.Query(r.Context(), query, userID, minSeverity, escapedKeyword)
 	if err != nil {
 		http.Error(w, "Error fetching CVEs", http.StatusInternalServerError)
 		return
@@ -193,12 +202,18 @@ func (a *App) RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		_, _ = fmt.Fprintf(w, `
   <item>
-    <title>%s (CVSS: %.1f)</title>
+    <title>%s (CVSS: %s)</title>
     <link>https://nvd.nist.gov/vuln/detail/%s</link>
     <description>%s</description>
     <pubDate>%s</pubDate>
     <guid>%s</guid>
-  </item>`, cve.CVEID, cve.CVSSScore, cve.CVEID, template.HTMLEscapeString(cve.Description), cve.PublishedAt.Format(time.RFC1123Z), cve.CVEID)
+  </item>`,
+			template.HTMLEscapeString(cve.CVEID),
+			template.HTMLEscapeString(fmt.Sprintf("%.1f", cve.CVSSScore)),
+			template.HTMLEscapeString(cve.CVEID),
+			template.HTMLEscapeString(cve.Description),
+			template.HTMLEscapeString(cve.PublishedAt.Format(time.RFC1123Z)),
+			template.HTMLEscapeString(cve.CVEID))
 	}
 	if err := rows.Err(); err != nil {
 		log.Printf("Error iterating RSS CVEs: %v", err)

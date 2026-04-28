@@ -1,6 +1,8 @@
 package mocks
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 )
 
@@ -33,5 +35,10 @@ func (m *HTTPClientMock) Do(req *http.Request) (*http.Response, error) {
 	if m.DoFunc != nil {
 		return m.DoFunc(req)
 	}
-	return nil, nil
+	// Return a minimal valid response so callers can safely read StatusCode and Body.
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(bytes.NewReader(nil)),
+		Header:     make(http.Header),
+	}, nil
 }

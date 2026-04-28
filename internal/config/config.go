@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -67,11 +68,30 @@ func LoadConfig() {
 	AppConfig.SecureCookie = secureCookie
 
 	appEnv := getEnv("APP_ENV", "production")
-	if AppConfig.DBPassword == "" || AppConfig.SessionKey == "" || AppConfig.CSRFKey == "" || AppConfig.SMTPPass == "" || AppConfig.AdminPassword == "" || AppConfig.AdminTOTPSecret == "" {
+	var missingFields []string
+	if AppConfig.DBPassword == "" {
+		missingFields = append(missingFields, "DBPassword")
+	}
+	if AppConfig.SessionKey == "" {
+		missingFields = append(missingFields, "SessionKey")
+	}
+	if AppConfig.CSRFKey == "" {
+		missingFields = append(missingFields, "CSRFKey")
+	}
+	if AppConfig.SMTPPass == "" {
+		missingFields = append(missingFields, "SMTPPass")
+	}
+	if AppConfig.AdminPassword == "" {
+		missingFields = append(missingFields, "AdminPassword")
+	}
+	if AppConfig.AdminTOTPSecret == "" {
+		missingFields = append(missingFields, "AdminTOTPSecret")
+	}
+	if len(missingFields) > 0 {
 		if appEnv != "development" {
-			logFatalf("Fatal: DBPassword, SessionKey, CSRFKey, SMTPPass, AdminPassword, and AdminTOTPSecret must be explicitly set in production mode")
+			logFatalf("Fatal: the following required fields are not set in production mode: %s", strings.Join(missingFields, ", "))
 		} else {
-			logPrintf("Warning: Using empty values for sensitive keys in development mode")
+			logPrintf("Warning: the following sensitive fields are empty in development mode: %s", strings.Join(missingFields, ", "))
 		}
 	}
 

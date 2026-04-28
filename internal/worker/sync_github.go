@@ -61,7 +61,8 @@ CVELoop:
 		var ghResp struct {
 			TotalCount int `json:"total_count"`
 		}
-		for attempt := 0; attempt <= maxGHRetries; attempt++ {
+		fetchOK := false
+		for attempt := 0; attempt < maxGHRetries; attempt++ {
 			githubURL := fmt.Sprintf("https://api.github.com/search/repositories?q=%s", cveID)
 			req, err := http.NewRequestWithContext(ctx, "GET", githubURL, nil)
 			if err != nil {
@@ -108,11 +109,16 @@ CVELoop:
 				log.Printf("Worker: [ERROR] Failed to decode GitHub response for %s: %v", cveID, err)
 				continue CVELoop
 			}
+			fetchOK = true
 			break // success
 		}
-		_, err := w.Pool.Exec(ctx, "UPDATE cves SET github_poc_count = $1 WHERE cve_id = $2", ghResp.TotalCount, cveID)
-		if err != nil {
-			log.Printf("Worker: [ERROR] Failed to update GitHub buzz for %s: %v", cveID, err)
+		if fetchOK {
+			_, err := w.Pool.Exec(ctx, "UPDATE cves SET github_poc_count = $1 WHERE cve_id = $2", ghResp.TotalCount, cveID)
+			if err != nil {
+				log.Printf("Worker: [ERROR] Failed to update GitHub buzz for %s: %v", cveID, err)
+			}
+		} else {
+			log.Printf("Worker: [WARN] Skipping DB update for %s — all GitHub retries failed", cveID)
 		}
 		select {
 		case <-ctx.Done():

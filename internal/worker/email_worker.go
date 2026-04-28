@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"net/url"
 	"os"
 	"time"
 
@@ -16,13 +17,12 @@ const maxEmailRetries = 5
 
 func (w *Worker) processEmailVerification(ctx context.Context) {
 	for {
-		result, err := w.Redis.BRPop(ctx, 0, "email_verification_queue").Result()
+		// Use a short 1s timeout (not 0) so the loop can check ctx cancellation regularly.
+		result, err := w.Redis.BRPop(ctx, 1*time.Second, "email_verification_queue").Result()
 		if err != nil {
 			if ctx.Err() != nil {
 				return
 			}
-			log.Printf("Worker: Error reading from email verification queue: %v", err)
-			time.Sleep(1 * time.Second)
 			continue
 		}
 		var payload map[string]interface{}
@@ -37,7 +37,6 @@ func (w *Worker) processEmailVerification(ctx context.Context) {
 			continue
 		}
 
-		// Track retries
 		retries := 0
 		if r, ok := payload["retries"].(float64); ok {
 			retries = int(r)
@@ -50,11 +49,16 @@ func (w *Worker) processEmailVerification(ctx context.Context) {
 				continue
 			}
 			payload["retries"] = retries + 1
-			newPayload, _ := json.Marshal(payload)
-			// Exponential backoff: push to delayed queue using ZADD with score=now+delay
+			newPayload, marshalErr := json.Marshal(payload)
+			if marshalErr != nil {
+				log.Printf("Worker: Failed to marshal retry payload for %s: %v", email, marshalErr)
+				continue
+			}
 			delay := time.Duration(math.Pow(2, float64(retries))) * time.Second
 			score := float64(time.Now().Add(delay).UnixMilli())
-			_ = w.Redis.ZAdd(ctx, "email_verification_delayed", redis.Z{Score: score, Member: string(newPayload)}).Err()
+			if zErr := w.Redis.ZAdd(ctx, "email_verification_delayed", redis.Z{Score: score, Member: string(newPayload)}).Err(); zErr != nil {
+				log.Printf("Worker: Failed to enqueue verification retry for %s: %v", email, zErr)
+			}
 		}
 	}
 }
@@ -93,10 +97,16 @@ func (w *Worker) processEmailChange(ctx context.Context) {
 				continue
 			}
 			payload["retries"] = retries + 1
-			newPayload, _ := json.Marshal(payload)
+			newPayload, marshalErr := json.Marshal(payload)
+			if marshalErr != nil {
+				log.Printf("Worker: Failed to marshal retry payload for %s: %v", email, marshalErr)
+				continue
+			}
 			delay := time.Duration(math.Pow(2, float64(retries))) * time.Second
 			score := float64(time.Now().Add(delay).UnixMilli())
-			_ = w.Redis.ZAdd(ctx, "email_change_delayed", redis.Z{Score: score, Member: string(newPayload)}).Err()
+			if zErr := w.Redis.ZAdd(ctx, "email_change_delayed", redis.Z{Score: score, Member: string(newPayload)}).Err(); zErr != nil {
+				log.Printf("Worker: Failed to enqueue email change retry for %s: %v", email, zErr)
+			}
 		}
 	}
 }
@@ -107,7 +117,9 @@ func (w *Worker) sendEmailChangeNotification(email, token, emailType string) err
 	if baseURL == "" {
 		baseURL = "http://localhost:8080"
 	}
-	body := fmt.Sprintf("<div style=\"font-family: sans-serif;\"><p>Please click the link below to confirm your new email address:</p><p><a href=\"%s/confirm-email-change?token=%s\">%s/confirm-email-change?token=%s</a></p></div>", baseURL, token, baseURL, token)
+	encodedToken := url.QueryEscape(token)
+	link := fmt.Sprintf("%s/confirm-email-change?token=%s", baseURL, encodedToken)
+	body := fmt.Sprintf("<div style=\"font-family: sans-serif;\"><p>Please click the link below to confirm your new email address:</p><p><a href=\"%s\">%s</a></p></div>", link, link)
 	return w.Mailer.SendEmail(email, subject, body)
 }
 
@@ -117,7 +129,8 @@ func (w *Worker) sendVerificationEmail(email, token string) error {
 	if baseURL == "" {
 		baseURL = "http://localhost:8080"
 	}
-	body := fmt.Sprintf("<div style=\"font-family: sans-serif;\"><p>Welcome to Vulfixx! Please click the link below to verify your email address:</p><p><a href=\"%s/verify-email?token=%s\">%s/verify-email?token=%s</a></p></div>", baseURL, token, baseURL, token)
+	encodedToken := url.QueryEscape(token)
+	link := fmt.Sprintf("%s/verify-email?token=%s", baseURL, encodedToken)
+	body := fmt.Sprintf("<div style=\"font-family: sans-serif;\"><p>Welcome to Vulfixx! Please click the link below to verify your email address:</p><p><a href=\"%s\">%s</a></p></div>", link, link)
 	return w.Mailer.SendEmail(email, subject, body)
 }
-

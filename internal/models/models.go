@@ -47,6 +47,12 @@ type TeamWithInviteCode struct {
 	InviteCode string `json:"invite_code"`
 }
 
+// NewTeamWithInviteCode constructs a TeamWithInviteCode from a Team, copying the invite code
+// so callers don't have to populate it manually.
+func NewTeamWithInviteCode(team Team) TeamWithInviteCode {
+	return TeamWithInviteCode{Team: team, InviteCode: team.InviteCode}
+}
+
 type TeamMember struct {
 	TeamID   int       `json:"team_id"`
 	UserID   int       `json:"user_id"`

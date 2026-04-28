@@ -78,10 +78,28 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 				return
 			}
 
+			port := parsedURL.Port()
+			if port == "" {
+				if parsedURL.Scheme == "https" {
+					port = "443"
+				} else {
+					port = "80"
+				}
+			}
+			safeAddr := net.JoinHostPort(safeIP.String(), port)
 
 			const webhookTimeout = 10 * time.Second
 			httpCtx, httpCancel := context.WithTimeout(context.Background(), webhookTimeout)
 			defer httpCancel()
+
+			// Pin the TCP connection to the validated IP to defeat DNS rebinding.
+			dialer := &net.Dialer{Timeout: webhookTimeout}
+			transport := &http.Transport{
+				DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+					return dialer.DialContext(ctx, network, safeAddr)
+				},
+			}
+			pinnedClient := &http.Client{Transport: transport, Timeout: webhookTimeout}
 
 			req, err := http.NewRequestWithContext(httpCtx, "POST", sub.WebhookURL, strings.NewReader(string(payload)))
 			if err != nil {
@@ -89,8 +107,10 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 				return
 			}
 			req.Header.Set("Content-Type", "application/json")
+			// Keep the original Host so TLS SNI and virtual hosting work correctly.
+			req.Host = parsedURL.Host
 
-			resp, err := w.HTTP.Do(req)
+			resp, err := pinnedClient.Do(req)
 			if err == nil {
 				_ = resp.Body.Close()
 				if resp.StatusCode >= 200 && resp.StatusCode < 300 {

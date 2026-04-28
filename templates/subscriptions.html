@@ -129,17 +129,24 @@
             vulfixx.toast('Webhook URL is required when sync is enabled', 'error');
             return false;
         }
-        const formData = new FormData(form);
-        const data = await vulfixx.fetch('/subscriptions', {
-            method: 'POST',
-            headers: { 
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-Token': form.querySelector('input[name="gorilla.csrf.Token"]')?.value
-            },
-            body: new URLSearchParams(formData)
-        });
-        
-        if (data) setTimeout(() => window.location.reload(), 1000);
+        try {
+            const formData = new FormData(form);
+            const data = await vulfixx.fetch('/subscriptions', {
+                method: 'POST',
+                headers: { 
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-Token': form.querySelector('input[name="gorilla.csrf.Token"]')?.value
+                },
+                body: new URLSearchParams(formData)
+            });
+            if (data && data.success !== false) {
+                window.location.reload();
+            } else {
+                vulfixx.toast((data && data.message) || 'Failed to save monitor', 'error');
+            }
+        } catch (err) {
+            vulfixx.toast('Network error: ' + err.message, 'error');
+        }
         return false;
     }
 
@@ -154,18 +161,25 @@
     }
 
     async function confirmDelete(id) {
-        const csrfToken = document.querySelector('input[name="gorilla.csrf.Token"]')?.value || '{{.csrfToken}}';
-        const data = await vulfixx.fetch('/subscriptions/delete', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-Token': csrfToken
-            },
-            body: new URLSearchParams({ id: id })
-        });
-        
-        if (data) setTimeout(() => window.location.reload(), 1000);
+        const csrfToken = document.querySelector('input[name="gorilla.csrf.Token"]')?.value;
+        try {
+            const data = await vulfixx.fetch('/subscriptions/delete', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-Token': csrfToken
+                },
+                body: new URLSearchParams({ id: id })
+            });
+            if (data && data.success !== false) {
+                window.location.reload();
+            } else {
+                vulfixx.toast((data && data.message) || 'Failed to remove monitor', 'error');
+            }
+        } catch (err) {
+            vulfixx.toast('Network error: ' + err.message, 'error');
+        }
     }
     document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.delete-monitor-btn').forEach(btn => {

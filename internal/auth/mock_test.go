@@ -88,8 +88,12 @@ func TestMockedErrors(t *testing.T) {
         })
 
         t.Run("ChangePasswordBcryptFail", func(t *testing.T) {
-                mock, _ := db.SetupTestDB()
+                mock, err := db.SetupTestDB()
+                if err != nil {
+                        t.Fatalf("SetupTestDB failed: %v", err)
+                }
                 defer mock.Close()
+
                 
                 orig := bcryptGeneratePassword
                 bcryptGeneratePassword = func(password []byte, cost int) ([]byte, error) { return nil, errors.New("bcrypt fail") }
@@ -101,7 +105,7 @@ func TestMockedErrors(t *testing.T) {
                 mock.ExpectQuery("SELECT password_hash").WithArgs(1).
                         WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(string(realHash), false, ""))
 
-                err := ChangePassword(ctx, 1, "password", "newpassword", "")
+                err = ChangePassword(ctx, 1, "password", "newpassword", "")
                 if err == nil || err.Error() != "bcrypt fail" {
                         t.Errorf("expected bcrypt fail, got %v", err)
                 }
@@ -153,12 +157,15 @@ func TestMockedErrors(t *testing.T) {
 }
 
 func TestVerifyEmailDBFail(t *testing.T) {
-        mock, _ := db.SetupTestDB()
+        mock, err := db.SetupTestDB()
+        if err != nil {
+                t.Fatalf("SetupTestDB failed: %v", err)
+        }
         defer mock.Close()
         ctx := context.Background()
 
         mock.ExpectExec("UPDATE users").WithArgs("token").WillReturnError(errors.New("db fail"))
-        err := VerifyEmail(ctx, "token")
+        err = VerifyEmail(ctx, "token")
         if err == nil || err.Error() != "db fail" {
                 t.Errorf("expected db fail, got %v", err)
         }

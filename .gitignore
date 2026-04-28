@@ -20,5 +20,11 @@ gosec_results*
 *.coverprofile
 coverage_stats.txt
 health
+
+# Bare coverage profile file names (e.g. produced by 'go test -coverprofile=web')
+/web
+/worker
+/coverage
+**/coverage
 web_cov*
 worker_cov*

@@ -82,6 +82,9 @@ func (a *App) IsAdmin(r *http.Request) bool {
 
 // Global versions for compatibility during transition
 func GetUserID(r *http.Request) (int, bool) {
+	if store == nil {
+		return 0, false
+	}
 	session, err := store.Get(r, "vulfixx-session")
 	if err != nil {
 		return 0, false
@@ -91,6 +94,9 @@ func GetUserID(r *http.Request) (int, bool) {
 }
 
 func GetActiveTeamID(r *http.Request) (int, bool) {
+	if store == nil {
+		return 0, false
+	}
 	session, err := store.Get(r, "vulfixx-session")
 	if err != nil {
 		return 0, false
@@ -100,6 +106,9 @@ func GetActiveTeamID(r *http.Request) (int, bool) {
 }
 
 func IsAdmin(r *http.Request) bool {
+	if store == nil {
+		return false
+	}
 	session, err := store.Get(r, "vulfixx-session")
 	if err != nil {
 		return false

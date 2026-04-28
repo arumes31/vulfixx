@@ -3,7 +3,6 @@ package web
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/gorilla/sessions"
@@ -28,23 +27,11 @@ func (m *MockMailer) SendEmail(to, subject, body string) error {
 }
 
 func setupTestApp(t *testing.T, mock pgxmock.PgxPoolIface) *App {
-	// Ensure we can find templates/ directory
-	origWD, _ := os.Getwd()
-	defer func() { _ = os.Chdir(origWD) }()
-
-	found := false
-	for i := 0; i < 5; i++ {
-		if _, err := os.Stat("templates"); err == nil {
-			found = true
-			break
-		}
-		if err := os.Chdir(".."); err != nil {
-			break
-		}
-	}
-
-	if !found {
-		t.Fatalf("could not find templates directory from %s", origWD)
+	t.Helper()
+	// Locate the templates/ directory without using os.Chdir so parallel tests
+	// are safe. findTemplatesDir (from template_funcs.go) walks the filesystem.
+	if dir := findTemplatesDir(); dir == "" {
+		t.Fatalf("could not find templates directory")
 	}
 
 	app := NewApp(mock, nil, sessions.NewCookieStore([]byte("test-secret")), &MockMailer{})

@@ -80,7 +80,7 @@
         </h2>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             {{range .CVE.References}}
-            <a href="{{.}}" target="_blank" class="glass p-4 rounded-xl border border-white/5 hover:border-primary/30 hover:bg-white/[0.02] transition-all flex items-center justify-between group">
+            <a href="{{.}}" target="_blank" rel="noopener noreferrer" class="glass p-4 rounded-xl border border-white/5 hover:border-primary/30 hover:bg-white/[0.02] transition-all flex items-center justify-between group">
                 <span class="text-xs text-gray-400 truncate max-w-[80%] font-mono">{{.}}</span>
                 <span class="material-symbols-outlined text-[16px] text-gray-600 group-hover:text-primary">open_in_new</span>
             </a>

@@ -108,6 +108,9 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
 	resultsPerPage := 2000
 	startIndex := 0
 
+	retryCount := 0
+	const maxNVDRetries = 5
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -129,8 +132,6 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
 			req.Header.Set("apiKey", apiKey)
 		}
 
-		var retryCount int
-		const maxNVDRetries = 5
 		resp, err := w.HTTP.Do(req)
 		if err != nil {
 			retryCount++
@@ -150,9 +151,16 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
 		retryCount = 0 // reset on success
 
 		if resp.StatusCode == 403 || resp.StatusCode == 429 {
-			log.Println("Worker: Rate limited by NVD, sleeping...")
+			log.Println("Worker: Rate limited by NVD, waiting 30s...")
 			_ = resp.Body.Close()
-			time.Sleep(30 * time.Second)
+			timer := time.NewTimer(30 * time.Second)
+			select {
+			case <-timer.C:
+				// continue after wait
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			}
 			continue
 		}
 
@@ -239,14 +247,16 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry) {
 		if err != nil {
 			pubDate, err = time.Parse(time.RFC3339, cve.Published)
 			if err != nil {
-				log.Printf("Worker: Invalid published date %q for %s: %v", cve.Published, cve.ID, err)
+				log.Printf("Worker: Invalid published date %q for %s: %v — skipping", cve.Published, cve.ID, err)
+				continue
 			}
 		}
 		modDate, err := time.Parse(time.RFC3339Nano, cve.LastModified)
 		if err != nil {
 			modDate, err = time.Parse(time.RFC3339, cve.LastModified)
 			if err != nil {
-				log.Printf("Worker: Invalid lastModified date %q for %s: %v", cve.LastModified, cve.ID, err)
+				log.Printf("Worker: Invalid lastModified date %q for %s: %v — skipping", cve.LastModified, cve.ID, err)
+				continue
 			}
 		}
 

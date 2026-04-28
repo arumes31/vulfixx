@@ -2,6 +2,9 @@ package mocks
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -30,6 +33,19 @@ func (m *DBPoolMock) Exec(ctx context.Context, sql string, arguments ...any) (pg
 	return pgconn.CommandTag{}, nil
 }
 
+// emptyRows is a no-op pgx.Rows implementation returned when no QueryFunc or InjectedErr is set.
+type emptyRows struct{}
+
+func (e emptyRows) Close()                                       {}
+func (e emptyRows) Err() error                                   { return nil }
+func (e emptyRows) CommandTag() pgconn.CommandTag                { return pgconn.CommandTag{} }
+func (e emptyRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
+func (e emptyRows) Next() bool                                   { return false }
+func (e emptyRows) Scan(dest ...any) error                       { return nil }
+func (e emptyRows) Values() ([]any, error)                       { return nil, nil }
+func (e emptyRows) RawValues() [][]byte                          { return nil }
+func (e emptyRows) Conn() *pgx.Conn                              { return nil }
+
 func (m *DBPoolMock) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
 	if m.InjectedErr != nil {
 		return nil, m.InjectedErr
@@ -37,7 +53,7 @@ func (m *DBPoolMock) Query(ctx context.Context, sql string, args ...any) (pgx.Ro
 	if m.QueryFunc != nil {
 		return m.QueryFunc(ctx, sql, args...)
 	}
-	return nil, nil
+	return emptyRows{}, nil
 }
 
 // errorRow implements pgx.Row and always returns the stored error from Scan.
@@ -55,6 +71,42 @@ func (m *DBPoolMock) QueryRow(ctx context.Context, sql string, args ...any) pgx.
 	return errorRow{err: nil}
 }
 
+// noopTx is a minimal pgx.Tx that satisfies the interface without panicking.
+type noopTx struct{}
+
+func (t noopTx) Begin(ctx context.Context) (pgx.Tx, error)                                     { return noopTx{}, nil }
+func (t noopTx) Commit(ctx context.Context) error                                               { return nil }
+func (t noopTx) Rollback(ctx context.Context) error                                             { return nil }
+func (t noopTx) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
+	return 0, errors.New("noopTx: CopyFrom not implemented")
+}
+func (t noopTx) SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults {
+	return nil
+}
+func (t noopTx) LargeObjects() pgx.LargeObjects                                                { return pgx.LargeObjects{} }
+func (t noopTx) Prepare(ctx context.Context, name, sql string) (*pgconn.StatementDescription, error) {
+	return nil, errors.New("noopTx: Prepare not implemented")
+}
+func (t noopTx) Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error) {
+	return pgconn.CommandTag{}, nil
+}
+func (t noopTx) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	return emptyRows{}, nil
+}
+func (t noopTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	return errorRow{err: nil}
+}
+func (t noopTx) Conn() *pgx.Conn { return nil }
+
+// Satisfy the pgx.Tx interface; these are needed by older versions of pgx.
+// Use a blank _ to ensure the interface is satisfied at compile-time.
+var _ pgx.Tx = noopTx{}
+var _ io.Closer = noopCloser{}
+
+type noopCloser struct{}
+
+func (noopCloser) Close() error { return nil }
+
 func (m *DBPoolMock) Begin(ctx context.Context) (pgx.Tx, error) {
 	if m.InjectedErr != nil {
 		return nil, m.InjectedErr
@@ -62,7 +114,8 @@ func (m *DBPoolMock) Begin(ctx context.Context) (pgx.Tx, error) {
 	if m.BeginFunc != nil {
 		return m.BeginFunc(ctx)
 	}
-	return nil, nil
+	// Return a safe no-op Tx instead of (nil, nil) to prevent nil-pointer panics in callers.
+	return noopTx{}, fmt.Errorf("BeginFunc not set")
 }
 
 func (m *DBPoolMock) Close() {

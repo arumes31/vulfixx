@@ -67,7 +67,7 @@ func (a *App) InitTemplatesWithFuncs() {
 
 // findTemplatesDir walks up from the current working directory looking for a
 // "templates" directory that contains at least one .html file. It checks up to
-// four levels to accommodate different working directories used by tests vs the
+// five levels to accommodate different working directories used by tests vs the
 // binary. No os.Chdir is performed.
 func findTemplatesDir() string {
 	start, err := os.Getwd()

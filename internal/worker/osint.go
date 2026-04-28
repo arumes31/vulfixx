@@ -18,7 +18,9 @@ func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) map[string]i
 	req, err := http.NewRequestWithContext(ctx, "GET", hnURL, nil)
 	if err != nil {
 		log.Printf("Failed to create HN request: %v", err)
-	} else if resp, err := w.HTTP.Do(req); err == nil {
+	} else if resp, err := w.HTTP.Do(req); err != nil {
+		log.Printf("Failed to fetch HN results for %s: %v", cveID, err)
+	} else {
 		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode == http.StatusOK {
 			var hnResp struct {
@@ -50,7 +52,9 @@ func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) map[string]i
 		log.Printf("Failed to create Reddit request: %v", err)
 	} else {
 		req.Header.Set("User-Agent", "Vulfixx-Threat-Intel-Bot/1.0")
-		if resp, err := w.HTTP.Do(req); err == nil {
+		if resp, err := w.HTTP.Do(req); err != nil {
+			log.Printf("Failed to fetch Reddit results for %s: %v", cveID, err)
+		} else {
 			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode == http.StatusOK {
 				var rResp struct {

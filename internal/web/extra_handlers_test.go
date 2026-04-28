@@ -131,13 +131,21 @@ func TestHandleAlertAction(t *testing.T) {
 		data, _ := json.Marshal(map[string]interface{}{"user_id": 1, "cve_id": 100, "keyword": "test"})
 		db.RedisClient.Set(context.Background(), "alert_action:"+token, data, time.Hour)
 
-		mock.ExpectExec("INSERT INTO user_cve_status").WithArgs(1, nil, 100, "resolved").WillReturnResult(pgxmock.NewResult("INSERT", 1))
-
+		// GET renders confirmation page — no DB interaction expected
 		req := httptest.NewRequest("GET", "/alert-action?token="+token+"&action=acknowledge", nil)
 		rr := httptest.NewRecorder()
 		app.HandleAlertAction(rr, req)
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+
+		// POST actually writes to DB with status 'in_progress'
+		mock.ExpectExec("INSERT INTO user_cve_status").WithArgs(1, 100, "in_progress").WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		reqPost := httptest.NewRequest("POST", "/alert-action?token="+token+"&action=acknowledge", nil)
+		rrPost := httptest.NewRecorder()
+		app.HandleAlertAction(rrPost, reqPost)
+		if rrPost.Code != http.StatusOK {
+			t.Errorf("POST expected 200 OK, got %d", rrPost.Code)
 		}
 	})
 }

@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5"
@@ -660,12 +661,14 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	jsonLDBytes, _ := json.Marshal(jsonLD)
+	// Prevent </script> injection: escape the forward slash so the script tag can't be closed.
+	safeJSONLD := strings.ReplaceAll(string(jsonLDBytes), "</", `<\/`)
 
 	a.RenderTemplate(w, r, "cve_detail.html", map[string]interface{}{
 		"CVE":             c,
 		"MetaTitle":       fmt.Sprintf("%s - %s | Vulfixx Threat Intel", c.CVEID, c.Description),
 		"MetaDescription": fmt.Sprintf("Security analysis of %s. Severity: %.1f. %s", c.CVEID, c.CVSSScore, c.Description),
 		"Canonical":       fmt.Sprintf("/cve/%s", c.CVEID),
-		"JSONLD":          template.HTML(jsonLDBytes), // #nosec G203 -- JSON pre-marshaled and safe
+		"JSONLD":          template.JS(safeJSONLD), // safe: JSON-marshaled then </script>-escaped
 	})
 }

@@ -63,7 +63,9 @@ func (a *App) ActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 func (a *App) ExportActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := a.GetUserID(r)
 	if !ok {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"unauthorized","message":"authentication required"}`))
 		return
 	}
 
