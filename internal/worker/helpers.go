@@ -7,6 +7,7 @@ import (
 	"net/mail"
 	"net/smtp"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -20,7 +21,7 @@ func sanitizeEmail(email string) (string, error) {
 	// Validate with net/mail
 	addr, err := mail.ParseAddress(email)
 	if err != nil {
-		return "", fmt.Errorf("invalid email address %q: %w", email, err)
+		return "", fmt.Errorf("invalid email address %q: %w", maskEmail(email), err)
 	}
 	return addr.Address, nil
 }
@@ -60,6 +61,18 @@ func redactURL(u string) string {
 	return parsed.String()
 }
 
+// maskEmail redacts an email address for logging.
+func maskEmail(email string) string {
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return "[invalid-email]"
+	}
+	if len(parts[0]) <= 2 {
+		return "*@" + parts[1]
+	}
+	return parts[0][:2] + "****@" + parts[1]
+}
+
 // sendMailWithTimeout is a replacement for smtp.SendMail that supports deadlines.
 func sendMailWithTimeout(host, port, user, password, from string, to []string, msg []byte) error {
 	if len(to) == 0 {
@@ -75,9 +88,12 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 	for _, t := range to {
 		ct, err := sanitizeEmail(t)
 		if err != nil {
-			return fmt.Errorf("invalid to address %q: %w", t, err)
+			return fmt.Errorf("invalid to address %q: %w", maskEmail(t), err)
 		}
 		cleanTo = append(cleanTo, ct)
+	}
+	if _, err := strconv.Atoi(port); err != nil {
+		return fmt.Errorf("invalid port %q: must be numeric", port)
 	}
 	addr := net.JoinHostPort(host, port)
 	// #nosec G704 -- Host and port are from controlled environment variables

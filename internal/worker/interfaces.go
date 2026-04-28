@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 )
 
 // EmailSender defines the interface for sending emails.
@@ -29,8 +30,11 @@ func (s *RealEmailSender) SendEmail(toEmail, subject, body string) error {
 	user := os.Getenv("SMTP_USER")
 	password := os.Getenv("SMTP_PASS")
 	from := os.Getenv("SMTP_FROM")
-	if host == "" || from == "" {
-		return fmt.Errorf("SMTP configuration missing")
+	if host == "" || from == "" || port == "" {
+		return fmt.Errorf("SMTP configuration missing (host, port, and from are required)")
+	}
+	if _, err := strconv.Atoi(port); err != nil {
+		return fmt.Errorf("invalid SMTP_PORT %q: must be numeric", port)
 	}
 
 	// Validate subject, email, and from address to prevent header injection

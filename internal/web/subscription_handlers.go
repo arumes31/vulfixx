@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -61,6 +62,10 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 		minSeverityStr := r.FormValue("min_severity")
 		webhookUrl := strings.TrimSpace(r.FormValue("webhook_url"))
 
+		if keyword == "" {
+			a.SendResponse(w, r, false, "", "", "Keyword is required")
+			return
+		}
 		if len(keyword) > 100 {
 			a.SendResponse(w, r, false, "", "", "Target infrastructure keyword too long (max 100 characters)")
 			return
@@ -75,7 +80,12 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 		// Enforce limit
 		var count int
 		err = a.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1", userID).Scan(&count)
-		if err == nil && count >= 20 {
+		if err != nil {
+			log.Printf("Error counting subscriptions: %v", err)
+			a.SendResponse(w, r, false, "", "", "Internal server error")
+			return
+		}
+		if count >= 20 {
 			a.SendResponse(w, r, false, "", "", "Maximum of 20 subscriptions allowed")
 			return
 		}
@@ -93,6 +103,21 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 				a.SendResponse(w, r, false, "", "", "A valid HTTP/HTTPS webhook URL is required")
 				return
 			}
+
+			// SSRF protection: block internal/loopback IPs
+			host := parsed.Hostname()
+			ips, err := net.LookupIP(host)
+			if err != nil {
+				a.SendResponse(w, r, false, "", "", "Invalid webhook host")
+				return
+			}
+			for _, ip := range ips {
+				if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() {
+					a.SendResponse(w, r, false, "", "", "Internal or restricted webhook URLs are not allowed")
+					return
+				}
+			}
+
 			webhookUrl = parsed.String()
 
 			if len(webhookUrl) > 2048 {
@@ -276,7 +301,9 @@ func (a *App) HandleAlertAction(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Failed to acknowledge alert", http.StatusInternalServerError)
 			return
 		}
-		a.Redis.Del(ctx, "alert_action:"+token)
+		if err := a.Redis.Del(ctx, "alert_action:"+token).Err(); err != nil {
+			log.Printf("Error deleting alert action from redis: %v", err)
+		}
 		a.LogActivity(ctx, data.UserID, "remediation", fmt.Sprintf("Acknowledged CVE ID %d via email", data.CVEID), r.RemoteAddr, r.UserAgent())
 		a.RenderTemplate(w, r, "message.html", map[string]interface{}{
 			"Title":   "Alert Acknowledged",
@@ -293,7 +320,9 @@ func (a *App) HandleAlertAction(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Failed to mute keyword", http.StatusInternalServerError)
 			return
 		}
-		a.Redis.Del(ctx, "alert_action:"+token)
+		if err := a.Redis.Del(ctx, "alert_action:"+token).Err(); err != nil {
+			log.Printf("Error deleting alert action from redis: %v", err)
+		}
 		a.LogActivity(ctx, data.UserID, "alert_action", fmt.Sprintf("Muted keyword '%s' via email", data.Keyword), r.RemoteAddr, r.UserAgent())
 		a.RenderTemplate(w, r, "message.html", map[string]interface{}{
 			"Title":   "Keyword Muted",

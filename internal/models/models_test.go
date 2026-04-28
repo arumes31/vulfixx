@@ -16,8 +16,10 @@ func TestModels(t *testing.T) {
 		IsTOTPEnabled:    true,
 		CreatedAt:        time.Now(),
 	}
-	if u.Email != "test@example.com" {
-		t.Errorf("expected test@example.com, got %s", u.Email)
+	if u.ID != 1 || u.Email != "test@example.com" || u.PasswordHash != "hash" || 
+	   !u.IsEmailVerified || u.EmailVerifyToken != "token" || u.TOTPSecret != "secret" || 
+	   !u.IsTOTPEnabled || u.CreatedAt.IsZero() {
+		t.Errorf("user model validation failed")
 	}
 
 	cve := CVE{
@@ -30,8 +32,10 @@ func TestModels(t *testing.T) {
 		UpdatedDate:   time.Now(),
 		CreatedAt:     time.Now(),
 	}
-	if cve.CVEID != "CVE-2023-1234" {
-		t.Errorf("expected CVE-2023-1234, got %s", cve.CVEID)
+	if cve.ID != 1 || cve.CVEID != "CVE-2023-1234" || cve.Description != "test" || 
+	   cve.CVSSScore != 9.8 || !cve.CISAKEV || cve.PublishedDate.IsZero() || 
+	   cve.UpdatedDate.IsZero() || cve.CreatedAt.IsZero() {
+		t.Errorf("cve model validation failed")
 	}
 
 	sub := UserSubscription{
@@ -42,8 +46,9 @@ func TestModels(t *testing.T) {
 		WebhookURL:  "http://example.com",
 		CreatedAt:   time.Now(),
 	}
-	if sub.Keyword != "test" {
-		t.Errorf("expected test, got %s", sub.Keyword)
+	if sub.ID != 1 || sub.UserID != 1 || sub.Keyword != "test" || 
+	   sub.MinSeverity != 5.0 || sub.WebhookURL != "http://example.com" || sub.CreatedAt.IsZero() {
+		t.Errorf("subscription model validation failed")
 	}
 
 	status := UserCVEStatus{
@@ -52,8 +57,8 @@ func TestModels(t *testing.T) {
 		Status:    "resolved",
 		UpdatedAt: time.Now(),
 	}
-	if status.Status != "resolved" {
-		t.Errorf("expected resolved, got %s", status.Status)
+	if status.UserID != 1 || status.CVEID != 1 || status.Status != "resolved" || status.UpdatedAt.IsZero() {
+		t.Errorf("status model validation failed")
 	}
 
 	alert := AlertHistory{
@@ -62,7 +67,7 @@ func TestModels(t *testing.T) {
 		CVEID:  1,
 		SentAt: time.Now(),
 	}
-	if alert.ID != 1 {
-		t.Errorf("expected 1, got %d", alert.ID)
+	if alert.ID != 1 || alert.UserID != 1 || alert.CVEID != 1 || alert.SentAt.IsZero() {
+		t.Errorf("alert model validation failed")
 	}
 }

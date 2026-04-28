@@ -13,18 +13,23 @@ gosec_results*
 *.tmp
 
 # Coverage artifacts – never commit generated profiles
+coverage
+coverage.*
+coverage/
+*.cov
+*.out
+*.coverprofile
 *_cov
 *_coverage
 *_coverage.txt
-*coverage*
-*.coverprofile
 coverage_stats.txt
 health
-
-# Bare coverage profile file names (e.g. produced by 'go test -coverprofile=web')
-/web
-/worker
-/coverage
+db
+web
+worker
+auth
 **/coverage
-web_cov*
-worker_cov*
+**/coverage.out
+**/*.cov
+**/*.out
+**/*.coverprofile

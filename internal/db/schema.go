@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS cves (
     description TEXT,
     cvss_score NUMERIC(4,1),
     cisa_kev BOOLEAN DEFAULT FALSE,
-    epss_score NUMERIC(4,3),
+    epss_score NUMERIC(6,5),
     cwe_id VARCHAR(50),
     cwe_name TEXT,
     github_poc_count INTEGER DEFAULT 0,
@@ -79,7 +79,8 @@ CREATE TABLE IF NOT EXISTS user_cve_status (
     team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
     cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,
     status VARCHAR(50) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_user_or_team_present CHECK (user_id IS NOT NULL OR team_id IS NOT NULL)
 );
 
 CREATE TABLE IF NOT EXISTS cve_notes (
@@ -88,8 +89,11 @@ CREATE TABLE IF NOT EXISTS cve_notes (
     team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
     cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,
     notes TEXT,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_user_or_team_present CHECK (user_id IS NOT NULL OR team_id IS NOT NULL)
 );
+
+CREATE INDEX IF NOT EXISTS idx_cve_notes_team_id ON cve_notes(team_id);
 
 CREATE TABLE IF NOT EXISTS alert_history (
     id SERIAL PRIMARY KEY,
@@ -102,11 +106,13 @@ CREATE TABLE IF NOT EXISTS alert_history (
 CREATE TABLE IF NOT EXISTS user_activity_logs (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    activity_type VARCHAR(100) NOT NULL,
+    activity_type VARCHAR(50) NOT NULL,
     description TEXT,
     ip_address VARCHAR(45),
     user_agent TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    retention_expires_at TIMESTAMP WITH TIME ZONE,
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 CREATE TABLE IF NOT EXISTS email_change_requests (

@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -50,7 +51,8 @@ func (w *Worker) fetchFromCISAKEV(ctx context.Context) {
 	}
 
 	var kevResp CISAKEVResponse
-	if err := json.NewDecoder(resp.Body).Decode(&kevResp); err != nil {
+	// Limit feed size to 50MB
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 50*1024*1024)).Decode(&kevResp); err != nil {
 		log.Printf("Worker: [ERROR] Failed to decode CISA KEV: %v", err)
 		return
 	}

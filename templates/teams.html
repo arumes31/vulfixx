@@ -37,14 +37,14 @@
                 
                 <!-- Action Menu Popup -->
                 <div class="relative action-menu">
-                    <button data-menu="menu-{{.ID}}" class="menu-trigger w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/10 text-gray-500 hover:text-white transition-colors">
+                    <button data-menu="menu-{{.ID}}" aria-haspopup="true" aria-expanded="false" aria-label="Team Options" class="menu-trigger w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/10 text-gray-500 hover:text-white transition-colors">
                         <span class="material-symbols-outlined text-xl">more_vert</span>
                     </button>
-                    <div id="menu-{{.ID}}" class="action-menu-dropdown hidden absolute right-0 mt-2 w-48 bg-[#181c22] border border-white/10 rounded-xl shadow-2xl z-50 p-2 glass">
-                        <button data-invite="{{.InviteCode}}" class="copy-invite w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-300 hover:bg-white/5 hover:text-white rounded-lg transition-all text-left">
+                    <div id="menu-{{.ID}}" role="menu" class="action-menu-dropdown hidden absolute right-0 mt-2 w-48 bg-[#181c22] border border-white/10 rounded-xl shadow-2xl z-50 p-2 glass">
+                        <button role="menuitem" data-invite="{{.InviteCode}}" class="copy-invite w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-300 hover:bg-white/5 hover:text-white rounded-lg transition-all text-left">
                             <span class="material-symbols-outlined text-sm">content_copy</span> Copy Invite
                         </button>
-                        <button data-id="{{.ID}}" data-name="{{.Name}}" class="leave-team w-full flex items-center gap-3 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 rounded-lg transition-all text-left">
+                        <button role="menuitem" data-id="{{.ID}}" data-name="{{.Name}}" class="leave-team w-full flex items-center gap-3 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 rounded-lg transition-all text-left">
                             <span class="material-symbols-outlined text-sm">logout</span> Leave Team
                         </button>
                     </div>
@@ -93,10 +93,18 @@
 <script>
     function toggleMenu(id) {
         document.querySelectorAll('.action-menu-dropdown').forEach(el => {
-            if (el.id !== id) el.classList.add('hidden');
+            if (el.id !== id) {
+                el.classList.add('hidden');
+                const trigger = document.querySelector(`[data-menu="${el.id}"]`);
+                if (trigger) trigger.setAttribute('aria-expanded', 'false');
+            }
         });
         const menu = document.getElementById(id);
-        if (menu) menu.classList.toggle('hidden');
+        const trigger = document.querySelector(`[data-menu="${id}"]`);
+        if (menu) {
+            const isHidden = menu.classList.toggle('hidden');
+            if (trigger) trigger.setAttribute('aria-expanded', (!isHidden).toString());
+        }
     }
 
     function copyToClipboard(text) {

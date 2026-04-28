@@ -20,6 +20,9 @@
 
     <form method="POST" class="space-y-4">
         {{.csrfField}}
+        <input type="hidden" name="action" value="{{.Action}}">
+        <input type="hidden" name="keyword" value="{{.Keyword}}">
+        <input type="hidden" name="cve_id" value="{{.CVEID}}">
         <button type="submit" aria-describedby="confirm-msg" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-all shadow-lg shadow-blue-900/20">
             Confirm and Proceed
         </button>

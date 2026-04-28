@@ -89,7 +89,7 @@ func TestUpsertCVEs(t *testing.T) {
 		WithArgs("CVE-UPD-TEST").
 		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 
-	w.upsertCVEs(ctx, vulns)
+	w.upsertCVEs(ctx, vulns, false)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet DB expectations after upsertCVEs: %v", err)

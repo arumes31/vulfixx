@@ -56,22 +56,38 @@ func (w *Worker) syncEPSS(ctx context.Context) {
 		}
 
 		epssURL := fmt.Sprintf("%s?cve=%s", defaultEPSSBaseURL, cveID)
-		req, err := http.NewRequestWithContext(ctx, "GET", epssURL, nil)
-		if err != nil {
-			log.Printf("Worker: [ERROR] Failed to create EPSS request for %s: %v", cveID, err)
+		var resp *http.Response
+		for retries := 0; retries < 3; retries++ {
+			req, err := http.NewRequestWithContext(ctx, "GET", epssURL, nil)
+			if err != nil {
+				log.Printf("Worker: [ERROR] Failed to create EPSS request for %s (retry %d): %v", cveID, retries, err)
+				break
+			}
+			resp, err = w.HTTP.Do(req)
+			if err != nil {
+				log.Printf("Worker: [ERROR] Failed to fetch EPSS for %s: %v", cveID, err)
+				break
+			}
+			if resp.StatusCode == http.StatusTooManyRequests {
+				_ = resp.Body.Close()
+				waitTime := 5 * time.Second
+				log.Printf("EPSS rate limited, waiting %v...", waitTime)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(waitTime):
+					continue
+				}
+			}
+			break
+		}
+		if err != nil || resp == nil {
 			continue
 		}
-		resp, err := w.HTTP.Do(req)
-		if err != nil {
-			log.Printf("Worker: [ERROR] Failed to fetch EPSS for %s: %v", cveID, err)
-			continue
-		}
+
 		if resp.StatusCode != http.StatusOK {
 			log.Printf("Worker: [WARN] EPSS API returned status %d for %s", resp.StatusCode, cveID)
 			_ = resp.Body.Close()
-			if resp.StatusCode == http.StatusTooManyRequests {
-				time.Sleep(5 * time.Second)
-			}
 			continue
 		}
 		var epssResp struct {

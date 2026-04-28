@@ -81,8 +81,19 @@ func (t noopTx) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNa
 	return 0, errors.New("noopTx: CopyFrom not implemented")
 }
 func (t noopTx) SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults {
-	return nil
+	return noopBatchResults{}
 }
+
+type noopBatchResults struct{}
+
+func (n noopBatchResults) Exec() (pgconn.CommandTag, error) { return pgconn.CommandTag{}, nil }
+func (n noopBatchResults) Query() (pgx.Rows, error)          { return emptyRows{}, nil }
+func (n noopBatchResults) QueryRow() pgx.Row                { return errorRow{err: nil} }
+func (n noopBatchResults) QueryRowContext(ctx context.Context) pgx.Row {
+	return errorRow{err: nil}
+}
+func (n noopBatchResults) Close() error { return nil }
+func (n noopBatchResults) Err() error   { return nil }
 func (t noopTx) LargeObjects() pgx.LargeObjects                                                { return pgx.LargeObjects{} }
 func (t noopTx) Prepare(ctx context.Context, name, sql string) (*pgconn.StatementDescription, error) {
 	return nil, errors.New("noopTx: Prepare not implemented")
@@ -109,7 +120,7 @@ func (noopCloser) Close() error { return nil }
 
 func (m *DBPoolMock) Begin(ctx context.Context) (pgx.Tx, error) {
 	if m.InjectedErr != nil {
-		return nil, m.InjectedErr
+		return noopTx{}, m.InjectedErr
 	}
 	if m.BeginFunc != nil {
 		return m.BeginFunc(ctx)

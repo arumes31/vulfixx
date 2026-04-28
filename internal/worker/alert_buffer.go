@@ -60,9 +60,6 @@ func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, e
 			select {
 			case <-time.After(bTime):
 				w.processUserBuffer(bgCtx, uid)
-			case <-ctx.Done():
-				// original request cancelled, but still flush via background context
-				w.processUserBuffer(bgCtx, uid)
 			}
 		}(bufferTime, processingKey, userID)
 	}
@@ -94,10 +91,12 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 			Email     string     `json:"email"`
 			AssetName string     `json:"asset_name"`
 		}
-		if err := json.Unmarshal([]byte(blobs[0]), &data); err == nil {
-			sub := models.UserSubscription{EnableEmail: true, EnableWebhook: true}
-			w.sendAlert(sub, &data.CVE, data.Email, data.AssetName)
+		if err := json.Unmarshal([]byte(blobs[0]), &data); err != nil {
+			log.Printf("Error unmarshaling single buffered alert: %v", err)
+			return
 		}
+		sub := models.UserSubscription{EnableEmail: true, EnableWebhook: true}
+		w.sendAlert(sub, &data.CVE, data.Email, data.AssetName)
 		return
 	}
 	var email string

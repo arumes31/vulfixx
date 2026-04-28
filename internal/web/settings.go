@@ -1,7 +1,6 @@
 package web
 
 import (
-	"context"
 	"cve-tracker/internal/auth"
 	"encoding/base64"
 	"encoding/json"
@@ -22,7 +21,7 @@ func (a *App) SettingsHandler(w http.ResponseWriter, r *http.Request) {
 
 	var email string
 	var isTOTPEnabled bool
-	err := a.Pool.QueryRow(context.Background(), "SELECT email, is_totp_enabled FROM users WHERE id = $1", userID).Scan(&email, &isTOTPEnabled)
+	err := a.Pool.QueryRow(r.Context(), "SELECT email, is_totp_enabled FROM users WHERE id = $1", userID).Scan(&email, &isTOTPEnabled)
 	if err != nil {
 		http.Error(w, "User not found", http.StatusInternalServerError)
 		return
@@ -42,7 +41,7 @@ func (a *App) GenerateTOTPHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var email string
-	if err := a.Pool.QueryRow(context.Background(), "SELECT email FROM users WHERE id = $1", userID).Scan(&email); err != nil {
+	if err := a.Pool.QueryRow(r.Context(), "SELECT email FROM users WHERE id = $1", userID).Scan(&email); err != nil {
 		http.Error(w, "User not found", http.StatusInternalServerError)
 		return
 	}
@@ -57,7 +56,7 @@ func (a *App) GenerateTOTPHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Save secret to db
-	_, err = a.Pool.Exec(context.Background(), "UPDATE users SET totp_secret = $1 WHERE id = $2", key.Secret(), userID)
+	_, err = a.Pool.Exec(r.Context(), "UPDATE users SET totp_secret = $1 WHERE id = $2", key.Secret(), userID)
 	if err != nil {
 		http.Error(w, "Error saving TOTP secret", http.StatusInternalServerError)
 		return
@@ -99,7 +98,7 @@ func (a *App) VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
 	code := r.FormValue("totp_code")
 
 	var secret string
-	err := a.Pool.QueryRow(context.Background(), "SELECT totp_secret FROM users WHERE id = $1", userID).Scan(&secret)
+	err := a.Pool.QueryRow(r.Context(), "SELECT totp_secret FROM users WHERE id = $1", userID).Scan(&secret)
 	if err != nil || secret == "" {
 		http.Redirect(w, r, "/settings", http.StatusFound)
 		return
@@ -109,12 +108,12 @@ func (a *App) VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
 	setupTS, _ := session.Values["totp_setup_ts"].(int64)
 	attempts, _ := session.Values["totp_setup_attempts"].(int)
 
-	if time.Now().Unix()-setupTS > 600 {
+	if setupTS == 0 || time.Now().Unix()-setupTS > 600 {
 		delete(session.Values, "totp_setup_ts")
 		delete(session.Values, "totp_setup_attempts")
 		_ = session.Save(r, w)
-		_, _ = a.Pool.Exec(context.Background(), "UPDATE users SET totp_secret = NULL WHERE id = $1 AND is_totp_enabled = FALSE", userID)
-		http.Redirect(w, r, "/settings?error=Setup+expired", http.StatusFound)
+		_, _ = a.Pool.Exec(r.Context(), "UPDATE users SET totp_secret = NULL WHERE id = $1 AND is_totp_enabled = FALSE", userID)
+		http.Redirect(w, r, "/settings?error=Setup+expired+or+invalid", http.StatusFound)
 		return
 	}
 
@@ -122,14 +121,14 @@ func (a *App) VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
 		delete(session.Values, "totp_setup_ts")
 		delete(session.Values, "totp_setup_attempts")
 		_ = session.Save(r, w)
-		_, _ = a.Pool.Exec(context.Background(), "UPDATE users SET totp_secret = NULL WHERE id = $1 AND is_totp_enabled = FALSE", userID)
+		_, _ = a.Pool.Exec(r.Context(), "UPDATE users SET totp_secret = NULL WHERE id = $1 AND is_totp_enabled = FALSE", userID)
 		http.Redirect(w, r, "/settings?error=Too+many+attempts", http.StatusFound)
 		return
 	}
 
 	valid := totp.Validate(code, secret)
 	if valid {
-		if _, err := a.Pool.Exec(context.Background(), "UPDATE users SET is_totp_enabled = TRUE WHERE id = $1", userID); err != nil {
+		if _, err := a.Pool.Exec(r.Context(), "UPDATE users SET is_totp_enabled = TRUE WHERE id = $1", userID); err != nil {
 			log.Printf("Error enabling TOTP: %v", err)
 		}
 		delete(session.Values, "totp_setup_ts")
@@ -138,6 +137,8 @@ func (a *App) VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		session.Values["totp_setup_attempts"] = attempts + 1
 		_ = session.Save(r, w)
+		http.Redirect(w, r, "/settings?error=Invalid+TOTP+code", http.StatusFound)
+		return
 	}
 
 	http.Redirect(w, r, "/settings", http.StatusFound)
@@ -248,13 +249,12 @@ func (a *App) ChangeEmailHandler(w http.ResponseWriter, r *http.Request) {
 		"token": newToken,
 		"type":  "new",
 	})
-	if err := a.Redis.LPush(r.Context(), "email_change_queue", oldPayload).Err(); err != nil {
-		log.Printf("Error enqueueing email change payload: %v", err)
-		renderError("Error requesting email change")
-		return
-	}
-	if err := a.Redis.LPush(r.Context(), "email_change_queue", newPayload).Err(); err != nil {
-		log.Printf("Error enqueueing email change payload: %v", err)
+	// Push email change notification payloads to redis queue atomically
+	pipe := a.Redis.Pipeline()
+	pipe.LPush(r.Context(), "email_change_queue", oldPayload)
+	pipe.LPush(r.Context(), "email_change_queue", newPayload)
+	if _, err := pipe.Exec(r.Context()); err != nil {
+		log.Printf("Error enqueueing email change payloads: %v", err)
 		renderError("Error requesting email change")
 		return
 	}

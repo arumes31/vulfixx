@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
+	"time"
 )
 
 func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) map[string]interface{} {
@@ -51,10 +53,39 @@ func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) map[string]i
 	if err != nil {
 		log.Printf("Failed to create Reddit request: %v", err)
 	} else {
-		req.Header.Set("User-Agent", "Vulfixx-Threat-Intel-Bot/1.0")
-		if resp, err := w.HTTP.Do(req); err != nil {
-			log.Printf("Failed to fetch Reddit results for %s: %v", cveID, err)
-		} else {
+		var resp *http.Response
+		for retries := 0; retries < 3; retries++ {
+			req, err = http.NewRequestWithContext(ctx, "GET", redditURL, nil)
+			if err != nil {
+				log.Printf("Failed to create Reddit request (retry %d): %v", retries, err)
+				break
+			}
+			req.Header.Set("User-Agent", "Vulfixx-Threat-Intel-Bot/1.0")
+
+			resp, err = w.HTTP.Do(req)
+			if err != nil {
+				log.Printf("Failed to fetch Reddit results for %s: %v", cveID, err)
+				break
+			}
+			if resp.StatusCode == http.StatusTooManyRequests {
+				_ = resp.Body.Close()
+				waitTime := 5 * time.Second
+				if ra := resp.Header.Get("Retry-After"); ra != "" {
+					if seconds, err := strconv.Atoi(ra); err == nil {
+						waitTime = time.Duration(seconds) * time.Second
+					}
+				}
+				log.Printf("Reddit rate limited, waiting %v...", waitTime)
+				select {
+				case <-ctx.Done():
+					return data
+				case <-time.After(waitTime):
+					continue
+				}
+			}
+			break
+		}
+		if err == nil && resp != nil {
 			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode == http.StatusOK {
 				var rResp struct {

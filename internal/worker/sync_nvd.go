@@ -4,6 +4,7 @@ import (
 	"context"
 	"cve-tracker/internal/models"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -12,6 +13,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 var defaultNVDBaseURL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
@@ -79,7 +82,11 @@ func (w *Worker) fetchCVEsPeriodically(ctx context.Context) {
 }
 
 func (w *Worker) fetchFromNVD(ctx context.Context) {
-	lastSync := w.getLastSyncTime(ctx)
+	lastSync, err := w.getLastSyncTime(ctx)
+	if err != nil {
+		log.Printf("Worker: [ERROR] Failed to fetch last sync time: %v", err)
+		return
+	}
 	if lastSync.IsZero() {
 		log.Println("Worker: No prior sync found — starting full NVD backfill...")
 		w.runFullSync(ctx, true)
@@ -100,9 +107,9 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
 
 	params := url.Values{}
 	if !isBackfill {
-		lastSync := w.getLastSyncTime(ctx)
+		lastSync, _ := w.getLastSyncTime(ctx)
 		params.Set("lastModStartDate", lastSync.Format(time.RFC3339))
-		params.Set("lastModEndDate", time.Now().Format(time.RFC3339))
+		params.Set("lastModEndDate", time.Now().UTC().Format(time.RFC3339))
 	}
 
 	resultsPerPage := 2000
@@ -151,7 +158,13 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
 		retryCount = 0 // reset on success
 
 		if resp.StatusCode == 403 || resp.StatusCode == 429 {
-			log.Println("Worker: Rate limited by NVD, waiting 30s...")
+			retryCount++
+			if retryCount >= maxNVDRetries {
+				log.Printf("Worker: Max NVD rate-limit retries reached, aborting sync")
+				_ = resp.Body.Close()
+				return
+			}
+			log.Printf("Worker: Rate limited by NVD (attempt %d/%d), waiting 30s...", retryCount, maxNVDRetries)
 			_ = resp.Body.Close()
 			timer := time.NewTimer(30 * time.Second)
 			select {
@@ -182,7 +195,7 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
 			break
 		}
 
-		w.upsertCVEs(ctx, nvdResp.Vulnerabilities)
+		w.upsertCVEs(ctx, nvdResp.Vulnerabilities, isBackfill)
 
 		startIndex += resultsPerPage
 		if startIndex >= nvdResp.TotalResults {
@@ -194,13 +207,17 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
 		if os.Getenv("NVD_API_KEY") != "" {
 			nvdAPIDelay = 600 * time.Millisecond
 		}
-		time.Sleep(nvdAPIDelay)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(nvdAPIDelay):
+		}
 	}
 
 	w.updateLastSyncTime(ctx)
 }
 
-func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry) {
+func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfill bool) {
 	for _, entry := range entries {
 		cve := entry.CVE
 
@@ -289,18 +306,23 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry) {
 			continue
 		}
 
-		// Check for alerts after successful upsert
-		w.enqueueAlertsForCVE(ctx, model)
+		// Check for alerts after successful upsert (only if not backfilling)
+		if !isBackfill {
+			w.enqueueAlertsForCVE(ctx, model)
+		}
 	}
 }
 
-func (w *Worker) getLastSyncTime(ctx context.Context) time.Time {
+func (w *Worker) getLastSyncTime(ctx context.Context) (time.Time, error) {
 	var lastSync time.Time
 	err := w.Pool.QueryRow(ctx, "SELECT last_run FROM worker_sync_stats WHERE task_name = 'nvd_sync'").Scan(&lastSync)
 	if err != nil {
-		return time.Time{}
+		if errors.Is(err, pgx.ErrNoRows) {
+			return time.Time{}, nil
+		}
+		return time.Time{}, err
 	}
-	return lastSync
+	return lastSync, nil
 }
 
 func (w *Worker) updateLastSyncTime(ctx context.Context) {

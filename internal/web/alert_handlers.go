@@ -50,6 +50,8 @@ func (a *App) AlertHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := rows.Err(); err != nil {
 		log.Printf("Error iterating alert history rows: %v", err)
+		http.Error(w, "Error fetching alert history", http.StatusInternalServerError)
+		return
 	}
 
 	a.RenderTemplate(w, r, "alert_history.html", map[string]interface{}{

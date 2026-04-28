@@ -96,7 +96,7 @@ func LoadConfig() {
 	}
 
 	// Validate key lengths (even when not empty)
-	if len(AppConfig.CSRFKey) != 32 {
+	if len(AppConfig.CSRFKey) > 0 && len(AppConfig.CSRFKey) != 32 {
 		if appEnv != "development" {
 			logFatalf("Fatal: CSRFKey must be exactly 32 bytes (got %d)", len(AppConfig.CSRFKey))
 		} else {

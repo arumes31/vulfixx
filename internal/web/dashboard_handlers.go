@@ -224,6 +224,7 @@ func (a *App) UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 		CVEID  int    `json:"cve_id"`
 		Status string `json:"status"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1024*10)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		a.SendResponse(w, r, false, "", "", "Bad request")
 		return
@@ -308,6 +309,7 @@ func (a *App) UpdateCVENoteHandler(w http.ResponseWriter, r *http.Request) {
 		CVEID int    `json:"cve_id"`
 		Notes string `json:"notes"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1024*100)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		a.SendResponse(w, r, false, "", "", "Bad request")
 		return
@@ -373,6 +375,7 @@ func (a *App) BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request)
 		CVEIDs []int  `json:"cve_ids"`
 		Status string `json:"status"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1024*1024) // 1MB limit
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		a.SendResponse(w, r, false, "", "", "Bad request")
 		return
@@ -519,7 +522,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	query := `
 		SELECT 
-			c.id, c.cve_id, c.description, c.cvss_score, c.cvss_vector, c.cisa_kev, 
+			c.id, c.cve_id, c.description, c.cvss_score, vector_string, c.cisa_kev, 
 			c.published_date, c.updated_date, 'active' as status, c.references, '' as notes
 		FROM cves c
 	`
@@ -597,7 +600,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 func (a *App) getTrendingCVEs(r *http.Request) []models.CVE {
 	rows, err := a.Pool.Query(r.Context(), `
 		SELECT 
-			id, cve_id, description, cvss_score, cvss_vector, cisa_kev, 
+			id, cve_id, description, cvss_score, vector_string, cisa_kev, 
 			published_date, updated_date, 'active' as status, references, '' as notes
 		FROM cves 
 		WHERE cisa_kev = true OR cvss_score >= 9.5
@@ -612,7 +615,10 @@ func (a *App) getTrendingCVEs(r *http.Request) []models.CVE {
 	for rows.Next() {
 		var c models.CVE
 		var notes sql.NullString
-		_ = rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &notes)
+		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &notes); err != nil {
+			log.Printf("Error scanning trending CVE: %v", err)
+			continue
+		}
 		cves = append(cves, c)
 	}
 	return cves
@@ -625,7 +631,7 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 	var c models.CVE
 	err := a.Pool.QueryRow(r.Context(), `
 		SELECT 
-			id, cve_id, description, cvss_score, cvss_vector, cisa_kev, 
+			id, cve_id, description, cvss_score, vector_string, cisa_kev, 
 			published_date, updated_date, 'active' as status, references, 
 			epss_score, cwe_id, cwe_name, github_poc_count
 		FROM cves 

@@ -98,7 +98,9 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 				DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
 					return dialer.DialContext(ctx, network, safeAddr)
 				},
+				IdleConnTimeout: 1 * time.Second,
 			}
+			defer transport.CloseIdleConnections()
 			pinnedClient := &http.Client{Transport: transport, Timeout: webhookTimeout}
 
 			req, err := http.NewRequestWithContext(httpCtx, "POST", sub.WebhookURL, strings.NewReader(string(payload)))
@@ -183,6 +185,7 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 				baseURL = "http://localhost:8080"
 			}
 
+			escapedToken := url.QueryEscape(actionToken)
 			buttonsHTML := fmt.Sprintf(`
 				<div style="margin-top: 30px; display: table; width: 100%%; border-collapse: separate; border-spacing: 10px 0;">
 					<div style="display: table-cell; width: 50%%;">
@@ -192,7 +195,7 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 						<a href="%s/alert-action?token=%s&action=mute" style="display: block; background: #1c2026; color: #dfe2eb; text-align: center; padding: 12px 0; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 13px; border: 1px solid #232931;">MUTE KEYWORD</a>
 					</div>
 				</div>
-			`, baseURL, actionToken, baseURL, actionToken)
+			`, baseURL, escapedToken, baseURL, escapedToken)
 			body := fmt.Sprintf(`
 				<div style="font-family: sans-serif; max-width: 600px; margin: auto; background: #101418; color: #dfe2eb; padding: 40px; border-radius: 12px; border: 1px solid #232931;">
 					<h1 style="color: #ffffff; margin-top: 0;">%s</h1>

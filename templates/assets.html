@@ -16,12 +16,12 @@
         <form action="/assets" method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
             {{.csrfField}}
             <div class="space-y-2">
-                <label class="block text-xs text-gray-500 uppercase font-bold tracking-widest">Asset Name</label>
-                <input type="text" name="name" required class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:border-blue-500 transition focus:outline-none" placeholder="e.g. Production Web Server">
+                <label for="asset_name" class="block text-xs text-gray-500 uppercase font-bold tracking-widest">Asset Name</label>
+                <input type="text" id="asset_name" name="name" required class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:border-blue-500 transition focus:outline-none" placeholder="e.g. Production Web Server">
             </div>
             <div class="space-y-2">
-                <label class="block text-xs text-gray-500 uppercase font-bold tracking-widest">Category</label>
-                <select name="type" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:border-blue-500 transition focus:outline-none appearance-none">
+                <label for="asset_type" class="block text-xs text-gray-500 uppercase font-bold tracking-widest">Category</label>
+                <select id="asset_type" name="type" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:border-blue-500 transition focus:outline-none appearance-none">
                     <option value="Server">Server</option>
                     <option value="Software">Software</option>
                     <option value="Network">Network Device</option>
@@ -30,8 +30,8 @@
                 </select>
             </div>
             <div class="space-y-2">
-                <label class="block text-xs text-gray-500 uppercase font-bold tracking-widest">Workspace</label>
-                <select name="team_id" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:border-blue-500 transition focus:outline-none appearance-none">
+                <label for="team_id" class="block text-xs text-gray-500 uppercase font-bold tracking-widest">Workspace</label>
+                <select id="team_id" name="team_id" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:border-blue-500 transition focus:outline-none appearance-none">
                     <option value="0">Private (Individual)</option>
                     {{range .UserTeams}}
                     <option value="{{.ID}}">Team: {{.Name}}</option>
@@ -42,8 +42,8 @@
                 <button type="submit" class="w-full bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700 transition shadow-lg shadow-blue-600/20 active:scale-95">Register Asset</button>
             </div>
             <div class="md:col-span-4 space-y-2">
-                <label class="block text-xs text-gray-500 uppercase font-bold tracking-widest">Monitoring Keywords (Comma separated)</label>
-                <input type="text" name="keywords" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:border-blue-500 transition focus:outline-none" placeholder="e.g. nginx, ubuntu, openssl">
+                <label for="asset_keywords" class="block text-xs text-gray-500 uppercase font-bold tracking-widest">Monitoring Keywords (Comma separated)</label>
+                <input type="text" id="asset_keywords" name="keywords" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:border-blue-500 transition focus:outline-none" placeholder="e.g. nginx, ubuntu, openssl">
                 <p class="text-[10px] text-gray-500">Any new CVE matching these terms will trigger an automated high-priority alert for this asset.</p>
             </div>
         </form>
@@ -57,7 +57,7 @@
                 <div class="flex justify-between items-start mb-4">
                     <div class="flex items-center gap-4">
                         <div class="w-12 h-12 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400 border border-blue-500/20">
-                            <span class="material-symbols-outlined">{{if eq .Type "Server"}}dns{{else if eq .Type "Software"}}code{{else if eq .Type "Network"}}router{{else if eq .Type "Cloud"}}cloud{{else}}devices{{end}}</span>
+                            <span class="material-symbols-outlined" aria-hidden="true">{{if eq .Type "Server"}}dns{{else if eq .Type "Software"}}code{{else if eq .Type "Network"}}router{{else if eq .Type "Cloud"}}cloud{{else}}devices{{end}}</span>
                         </div>
                         <div>
                             <div class="flex items-center gap-2">
@@ -74,7 +74,7 @@
                     <form action="/assets/delete" method="POST" class="delete-asset-form">
                         {{$.csrfField}}
                         <input type="hidden" name="id" value="{{.ID}}">
-                        <button type="submit" class="p-2 text-red-400/50 hover:text-red-400 hover:bg-red-400/10 rounded-full transition-all" aria-label="Delete asset {{.Name}}">
+                        <button type="submit" class="p-2 text-red-400/50 hover:text-red-400 hover:bg-red-400/10 rounded-full transition-all" aria-label="Delete asset {{.Name}}" title="Delete asset {{.Name}}">
                             <span class="material-symbols-outlined text-[20px]">delete</span>
                         </button>
                     </form>

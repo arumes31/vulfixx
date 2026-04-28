@@ -1,11 +1,10 @@
 package web
 
 import (
-
+	"cve-tracker/internal/models"
 	"encoding/json"
 	"log"
 	"net/http"
-	"time"
 )
 
 func (a *App) ActivityLogHandler(w http.ResponseWriter, r *http.Request) {
@@ -23,35 +22,24 @@ func (a *App) ActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 	`
 	rows, err := a.Pool.Query(r.Context(), query, userID)
 	if err != nil {
+		log.Printf("Error querying activity logs: %v", err)
 		http.Error(w, "Error fetching activity logs", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	logs := make([]map[string]interface{}, 0)
+	var logs []models.ActivityLog
 	for rows.Next() {
-		var l struct {
-			ID           int
-			ActivityType string
-			Description  string
-			IPAddress    string
-			CreatedAt    time.Time
-		}
+		var l models.ActivityLog
 		if err := rows.Scan(&l.ID, &l.ActivityType, &l.Description, &l.IPAddress, &l.CreatedAt); err != nil {
 			log.Printf("Error scanning activity log: %v", err)
 			continue
 		}
-		logs = append(logs, map[string]interface{}{
-			"ID":           l.ID,
-			"ActivityType": l.ActivityType,
-			"Description":  l.Description,
-			"IPAddress":    l.IPAddress,
-			"CreatedAt":    l.CreatedAt,
-		})
+		logs = append(logs, l)
 	}
 	if err := rows.Err(); err != nil {
 		log.Printf("Error iterating activity logs: %v", err)
-		http.Error(w, "Error fetching activity logs", http.StatusInternalServerError)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -82,26 +70,14 @@ func (a *App) ExportActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	logs := make([]map[string]interface{}, 0)
+	var logs []models.ActivityLog
 	for rows.Next() {
-		var l struct {
-			ID           int
-			ActivityType string
-			Description  string
-			IPAddress    string
-			CreatedAt    time.Time
-		}
+		var l models.ActivityLog
 		if err := rows.Scan(&l.ID, &l.ActivityType, &l.Description, &l.IPAddress, &l.CreatedAt); err != nil {
 			log.Printf("Error scanning activity log for export: %v", err)
 			continue
 		}
-		logs = append(logs, map[string]interface{}{
-			"id":            l.ID,
-			"activity_type": l.ActivityType,
-			"description":   l.Description,
-			"ip_address":    l.IPAddress,
-			"created_at":    l.CreatedAt,
-		})
+		logs = append(logs, l)
 	}
 	if err := rows.Err(); err != nil {
 		log.Printf("Error iterating activity logs for export: %v", err)

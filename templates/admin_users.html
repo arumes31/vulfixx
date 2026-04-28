@@ -48,7 +48,6 @@
                             {{if not .IsAdmin}}
                             <form action="/admin/users/delete" method="POST" class="inline" onsubmit="return confirm('WARNING: Permanently purge operator {{.Email}} from the system?');">
                                 {{$.csrfField}}
-                                <input type="hidden" name="csrf_token" value="{{$.AdminCSRFToken}}">
                                 <input type="hidden" name="id" value="{{.ID}}">
                                 <button type="submit" class="p-2 text-error hover:bg-error-container/30 rounded transition-colors" title="Purge Operator" aria-label="Purge Operator">
                                     <span class="material-symbols-outlined text-[18px]">person_remove</span>

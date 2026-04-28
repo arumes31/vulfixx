@@ -15,7 +15,7 @@
             <div class="glass border border-white/10 p-8 rounded-[2.5rem] sticky top-6 shadow-2xl">
                 <h3 class="text-xl font-bold text-white mb-6 flex items-center gap-3">
                     <div class="w-10 h-10 rounded-xl bg-[#00daf3]/10 flex items-center justify-center text-[#00daf3]">
-                        <span class="material-symbols-outlined">add_alert</span>
+                        <span class="material-symbols-outlined" aria-hidden="true">add_alert</span>
                     </div>
                     New Monitor
                 </h3>
@@ -75,7 +75,7 @@
                         <div class="flex justify-between items-start mb-6">
                             <div class="flex items-center gap-4">
                                 <div class="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-[#00daf3] border border-white/10">
-                                    <span class="material-symbols-outlined">analytics</span>
+                                    <span class="material-symbols-outlined" aria-hidden="true">analytics</span>
                                 </div>
                                 <div>
                                     <h3 class="text-lg font-bold text-white">{{if .Keyword}}{{.Keyword}}{{else}}Global Feed{{end}}</h3>
@@ -139,7 +139,7 @@
                 },
                 body: new URLSearchParams(formData)
             });
-            if (data && data.success !== false) {
+            if (data && data.success === true) {
                 window.location.reload();
             } else {
                 vulfixx.toast((data && data.message) || 'Failed to save monitor', 'error');
@@ -172,7 +172,7 @@
                 },
                 body: new URLSearchParams({ id: id })
             });
-            if (data && data.success !== false) {
+            if (data && data.success === true) {
                 window.location.reload();
             } else {
                 vulfixx.toast((data && data.message) || 'Failed to remove monitor', 'error');

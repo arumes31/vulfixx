@@ -27,6 +27,7 @@ func (a *App) InitTemplates() {
 	if flag.Lookup("test.v") != nil {
 		return
 	}
+	StopStatsTicker() // Cancel previous ticker if any
 	ctx, cancel := context.WithCancel(context.Background())
 	cancelStats = cancel
 	go a.StartStatsTicker(ctx)
@@ -96,7 +97,12 @@ func (a *App) AdminMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Optionally refresh session state to keep UI consistent
-		session, _ := a.SessionStore.Get(r, "vulfixx-session")
+		session, err := a.SessionStore.Get(r, "vulfixx-session")
+		if err != nil {
+			log.Printf("AdminMiddleware session get error: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
 		session.Values["is_admin"] = isAdmin
 		if err := session.Save(r, w); err != nil {
 			log.Printf("AdminMiddleware session save error: %v", err)
@@ -115,10 +121,15 @@ func (a *App) LogActivity(ctx context.Context, userID int, activityType, descrip
 		ipAddress = ipAddress[:45]
 	}
 
+	description = sanitizeForLog(description)
+	userAgent = sanitizeForLog(userAgent)
+	ipAddress = sanitizeForLog(ipAddress)
+
+	expiresAt := time.Now().AddDate(0, 0, 90) // 90 days retention
 	_, err = a.Pool.Exec(ctx, `
-		INSERT INTO user_activity_logs (user_id, activity_type, description, ip_address, user_agent)
-		VALUES ($1, $2, $3, $4, $5)
-	`, userID, activityType, description, ipAddress, userAgent)
+		INSERT INTO user_activity_logs (user_id, activity_type, description, ip_address, user_agent, retention_expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, userID, activityType, description, ipAddress, userAgent, expiresAt)
 	if err != nil {
 		log.Printf("Error logging activity: %v", err)
 	}
@@ -217,9 +228,12 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 	defer ticker.Stop()
 
 	refresh := func() {
+		refreshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+
 		var total, new24h int
-		err1 := a.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM cves").Scan(&total)
-		err2 := a.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM cves WHERE updated_date >= NOW() - INTERVAL '24 hours'").Scan(&new24h)
+		err1 := a.Pool.QueryRow(refreshCtx, "SELECT COUNT(*) FROM cves").Scan(&total)
+		err2 := a.Pool.QueryRow(refreshCtx, "SELECT COUNT(*) FROM cves WHERE updated_date >= NOW() - INTERVAL '24 hours'").Scan(&new24h)
 
 		if err1 == nil && err2 == nil {
 			statsCache.Lock()
@@ -260,7 +274,9 @@ func (a *App) SendResponse(w http.ResponseWriter, r *http.Request, success bool,
 		if errMsg != "" {
 			resp["error"] = errMsg
 		}
-		_ = json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			log.Printf("SendResponse: JSON encode error: %v", err)
+		}
 		return
 	}
 

@@ -20,7 +20,11 @@ func generateInviteCode() (string, error) {
 }
 
 func (a *App) TeamsHandler(w http.ResponseWriter, r *http.Request) {
-	userID, _ := a.GetUserID(r)
+	userID, ok := a.GetUserID(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
 
 	rows, err := a.Pool.Query(r.Context(), `
 		SELECT t.id, t.name, t.invite_code, tm.role 
@@ -157,9 +161,17 @@ func (a *App) LeaveTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Prevent orphaning: Check if user is the last owner
+	ctx := r.Context()
+	tx, err := a.Pool.Begin(ctx)
+	if err != nil {
+		a.SendResponse(w, r, false, "", "", "Internal server error")
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Prevent orphaning: Check if user is the last owner with FOR UPDATE
 	var role string
-	err = a.Pool.QueryRow(r.Context(), "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2", teamID, userID).Scan(&role)
+	err = tx.QueryRow(ctx, "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2 FOR UPDATE", teamID, userID).Scan(&role)
 	if err != nil {
 		a.SendResponse(w, r, false, "", "", "You are not a member of this team")
 		return
@@ -167,15 +179,24 @@ func (a *App) LeaveTeamHandler(w http.ResponseWriter, r *http.Request) {
 
 	if role == "owner" {
 		var ownerCount int
-		_ = a.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM team_members WHERE team_id = $1 AND role = 'owner'", teamID).Scan(&ownerCount)
+		err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM team_members WHERE team_id = $1 AND role = 'owner'", teamID).Scan(&ownerCount)
+		if err != nil {
+			a.SendResponse(w, r, false, "", "", "Internal server error")
+			return
+		}
 		if ownerCount <= 1 {
 			a.SendResponse(w, r, false, "", "", "You are the last owner. Please promote another member to owner before leaving.")
 			return
 		}
 	}
 
-	_, err = a.Pool.Exec(r.Context(), "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2", teamID, userID)
+	_, err = tx.Exec(ctx, "DELETE FROM team_members WHERE team_id = $1 AND user_id = $2", teamID, userID)
 	if err != nil {
+		a.SendResponse(w, r, false, "", "", "Internal server error")
+		return
+	}
+
+	if err = tx.Commit(ctx); err != nil {
 		a.SendResponse(w, r, false, "", "", "Internal server error")
 		return
 	}

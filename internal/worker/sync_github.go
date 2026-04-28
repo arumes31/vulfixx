@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 )
@@ -71,6 +72,9 @@ CVELoop:
 			}
 			req.Header.Set("Accept", "application/vnd.github.v3+json")
 			req.Header.Set("User-Agent", "Vulfixx-Threat-Intel")
+			if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+				req.Header.Set("Authorization", "token "+token)
+			}
 			resp, err := w.HTTP.Do(req)
 			if err != nil {
 				log.Printf("Worker: [ERROR] Failed to fetch GitHub buzz for %s: %v", cveID, err)

@@ -53,15 +53,16 @@ func getPatternRegex(pattern string) (*regexp.Regexp, error) {
 // hasNestedQuantifiers returns true if the syntax tree contains quantifiers (Star/Plus/Repeat)
 // nested inside other quantifiers, a common ReDoS pattern.
 func hasNestedQuantifiers(re *syntax.Regexp) bool {
-	if isQuantifier(re.Op) {
-		for _, sub := range re.Sub {
-			if isQuantifier(sub.Op) {
-				return true
-			}
-		}
+	return checkNested(re, false)
+}
+
+func checkNested(re *syntax.Regexp, inQuantifier bool) bool {
+	isQ := isQuantifier(re.Op)
+	if inQuantifier && isQ {
+		return true
 	}
 	for _, sub := range re.Sub {
-		if hasNestedQuantifiers(sub) {
+		if checkNested(sub, inQuantifier || isQ) {
 			return true
 		}
 	}
@@ -128,7 +129,7 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		JOIN assets a ON ak.asset_id = a.id
 		JOIN users u ON a.user_id = u.id
 		WHERE u.is_email_verified = TRUE
-		  AND $1 ILIKE '%' || ak.keyword || '%'
+		  AND $1 ILIKE '%' || REPLACE(REPLACE(REPLACE(ak.keyword, '\', '\\'), '%', '\%'), '_', '\_') || '%' ESCAPE '\'
 	`, cve.Description)
 	if err != nil {
 		log.Println("Error fetching asset keywords:", err)
@@ -177,10 +178,15 @@ func evaluateComplexFilter(logic string, cve *models.CVE) bool {
 	for i := 0; i < len(tokens); i++ {
 		switch tokens[i] {
 		case "epss":
-			if i+2 < len(tokens) && (tokens[i+1] == ">" || tokens[i+1] == ">=") {
+			if i+2 < len(tokens) {
 				val, err := strconv.ParseFloat(tokens[i+2], 64)
-				if err == nil && cve.EPSSScore < val {
-					return false
+				if err == nil {
+					if tokens[i+1] == ">" && cve.EPSSScore <= val {
+						return false
+					}
+					if tokens[i+1] == ">=" && cve.EPSSScore < val {
+						return false
+					}
 				}
 				i += 2
 			}
@@ -192,22 +198,30 @@ func evaluateComplexFilter(logic string, cve *models.CVE) bool {
 				i += 2
 			}
 		case "buzz":
-			if i+2 < len(tokens) && (tokens[i+1] == ">" || tokens[i+1] == ">=") {
+			if i+2 < len(tokens) {
 				val, err := strconv.Atoi(tokens[i+2])
-				if err == nil && cve.GitHubPoCCount < val {
-					return false
+				if err == nil {
+					if tokens[i+1] == ">" && cve.GitHubPoCCount <= val {
+						return false
+					}
+					if tokens[i+1] == ">=" && cve.GitHubPoCCount < val {
+						return false
+					}
 				}
 				i += 2
 			}
 		case "regex:":
-			// Consume the remainder of the token slice as the pattern (handles spaces)
 			if i+1 < len(tokens) {
 				pattern := strings.Join(tokens[i+1:], " ")
 				re, err := getPatternRegex(pattern)
-				if err == nil && !re.MatchString(cve.Description) {
+				if err != nil {
+					log.Printf("Complex filter regex error: %v", err)
+					return false // Fail closed
+				}
+				if !re.MatchString(cve.Description) {
 					return false
 				}
-				i = len(tokens) - 1 // consumed all remaining tokens
+				i = len(tokens) - 1
 			}
 		}
 	}
@@ -229,7 +243,8 @@ func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, s
 	// we would fetch them here, but we've already done the query in evaluateSubscriptions if needed.
 	// However, processAlerts job might only have partial data.
 	// Let's ensure it has what bufferAlert needs.
-	if cve.Description == "" || cve.CVSSScore == 0 {
+	// Ensure we have full details if the job only provided minimal data
+	if cve.CVEID == "" || cve.Description == "" {
 		err = w.Pool.QueryRow(ctx, `
 			SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, github_poc_count, published_date, "references" 
 			FROM cves WHERE id = $1

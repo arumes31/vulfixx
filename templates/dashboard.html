@@ -132,7 +132,7 @@
                                 {{if .CISAKEV}}
                                 <span class="inline-flex items-center px-2 py-0.5 rounded bg-red-600 text-white text-[9px] font-black uppercase tracking-widest shadow-lg shadow-red-600/20">KEV</span>
                                 {{end}}
-                                <button data-id="{{.ID}}" data-cve="{{.CVEID}}" data-notes="{{.Notes}}" class="notes-trigger material-symbols-outlined {{if .Notes}}text-[#00daf3] opacity-100{{else}}text-gray-600 opacity-40 hover:opacity-100{{end}} transition-all" title="Remediation Notes">description</button>
+                                <button data-id="{{.ID}}" data-cve="{{.CVEID}}" data-notes="{{.Notes}}" aria-label="Remediation Notes" class="notes-trigger material-symbols-outlined {{if .Notes}}text-[#00daf3] opacity-100{{else}}text-gray-600 opacity-40 hover:opacity-100{{end}} transition-all" title="Remediation Notes">description</button>
                             </div>
                         </td>
                         <td class="px-6 py-6">

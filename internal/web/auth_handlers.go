@@ -110,6 +110,8 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		err = a.Pool.QueryRow(r.Context(), "SELECT is_admin FROM users WHERE id = $1", preAuthUserID).Scan(&isAdmin)
 		if err != nil {
 			log.Printf("DB error fetching is_admin: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
 		}
 		session.Values["is_admin"] = isAdmin
 

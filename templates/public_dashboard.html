@@ -194,13 +194,28 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Navigate rows safely without inline onclick
+    // Navigate rows safely without inline onclick and support keyboard accessibility
     document.querySelectorAll('tr[data-cve-url]').forEach(function(row) {
-        row.addEventListener('click', function(e) {
-            // Don't navigate when the user clicks an anchor inside the row
-            if (e.target.closest('a')) return;
+        row.setAttribute('tabindex', '0');
+        row.setAttribute('role', 'link');
+        row.style.cursor = 'pointer';
+        
+        const navigate = function() {
             const url = row.getAttribute('data-cve-url');
             if (url) window.location.href = url;
+        };
+
+        row.addEventListener('click', function(e) {
+            if (e.target.closest('a')) return;
+            navigate();
+        });
+
+        row.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                if (e.target.closest('a')) return;
+                e.preventDefault();
+                navigate();
+            }
         });
     });
 });

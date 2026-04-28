@@ -100,9 +100,29 @@ func (a *App) AssetsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		var kwList []string
+		if keywords != "" {
+			kwList = strings.Split(keywords, ",")
+			if len(kwList) > 10 {
+				a.SendResponse(w, r, false, "", "", "Too many keywords (maximum 10)")
+				return
+			}
+			for i, kw := range kwList {
+				kw = strings.TrimSpace(kw)
+				if kw != "" {
+					if len(kw) > 50 {
+						a.SendResponse(w, r, false, "", "", "Keyword too long (maximum 50 characters)")
+						return
+					}
+					kwList[i] = kw
+				}
+			}
+		}
+
 		ctx := r.Context()
 		tx, err := a.Pool.Begin(ctx)
 		if err != nil {
+			log.Printf("Error starting transaction: %v", err)
 			a.SendResponse(w, r, false, "", "", "Internal server error")
 			return
 		}
@@ -118,19 +138,18 @@ func (a *App) AssetsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if keywords != "" {
-			kwList := strings.Split(keywords, ",")
+		if len(kwList) > 0 {
 			for _, kw := range kwList {
-				kw = strings.TrimSpace(kw)
-				if kw != "" {
-					_, err = tx.Exec(ctx, `
-						INSERT INTO asset_keywords (asset_id, keyword) VALUES ($1, $2)
-						ON CONFLICT DO NOTHING
-					`, assetID, kw)
-					if err != nil {
-						a.SendResponse(w, r, false, "", "", "Error adding keyword")
-						return
-					}
+				if kw == "" {
+					continue
+				}
+				_, err = tx.Exec(ctx, `
+					INSERT INTO asset_keywords (asset_id, keyword) VALUES ($1, $2)
+					ON CONFLICT DO NOTHING
+				`, assetID, kw)
+				if err != nil {
+					a.SendResponse(w, r, false, "", "", "Error adding keyword")
+					return
 				}
 			}
 		}
