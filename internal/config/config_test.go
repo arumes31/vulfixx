@@ -172,12 +172,12 @@ func TestLoadConfig(t *testing.T) {
 			for _, k := range keys {
 				val, ok := os.LookupEnv(k)
 				if ok {
-					os.Unsetenv(k)
+					_ = os.Unsetenv(k)
 					// Use a local variable to capture current key and value
 					currKey := k
 					currVal := val
 					t.Cleanup(func() {
-						os.Setenv(currKey, currVal)
+						_ = os.Setenv(currKey, currVal)
 					})
 				}
 			}
@@ -238,8 +238,8 @@ func TestGetEnv(t *testing.T) {
 		// Ensure it's missing
 		val, ok := os.LookupEnv("MISSING_KEY_XYZ")
 		if ok {
-			os.Unsetenv("MISSING_KEY_XYZ")
-			t.Cleanup(func() { os.Setenv("MISSING_KEY_XYZ", val) })
+			_ = os.Unsetenv("MISSING_KEY_XYZ")
+			t.Cleanup(func() { _ = os.Setenv("MISSING_KEY_XYZ", val) })
 		}
 		if got := getEnv("MISSING_KEY_XYZ", "fallback"); got != "fallback" {
 			t.Errorf("getEnv() = %v, want fallback", got)

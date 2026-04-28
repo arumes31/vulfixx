@@ -119,7 +119,7 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 				log.Printf("Error sending webhook %s %s: %v", req.Method, redacted, err)
 				return
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 				successChan <- true
 			} else {

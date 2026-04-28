@@ -3,7 +3,6 @@ package web
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/pashagolub/pgxmock/v3"
@@ -42,8 +41,7 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 	})
 
 	t.Run("ProxyMiddleware_Cloudflare", func(t *testing.T) {
-		os.Setenv("ENABLE_CLOUDFLARE_PROXY", "true")
-		defer os.Unsetenv("ENABLE_CLOUDFLARE_PROXY")
+		t.Setenv("ENABLE_CLOUDFLARE_PROXY", "true")
 
 		mock, _ := pgxmock.NewPool()
 		defer mock.Close()
@@ -70,8 +68,7 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 	})
 
 	t.Run("ProxyMiddleware_TrustedProxy", func(t *testing.T) {
-		os.Setenv("TRUSTED_PROXIES", "10.0.0.0/8")
-		defer os.Unsetenv("TRUSTED_PROXIES")
+		t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8")
 
 		mock, _ := pgxmock.NewPool()
 		defer mock.Close()
@@ -99,8 +96,7 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 	})
 	
 	t.Run("ProxyMiddleware_UntrustedProxy", func(t *testing.T) {
-		os.Setenv("TRUSTED_PROXIES", "127.0.0.1")
-		defer os.Unsetenv("TRUSTED_PROXIES")
+		t.Setenv("TRUSTED_PROXIES", "127.0.0.1")
 
 		mock, _ := pgxmock.NewPool()
 		defer mock.Close()

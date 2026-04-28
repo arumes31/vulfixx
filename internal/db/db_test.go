@@ -146,12 +146,12 @@ func TestInitRedisTable(t *testing.T) {
 			} else {
 				// Capture original value and restore after test
 				origVal, origSet := os.LookupEnv("REDIS_URL")
-				os.Unsetenv("REDIS_URL")
+				_ = os.Unsetenv("REDIS_URL")
 				t.Cleanup(func() {
 					if origSet {
-						os.Setenv("REDIS_URL", origVal)
+						_ = os.Setenv("REDIS_URL", origVal)
 					} else {
-						os.Unsetenv("REDIS_URL")
+						_ = os.Unsetenv("REDIS_URL")
 					}
 				})
 			}
@@ -296,7 +296,7 @@ func TestInitDB_Complex(t *testing.T) {
 
 			for k, v := range tt.envs {
 				if v == "" {
-					os.Unsetenv(k)
+					_ = os.Unsetenv(k)
 				} else {
 					t.Setenv(k, v)
 				}

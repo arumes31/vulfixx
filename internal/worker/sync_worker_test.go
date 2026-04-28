@@ -187,7 +187,7 @@ func TestWorkerSync_EPSS(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 			data := `{"data":[{"epss":"0.0123"}]}`
-			fmt.Fprint(rw, data)
+			_, _ = fmt.Fprint(rw, data)
 		}))
 		defer ts.Close()
         oldURL := defaultEPSSBaseURL
