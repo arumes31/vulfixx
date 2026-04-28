@@ -1,6 +1,9 @@
 package config
 
 import (
+	"encoding/base64"
+	"encoding/hex"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -98,21 +101,43 @@ func LoadConfig() {
 		}
 	}
 
-	// Validate key lengths (even when not empty)
-	if len(AppConfig.CSRFKey) > 0 && len(AppConfig.CSRFKey) != 32 {
+	// Validate and decode keys
+	AppConfig.CSRFKey = decodeKey("CSRFKey", AppConfig.CSRFKey, 32, appEnv)
+	AppConfig.SessionKey = decodeKey("SessionKey", AppConfig.SessionKey, 32, appEnv)
+}
+
+func decodeKey(name, val string, expectedLen int, appEnv string) string {
+	if val == "" {
+		return ""
+	}
+
+	var decoded []byte
+	var err error
+
+	// Try hex first
+	if len(val) == expectedLen*2 {
+		decoded, err = hex.DecodeString(val)
+	}
+
+	// Try base64 if hex failed or not hex length
+	if err != nil || decoded == nil {
+		decoded, err = base64.StdEncoding.DecodeString(val)
+	}
+
+	// Fallback to raw bytes if both failed
+	if err != nil || decoded == nil {
+		decoded = []byte(val)
+	}
+
+	if len(decoded) != expectedLen {
+		msg := fmt.Sprintf("%s must be exactly %d bytes (got %d)", name, expectedLen, len(decoded))
 		if appEnv != "development" {
-			logFatalf("Fatal: CSRFKey must be exactly 32 bytes (got %d)", len(AppConfig.CSRFKey))
+			logFatalf("Fatal: %s", msg)
 		} else {
-			logPrintf("Warning: CSRFKey should be exactly 32 bytes (got %d)", len(AppConfig.CSRFKey))
+			logPrintf("Warning: %s", msg)
 		}
 	}
-	if len(AppConfig.SessionKey) > 0 && len(AppConfig.SessionKey) < 32 {
-		if appEnv != "development" {
-			logFatalf("Fatal: SessionKey must be at least 32 bytes (got %d)", len(AppConfig.SessionKey))
-		} else {
-			logPrintf("Warning: SessionKey should be at least 32 bytes (got %d)", len(AppConfig.SessionKey))
-		}
-	}
+	return string(decoded)
 }
 
 func getEnv(key, fallback string) string {

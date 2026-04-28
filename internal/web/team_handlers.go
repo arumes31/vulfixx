@@ -73,7 +73,11 @@ func (a *App) CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := a.GetUserID(r)
+	userID, ok := a.GetUserID(r)
+	if !ok {
+		a.SendResponse(w, r, false, "", "", "Unauthorized")
+		return
+	}
 	name := r.FormValue("name")
 	if name == "" {
 		a.SendResponse(w, r, false, "", "", "Team name is required")
@@ -126,7 +130,11 @@ func (a *App) JoinTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := a.GetUserID(r)
+	userID, ok := a.GetUserID(r)
+	if !ok {
+		a.SendResponse(w, r, false, "", "", "Unauthorized")
+		return
+	}
 	inviteCode := r.FormValue("invite_code")
 	if inviteCode == "" {
 		a.SendResponse(w, r, false, "", "", "Invite code is required")
@@ -156,7 +164,11 @@ func (a *App) LeaveTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := a.GetUserID(r)
+	userID, ok := a.GetUserID(r)
+	if !ok {
+		a.SendResponse(w, r, false, "", "", "Unauthorized")
+		return
+	}
 	teamIDStr := r.FormValue("team_id")
 	teamID, err := strconv.Atoi(teamIDStr)
 	if err != nil {
@@ -220,7 +232,11 @@ func (a *App) SwitchTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := a.GetUserID(r)
+	userID, ok := a.GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 	teamIDStr := r.FormValue("team_id")
 	teamID, err := strconv.Atoi(teamIDStr)
 	if err != nil {

@@ -52,12 +52,15 @@ func setupTestApp(t *testing.T, mock pgxmock.PgxPoolIface) *App {
 	return app
 }
 
-func setSessionUser(t *testing.T, app *App, r *http.Request, userID int) {
-	session, _ := app.SessionStore.Get(r, "vulfixx-session")
+func setSessionUser(t *testing.T, app *App, r *http.Request, userID int, isAdmin bool) {
+	session, err := app.SessionStore.Get(r, "vulfixx-session")
+	if err != nil {
+		t.Fatalf("failed to get session: %v", err)
+	}
 	session.Values["user_id"] = userID
-	session.Values["is_admin"] = false
+	session.Values["is_admin"] = isAdmin
 	rr := httptest.NewRecorder()
-	err := session.Save(r, rr)
+	err = session.Save(r, rr)
 	if err != nil {
 		t.Fatalf("failed to save session: %v", err)
 	}

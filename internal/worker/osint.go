@@ -75,7 +75,11 @@ func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) map[string]i
 						waitTime = time.Duration(seconds) * time.Second
 					}
 				}
+				resp = nil
 				log.Printf("Reddit rate limited, waiting %v...", waitTime)
+				if retries == 2 {
+					break
+				}
 				select {
 				case <-ctx.Done():
 					return data

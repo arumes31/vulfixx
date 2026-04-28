@@ -3,7 +3,6 @@ package mocks
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 
 	"github.com/jackc/pgx/v5"
@@ -125,7 +124,7 @@ func (m *DBPoolMock) Begin(ctx context.Context) (pgx.Tx, error) {
 	if m.BeginFunc != nil {
 		return m.BeginFunc(ctx)
 	}
-	return nil, nil
+	return noopTx{}, nil
 }
 
 func (m *DBPoolMock) Close() {

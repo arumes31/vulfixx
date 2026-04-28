@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -50,10 +51,25 @@ func (w *Worker) fetchFromCISAKEV(ctx context.Context) {
 		return
 	}
 
+	if clStr := resp.Header.Get("Content-Length"); clStr != "" {
+		if cl, err := strconv.ParseInt(clStr, 10, 64); err == nil && cl > 50*1024*1024 {
+			log.Printf("Worker: [ERROR] CISA KEV feed too large (%d bytes)", cl)
+			return
+		}
+	}
+
 	var kevResp CISAKEVResponse
 	// Limit feed size to 50MB
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 50*1024*1024)).Decode(&kevResp); err != nil {
+	limitReader := io.LimitReader(resp.Body, 50*1024*1024)
+	if err := json.NewDecoder(limitReader).Decode(&kevResp); err != nil {
 		log.Printf("Worker: [ERROR] Failed to decode CISA KEV: %v", err)
+		return
+	}
+
+	// Detect if truncated by trying to read 1 more byte
+	buf := make([]byte, 1)
+	if n, err := resp.Body.Read(buf); err == nil && n > 0 {
+		log.Printf("Worker: [ERROR] CISA KEV feed exceeded 50MB limit")
 		return
 	}
 

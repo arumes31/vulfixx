@@ -45,7 +45,9 @@ func (a *App) SitemapHandler(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var id string
 			var updated time.Time
-			if err := rows.Scan(&id, &updated); err == nil {
+			if err := rows.Scan(&id, &updated); err != nil {
+				log.Printf("Error scanning sitemap row: %v", err)
+			} else {
 				var locBuf bytes.Buffer
 				_ = xml.EscapeText(&locBuf, []byte(id))
 				escapedID := locBuf.String()

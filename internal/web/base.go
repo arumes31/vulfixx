@@ -275,8 +275,26 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 	}
 }
 func (a *App) SendResponse(w http.ResponseWriter, r *http.Request, success bool, message string, redirect string, errMsg string) {
+	statusCode := http.StatusOK
+	if !success {
+		statusCode = http.StatusBadRequest
+		lowerMsg := strings.ToLower(errMsg)
+		if strings.Contains(lowerMsg, "unauthorized") {
+			statusCode = http.StatusUnauthorized
+		} else if strings.Contains(lowerMsg, "forbidden") {
+			statusCode = http.StatusForbidden
+		} else if strings.Contains(lowerMsg, "not found") {
+			statusCode = http.StatusNotFound
+		} else if strings.Contains(lowerMsg, "internal server error") {
+			statusCode = http.StatusInternalServerError
+		} else if strings.Contains(lowerMsg, "method not allowed") {
+			statusCode = http.StatusMethodNotAllowed
+		}
+	}
+
 	if r.Header.Get("X-Requested-With") == "XMLHttpRequest" || strings.Contains(r.Header.Get("Accept"), "application/json") {
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(statusCode)
 		resp := map[string]interface{}{
 			"success": success,
 		}
@@ -296,15 +314,6 @@ func (a *App) SendResponse(w http.ResponseWriter, r *http.Request, success bool,
 	}
 
 	if !success {
-		statusCode := http.StatusBadRequest
-		lowerMsg := strings.ToLower(errMsg)
-		if strings.Contains(lowerMsg, "unauthorized") {
-			statusCode = http.StatusUnauthorized
-		} else if strings.Contains(lowerMsg, "forbidden") {
-			statusCode = http.StatusForbidden
-		} else if strings.Contains(lowerMsg, "not found") {
-			statusCode = http.StatusNotFound
-		}
 		http.Error(w, errMsg, statusCode)
 		return
 	}

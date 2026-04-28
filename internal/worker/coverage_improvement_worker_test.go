@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -54,6 +55,12 @@ func TestNotifier_SendAlert_Webhooks_Detailed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.statusCode)
+			}))
+			defer ts.Close()
+			t.Setenv("TEST_MODE", "1") // Disable SSRF loopback check for test
+			
 			httpClient := &MockHTTPClientV2{
 				DoFunc: func(req *http.Request) (*http.Response, error) {
 					return &http.Response{
@@ -72,7 +79,7 @@ func TestNotifier_SendAlert_Webhooks_Detailed(t *testing.T) {
 
 			sub := models.UserSubscription{
 				EnableWebhook: true,
-				WebhookURL:    "https://google.com/webhook", // Safe public domain for SSRF check
+				WebhookURL:    ts.URL, // Local mock server
 			}
 			cve := &models.CVE{
 				CVEID:       "CVE-2023-0001",
@@ -174,9 +181,10 @@ func TestEmailWorker_Queues_Detailed(t *testing.T) {
 		defer cancel2()
 		w.processEmailVerification(ctx2)
         
-        // It should have re-enqueued the item
-        qlen, _ := rdb.LLen(context.Background(), "email_verification_queue").Result()
-        if qlen == 0 {
+        // It should have re-enqueued the item in delayed queue
+        opt := &redis.ZRangeBy{Min: "-inf", Max: "+inf"}
+        items, _ := rdb.ZRangeByScore(context.Background(), "email_verification_delayed", opt).Result()
+        if len(items) == 0 {
             t.Errorf("expected item to be re-enqueued on failure")
         }
 	})

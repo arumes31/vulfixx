@@ -159,14 +159,18 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		Medium   int
 		Low      int
 	}
-	_ = a.Pool.QueryRow(r.Context(), `
-		SELECT 
-			COUNT(*) FILTER (WHERE cvss_score >= 9.0),
-			COUNT(*) FILTER (WHERE cvss_score >= 7.0 AND cvss_score < 9.0),
-			COUNT(*) FILTER (WHERE cvss_score >= 4.0 AND cvss_score < 7.0),
-			COUNT(*) FILTER (WHERE cvss_score < 4.0)
-		FROM cves
-	`).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
+	
+	// Create base query from metricsQuery by replacing its SELECT list
+	baseFromJoin := metricsQuery[strings.Index(metricsQuery, "FROM cves c"):]
+	
+	severityQuery := "SELECT " +
+		"COUNT(DISTINCT CASE WHEN c.cvss_score >= 9.0 THEN c.id END), " +
+		"COUNT(DISTINCT CASE WHEN c.cvss_score >= 7.0 AND c.cvss_score < 9.0 THEN c.id END), " +
+		"COUNT(DISTINCT CASE WHEN c.cvss_score >= 4.0 AND c.cvss_score < 7.0 THEN c.id END), " +
+		"COUNT(DISTINCT CASE WHEN c.cvss_score < 4.0 THEN c.id END) " +
+		baseFromJoin + whereClause
+		
+	_ = a.Pool.QueryRow(r.Context(), severityQuery, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
 
 	// Fetch status distribution for the current view
 	var statusCounts struct {
@@ -175,15 +179,13 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		Resolved   int
 		Ignored    int
 	}
-	statusQuery := fmt.Sprintf(`
-		SELECT 
-			COUNT(*) FILTER (WHERE COALESCE(ucs.status, 'active') = 'active'),
-			COUNT(*) FILTER (WHERE ucs.status = 'in_progress'),
-			COUNT(*) FILTER (WHERE ucs.status = 'resolved'),
-			COUNT(*) FILTER (WHERE ucs.status = 'ignored')
-		FROM cves c
-		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s
-	`, statusJoinCond)
+	statusQuery := "SELECT " +
+		"COUNT(DISTINCT CASE WHEN COALESCE(ucs.status, 'active') = 'active' THEN c.id END), " +
+		"COUNT(DISTINCT CASE WHEN ucs.status = 'in_progress' THEN c.id END), " +
+		"COUNT(DISTINCT CASE WHEN ucs.status = 'resolved' THEN c.id END), " +
+		"COUNT(DISTINCT CASE WHEN ucs.status = 'ignored' THEN c.id END) " +
+		baseFromJoin + whereClause
+		
 	_ = a.Pool.QueryRow(r.Context(), statusQuery, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
 
 	a.RenderTemplate(w, r, "dashboard.html", map[string]interface{}{

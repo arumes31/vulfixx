@@ -78,7 +78,13 @@ CVELoop:
 			resp, err := w.HTTP.Do(req)
 			if err != nil {
 				log.Printf("Worker: [ERROR] Failed to fetch GitHub buzz for %s: %v", cveID, err)
-				continue CVELoop
+				waitDur := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(waitDur):
+				}
+				continue // retry
 			}
 			if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
 				_ = resp.Body.Close()
@@ -102,6 +108,17 @@ CVELoop:
 				}
 				continue // retry
 			}
+			if resp.StatusCode >= 500 {
+				log.Printf("Worker: [WARN] GitHub API returned status %d for %s", resp.StatusCode, cveID)
+				_ = resp.Body.Close()
+				waitDur := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(waitDur):
+				}
+				continue // retry
+			}
 			if resp.StatusCode != http.StatusOK {
 				log.Printf("Worker: [WARN] GitHub API returned status %d for %s", resp.StatusCode, cveID)
 				_ = resp.Body.Close()
@@ -111,7 +128,13 @@ CVELoop:
 			_ = resp.Body.Close()
 			if err != nil {
 				log.Printf("Worker: [ERROR] Failed to decode GitHub response for %s: %v", cveID, err)
-				continue CVELoop
+				waitDur := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(waitDur):
+				}
+				continue // retry
 			}
 			fetchOK = true
 			break // success

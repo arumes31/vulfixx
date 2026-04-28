@@ -122,6 +122,10 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 		if err := client.StartTLS(config); err != nil {
 			return fmt.Errorf("starttls: %w", err)
 		}
+		
+		if err := conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
+			return fmt.Errorf("set deadline after tls: %w", err)
+		}
 		hasTLS = true
 	}
 

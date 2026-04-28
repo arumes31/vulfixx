@@ -131,9 +131,10 @@ func TestLoadConfig(t *testing.T) {
 			envs: map[string]string{
 				"APP_ENV":           "production",
 				"DB_PASSWORD":       "p",
-				"SESSION_KEY":       "s",
-				"CSRF_KEY":          "c",
+				"SESSION_KEY":       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+				"CSRF_KEY":          "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 				"SMTP_PASS":         "sm",
+				"ADMIN_EMAIL":       "admin@example.com",
 				"ADMIN_PASSWORD":    "ap",
 				"ADMIN_TOTP_SECRET": "at",
 			},
@@ -150,6 +151,7 @@ func TestLoadConfig(t *testing.T) {
 			fatalCalled := false
 			logFatalf = func(format string, v ...interface{}) {
 				fatalCalled = true
+				t.Logf("FATAL CALLED: " + format, v...)
 				panic(fmt.Sprintf(format, v...))
 			}
 			warningCalled := false

@@ -46,7 +46,8 @@ func (a *App) AssetsHandler(w http.ResponseWriter, r *http.Request) {
 			var as AssetWithKeywords
 			if err := rows.Scan(&as.ID, &as.Name, &as.Type, &as.CreatedAt, &as.Keywords, &as.TeamName); err != nil {
 				log.Printf("Error scanning asset row: %v", err)
-				continue
+				http.Error(w, "Error parsing assets", http.StatusInternalServerError)
+				return
 			}
 			assets = append(assets, as)
 		}

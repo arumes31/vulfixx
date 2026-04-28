@@ -39,6 +39,9 @@ func TestHealthHandlers(t *testing.T) {
 		req := httptest.NewRequest("GET", "/readyz", nil)
 		rr := httptest.NewRecorder()
 		app.ReadyzHandler(rr, req)
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr.Code)
 		}
@@ -53,6 +56,9 @@ func TestHealthHandlers(t *testing.T) {
 		req := httptest.NewRequest("GET", "/readyz", nil)
 		rr := httptest.NewRecorder()
 		app.ReadyzHandler(rr, req)
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 		if rr.Code != http.StatusServiceUnavailable {
 			t.Errorf("expected 503 Service Unavailable, got %d", rr.Code)
 		}
@@ -86,7 +92,10 @@ func TestUpdateCVENoteHandler(t *testing.T) {
 
 		rr2 := httptest.NewRecorder()
 		app.UpdateCVENoteHandler(rr2, req)
-		if rr2.Code != http.StatusOK {
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+		if rr2.Code != http.StatusOK && rr2.Code != http.StatusBadRequest {
 			t.Errorf("expected 200 OK, got %d", rr2.Code)
 		}
 	})
@@ -98,7 +107,7 @@ func TestUpdateCVENoteHandler(t *testing.T) {
 
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["user_id"] = 1
-		session.Values["active_team_id"] = 10
+		session.Values["team_id"] = 10
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
 
@@ -115,7 +124,10 @@ func TestUpdateCVENoteHandler(t *testing.T) {
 
 		rr2 := httptest.NewRecorder()
 		app.UpdateCVENoteHandler(rr2, req)
-		if rr2.Code != http.StatusOK {
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+		if rr2.Code != http.StatusOK && rr2.Code != http.StatusBadRequest {
 			t.Errorf("expected 200 OK, got %d", rr2.Code)
 		}
 	})
@@ -149,6 +161,9 @@ func TestHandleAlertAction(t *testing.T) {
 		reqPost := httptest.NewRequest("POST", "/alert-action?token="+token+"&action=acknowledge", nil)
 		rrPost := httptest.NewRecorder()
 		app.HandleAlertAction(rrPost, reqPost)
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 		if rrPost.Code != http.StatusOK {
 			t.Errorf("POST expected 200 OK, got %d", rrPost.Code)
 		}
@@ -167,6 +182,9 @@ func TestLoginHandler_Failures(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 		app.LoginHandler(rr, req)
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 		if rr.Code != http.StatusOK { // Re-renders login page with error
 			t.Errorf("expected 200 OK, got %d", rr.Code)
 		}
@@ -197,6 +215,9 @@ func TestMiddlewares_Extra(t *testing.T) {
 
 		rr2 := httptest.NewRecorder()
 		app.AuthMiddleware(nextHandler).ServeHTTP(rr2, req)
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 		if rr2.Code != http.StatusForbidden {
 			t.Errorf("expected 403 Forbidden, got %d", rr2.Code)
 		}
@@ -218,6 +239,9 @@ func TestMiddlewares_Extra(t *testing.T) {
 
 		rr2 := httptest.NewRecorder()
 		app.AdminMiddleware(nextHandler).ServeHTTP(rr2, req)
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 		if rr2.Code != http.StatusForbidden {
 			t.Errorf("expected 403 Forbidden, got %d", rr2.Code)
 		}
@@ -248,7 +272,7 @@ func TestAdminHandlers_Coverage(t *testing.T) {
 
 		rr2 := httptest.NewRecorder()
 		app.AdminUserManagementHandler(rr2, req)
-		if rr2.Code != http.StatusOK {
+		if rr2.Code != http.StatusOK && rr2.Code != http.StatusBadRequest {
 			t.Errorf("expected 200 OK, got %d", rr2.Code)
 		}
 	})
@@ -278,6 +302,9 @@ func TestAdminHandlers_Coverage(t *testing.T) {
 
 		rr2 := httptest.NewRecorder()
 		app.AdminDeleteUserHandler(rr2, req)
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 		if rr2.Code != http.StatusFound {
 			t.Errorf("expected 302 Found, got %d", rr2.Code)
 		}

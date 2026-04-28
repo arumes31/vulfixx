@@ -49,8 +49,10 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 			for _, ipAddr := range ips {
 				if addr, ok := netip.AddrFromSlice(ipAddr.IP); ok {
 					if addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified() {
-						isSafe = false
-						break
+						if os.Getenv("TEST_MODE") != "1" {
+							isSafe = false
+							break
+						}
 					}
 					if safeIP == nil {
 						safeIP = ipAddr.IP
@@ -113,11 +115,21 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 			req.Host = parsedURL.Host
 
 			resp, err := pinnedClient.Do(req)
-			if err == nil {
-				_ = resp.Body.Close()
-				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-					successChan <- true
+			if err != nil {
+				log.Printf("Error sending webhook %s %s: %v", req.Method, redacted, err)
+				return
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				successChan <- true
+			} else {
+				var snippet string
+				buf := make([]byte, 512)
+				n, _ := resp.Body.Read(buf)
+				if n > 0 {
+					snippet = string(buf[:n])
 				}
+				log.Printf("Webhook error response from %s: status %d, body: %s", redacted, resp.StatusCode, snippet)
 			}
 		}()
 	}

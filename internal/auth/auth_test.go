@@ -149,8 +149,8 @@ func TestAuthErrors(t *testing.T) {
 	t.Run("RegisterDBFail", func(t *testing.T) {
 		mock, _ := db.SetupTestDB()
 		defer mock.Close()
-		mock.ExpectExec("INSERT INTO users").WillReturnError(errors.New("db fail"))
-		_, err := Register(ctx, "fail@example.com", "pass")
+		mock.ExpectExec("INSERT INTO users").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnError(errors.New("db fail"))
+		_, err := Register(ctx, "fail@example.com", "password123")
 		if err == nil || !errors.Is(err, ErrConflict) {
 			t.Errorf("expected ErrConflict on register db fail, got %v", err)
 		}

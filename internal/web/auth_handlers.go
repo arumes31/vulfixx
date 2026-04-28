@@ -13,6 +13,11 @@ import (
 
 func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
+		rlKeyGet := "totp_failures:" + r.RemoteAddr
+		if count, err := a.Redis.Get(r.Context(), rlKeyGet).Int(); err == nil && count >= 5 {
+			a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Too many attempts"})
+			return
+		}
 		a.RenderTemplate(w, r, "login.html", nil)
 		return
 	}
@@ -42,7 +47,6 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	if hasPreAuth && totpCode != "" {
 		preAuthTS, _ := session.Values["pre_auth_ts"].(int64)
-		attempts, _ := session.Values["pre_auth_attempts"].(int)
 
 		if time.Now().Unix()-preAuthTS > 300 {
 			delete(session.Values, "pre_auth_user_id")
@@ -55,13 +59,9 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if attempts >= 5 {
-			delete(session.Values, "pre_auth_user_id")
-			delete(session.Values, "pre_auth_ts")
-			delete(session.Values, "pre_auth_attempts")
-			if err := session.Save(r, w); err != nil {
-				log.Printf("Error saving session: %v", err)
-			}
+		// Verify rate limit before checking TOTP
+		rlKey := "totp_failures:" + r.RemoteAddr
+		if count, err := a.Redis.Get(r.Context(), rlKey).Int(); err == nil && count >= 5 {
 			a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Too many attempts"})
 			return
 		}
@@ -89,16 +89,16 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if !totp.Validate(totpCode, secret) {
-			session.Values["pre_auth_attempts"] = attempts + 1
-			if err := session.Save(r, w); err != nil {
-				log.Printf("Error saving session: %v", err)
-			}
+			a.Redis.Incr(r.Context(), rlKey)
+			a.Redis.Expire(r.Context(), rlKey, 15*time.Minute)
 			a.RenderTemplate(w, r, "login.html", map[string]interface{}{
 				"Error":       "Invalid TOTP code",
 				"RequireTOTP": true,
 			})
 			return
 		}
+		// Clear rate limit on success
+		a.Redis.Del(r.Context(), rlKey)
 
 		// Success! Clear pre-auth and set full auth
 		delete(session.Values, "pre_auth_user_id")
@@ -122,6 +122,12 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		a.LogActivity(r.Context(), preAuthUserID, "login", "Successful 2FA login", r.RemoteAddr, r.UserAgent())
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
+		return
+	}
+
+	rlKeyLogin := "totp_failures:" + r.RemoteAddr
+	if count, err := a.Redis.Get(r.Context(), rlKeyLogin).Int(); err == nil && count >= 5 {
+		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Too many attempts"})
 		return
 	}
 

@@ -6,6 +6,7 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"log"
+	"sync"
 )
 
 type Worker struct {
@@ -26,22 +27,34 @@ func NewWorker(pool db.DBPool, redis db.RedisProvider, mailer EmailSender, http 
 
 func (w *Worker) Start(ctx context.Context) {
 	log.Println("Worker: Starting background tasks...")
+	var wg sync.WaitGroup
+
+	runTask := func(task func(context.Context)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			task(ctx)
+		}()
+	}
 
 	// Synchronization Tasks
-	go w.fetchCVEsPeriodically(ctx)
-	go w.fetchCISAKEVPeriodically(ctx)
-	go w.syncEPSSPeriodically(ctx)
-	go w.syncGitHubBuzzPeriodically(ctx)
+	runTask(w.fetchCVEsPeriodically)
+	runTask(w.fetchCISAKEVPeriodically)
+	runTask(w.syncEPSSPeriodically)
+	runTask(w.syncGitHubBuzzPeriodically)
 
 	// Notification & Alert Processing
-	go w.processAlerts(ctx)
-	go w.processEmailVerification(ctx)
-	go w.processEmailChange(ctx)
-	go w.startWeeklySummaryTask(ctx)
+	runTask(w.processAlerts)
+	runTask(w.processEmailVerification)
+	runTask(w.processEmailChange)
+	runTask(w.startEmailRetryPoller)
+	runTask(w.startWeeklySummaryTask)
 
 	log.Println("Worker: All background goroutines started.")
 	<-ctx.Done()
-	log.Println("Worker: Stopping background tasks...")
+	log.Println("Worker: Stopping background tasks, waiting for goroutines to finish...")
+	wg.Wait()
+	log.Println("Worker: All tasks gracefully stopped.")
 }
 
 func (w *Worker) enqueueAlertsForCVE(ctx context.Context, cve models.CVE) {

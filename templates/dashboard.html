@@ -243,7 +243,9 @@
             vulfixx.toast('Invalid CVE ID', 'error');
             return;
         }
-        const notes = document.getElementById('notes-text').value;
+        const notesEl = document.getElementById('notes-text');
+        if (!notesEl) return;
+        const notes = notesEl.value;
         const data = await vulfixx.fetch('/api/notes', {
             method: 'POST',
             headers: { 
@@ -305,33 +307,45 @@
             }
         };
 
-        new Chart(document.getElementById('severityChart'), {
-            type: 'doughnut',
-            data: {
-                labels: ['Critical', 'High', 'Medium', 'Low'],
-                datasets: [{
-                    data: [{{.SeverityCounts.Critical}}, {{.SeverityCounts.High}}, {{.SeverityCounts.Medium}}, {{.SeverityCounts.Low}}],
-                    backgroundColor: ['#ef4444', '#f97316', '#3b82f6', '#475569'],
-                    borderWidth: 0,
-                    spacing: 5
-                }]
-            },
-            options: commonOptions
-        });
+        try {
+            if (window.Chart) {
+                const sevEl = document.getElementById('severityChart');
+                if (sevEl) {
+                    new Chart(sevEl, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['Critical', 'High', 'Medium', 'Low'],
+                            datasets: [{
+                                data: [{{.SeverityCounts.Critical}}, {{.SeverityCounts.High}}, {{.SeverityCounts.Medium}}, {{.SeverityCounts.Low}}],
+                                backgroundColor: ['#ef4444', '#f97316', '#3b82f6', '#475569'],
+                                borderWidth: 0,
+                                spacing: 5
+                            }]
+                        },
+                        options: commonOptions
+                    });
+                }
 
-        new Chart(document.getElementById('statusChart'), {
-            type: 'doughnut',
-            data: {
-                labels: ['Active', 'In Progress', 'Resolved', 'Ignored'],
-                datasets: [{
-                    data: [{{.StatusCounts.Active}}, {{.StatusCounts.InProgress}}, {{.StatusCounts.Resolved}}, {{.StatusCounts.Ignored}}],
-                    backgroundColor: ['#f87171', '#60a5fa', '#00daf3', '#4b5563'],
-                    borderWidth: 0,
-                    spacing: 5
-                }]
-            },
-            options: commonOptions
-        });
+                const statEl = document.getElementById('statusChart');
+                if (statEl) {
+                    new Chart(statEl, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['Active', 'In Progress', 'Resolved', 'Ignored'],
+                            datasets: [{
+                                data: [{{.StatusCounts.Active}}, {{.StatusCounts.InProgress}}, {{.StatusCounts.Resolved}}, {{.StatusCounts.Ignored}}],
+                                backgroundColor: ['#f87171', '#60a5fa', '#00daf3', '#4b5563'],
+                                borderWidth: 0,
+                                spacing: 5
+                            }]
+                        },
+                        options: commonOptions
+                    });
+                }
+            }
+        } catch (e) {
+            console.error('Error initializing charts:', e);
+        }
     });
 </script>
 {{end}}

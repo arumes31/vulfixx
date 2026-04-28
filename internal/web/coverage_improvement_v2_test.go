@@ -175,7 +175,6 @@ func TestAuthHandlers_TOTP_V2(t *testing.T) {
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["pre_auth_user_id"] = 1
 		session.Values["pre_auth_ts"] = time.Now().Unix()
-		session.Values["pre_auth_attempts"] = 5
 		rr_session := httptest.NewRecorder()
 		if err := session.Save(req, rr_session); err != nil {
 				t.Fatalf("session.Save: %v", err)
@@ -184,8 +183,10 @@ func TestAuthHandlers_TOTP_V2(t *testing.T) {
 			req.AddCookie(c)
 		}
 
+		app.Redis.Set(req.Context(), "totp_failures:"+req.RemoteAddr, 5, 0)
+
 		rr := httptest.NewRecorder()
-		expectBaseQueries(mock, 1)
+		// No base queries should be called because it returns early
 		app.LoginHandler(rr, req)
 
 		if rr.Code != http.StatusOK {
@@ -254,7 +255,7 @@ func TestSettingsHandlers_V2(t *testing.T) {
 		}
 		req := httptest.NewRequest("POST", "/settings/password", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		setSessionUser(t, app, req, userID)
+		setSessionUser(t, app, req, userID, false)
 
 		mock.ExpectQuery("SELECT email, is_totp_enabled, password_hash, COALESCE\\(totp_secret, ''\\) FROM users WHERE id = \\$1").
 			WithArgs(userID).
@@ -287,7 +288,7 @@ func TestSettingsHandlers_V2(t *testing.T) {
 		}
 		req := httptest.NewRequest("POST", "/settings/password", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		setSessionUser(t, app, req, userID)
+		setSessionUser(t, app, req, userID, false)
 
         hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("correctpass"), bcrypt.DefaultCost)
 
@@ -333,7 +334,7 @@ func TestSettingsHandlers_V2(t *testing.T) {
 		}
 		req := httptest.NewRequest("POST", "/settings/email", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		setSessionUser(t, app, req, userID)
+		setSessionUser(t, app, req, userID, false)
 
         hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
 
@@ -373,7 +374,7 @@ func TestSettingsHandlers_V2(t *testing.T) {
 		form := url.Values{"password": {"password"}}
 		req := httptest.NewRequest("POST", "/settings/delete", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		setSessionUser(t, app, req, userID)
+		setSessionUser(t, app, req, userID, false)
 
         hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
 
@@ -417,7 +418,7 @@ func TestSubscriptionHandlers_V2(t *testing.T) {
 		}
 		req := httptest.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		setSessionUser(t, app, req, userID)
+		setSessionUser(t, app, req, userID, false)
 
 		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM user_subscriptions WHERE user_id = \\$1").
 			WithArgs(userID).

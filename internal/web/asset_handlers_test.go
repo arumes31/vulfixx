@@ -129,7 +129,7 @@ func TestAssetsHandler(t *testing.T) {
 
 				req := httptest.NewRequest("POST", "/assets", strings.NewReader(tt.form.Encode()))
 				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-				setSessionUser(t, app, req, 1)
+				setSessionUser(t, app, req, 1, false)
 
 				tt.mockExpect(mock)
 
@@ -159,7 +159,7 @@ func TestDeleteAssetHandler(t *testing.T) {
 		form := url.Values{"id": {"1"}}
 		req := httptest.NewRequest("POST", "/assets/delete", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		setSessionUser(t, app, req, 1)
+		setSessionUser(t, app, req, 1, false)
 
 		mock.ExpectExec("DELETE FROM assets").
 			WithArgs(1, 1).

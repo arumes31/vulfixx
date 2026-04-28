@@ -107,7 +107,11 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
 
 	params := url.Values{}
 	if !isBackfill {
-		lastSync, _ := w.getLastSyncTime(ctx)
+		lastSync, err := w.getLastSyncTime(ctx)
+		if err != nil {
+			log.Printf("Worker: Error getting last sync time: %v", err)
+			return
+		}
 		params.Set("lastModStartDate", lastSync.Format(time.RFC3339))
 		params.Set("lastModEndDate", time.Now().UTC().Format(time.RFC3339))
 	}

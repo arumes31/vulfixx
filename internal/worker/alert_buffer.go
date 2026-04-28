@@ -43,6 +43,10 @@ func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, e
 	set, err := w.Redis.SetNX(ctx, processingKey, "true", 10*time.Minute).Result()
 	if err != nil {
 		log.Printf("Error setting alert processing lock for key %s: %v", processingKey, err)
+		// Rollback the pushed alert
+		if rErr := w.Redis.LRem(ctx, key, 1, blob).Err(); rErr != nil {
+			log.Printf("Error rolling back pushed alert for %s: %v", key, rErr)
+		}
 		return false
 	}
 	if set {
@@ -57,9 +61,25 @@ func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, e
 				defer cancel()
 				w.Redis.Del(cleanupCtx, pKey)
 			}()
+			
+			// Initial wait
 			select {
 			case <-time.After(bTime):
+			}
+			
+			for {
 				w.processUserBuffer(bgCtx, uid)
+				
+				// Re-check buffer length
+				bufferKey := fmt.Sprintf("alert_buffer:%d", uid)
+				llen, err := w.Redis.LLen(bgCtx, bufferKey).Result()
+				if err != nil || llen == 0 {
+					break
+				}
+				// Small backoff before reprocessing
+				select {
+				case <-time.After(1 * time.Second):
+				}
 			}
 		}(bufferTime, processingKey, userID)
 	}
@@ -99,13 +119,14 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 		w.sendAlert(sub, &data.CVE, data.Email, data.AssetName)
 		return
 	}
-	var email string
+	uniqueEmails := make(map[string]bool)
 	type AlertItem struct {
 		CVEID     string
 		Score     float64
 		AssetName string
 		Buzz      int
 		HasOSINT  bool
+		CVE       *models.CVE
 	}
 	var items []AlertItem
 	for _, b := range blobs {
@@ -115,21 +136,30 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 			AssetName string     `json:"asset_name"`
 		}
 		if err := json.Unmarshal([]byte(b), &data); err != nil {
+			log.Printf("Error unmarshaling alert blob: %v", err)
 			continue
 		}
-		email = data.Email
+		if data.Email != "" {
+			uniqueEmails[data.Email] = true
+		}
 		hasOSINT := false
 		if hn, ok := data.CVE.OSINTData["hn"].([]interface{}); ok && len(hn) > 0 {
 			hasOSINT = true
 		} else if r, ok := data.CVE.OSINTData["reddit"].([]interface{}); ok && len(r) > 0 {
 			hasOSINT = true
 		}
+		// Also invoke webhook for each item individually since it's a digest
+		sub := models.UserSubscription{EnableWebhook: true}
+		cveCopy := data.CVE
+		w.sendAlert(sub, &cveCopy, data.Email, data.AssetName)
+
 		items = append(items, AlertItem{
 			CVEID:     data.CVE.CVEID,
 			Score:     data.CVE.CVSSScore,
 			AssetName: data.AssetName,
 			Buzz:      data.CVE.GitHubPoCCount,
 			HasOSINT:  hasOSINT,
+			CVE:       &cveCopy,
 		})
 	}
 	rowsHTML := ""
@@ -187,12 +217,14 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 		</div>
 	`, len(items), rowsHTML, baseURL)
 
-	if email == "" {
+	if len(uniqueEmails) == 0 {
 		log.Printf("Error: No recipient email found for user %d digest", userID)
 		return
 	}
 
-	if err := w.Mailer.SendEmail(email, "Threat Brief: Multiple Vulnerabilities Detected", body); err != nil {
-		log.Printf("Failed to send threat brief: %v", err)
+	for email := range uniqueEmails {
+		if err := w.Mailer.SendEmail(email, "Threat Brief: Multiple Vulnerabilities Detected", body); err != nil {
+			log.Printf("Failed to send threat brief to %s: %v", maskEmail(email), err)
+		}
 	}
 }

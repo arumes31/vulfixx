@@ -43,8 +43,9 @@
                     <span class="text-[10px] font-bold text-gray-500 uppercase">EPSS Score</span>
                     <span class="text-sm font-mono text-white">{{printf "%.4f" .CVE.EPSSScore}}</span>
                 </div>
-                <div class="w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                <div class="w-full h-1 bg-white/5 rounded-full overflow-hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{multiply .CVE.EPSSScore 100}}">
                     <div class="h-full bg-primary" style="width: {{multiply .CVE.EPSSScore 100}}%"></div>
+                    <span class="sr-only">EPSS score: {{multiply .CVE.EPSSScore 100}}%</span>
                 </div>
             </div>
         </div>
@@ -80,7 +81,7 @@
         </h2>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             {{range .CVE.References}}
-            <a href="{{.}}" target="_blank" rel="noopener noreferrer" class="glass p-4 rounded-xl border border-white/5 hover:border-primary/30 hover:bg-white/[0.02] transition-all flex items-center justify-between group">
+            <a href="{{. | safeURL}}" target="_blank" rel="noopener noreferrer" class="glass p-4 rounded-xl border border-white/5 hover:border-primary/30 hover:bg-white/[0.02] transition-all flex items-center justify-between group">
                 <span class="text-xs text-gray-400 truncate max-w-[80%] font-mono">{{.}}</span>
                 <span class="material-symbols-outlined text-[16px] text-gray-600 group-hover:text-primary">open_in_new</span>
             </a>

@@ -57,8 +57,10 @@ func (w *Worker) syncEPSS(ctx context.Context) {
 
 		epssURL := fmt.Sprintf("%s?cve=%s", defaultEPSSBaseURL, cveID)
 		var resp *http.Response
+		var err error
 		for retries := 0; retries < 3; retries++ {
-			req, err := http.NewRequestWithContext(ctx, "GET", epssURL, nil)
+			var req *http.Request
+			req, err = http.NewRequestWithContext(ctx, "GET", epssURL, nil)
 			if err != nil {
 				log.Printf("Worker: [ERROR] Failed to create EPSS request for %s (retry %d): %v", cveID, retries, err)
 				break
@@ -70,6 +72,7 @@ func (w *Worker) syncEPSS(ctx context.Context) {
 			}
 			if resp.StatusCode == http.StatusTooManyRequests {
 				_ = resp.Body.Close()
+				resp = nil
 				waitTime := 5 * time.Second
 				log.Printf("EPSS rate limited, waiting %v...", waitTime)
 				select {

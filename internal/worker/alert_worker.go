@@ -140,6 +140,7 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		var keyword, email, assetName string
 		var userID int
 		if err := assetRows.Scan(&keyword, &userID, &email, &assetName); err != nil {
+			log.Printf("Error scanning asset keyword row: %v", err)
 			continue
 		}
 		if notifiedUsers[userID] {
@@ -180,6 +181,9 @@ func evaluateComplexFilter(logic string, cve *models.CVE) bool {
 		case "epss":
 			if i+2 < len(tokens) {
 				val, err := strconv.ParseFloat(tokens[i+2], 64)
+				if err != nil {
+					return false
+				}
 				if err == nil {
 					if tokens[i+1] == ">" && cve.EPSSScore <= val {
 						return false
@@ -200,6 +204,9 @@ func evaluateComplexFilter(logic string, cve *models.CVE) bool {
 		case "buzz":
 			if i+2 < len(tokens) {
 				val, err := strconv.Atoi(tokens[i+2])
+				if err != nil {
+					return false
+				}
 				if err == nil {
 					if tokens[i+1] == ">" && cve.GitHubPoCCount <= val {
 						return false
@@ -210,18 +217,30 @@ func evaluateComplexFilter(logic string, cve *models.CVE) bool {
 				}
 				i += 2
 			}
-		case "regex:":
-			if i+1 < len(tokens) {
-				pattern := strings.Join(tokens[i+1:], " ")
-				re, err := getPatternRegex(pattern)
-				if err != nil {
-					log.Printf("Complex filter regex error: %v", err)
-					return false // Fail closed
+		default:
+			if strings.HasPrefix(tokens[i], "regex:") {
+				var pattern string
+				if tokens[i] == "regex:" {
+					if i+1 < len(tokens) {
+						pattern = strings.Join(tokens[i+1:], " ")
+					}
+				} else {
+					pattern = strings.TrimPrefix(tokens[i], "regex:")
+					if i+1 < len(tokens) {
+						pattern += " " + strings.Join(tokens[i+1:], " ")
+					}
 				}
-				if !re.MatchString(cve.Description) {
-					return false
+				if pattern != "" {
+					re, err := getPatternRegex(pattern)
+					if err != nil {
+						log.Printf("Complex filter regex error: %v", err)
+						return false // Fail closed
+					}
+					if !re.MatchString(cve.Description) {
+						return false
+					}
+					i = len(tokens) - 1
 				}
-				i = len(tokens) - 1
 			}
 		}
 	}

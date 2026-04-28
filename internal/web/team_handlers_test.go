@@ -100,7 +100,7 @@ func TestCreateTeamHandler(t *testing.T) {
 			form:           url.Values{"name": {""}},
 			userID:         1,
 			mockExpect:     func(mock pgxmock.PgxPoolIface) {},
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusBadRequest,
 			expectedBody:   "Team name is required",
 		},
 		{
@@ -136,7 +136,7 @@ func TestCreateTeamHandler(t *testing.T) {
 					WillReturnError(fmt.Errorf("duplicate key value 23505"))
 				mock.ExpectRollback()
 			},
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusBadRequest,
 			expectedBody:   "Team name already exists",
 		},
 		{
@@ -147,7 +147,7 @@ func TestCreateTeamHandler(t *testing.T) {
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectBegin().WillReturnError(fmt.Errorf("begin error"))
 			},
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "Internal server error",
 		},
 		{
@@ -162,7 +162,7 @@ func TestCreateTeamHandler(t *testing.T) {
 					WillReturnError(fmt.Errorf("insert error"))
 				mock.ExpectRollback()
 			},
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "Internal server error",
 		},
 		{
@@ -180,7 +180,7 @@ func TestCreateTeamHandler(t *testing.T) {
 					WillReturnError(fmt.Errorf("insert member error"))
 				mock.ExpectRollback()
 			},
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "Internal server error",
 		},
 		{
@@ -199,7 +199,7 @@ func TestCreateTeamHandler(t *testing.T) {
 				mock.ExpectCommit().WillReturnError(fmt.Errorf("commit error"))
 				mock.ExpectRollback()
 			},
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "Internal server error",
 		},
 	}
@@ -264,7 +264,7 @@ func TestJoinTeamHandler(t *testing.T) {
 			form:           url.Values{"invite_code": {""}},
 			userID:         1,
 			mockExpect:     func(mock pgxmock.PgxPoolIface) {},
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusBadRequest,
 			expectedBody:   "Invite code is required",
 		},
 		{
@@ -277,7 +277,7 @@ func TestJoinTeamHandler(t *testing.T) {
 					WithArgs("wrong").
 					WillReturnError(fmt.Errorf("not found"))
 			},
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusBadRequest,
 			expectedBody:   "Invalid invite code",
 		},
 		{
@@ -312,7 +312,7 @@ func TestJoinTeamHandler(t *testing.T) {
 					WithArgs(10, 1).
 					WillReturnError(fmt.Errorf("db error"))
 			},
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "Internal server error",
 		},
 	}
@@ -370,7 +370,7 @@ func TestLeaveTeamHandler(t *testing.T) {
 			name:           "Invalid Method",
 			method:         "GET",
 			mockExpect:     func(mock pgxmock.PgxPoolIface) {},
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusMethodNotAllowed,
 			expectedBody:   "Method not allowed",
 		},
 		{
@@ -379,7 +379,7 @@ func TestLeaveTeamHandler(t *testing.T) {
 			form:           url.Values{"team_id": {"abc"}},
 			userID:         1,
 			mockExpect:     func(mock pgxmock.PgxPoolIface) {},
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusBadRequest,
 			expectedBody:   "Invalid team ID",
 		},
 		{
@@ -393,7 +393,7 @@ func TestLeaveTeamHandler(t *testing.T) {
 					WithArgs(10, 1).
 					WillReturnError(fmt.Errorf("not member"))
 			},
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusBadRequest,
 			expectedBody:   "You are not a member of this team",
 		},
 		{
@@ -410,7 +410,7 @@ func TestLeaveTeamHandler(t *testing.T) {
 					WithArgs(10).
 					WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
 			},
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusBadRequest,
 			expectedBody:   "You are the last owner",
 		},
 		{
@@ -471,7 +471,7 @@ func TestLeaveTeamHandler(t *testing.T) {
 					WithArgs(10, 1).
 					WillReturnError(fmt.Errorf("db error"))
 			},
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "Internal server error",
 		},
 	}

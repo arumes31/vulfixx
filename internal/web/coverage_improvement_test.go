@@ -89,7 +89,7 @@ func TestExportCVEsHandler_Extra(t *testing.T) {
 		app := setupTestApp(t, mock)
 
 		req, _ := http.NewRequest("GET", "/export", nil)
-		setSessionUser(t, app, req, 1)
+		setSessionUser(t, app, req, 1, false)
 
 		mock.ExpectQuery(`SELECT DISTINCT c.cve_id, c.description, c.cvss_score, c.cisa_kev, c.published_date`).
 			WithArgs(1).
@@ -117,7 +117,7 @@ func TestExportCVEsHandler_Extra(t *testing.T) {
 		app := setupTestApp(t, mock)
 
 		req, _ := http.NewRequest("GET", "/export", nil)
-		setSessionUser(t, app, req, 1)
+		setSessionUser(t, app, req, 1, false)
 
 		mock.ExpectQuery(`SELECT DISTINCT c.cve_id`).
 			WithArgs(1).
@@ -137,7 +137,7 @@ func TestExportCVEsHandler_Extra(t *testing.T) {
 		app := setupTestApp(t, mock)
 
 		req, _ := http.NewRequest("GET", "/export", nil)
-		setSessionUser(t, app, req, 1)
+		setSessionUser(t, app, req, 1, false)
 
 		// Return a row that will fail to scan (e.g., wrong type)
 		mock.ExpectQuery(`SELECT DISTINCT c.cve_id`).
@@ -161,7 +161,7 @@ func TestActivityLogHandler_Extra(t *testing.T) {
 		app := setupTestApp(t, mock)
 
 		req, _ := http.NewRequest("GET", "/activity", nil)
-		setSessionUser(t, app, req, 1)
+		setSessionUser(t, app, req, 1, false)
 
 		mock.ExpectQuery(`SELECT id, activity_type, description, ip_address, created_at FROM user_activity_logs`).
 			WithArgs(1).
@@ -185,7 +185,7 @@ func TestActivityLogHandler_Extra(t *testing.T) {
 		app := setupTestApp(t, mock)
 
 		req, _ := http.NewRequest("GET", "/activity", nil)
-		setSessionUser(t, app, req, 1)
+		setSessionUser(t, app, req, 1, false)
 
 		mock.ExpectQuery(`SELECT id, activity_type, description, ip_address, created_at FROM user_activity_logs`).
 			WithArgs(1).
@@ -207,7 +207,7 @@ func TestExportActivityLogHandler_Extra(t *testing.T) {
 		app := setupTestApp(t, mock)
 
 		req, _ := http.NewRequest("GET", "/activity/export", nil)
-		setSessionUser(t, app, req, 1)
+		setSessionUser(t, app, req, 1, false)
 
 		mock.ExpectQuery(`SELECT id, activity_type, description, ip_address, created_at FROM user_activity_logs`).
 			WithArgs(1).
@@ -239,7 +239,7 @@ func TestExportActivityLogHandler_Extra(t *testing.T) {
 		app := setupTestApp(t, mock)
 
 		req, _ := http.NewRequest("GET", "/activity/export", nil)
-		setSessionUser(t, app, req, 1)
+		setSessionUser(t, app, req, 1, false)
 
 		mock.ExpectQuery(`SELECT id, activity_type, description, ip_address, created_at FROM user_activity_logs`).
 			WithArgs(1).
@@ -264,7 +264,7 @@ func TestSwitchTeamHandler_Extra(t *testing.T) {
 		req := httptest.NewRequest("POST", "/teams/switch", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("Referer", "https://malicious.com")
-		setSessionUser(t, app, req, 1)
+		setSessionUser(t, app, req, 1, false)
 
 		mock.ExpectQuery("SELECT EXISTS").
 			WithArgs(10, 1).
@@ -290,7 +290,7 @@ func TestSwitchTeamHandler_Extra(t *testing.T) {
 		req := httptest.NewRequest("POST", "/teams/switch", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("Referer", "::invalid-url::")
-		setSessionUser(t, app, req, 1)
+		setSessionUser(t, app, req, 1, false)
 
 		mock.ExpectQuery("SELECT EXISTS").
 			WithArgs(10, 1).

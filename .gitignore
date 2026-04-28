@@ -9,27 +9,19 @@ node_modules
 gosec_results*
 .jules/
 .Jules/
+
+# Scoped runtime files
+logs/
+tmp/
 *.log
 *.tmp
 
 # Coverage artifacts – never commit generated profiles
-coverage
-coverage.*
 coverage/
-*.cov
-*.out
+coverage.*
 *.coverprofile
 *_cov
 *_coverage
 *_coverage.txt
 coverage_stats.txt
-health
-db
-web
-worker
-auth
-**/coverage
 **/coverage.out
-**/*.cov
-**/*.out
-**/*.coverprofile

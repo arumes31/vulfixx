@@ -82,7 +82,7 @@
                                     <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">CVSS &ge; {{.MinSeverity}}</span>
                                 </div>
                             </div>
-                            <button data-id="{{.ID}}" class="delete-monitor-btn w-8 h-8 rounded-full flex items-center justify-center text-red-400/50 hover:bg-red-400/10 hover:text-red-400 transition-all">
+                            <button data-id="{{.ID}}" aria-label="Delete monitor" class="delete-monitor-btn w-8 h-8 rounded-full flex items-center justify-center text-red-400/50 hover:bg-red-400/10 hover:text-red-400 transition-all">
                                 <span class="material-symbols-outlined text-xl">delete</span>
                             </button>
                         </div>
@@ -173,11 +173,14 @@
                 body: new URLSearchParams({ id: id })
             });
             if (data && data.success === true) {
+                vulfixx.closeModal();
                 window.location.reload();
             } else {
+                vulfixx.closeModal();
                 vulfixx.toast((data && data.message) || 'Failed to remove monitor', 'error');
             }
         } catch (err) {
+            vulfixx.closeModal();
             vulfixx.toast('Network error: ' + err.message, 'error');
         }
     }

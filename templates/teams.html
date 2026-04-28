@@ -149,7 +149,9 @@
     }
 
     async function submitJoin() {
-        const code = document.getElementById('join-code').value;
+        const input = document.getElementById('join-code');
+        if (!input) return;
+        const code = input.value;
         if (!code) return vulfixx.toast('Please enter a code', 'error');
         
         const data = await vulfixx.fetch('/teams/join', {
@@ -200,7 +202,9 @@
     }
 
     async function submitCreate() {
-        const name = document.getElementById('team-name').value;
+        const input = document.getElementById('team-name');
+        if (!input) return;
+        const name = input.value;
         if (!name) return vulfixx.toast('Please enter a name', 'error');
         
         const data = await vulfixx.fetch('/teams/create', {
@@ -272,7 +276,11 @@
         // Close menus when clicking outside
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.action-menu')) {
-                document.querySelectorAll('.action-menu-dropdown').forEach(el => el.classList.add('hidden'));
+                document.querySelectorAll('.action-menu-dropdown').forEach(el => {
+                    el.classList.add('hidden');
+                    const trigger = document.querySelector(`[data-menu="${el.id}"]`);
+                    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+                });
             }
         });
     });

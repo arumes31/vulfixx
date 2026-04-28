@@ -134,3 +134,46 @@ func (w *Worker) sendVerificationEmail(email, token string) error {
 	body := fmt.Sprintf("<div style=\"font-family: sans-serif;\"><p>Welcome to Vulfixx! Please click the link below to verify your email address:</p><p><a href=\"%s\">%s</a></p></div>", link, link)
 	return w.Mailer.SendEmail(email, subject, body)
 }
+
+func (w *Worker) startEmailRetryPoller(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			w.pollDelayedQueue(ctx, "email_verification_delayed", "email_verification_queue")
+			w.pollDelayedQueue(ctx, "email_change_delayed", "email_change_queue")
+		}
+	}
+}
+
+func (w *Worker) pollDelayedQueue(ctx context.Context, delayedQueue, activeQueue string) {
+	now := float64(time.Now().UnixMilli())
+	opt := &redis.ZRangeBy{
+		Min: "-inf",
+		Max: fmt.Sprintf("%f", now),
+	}
+	
+	// Fetch due items
+	items, err := w.Redis.ZRangeByScore(ctx, delayedQueue, opt).Result()
+	if err != nil {
+		log.Printf("Worker: Error fetching from %s: %v", delayedQueue, err)
+		return
+	}
+	
+	for _, item := range items {
+		// Attempt to remove it first to avoid duplicates
+		removed, err := w.Redis.ZRem(ctx, delayedQueue, item).Result()
+		if err != nil {
+			log.Printf("Worker: Error removing from %s: %v", delayedQueue, err)
+			continue
+		}
+		if removed > 0 {
+			if err := w.Redis.LPush(ctx, activeQueue, item).Err(); err != nil {
+				log.Printf("Worker: Error pushing to %s: %v", activeQueue, err)
+			}
+		}
+	}
+}

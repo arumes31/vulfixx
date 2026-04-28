@@ -3,6 +3,7 @@ package web
 import (
 	"html/template"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,6 +36,13 @@ func (a *App) InitTemplatesWithFuncs() {
 		"subtract":   func(a, b int) int { return a - b },
 		"multiply":   func(a, b float64) float64 { return a * b },
 		"GetBaseURL": GetBaseURL,
+		"safeURL": func(s string) template.URL {
+			parsed, err := url.Parse(s)
+			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+				return template.URL("#invalid-url")
+			}
+			return template.URL(s)
+		},
 		"severityColor": func(score float64) string {
 			if score <= 0 || score > 10 {
 				return "text-gray-400"
@@ -80,14 +88,22 @@ func (a *App) InitTemplatesWithFuncs() {
 
 	baseFile := filepath.Join(templateDir, "base.html")
 	pattern := filepath.Join(templateDir, "*.html")
-	files, _ := filepath.Glob(pattern)
+	files, err := filepath.Glob(pattern)
+	if err != nil {
+		log.Printf("Error globbing templates: %v", err)
+	}
 
 	for _, file := range files {
 		name := filepath.Base(file)
 		if name == "base.html" {
 			continue
 		}
-		a.TemplateMap[name] = template.Must(template.New(name).Funcs(funcs).ParseFiles(baseFile, file))
+		tmpl, err := template.New(name).Funcs(funcs).ParseFiles(baseFile, file)
+		if err != nil {
+			log.Printf("Error parsing template %s: %v", name, err)
+			continue
+		}
+		a.TemplateMap[name] = tmpl
 	}
 
 	if len(a.TemplateMap) == 0 {
@@ -107,7 +123,9 @@ func findTemplatesDir() string {
 	candidate := start
 	for i := 0; i < 5; i++ {
 		dir := filepath.Join(candidate, "templates")
-		if matches, _ := filepath.Glob(filepath.Join(dir, "*.html")); len(matches) > 0 {
+		if matches, err := filepath.Glob(filepath.Join(dir, "*.html")); err != nil {
+			log.Printf("Error finding templates dir: %v", err)
+		} else if len(matches) > 0 {
 			abs, err := filepath.Abs(dir)
 			if err == nil {
 				return abs

@@ -62,6 +62,9 @@ func TestSyncErrorConditions(t *testing.T) {
 		defer func() { defaultEPSSBaseURL = oldURL }()
 		mock.ExpectQuery("SELECT cve_id FROM cves").WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-1"))
 		w.syncEPSS(ctx)
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
 	t.Run("NVD_ErrorCodes", func(t *testing.T) {
@@ -75,10 +78,12 @@ func TestSyncErrorConditions(t *testing.T) {
 				oldURL := defaultNVDBaseURL
 				defaultNVDBaseURL = ts.URL
 				defer func() { defaultNVDBaseURL = oldURL }()
-				mock.ExpectQuery("SELECT last_run FROM worker_sync_stats WHERE task_name = 'nvd_sync'").WillReturnError(fmt.Errorf("no sync"))
 				shortCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
 				defer cancel()
 				w.runFullSync(shortCtx, true)
+				if err := mock.ExpectationsWereMet(); err != nil {
+					t.Errorf("unmet expectations: %v", err)
+				}
 			})
 		}
 	})
@@ -118,9 +123,16 @@ func TestHelpersCoverage(t *testing.T) {
 }
 
 func TestStartWorkerCleanExit(t *testing.T) {
-	mock, _ := db.SetupTestDB()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("setup test db: %v", err)
+	}
 	defer mock.Close()
-	_, _ = db.SetupTestRedis()
+	mr, err := db.SetupTestRedis()
+	if err != nil {
+		t.Fatalf("setup test redis: %v", err)
+	}
+	defer mr.Close()
 
 	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
 
@@ -130,8 +142,16 @@ func TestStartWorkerCleanExit(t *testing.T) {
 }
 
 func TestFetchCVEsPeriodically_Cancel(t *testing.T) {
-	mock, _ := db.SetupTestDB()
-	_, _ = db.SetupTestRedis()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("setup test db: %v", err)
+	}
+	defer mock.Close()
+	mr, err := db.SetupTestRedis()
+	if err != nil {
+		t.Fatalf("setup test redis: %v", err)
+	}
+	defer mr.Close()
 	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
 
 	ctx, cancel := context.WithCancel(context.Background())

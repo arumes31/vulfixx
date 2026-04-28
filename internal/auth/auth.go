@@ -56,7 +56,11 @@ func Register(ctx context.Context, email, password string) (string, error) {
 	if err != nil {
 		// Normalize error to prevent email enumeration
 		if !strings.Contains(err.Error(), "unique constraint") && !strings.Contains(err.Error(), "duplicate key") {
-			log.Printf("Registration error for %s: %v", email, err)
+			masked := email
+			if at := strings.Index(email, "@"); at > 1 {
+				masked = email[:1] + "***" + email[at:]
+			}
+			log.Printf("Registration error for %s: %v", masked, err)
 		}
 		return "", ErrConflict
 	}
