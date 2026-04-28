@@ -81,6 +81,9 @@ func LoadConfig() {
 	if AppConfig.SMTPPass == "" {
 		missingFields = append(missingFields, "SMTPPass")
 	}
+	if AppConfig.AdminEmail == "" {
+		missingFields = append(missingFields, "AdminEmail")
+	}
 	if AppConfig.AdminPassword == "" {
 		missingFields = append(missingFields, "AdminPassword")
 	}

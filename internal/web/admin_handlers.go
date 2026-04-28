@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 func (a *App) AdminUserManagementHandler(w http.ResponseWriter, r *http.Request) {
@@ -32,14 +33,28 @@ func (a *App) AdminUserManagementHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 
+	session, _ := a.SessionStore.Get(r, "vulfixx-session")
+	// Generate a simple token for admin actions
+	token := strconv.FormatInt(time.Now().UnixNano(), 16)
+	session.Values["admin_csrf_token"] = token
+	if err := session.Save(r, w); err != nil {
+		log.Printf("Error saving admin CSRF token: %v", err)
+	}
+
 	a.RenderTemplate(w, r, "admin_users.html", map[string]interface{}{
-		"Users": users,
+		"Users":     users,
+		"CSRFToken": token,
 	})
 }
 
 func (a *App) AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if !a.ValidateCSRF(r) {
+		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
 		return
 	}
 

@@ -48,6 +48,18 @@ type globalCVEStatsCache struct {
 
 var statsCache globalCVEStatsCache
 
+func (a *App) ValidateCSRF(r *http.Request) bool {
+	session, err := a.SessionStore.Get(r, "vulfixx-session")
+	if err != nil {
+		return false
+	}
+	token, ok := session.Values["admin_csrf_token"].(string)
+	if !ok || token == "" {
+		return false
+	}
+	return r.FormValue("csrf_token") == token
+}
+
 func (a *App) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userID, ok := a.GetUserID(r)
@@ -121,6 +133,7 @@ func (a *App) LogActivity(ctx context.Context, userID int, activityType, descrip
 		ipAddress = ipAddress[:45]
 	}
 
+	activityType = sanitizeForLog(activityType)
 	description = sanitizeForLog(description)
 	userAgent = sanitizeForLog(userAgent)
 	ipAddress = sanitizeForLog(ipAddress)
@@ -165,7 +178,9 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 			JOIN team_members tm ON t.id = tm.team_id
 			WHERE tm.user_id = $1
 		`, userID)
-		if err == nil {
+		if err != nil {
+			log.Printf("RenderTemplate teams query ERR: %v", err)
+		} else {
 			defer teamRows.Close()
 			var teams []map[string]interface{}
 			for teamRows.Next() {
@@ -282,10 +297,13 @@ func (a *App) SendResponse(w http.ResponseWriter, r *http.Request, success bool,
 
 	if !success {
 		statusCode := http.StatusBadRequest
-		if errMsg == "Unauthorized" {
+		lowerMsg := strings.ToLower(errMsg)
+		if strings.Contains(lowerMsg, "unauthorized") {
 			statusCode = http.StatusUnauthorized
-		} else if strings.HasPrefix(errMsg, "Forbidden") {
+		} else if strings.Contains(lowerMsg, "forbidden") {
 			statusCode = http.StatusForbidden
+		} else if strings.Contains(lowerMsg, "not found") {
+			statusCode = http.StatusNotFound
 		}
 		http.Error(w, errMsg, statusCode)
 		return

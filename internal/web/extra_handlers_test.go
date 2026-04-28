@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"testing"
 	"time"
 
@@ -80,7 +81,8 @@ func TestUpdateCVENoteHandler(t *testing.T) {
 			req.AddCookie(c)
 		}
 
-		mock.ExpectExec("INSERT INTO cve_notes").WithArgs(1, pgxmock.AnyArg(), 1, "test notes").WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO cve_notes")).WithArgs(1, pgxmock.AnyArg(), 1, "test notes").WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO user_activity_logs")).WithArgs(1, "cve_note_updated", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		rr2 := httptest.NewRecorder()
 		app.UpdateCVENoteHandler(rr2, req)
@@ -107,8 +109,9 @@ func TestUpdateCVENoteHandler(t *testing.T) {
 			req.AddCookie(c)
 		}
 
-		mock.ExpectQuery("SELECT EXISTS").WithArgs(10, 1).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
-		mock.ExpectExec("INSERT INTO cve_notes").WithArgs(1, pgxmock.AnyArg(), 1, "team notes").WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS")).WithArgs(10, 1).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO cve_notes")).WithArgs(1, pgxmock.AnyArg(), 1, "team notes").WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO user_activity_logs")).WithArgs(1, "cve_note_updated", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		rr2 := httptest.NewRecorder()
 		app.UpdateCVENoteHandler(rr2, req)
@@ -131,7 +134,7 @@ func TestHandleAlertAction(t *testing.T) {
 		data, _ := json.Marshal(map[string]interface{}{"user_id": 1, "cve_id": 100, "keyword": "test"})
 		db.RedisClient.Set(context.Background(), "alert_action:"+token, data, time.Hour)
 
-		// GET renders confirmation page — no DB interaction expected
+		// GET renders confirmation page
 		req := httptest.NewRequest("GET", "/alert-action?token="+token+"&action=acknowledge", nil)
 		rr := httptest.NewRecorder()
 		app.HandleAlertAction(rr, req)
@@ -140,7 +143,9 @@ func TestHandleAlertAction(t *testing.T) {
 		}
 
 		// POST actually writes to DB with status 'in_progress'
-		mock.ExpectExec("INSERT INTO user_cve_status").WithArgs(1, 100, "in_progress").WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO user_cve_status")).WithArgs(1, 100).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO user_activity_logs")).WithArgs(1, "remediation", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		// No teams query expected here because the request is not authenticated via session (RenderTemplate skips it)
 		reqPost := httptest.NewRequest("POST", "/alert-action?token="+token+"&action=acknowledge", nil)
 		rrPost := httptest.NewRecorder()
 		app.HandleAlertAction(rrPost, reqPost)
@@ -220,11 +225,11 @@ func TestMiddlewares_Extra(t *testing.T) {
 }
 
 func TestAdminHandlers_Coverage(t *testing.T) {
-	mock, _ := db.SetupTestDB()
-	defer mock.Close()
-	app := setupTestApp(t, mock)
-
 	t.Run("AdminUserManagementHandler_Success", func(t *testing.T) {
+		mock, _ := db.SetupTestDB()
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
 		req := httptest.NewRequest("GET", "/admin/users", nil)
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["user_id"] = 1
@@ -239,6 +244,7 @@ func TestAdminHandlers_Coverage(t *testing.T) {
 
 		mock.ExpectQuery("SELECT id, email, is_email_verified, is_admin, created_at FROM users").WillReturnRows(pgxmock.NewRows([]string{"id", "email", "is_email_verified", "is_admin", "created_at"}).
 			AddRow(1, "admin@test.com", true, true, time.Now()))
+		expectBaseQueries(mock, 1)
 
 		rr2 := httptest.NewRecorder()
 		app.AdminUserManagementHandler(rr2, req)
@@ -248,6 +254,10 @@ func TestAdminHandlers_Coverage(t *testing.T) {
 	})
 
 	t.Run("AdminDeleteUserHandler_Success", func(t *testing.T) {
+		mock, _ := db.SetupTestDB()
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
 		req := httptest.NewRequest("POST", "/admin/users/delete", bytes.NewReader([]byte("id=2&csrf_token=valid")))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
@@ -264,7 +274,7 @@ func TestAdminHandlers_Coverage(t *testing.T) {
 		}
 
 		mock.ExpectExec("DELETE FROM users").WithArgs(2).WillReturnResult(pgxmock.NewResult("DELETE", 1))
-		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(1, "user_delete", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		rr2 := httptest.NewRecorder()
 		app.AdminDeleteUserHandler(rr2, req)

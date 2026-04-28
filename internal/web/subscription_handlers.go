@@ -30,7 +30,13 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == "GET" {
-		query := `SELECT id, keyword, min_severity, webhook_url, enable_email, enable_webhook FROM user_subscriptions WHERE user_id = $1`
+		query := `
+			SELECT us.id, us.keyword, us.min_severity, us.webhook_url, us.enable_email, us.enable_webhook,
+			       us.team_id, COALESCE(t.name, '') as team_name
+			FROM user_subscriptions us
+			LEFT JOIN teams t ON us.team_id = t.id
+			WHERE us.user_id = $1 OR us.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
+		`
 		rows, err := a.Pool.Query(r.Context(), query, userID)
 		if err != nil {
 			log.Printf("Error fetching subscriptions: %v", err)
@@ -41,7 +47,8 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 		var subs []models.UserSubscription
 		for rows.Next() {
 			var s models.UserSubscription
-			if err := rows.Scan(&s.ID, &s.Keyword, &s.MinSeverity, &s.WebhookURL, &s.EnableEmail, &s.EnableWebhook); err != nil {
+			var teamName string
+			if err := rows.Scan(&s.ID, &s.Keyword, &s.MinSeverity, &s.WebhookURL, &s.EnableEmail, &s.EnableWebhook, &s.TeamID, &teamName); err != nil {
 				log.Printf("Error scanning subscription: %v", err)
 				continue
 			}
@@ -126,12 +133,28 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		_, err = a.Pool.Exec(r.Context(), `
+		ctx := r.Context()
+		tx, err := a.Pool.Begin(ctx)
+		if err != nil {
+			log.Printf("Error starting transaction: %v", err)
+			a.SendResponse(w, r, false, "", "", "Internal server error")
+			return
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+
+		_, err = tx.Exec(ctx, `
 			INSERT INTO user_subscriptions (user_id, keyword, min_severity, webhook_url, enable_email, enable_webhook)
 			VALUES ($1, $2, $3, $4, $5, $6)
 		`, userID, keyword, minSeverity, webhookUrl, enableEmail, enableWebhook)
 		if err != nil {
+			log.Printf("Error saving subscription: %v", err)
 			a.SendResponse(w, r, false, "", "", "Error saving subscription")
+			return
+		}
+
+		if err = tx.Commit(ctx); err != nil {
+			log.Printf("Error committing transaction: %v", err)
+			a.SendResponse(w, r, false, "", "", "Internal server error")
 			return
 		}
 		a.LogActivity(r.Context(), userID, "subscription_added", "Added keyword: "+keyword, r.RemoteAddr, r.UserAgent())

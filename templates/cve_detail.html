@@ -24,7 +24,7 @@
         </div>
         <div class="glass p-8 rounded-[2.5rem] border border-white/10 flex flex-col items-center justify-center min-w-[200px] text-center space-y-2">
             <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">CVSS Score</span>
-            <div class="text-6xl font-black {{if ge .CVE.CVSSScore 9.0}}text-red-500{{else if ge .CVE.CVSSScore 7.0}}text-orange-500{{else if ge .CVE.CVSSScore 4.0}}text-yellow-500{{else}}text-blue-500{{end}} tracking-tighter">
+            <div class="text-6xl font-black {{severityColor .CVE.CVSSScore}} tracking-tighter">
                 {{printf "%.1f" .CVE.CVSSScore}}
             </div>
             <div class="text-[10px] font-mono text-gray-500 bg-white/5 px-3 py-1 rounded-full">{{.CVE.VectorString}}</div>

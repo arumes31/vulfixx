@@ -1,7 +1,6 @@
 package web
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v3"
 )
 
@@ -23,9 +23,9 @@ func TestCVEDetailHandler_Extra(t *testing.T) {
 		app := setupTestApp(t, mock)
 
 		cveID := "CVE-2023-1234"
-		mock.ExpectQuery(`SELECT id, cve_id, description, cvss_score, cvss_vector, cisa_kev, published_date, updated_date, 'active' as status, references, epss_score, cwe_id, cwe_name, github_poc_count FROM cves WHERE cve_id = \$1`).
+		mock.ExpectQuery(`SELECT id, cve_id, description, cvss_score, vector_string, cisa_kev, published_date, updated_date, 'active' as status, references, epss_score, cwe_id, cwe_name, github_poc_count FROM cves WHERE cve_id = \$1`).
 			WithArgs(cveID).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "cvss_vector", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count"}).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count"}).
 				AddRow(1, cveID, "Test description", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", true, time.Now(), time.Now(), "active", "[]", 0.5, "CWE-79", "XSS", 10))
 
 		req, _ := http.NewRequest("GET", "/cve/"+cveID, nil)
@@ -47,7 +47,7 @@ func TestCVEDetailHandler_Extra(t *testing.T) {
 		cveID := "CVE-NOT-FOUND"
 		mock.ExpectQuery(`SELECT .* FROM cves WHERE cve_id = \$1`).
 			WithArgs(cveID).
-			WillReturnError(sql.ErrNoRows)
+			WillReturnError(pgx.ErrNoRows)
 
 		req, _ := http.NewRequest("GET", "/cve/"+cveID, nil)
 		req = mux.SetURLVars(req, map[string]string{"id": cveID})
@@ -169,8 +169,7 @@ func TestActivityLogHandler_Extra(t *testing.T) {
 				AddRow(1, "login", "User logged in", "127.0.0.1", time.Now()))
 
 		// RenderTemplate calls: Fetch user's teams
-		mock.ExpectQuery("SELECT t.id, t.name").WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(1, "Team A"))
+		expectBaseQueries(mock, 1)
 
 		rr := httptest.NewRecorder()
 		app.ActivityLogHandler(rr, req)

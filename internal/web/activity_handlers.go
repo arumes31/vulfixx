@@ -28,7 +28,7 @@ func (a *App) ActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var logs []models.ActivityLog
+	logs := []models.ActivityLog{}
 	for rows.Next() {
 		var l models.ActivityLog
 		if err := rows.Scan(&l.ID, &l.ActivityType, &l.Description, &l.IPAddress, &l.CreatedAt); err != nil {
@@ -65,12 +65,13 @@ func (a *App) ExportActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 	`
 	rows, err := a.Pool.Query(r.Context(), query, userID)
 	if err != nil {
+		log.Printf("Error querying activity logs for export: %v", err)
 		http.Error(w, "Error fetching activity logs", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	var logs []models.ActivityLog
+	logs := []models.ActivityLog{}
 	for rows.Next() {
 		var l models.ActivityLog
 		if err := rows.Scan(&l.ID, &l.ActivityType, &l.Description, &l.IPAddress, &l.CreatedAt); err != nil {

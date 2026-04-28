@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS user_cve_status (
     cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,
     status VARCHAR(50) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT chk_user_or_team_present CHECK (user_id IS NOT NULL OR team_id IS NOT NULL)
+    CONSTRAINT chk_user_cve_status_user_xor_team CHECK ((user_id IS NULL) <> (team_id IS NULL))
 );
 
 CREATE TABLE IF NOT EXISTS cve_notes (
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS cve_notes (
     cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,
     notes TEXT,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT chk_user_or_team_present CHECK (user_id IS NOT NULL OR team_id IS NOT NULL)
+    CONSTRAINT chk_cve_notes_user_xor_team CHECK ((user_id IS NULL) <> (team_id IS NULL))
 );
 
 CREATE INDEX IF NOT EXISTS idx_cve_notes_team_id ON cve_notes(team_id);

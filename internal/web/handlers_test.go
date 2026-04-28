@@ -65,6 +65,7 @@ func TestLoginHandler(t *testing.T) {
 
 		req := httptest.NewRequest("GET", "/login", nil)
 		rr := httptest.NewRecorder()
+		expectBaseQueries(mock, 0)
 		app.LoginHandler(rr, req)
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr.Code)
@@ -99,7 +100,7 @@ func TestLoginHandler(t *testing.T) {
 		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE").WithArgs("test@example.com").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
 				AddRow(1, "test@example.com", string(hash), true, false, "", false))
-		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(1, "login", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=password"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -140,10 +141,15 @@ func TestDashboardHandler(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes"}).
 				AddRow(1, "CVE-2024-0001", "Test CVE", 7.5, "CVSS:3.1/...", false, now, now, "active", []string{"http://example.com"}, "some notes"))
 
-		// Severity Dist Query (10 args)
-		mock.ExpectQuery("SELECT c.cvss_score").WithArgs(1, "", "", "", 20, 0, "", 0, 0.0, 10.0).
-			WillReturnRows(pgxmock.NewRows([]string{"cvss_score"}).AddRow(7.5).AddRow(9.0))
+		// Severity Distribution
+		mock.ExpectQuery("SELECT.*COUNT.*FILTER.*cvss_score").
+			WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(0, 1, 0, 0))
 
+		// Status Distribution
+		mock.ExpectQuery("SELECT.*COUNT.*FILTER.*status").WithArgs(1, "", "", "", 20, 0, "", 0, 0.0, 10.0).
+			WillReturnRows(pgxmock.NewRows([]string{"active", "prog", "res", "ign"}).AddRow(1, 0, 0, 0))
+
+		expectBaseQueries(mock, 1)
 		rr2 := httptest.NewRecorder()
 		app.DashboardHandler(rr2, req)
 
@@ -161,7 +167,7 @@ func TestBulkUpdateCVEStatusHandler(t *testing.T) {
 
 		mock.ExpectBegin()
 		mock.ExpectExec("INSERT INTO user_cve_status").WithArgs(1, pgxmock.AnyArg(), "resolved", []int{101, 102}).WillReturnResult(pgxmock.NewResult("INSERT", 2))
-		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(1, "cve_status_bulk_updated", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		mock.ExpectCommit()
 
 		req := httptest.NewRequest("POST", "/api/status/bulk", strings.NewReader(`{"cve_ids": [101, 102], "status": "resolved"}`))
@@ -207,6 +213,7 @@ func TestActivityLogHandler(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"id", "activity_type", "description", "ip_address", "created_at"}).
 				AddRow(1, "login", "User logged in", "127.0.0.1", time.Now()))
 
+		expectBaseQueries(mock, 1)
 		rr2 := httptest.NewRecorder()
 		app.ActivityLogHandler(rr2, req)
 
@@ -237,6 +244,7 @@ func TestAlertHistoryHandler(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"sent_at", "cve_id", "description", "cvss_score"}).
 				AddRow(time.Now(), "CVE-2023-0001", "Alert desc", 7.5))
 
+		expectBaseQueries(mock, 1)
 		rr2 := httptest.NewRecorder()
 		app.AlertHistoryHandler(rr2, req)
 		if rr2.Code != http.StatusOK {
@@ -265,6 +273,7 @@ func TestSettingsHandler(t *testing.T) {
 		mock.ExpectQuery("SELECT email, is_totp_enabled").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"email", "is_totp_enabled"}).AddRow("test@test.com", false))
 
+		expectBaseQueries(mock, 1)
 		rr2 := httptest.NewRecorder()
 		app.SettingsHandler(rr2, req)
 		if rr2.Code != http.StatusOK {
@@ -284,7 +293,7 @@ func TestChangePasswordHandler(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"password_hash"}).AddRow(string(hash)))
 		mock.ExpectExec("UPDATE users").WithArgs(pgxmock.AnyArg(), 1).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(1, "password_changed", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		form := "current_password=current&new_password=new123&confirm_password=new123"
 		req := httptest.NewRequest("POST", "/settings/password", strings.NewReader(form))

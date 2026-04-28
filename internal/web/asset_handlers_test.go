@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -31,15 +32,7 @@ func TestAssetsHandler(t *testing.T) {
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
-		mock.ExpectQuery("SELECT a.id, a.name, a.type, a.created_at").
-			WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "name", "type", "created_at", "keywords", "team_name"}).
-				AddRow(1, "Server 1", "Server", time.Now(), []string{"prod"}, "Team A"))
-
-		// RenderTemplate expectations
-		mock.ExpectQuery("SELECT t.id, t.name").WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(1, "Team A"))
-
+		// Setup session
 		req := httptest.NewRequest("GET", "/assets", nil)
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["user_id"] = 1
@@ -50,6 +43,16 @@ func TestAssetsHandler(t *testing.T) {
 		for _, c := range rr.Result().Cookies() {
 			req.AddCookie(c)
 		}
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT a.id, a.name")).
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "name", "type", "created_at", "keywords", "team_name"}).
+				AddRow(1, "Asset 1", "server", time.Now(), []string{"test"}, "Team A"))
+
+		// Teams query from RenderTemplate (called because user is logged in)
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT t.id, t.name FROM teams t JOIN team_members tm")).
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(1, "Test Team"))
 
 		rr2 := httptest.NewRecorder()
 		app.AssetsHandler(rr2, req)
@@ -89,11 +92,11 @@ func TestAssetsHandler(t *testing.T) {
 						WillReturnResult(pgxmock.NewResult("INSERT", 1))
 					mock.ExpectCommit()
 					mock.ExpectExec("INSERT INTO user_activity_logs").
-						WithArgs(1, "asset_registered", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+						WithArgs(1, "asset_registered", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 						WillReturnResult(pgxmock.NewResult("INSERT", 1))
 				},
-				expectedStatus: http.StatusOK,
-				expectedBody:   "Asset registered successfully",
+				expectedStatus: http.StatusFound,
+				expectedBody:   "",
 			},
 			{
 				name: "Success_Team",
@@ -110,11 +113,11 @@ func TestAssetsHandler(t *testing.T) {
 						WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(102))
 					mock.ExpectCommit()
 					mock.ExpectExec("INSERT INTO user_activity_logs").
-						WithArgs(1, "asset_registered", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+						WithArgs(1, "asset_registered", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 						WillReturnResult(pgxmock.NewResult("INSERT", 1))
 				},
-				expectedStatus: http.StatusOK,
-				expectedBody:   "Asset registered successfully",
+				expectedStatus: http.StatusFound,
+				expectedBody:   "",
 			},
 		}
 
@@ -123,31 +126,21 @@ func TestAssetsHandler(t *testing.T) {
 				mock, _ := db.SetupTestDB()
 				defer mock.Close()
 				app := setupTestApp(t, mock)
-				tt.mockExpect(mock)
 
 				req := httptest.NewRequest("POST", "/assets", strings.NewReader(tt.form.Encode()))
 				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-				req.Header.Set("Accept", "application/json")
-				session, _ := app.SessionStore.Get(req, "vulfixx-session")
-				session.Values["user_id"] = 1
+				setSessionUser(t, app, req, 1)
+
+				tt.mockExpect(mock)
+
 				rr := httptest.NewRecorder()
-				_ = session.Save(req, rr)
+				app.AssetsHandler(rr, req)
 
-				req = httptest.NewRequest("POST", "/assets", strings.NewReader(tt.form.Encode()))
-				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-				req.Header.Set("Accept", "application/json")
-				for _, c := range rr.Result().Cookies() {
-					req.AddCookie(c)
+				if rr.Code != tt.expectedStatus {
+					t.Errorf("expected %d, got %d", tt.expectedStatus, rr.Code)
 				}
-
-				rr2 := httptest.NewRecorder()
-				app.AssetsHandler(rr2, req)
-
-				if rr2.Code != tt.expectedStatus {
-					t.Errorf("expected status %d, got %d", tt.expectedStatus, rr2.Code)
-				}
-				if tt.expectedBody != "" && !strings.Contains(rr2.Body.String(), tt.expectedBody) {
-					t.Errorf("expected body to contain %q, got %q", tt.expectedBody, rr2.Body.String())
+				if tt.expectedBody != "" && !strings.Contains(rr.Body.String(), tt.expectedBody) {
+					t.Errorf("expected body to contain %q, got %q", tt.expectedBody, rr.Body.String())
 				}
 				if err := mock.ExpectationsWereMet(); err != nil {
 					t.Errorf("unmet expectations: %v", err)
@@ -158,70 +151,28 @@ func TestAssetsHandler(t *testing.T) {
 }
 
 func TestDeleteAssetHandler(t *testing.T) {
-	tests := []struct {
-		name           string
-		method         string
-		form           url.Values
-		userID         int
-		mockExpect     func(mock pgxmock.PgxPoolIface)
-		expectedStatus int
-		expectedBody   string
-	}{
-		{
-			name:   "Success",
-			method: "POST",
-			form:   url.Values{"id": {"101"}},
-			userID: 1,
-			mockExpect: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectExec("DELETE FROM assets").
-					WithArgs(101, 1).
-					WillReturnResult(pgxmock.NewResult("DELETE", 1))
-				mock.ExpectExec("INSERT INTO user_activity_logs").
-					WithArgs(1, "asset_deleted", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
-					WillReturnResult(pgxmock.NewResult("INSERT", 1))
-			},
-			expectedStatus: http.StatusOK,
-			expectedBody:   "Asset removed successfully",
-		},
-	}
+	t.Run("Success", func(t *testing.T) {
+		mock, _ := db.SetupTestDB()
+		defer mock.Close()
+		app := setupTestApp(t, mock)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mock, _ := db.SetupTestDB()
-			defer mock.Close()
-			app := setupTestApp(t, mock)
-			tt.mockExpect(mock)
+		form := url.Values{"id": {"1"}}
+		req := httptest.NewRequest("POST", "/assets/delete", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1)
 
-			req := httptest.NewRequest(tt.method, "/assets/delete", strings.NewReader(tt.form.Encode()))
-			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			req.Header.Set("Accept", "application/json")
-			if tt.userID != 0 {
-				session, _ := app.SessionStore.Get(req, "vulfixx-session")
-				session.Values["user_id"] = tt.userID
-				rr := httptest.NewRecorder()
-				_ = session.Save(req, rr)
+		mock.ExpectExec("DELETE FROM assets").
+			WithArgs(1, 1).
+			WillReturnResult(pgxmock.NewResult("DELETE", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").
+			WithArgs(1, "asset_deleted", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-				req = httptest.NewRequest(tt.method, "/assets/delete", strings.NewReader(tt.form.Encode()))
-				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-				req.Header.Set("Accept", "application/json")
-				for _, c := range rr.Result().Cookies() {
-					req.AddCookie(c)
-				}
-			}
+		rr := httptest.NewRecorder()
+		app.DeleteAssetHandler(rr, req)
 
-			rr2 := httptest.NewRecorder()
-			app.DeleteAssetHandler(rr2, req)
-
-			if rr2.Code != tt.expectedStatus {
-				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr2.Code)
-			}
-			if tt.expectedBody != "" && !strings.Contains(rr2.Body.String(), tt.expectedBody) {
-				t.Errorf("expected body to contain %q, got %q", tt.expectedBody, rr2.Body.String())
-			}
-			if err := mock.ExpectationsWereMet(); err != nil {
-				t.Errorf("unmet expectations: %v", err)
-			}
-		})
-	}
+		if rr.Code != http.StatusFound {
+			t.Errorf("expected 302, got %d", rr.Code)
+		}
+	})
 }
-

@@ -1,7 +1,6 @@
 package web
 
 import (
-
 	"log"
 	"net/http"
 	"time"
@@ -15,7 +14,7 @@ func (a *App) AlertHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := `
-		SELECT ah.sent_at, c.cve_id, c.description, c.cvss_score
+		SELECT ah.sent_at, c.cve_id, COALESCE(c.description, ''), COALESCE(c.cvss_score, 0)
 		FROM alert_history ah
 		JOIN cves c ON ah.cve_id = c.id
 		WHERE ah.user_id = $1
@@ -31,21 +30,19 @@ func (a *App) AlertHistoryHandler(w http.ResponseWriter, r *http.Request) {
 
 	var alerts []map[string]interface{}
 	for rows.Next() {
-		var al struct {
-			SentAt      time.Time
-			CVEID       string
-			Description string
-			CVSSScore   float64
-		}
-		if err := rows.Scan(&al.SentAt, &al.CVEID, &al.Description, &al.CVSSScore); err != nil {
+		var sentAt time.Time
+		var cveID, description string
+		var cvssScore float64
+
+		if err := rows.Scan(&sentAt, &cveID, &description, &cvssScore); err != nil {
 			log.Printf("Error scanning alert history row: %v", err)
 			continue
 		}
 		alerts = append(alerts, map[string]interface{}{
-			"SentAt":      al.SentAt,
-			"CVEID":       al.CVEID,
-			"Description": al.Description,
-			"CVSSScore":   al.CVSSScore,
+			"SentAt":      sentAt,
+			"CVEID":       cveID,
+			"Description": description,
+			"CVSSScore":   cvssScore,
 		})
 	}
 	if err := rows.Err(); err != nil {

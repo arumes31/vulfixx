@@ -38,7 +38,9 @@ func TestAuthHandlers_TOTP_V2(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
 
-		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		expectBaseQueries(mock, 1)
+		expectBaseQueries(mock, 1)
 		app.LoginHandler(rr, req)
 
 		if rr.Code != http.StatusOK {
@@ -83,8 +85,9 @@ func TestAuthHandlers_TOTP_V2(t *testing.T) {
 			WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"is_admin"}).AddRow(false))
 
-		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		rr := httptest.NewRecorder()
+		expectBaseQueries(mock, 1)
 		app.LoginHandler(rr, req)
 
 		if rr.Code != http.StatusFound {
@@ -121,6 +124,7 @@ func TestAuthHandlers_TOTP_V2(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"is_totp_enabled", "totp_secret"}).AddRow(true, secret))
 
 		rr := httptest.NewRecorder()
+		expectBaseQueries(mock, 1)
 		app.LoginHandler(rr, req)
 
 		if rr.Code != http.StatusOK {
@@ -150,6 +154,7 @@ func TestAuthHandlers_TOTP_V2(t *testing.T) {
 		}
 
 		rr := httptest.NewRecorder()
+		expectBaseQueries(mock, 1)
 		app.LoginHandler(rr, req)
 
 		if rr.Code != http.StatusOK {
@@ -180,6 +185,7 @@ func TestAuthHandlers_TOTP_V2(t *testing.T) {
 		}
 
 		rr := httptest.NewRecorder()
+		expectBaseQueries(mock, 1)
 		app.LoginHandler(rr, req)
 
 		if rr.Code != http.StatusOK {
@@ -256,6 +262,7 @@ func TestSettingsHandlers_V2(t *testing.T) {
 				AddRow("user@example.com", false, "hash", ""))
 
 		rr := httptest.NewRecorder()
+		expectBaseQueries(mock, userID)
 		app.ChangePasswordHandler(rr, req)
 
 		if rr.Code != http.StatusOK {
@@ -296,6 +303,7 @@ func TestSettingsHandlers_V2(t *testing.T) {
 				AddRow(string(hashedPassword), false, ""))
 
 		rr := httptest.NewRecorder()
+		expectBaseQueries(mock, userID)
 		app.ChangePasswordHandler(rr, req)
 
 		if rr.Code != http.StatusOK {
@@ -344,6 +352,7 @@ func TestSettingsHandlers_V2(t *testing.T) {
         mock.ExpectExec("INSERT INTO email_change_requests").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		rr := httptest.NewRecorder()
+		expectBaseQueries(mock, userID)
 		app.ChangeEmailHandler(rr, req)
 
 		if rr.Code != http.StatusOK {
@@ -383,6 +392,7 @@ func TestSettingsHandlers_V2(t *testing.T) {
             WillReturnError(fmt.Errorf("db error"))
 
 		rr := httptest.NewRecorder()
+		expectBaseQueries(mock, userID)
 		app.DeleteAccountHandler(rr, req)
 
 		if rr.Code != http.StatusInternalServerError {
@@ -413,11 +423,13 @@ func TestSubscriptionHandlers_V2(t *testing.T) {
 			WithArgs(userID).
 			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 
+		mock.ExpectBegin()
 		mock.ExpectExec("INSERT INTO user_subscriptions").
 			WithArgs(userID, "test", 7.0, "", true, false).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectCommit()
 
-		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		rr := httptest.NewRecorder()
 		app.SubscriptionsHandler(rr, req)
 

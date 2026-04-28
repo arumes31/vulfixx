@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pashagolub/pgxmock/v3"
 )
@@ -23,11 +24,11 @@ func TestTeamsHandler(t *testing.T) {
 			name:   "Success",
 			userID: 1,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery("SELECT t.id, t.name, t.invite_code, tm.role").
+				mock.ExpectQuery("SELECT t.id, t.name, t.invite_code, tm.role, t.created_at").
 					WithArgs(1).
-					WillReturnRows(pgxmock.NewRows([]string{"id", "name", "invite_code", "role"}).
-						AddRow(1, "Team A", "abc", "owner").
-						AddRow(2, "Team B", "def", "member"))
+					WillReturnRows(pgxmock.NewRows([]string{"id", "name", "invite_code", "role", "created_at"}).
+						AddRow(1, "Team A", "ABC", "owner", time.Now()).
+						AddRow(2, "Team B", "DEF", "member", time.Now()))
 				// RenderTemplate expectations
 				mock.ExpectQuery("SELECT t.id, t.name").WithArgs(1).
 					WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(1, "Team A").AddRow(2, "Team B"))
@@ -113,11 +114,11 @@ func TestCreateTeamHandler(t *testing.T) {
 					WithArgs("New Team", pgxmock.AnyArg()).
 					WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 				mock.ExpectExec("INSERT INTO team_members").
-					WithArgs(1, 1). // Corrected: only 2 args
+					WithArgs(1, 1).
 					WillReturnResult(pgxmock.NewResult("INSERT", 1))
 				mock.ExpectCommit()
 				mock.ExpectExec("INSERT INTO user_activity_logs").
-					WithArgs(1, "team_created", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+					WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 					WillReturnResult(pgxmock.NewResult("INSERT", 1))
 			},
 			expectedStatus: http.StatusOK,
@@ -175,7 +176,7 @@ func TestCreateTeamHandler(t *testing.T) {
 					WithArgs("New Team", pgxmock.AnyArg()).
 					WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 				mock.ExpectExec("INSERT INTO team_members").
-					WithArgs(1, 1). // Corrected: only 2 args
+					WithArgs(1, 1).
 					WillReturnError(fmt.Errorf("insert member error"))
 				mock.ExpectRollback()
 			},
@@ -193,7 +194,7 @@ func TestCreateTeamHandler(t *testing.T) {
 					WithArgs("New Team", pgxmock.AnyArg()).
 					WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 				mock.ExpectExec("INSERT INTO team_members").
-					WithArgs(1, 1). // Corrected: only 2 args
+					WithArgs(1, 1).
 					WillReturnResult(pgxmock.NewResult("INSERT", 1))
 				mock.ExpectCommit().WillReturnError(fmt.Errorf("commit error"))
 				mock.ExpectRollback()
@@ -289,10 +290,10 @@ func TestJoinTeamHandler(t *testing.T) {
 					WithArgs("abc").
 					WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(10))
 				mock.ExpectExec("INSERT INTO team_members").
-					WithArgs(10, 1). // Corrected: only 2 args
+					WithArgs(10, 1).
 					WillReturnResult(pgxmock.NewResult("INSERT", 1))
 				mock.ExpectExec("INSERT INTO user_activity_logs").
-					WithArgs(1, "team_joined", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+					WithArgs(1, "team_joined", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 					WillReturnResult(pgxmock.NewResult("INSERT", 1))
 			},
 			expectedStatus: http.StatusOK,
@@ -308,7 +309,7 @@ func TestJoinTeamHandler(t *testing.T) {
 					WithArgs("abc").
 					WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(10))
 				mock.ExpectExec("INSERT INTO team_members").
-					WithArgs(10, 1). // Corrected: only 2 args
+					WithArgs(10, 1).
 					WillReturnError(fmt.Errorf("db error"))
 			},
 			expectedStatus: http.StatusOK,
@@ -387,7 +388,8 @@ func TestLeaveTeamHandler(t *testing.T) {
 			form:   url.Values{"team_id": {"10"}},
 			userID: 1,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery("SELECT role FROM team_members").
+				mock.ExpectBegin()
+				mock.ExpectQuery("SELECT role FROM team_members .* FOR UPDATE").
 					WithArgs(10, 1).
 					WillReturnError(fmt.Errorf("not member"))
 			},
@@ -400,10 +402,11 @@ func TestLeaveTeamHandler(t *testing.T) {
 			form:   url.Values{"team_id": {"10"}},
 			userID: 1,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery("SELECT role FROM team_members").
+				mock.ExpectBegin()
+				mock.ExpectQuery("SELECT role FROM team_members .* FOR UPDATE").
 					WithArgs(10, 1).
 					WillReturnRows(pgxmock.NewRows([]string{"role"}).AddRow("owner"))
-				mock.ExpectQuery("SELECT COUNT").
+				mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM team_members WHERE team_id = \\$1 AND role = 'owner'").
 					WithArgs(10).
 					WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
 			},
@@ -417,14 +420,16 @@ func TestLeaveTeamHandler(t *testing.T) {
 			userID:       1,
 			activeTeamID: 20,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery("SELECT role FROM team_members").
+				mock.ExpectBegin()
+				mock.ExpectQuery("SELECT role FROM team_members .* FOR UPDATE").
 					WithArgs(10, 1).
 					WillReturnRows(pgxmock.NewRows([]string{"role"}).AddRow("member"))
 				mock.ExpectExec("DELETE FROM team_members").
 					WithArgs(10, 1).
 					WillReturnResult(pgxmock.NewResult("DELETE", 1))
+				mock.ExpectCommit()
 				mock.ExpectExec("INSERT INTO user_activity_logs").
-					WithArgs(1, "team_left", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+					WithArgs(1, "team_left", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 					WillReturnResult(pgxmock.NewResult("INSERT", 1))
 			},
 			expectedStatus: http.StatusOK,
@@ -437,14 +442,16 @@ func TestLeaveTeamHandler(t *testing.T) {
 			userID:       1,
 			activeTeamID: 10,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery("SELECT role FROM team_members").
+				mock.ExpectBegin()
+				mock.ExpectQuery("SELECT role FROM team_members .* FOR UPDATE").
 					WithArgs(10, 1).
 					WillReturnRows(pgxmock.NewRows([]string{"role"}).AddRow("member"))
 				mock.ExpectExec("DELETE FROM team_members").
 					WithArgs(10, 1).
 					WillReturnResult(pgxmock.NewResult("DELETE", 1))
+				mock.ExpectCommit()
 				mock.ExpectExec("INSERT INTO user_activity_logs").
-					WithArgs(1, "team_left", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+					WithArgs(1, "team_left", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 					WillReturnResult(pgxmock.NewResult("INSERT", 1))
 			},
 			expectedStatus: http.StatusOK,
@@ -456,7 +463,8 @@ func TestLeaveTeamHandler(t *testing.T) {
 			form:   url.Values{"team_id": {"10"}},
 			userID: 1,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery("SELECT role FROM team_members").
+				mock.ExpectBegin()
+				mock.ExpectQuery("SELECT role FROM team_members .* FOR UPDATE").
 					WithArgs(10, 1).
 					WillReturnRows(pgxmock.NewRows([]string{"role"}).AddRow("member"))
 				mock.ExpectExec("DELETE FROM team_members").

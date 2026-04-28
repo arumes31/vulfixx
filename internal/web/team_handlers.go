@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"cve-tracker/internal/models"
 )
 
 func generateInviteCode() (string, error) {
@@ -27,7 +29,7 @@ func (a *App) TeamsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := a.Pool.Query(r.Context(), `
-		SELECT t.id, t.name, t.invite_code, tm.role 
+		SELECT t.id, t.name, t.invite_code, tm.role, t.created_at
 		FROM teams t
 		JOIN team_members tm ON t.id = tm.team_id
 		WHERE tm.user_id = $1
@@ -42,21 +44,22 @@ func (a *App) TeamsHandler(w http.ResponseWriter, r *http.Request) {
 
 	var teams []map[string]interface{}
 	for rows.Next() {
-		var id int
-		var name, inviteCode, role string
-		if err := rows.Scan(&id, &name, &inviteCode, &role); err != nil {
+		var t models.Team
+		var role string
+		if err := rows.Scan(&t.ID, &t.Name, &t.InviteCode, &role, &t.CreatedAt); err != nil {
 			log.Printf("Error scanning team row: %v", err)
 			continue
 		}
 		teams = append(teams, map[string]interface{}{
-			"ID":         id,
-			"Name":       name,
-			"InviteCode": inviteCode,
+			"ID":         t.ID,
+			"Name":       t.Name,
+			"InviteCode": t.InviteCode,
 			"Role":       role,
+			"CreatedAt":  t.CreatedAt,
 		})
 	}
 	if err := rows.Err(); err != nil {
-		log.Printf("Error iterating team rows: %v", err)
+		log.Printf("Error iterating team rows in TeamsHandler: %v", err)
 	}
 
 	a.RenderTemplate(w, r, "teams.html", map[string]interface{}{

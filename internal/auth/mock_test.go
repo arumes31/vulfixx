@@ -141,15 +141,18 @@ func TestMockedErrors(t *testing.T) {
                 }
         })
 
-        t.Run("RequestEmailChangeDBFail", func(t *testing.T) {
-                mock, _ := db.SetupTestDB()
-                defer mock.Close()
+	t.Run("RequestEmailChangeDBFail", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("setup test db: %v", err)
+		}
+		defer mock.Close()
 
                 mock.ExpectExec("INSERT INTO email_change_requests").
                         WithArgs(1, "new@test.com", pgxmock.AnyArg(), pgxmock.AnyArg()).
                         WillReturnError(errors.New("db fail"))
 
-                _, _, err := RequestEmailChange(ctx, 1, "new@test.com")
+                _, _, err = RequestEmailChange(ctx, 1, "new@test.com")
                 if err == nil || err.Error() != "db fail" {
                         t.Errorf("expected db fail, got %v", err)
                 }

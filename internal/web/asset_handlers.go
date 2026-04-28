@@ -19,14 +19,14 @@ func (a *App) AssetsHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == "GET" {
 		rows, err := a.Pool.Query(r.Context(), `
-			SELECT a.id, a.name, a.type, a.created_at, 
+			SELECT a.id, a.name, COALESCE(a.type, ''), a.created_at, 
 			       COALESCE(array_agg(ak.keyword) FILTER (WHERE ak.keyword IS NOT NULL), '{}'),
 			       COALESCE(t.name, '') as team_name
 			FROM assets a
 			LEFT JOIN asset_keywords ak ON a.id = ak.asset_id
 			LEFT JOIN teams t ON a.team_id = t.id
 			WHERE a.user_id = $1 OR a.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
-			GROUP BY a.id, t.name
+			GROUP BY a.id, t.id, t.name
 			ORDER BY a.created_at DESC
 		`, userID)
 		if err != nil {

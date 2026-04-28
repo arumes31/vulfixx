@@ -9,6 +9,9 @@ import (
 	"errors"
 	"fmt"
 
+	"log"
+	"strings"
+
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -16,39 +19,48 @@ import (
 const MinPasswordLength = 8
 
 var (
-        randRead              = rand.Read
-        bcryptGeneratePassword = bcrypt.GenerateFromPassword
+	randRead               = rand.Read
+	bcryptGeneratePassword = bcrypt.GenerateFromPassword
+
+	ErrConflict = errors.New("unable to create account")
 )
 
 func GenerateToken() (string, error) {
-        bytes := make([]byte, 32)
-        if _, err := randRead(bytes); err != nil {
-                return "", err
-        }
-        return hex.EncodeToString(bytes), nil
+	bytes := make([]byte, 32)
+	if _, err := randRead(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
 }
 
 func Register(ctx context.Context, email, password string) (string, error) {
-        if len(password) < MinPasswordLength {
-                return "", errors.New("password must be at least 8 characters long")
-        }
-        hashedPassword, err := bcryptGeneratePassword([]byte(password), bcrypt.DefaultCost)
-        if err != nil {
-                return "", err
-        }
+	if len(password) < MinPasswordLength {
+		return "", errors.New("password must be at least 8 characters long")
+	}
+	hashedPassword, err := bcryptGeneratePassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
 
-        token, err := GenerateToken()
-        if err != nil {
-                return "", err
-        }
+	token, err := GenerateToken()
+	if err != nil {
+		return "", err
+	}
 
-        rssToken, err := GenerateToken()
-        if err != nil {
-                return "", err
-        }
+	rssToken, err := GenerateToken()
+	if err != nil {
+		return "", err
+	}
 
-        _, err = db.Pool.Exec(ctx, "INSERT INTO users (email, password_hash, email_verify_token, rss_feed_token) VALUES ($1, $2, $3, $4)", email, string(hashedPassword), token, rssToken)
-        return token, err
+	_, err = db.Pool.Exec(ctx, "INSERT INTO users (email, password_hash, email_verify_token, rss_feed_token) VALUES ($1, $2, $3, $4)", email, string(hashedPassword), token, rssToken)
+	if err != nil {
+		// Normalize error to prevent email enumeration
+		if !strings.Contains(err.Error(), "unique constraint") && !strings.Contains(err.Error(), "duplicate key") {
+			log.Printf("Registration error for %s: %v", email, err)
+		}
+		return "", ErrConflict
+	}
+	return token, nil
 }
 func VerifyEmail(ctx context.Context, token string) error {
 	res, err := db.Pool.Exec(ctx, "UPDATE users SET is_email_verified = TRUE, email_verify_token = NULL WHERE email_verify_token = $1", token)

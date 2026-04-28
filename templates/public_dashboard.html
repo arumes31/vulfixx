@@ -51,7 +51,7 @@
             <a href="/cve/{{.CVEID}}" class="glass p-6 rounded-2xl border border-white/5 hover:border-primary/20 hover:bg-white/[0.02] transition-all group">
                 <div class="flex justify-between items-start mb-4">
                     <span class="text-xs font-black text-white group-hover:text-primary transition-colors">{{.CVEID}}</span>
-                    <span class="text-xs font-bold {{if ge .CVSSScore 9.0}}text-red-500{{else}}text-orange-500{{end}}">{{printf "%.1f" .CVSSScore}}</span>
+                    <span class="text-xs font-bold {{severityColor .CVSSScore}}">{{printf "%.1f" .CVSSScore}}</span>
                 </div>
                 <p class="text-[10px] text-gray-500 line-clamp-3 leading-relaxed mb-4">{{.Description}}</p>
                 <div class="flex items-center gap-2">
@@ -131,11 +131,11 @@
                         </td>
                         <td class="p-6">
                             <div class="flex items-center gap-2">
-                                <span class="text-sm font-bold {{if ge .CVSSScore 9.0}}text-red-500{{else if ge .CVSSScore 7.0}}text-orange-500{{else if ge .CVSSScore 4.0}}text-yellow-500{{else}}text-blue-500{{end}}">
+                                <span class="text-sm font-bold {{severityColor .CVSSScore}}">
                                     {{printf "%.1f" .CVSSScore}}
                                 </span>
                                 <div class="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
-                                    <div class="h-full {{if ge .CVSSScore 9.0}}bg-red-500{{else if ge .CVSSScore 7.0}}bg-orange-500{{else if ge .CVSSScore 4.0}}bg-yellow-500{{else}}bg-blue-500{{end}}" style="width: {{multiply .CVSSScore 10}}%"></div>
+                                    <div class="h-full {{severityBg .CVSSScore}}" style="width: {{multiply .CVSSScore 10}}%"></div>
                                 </div>
                             </div>
                         </td>

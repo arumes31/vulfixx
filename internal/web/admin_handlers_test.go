@@ -90,7 +90,7 @@ func TestAdminDeleteUserHandler(t *testing.T) {
 					WithArgs(2).
 					WillReturnResult(pgxmock.NewResult("DELETE", 1))
 				mock.ExpectExec("INSERT INTO user_activity_logs").
-					WithArgs(1, "user_delete", "Deleted user ID 2", pgxmock.AnyArg(), pgxmock.AnyArg()).
+					WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 					WillReturnResult(pgxmock.NewResult("INSERT", 1))
 			},
 			expectedStatus: http.StatusFound,

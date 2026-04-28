@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -40,6 +41,9 @@ func GetSessionStore() sessions.Store {
 }
 
 func (a *App) GetUserID(r *http.Request) (int, bool) {
+	if a.SessionStore == nil {
+		return 0, false
+	}
 	session, err := a.SessionStore.Get(r, "vulfixx-session")
 	if err != nil {
 		return 0, false
@@ -49,6 +53,9 @@ func (a *App) GetUserID(r *http.Request) (int, bool) {
 }
 
 func (a *App) GetActiveTeamID(r *http.Request) (int, bool) {
+	if a.SessionStore == nil {
+		return 0, false
+	}
 	session, err := a.SessionStore.Get(r, "vulfixx-session")
 	if err != nil {
 		return 0, false
@@ -58,6 +65,9 @@ func (a *App) GetActiveTeamID(r *http.Request) (int, bool) {
 }
 
 func (a *App) SetActiveTeamID(w http.ResponseWriter, r *http.Request, teamID int) error {
+	if a.SessionStore == nil {
+		return errors.New("session store not initialized")
+	}
 	session, err := a.SessionStore.Get(r, "vulfixx-session")
 	if err != nil {
 		log.Printf("SetActiveTeamID error getting session: %v", err)
@@ -72,6 +82,9 @@ func (a *App) SetActiveTeamID(w http.ResponseWriter, r *http.Request, teamID int
 }
 
 func (a *App) IsAdmin(r *http.Request) bool {
+	if a.SessionStore == nil {
+		return false
+	}
 	session, err := a.SessionStore.Get(r, "vulfixx-session")
 	if err != nil {
 		return false

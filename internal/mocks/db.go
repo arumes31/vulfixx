@@ -120,13 +120,12 @@ func (noopCloser) Close() error { return nil }
 
 func (m *DBPoolMock) Begin(ctx context.Context) (pgx.Tx, error) {
 	if m.InjectedErr != nil {
-		return noopTx{}, m.InjectedErr
+		return nil, m.InjectedErr
 	}
 	if m.BeginFunc != nil {
 		return m.BeginFunc(ctx)
 	}
-	// Return a safe no-op Tx instead of (nil, nil) to prevent nil-pointer panics in callers.
-	return noopTx{}, fmt.Errorf("BeginFunc not set")
+	return nil, nil
 }
 
 func (m *DBPoolMock) Close() {

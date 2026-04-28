@@ -35,6 +35,36 @@ func (a *App) InitTemplatesWithFuncs() {
 		"subtract":   func(a, b int) int { return a - b },
 		"multiply":   func(a, b float64) float64 { return a * b },
 		"GetBaseURL": GetBaseURL,
+		"severityColor": func(score float64) string {
+			if score <= 0 || score > 10 {
+				return "text-gray-400"
+			}
+			if score >= 9.0 {
+				return "text-red-500"
+			}
+			if score >= 7.0 {
+				return "text-orange-500"
+			}
+			if score >= 4.0 {
+				return "text-yellow-500"
+			}
+			return "text-blue-500"
+		},
+		"severityBg": func(score float64) string {
+			if score <= 0 || score > 10 {
+				return "bg-gray-400"
+			}
+			if score >= 9.0 {
+				return "bg-red-500"
+			}
+			if score >= 7.0 {
+				return "bg-orange-500"
+			}
+			if score >= 4.0 {
+				return "bg-yellow-500"
+			}
+			return "bg-blue-500"
+		},
 	}
 
 	a.TemplateMap = make(map[string]*template.Template)
