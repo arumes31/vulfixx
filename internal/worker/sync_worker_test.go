@@ -98,7 +98,6 @@ func TestWorkerSync_NVD(t *testing.T) {
 	t.Run("FullSync_Backfill", func(t *testing.T) {
 		mock.ExpectQuery("SELECT last_run FROM worker_sync_stats WHERE task_name = 'nvd_sync'").
 			WillReturnError(pgx.ErrNoRows)
-
 		mock.ExpectQuery("SELECT value FROM sync_state WHERE key = 'nvd_backfill_index'").
 			WillReturnError(pgx.ErrNoRows)
 
@@ -143,7 +142,6 @@ func TestWorkerSync_NVD(t *testing.T) {
 
 		shortCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 		defer cancel()
-		
 		w2.runFullSync(shortCtx, false, 0)
 	})
 }
