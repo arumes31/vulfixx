@@ -26,10 +26,12 @@ func TestIndexHandler(t *testing.T) {
 		app := setupTestApp(t, mock)
 
 		// Expectations for PublicDashboardHandler
-		mock.ExpectQuery("SELECT").WithArgs("", "", "", 0.0, 10.0).WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit"}).AddRow(100, 10, 5))
+		// Metrics query should have no args if search, dates, and CVSS are empty/defaults
+		mock.ExpectQuery("SELECT").WithArgs().WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit"}).AddRow(100, 10, 5))
 		
+		// Main query should have 2 args (pageSize, offset) if others are empty
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.cve_id, c.description, c.cvss_score, vector_string, c.cisa_kev, c.published_date, c.updated_date, 'active' as status, c.references, '' as notes FROM cves c")).
-			WithArgs("", "", "", 0.0, 10.0, 20, 0).
+			WithArgs(20, 0).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes"}).
 				AddRow(1, "CVE-2024-0001", "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, ""))
 		
@@ -96,20 +98,20 @@ func TestDashboardHandler(t *testing.T) {
 			req.AddCookie(c)
 		}
 
-		mock.ExpectQuery("SELECT").WithArgs(1, "", "", "", 20, 0, "", 0, 0.0, 10.0).
+		mock.ExpectQuery("SELECT").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"total_cves", "kev_count", "critical_count", "in_progress_count"}).
 				AddRow(100, 5, 10, 2))
 
 		now := time.Now()
-		mock.ExpectQuery("SELECT DISTINCT").WithArgs(1, "", "", "", 20, 0, "", 0, 0.0, 10.0).
+		mock.ExpectQuery("SELECT DISTINCT").WithArgs(1, 20, 0).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes"}).
 				AddRow(1, "CVE-2024-0001", "Test CVE", 7.5, "CVSS:3.1/...", false, now, now, "active", []string{"http://example.com"}, "some notes"))
 
 		mock.ExpectQuery("SELECT.*COUNT.*DISTINCT.*cvss_score").
-			WithArgs(1, "", "", "", 20, 0, "", 0, 0.0, 10.0).
+			WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(0, 1, 0, 0))
 
-		mock.ExpectQuery("SELECT.*COUNT.*DISTINCT.*status").WithArgs(1, "", "", "", 20, 0, "", 0, 0.0, 10.0).
+		mock.ExpectQuery("SELECT.*COUNT.*DISTINCT.*status").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"active", "prog", "res", "ign"}).AddRow(1, 0, 0, 0))
 
 		expectBaseQueries(mock, 1)
