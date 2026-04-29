@@ -1,58 +1,13 @@
 package db
 
 const schemaSQL = `
+-- 1. Create independent tables
 CREATE TABLE IF NOT EXISTS teams (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     invite_code VARCHAR(50) UNIQUE NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-
--- Ensure team_id columns exist for all relevant tables
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'assets') THEN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'assets' AND column_name = 'team_id') THEN
-            ALTER TABLE assets ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE;
-        END IF;
-    END IF;
-
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_subscriptions') THEN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'team_id') THEN
-            ALTER TABLE user_subscriptions ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE;
-        END IF;
-    END IF;
-
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_cve_status') THEN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_cve_status' AND column_name = 'team_id') THEN
-            ALTER TABLE user_cve_status ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE;
-        END IF;
-        -- Handle potential PK change if it was (user_id, cve_id)
-        IF EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE table_name = 'user_cve_status' AND constraint_type = 'PRIMARY KEY') THEN
-             -- Check if it has 'id' column, if not, it's the old PK
-             IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_cve_status' AND column_name = 'id') THEN
-                 ALTER TABLE user_cve_status DROP CONSTRAINT IF EXISTS user_cve_status_pkey;
-                 ALTER TABLE user_cve_status ADD COLUMN id SERIAL PRIMARY KEY;
-             END IF;
-        END IF;
-    END IF;
-
-    -- Rename user_cve_notes to cve_notes if it exists
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_cve_notes') AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cve_notes') THEN
-        ALTER TABLE user_cve_notes RENAME TO cve_notes;
-    END IF;
-
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cve_notes') THEN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cve_notes' AND column_name = 'team_id') THEN
-            ALTER TABLE cve_notes ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE;
-        END IF;
-        -- Add id column if missing (it was (user_id, cve_id) in older versions)
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cve_notes' AND column_name = 'id') THEN
-            ALTER TABLE cve_notes DROP CONSTRAINT IF EXISTS user_cve_notes_pkey;
-            ALTER TABLE cve_notes ADD COLUMN id SERIAL PRIMARY KEY;
-        END IF;
-    END IF;
-END $$;
 
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
@@ -86,56 +41,19 @@ CREATE TABLE IF NOT EXISTS cves (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS sync_state (
+    key VARCHAR(100) PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS worker_sync_stats (
     task_name VARCHAR(100) PRIMARY KEY,
     last_run TIMESTAMP WITH TIME ZONE NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Automated updated_at refresh
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
-
-DROP TRIGGER IF EXISTS update_cves_updated_at ON cves;
-CREATE TRIGGER update_cves_updated_at
-    BEFORE UPDATE ON cves
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
-DROP TRIGGER IF EXISTS update_worker_sync_stats_updated_at ON worker_sync_stats;
-CREATE TRIGGER update_worker_sync_stats_updated_at
-    BEFORE UPDATE ON worker_sync_stats
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
--- Ensure updated_at column exists for cves if table was already created
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cves') THEN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'updated_at') THEN
-            ALTER TABLE cves ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'vector_string') THEN
-            ALTER TABLE cves ADD COLUMN vector_string TEXT;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'references') THEN
-            ALTER TABLE cves ADD COLUMN "references" TEXT[];
-        END IF;
-    END IF;
-END $$;
-
-CREATE TABLE IF NOT EXISTS teams (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    invite_code VARCHAR(50) UNIQUE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
+-- 2. Create dependent tables
 CREATE TABLE IF NOT EXISTS team_members (
     team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -157,7 +75,8 @@ CREATE TABLE IF NOT EXISTS assets (
 CREATE TABLE IF NOT EXISTS asset_keywords (
     id SERIAL PRIMARY KEY,
     asset_id INTEGER REFERENCES assets(id) ON DELETE CASCADE,
-    keyword VARCHAR(255) NOT NULL
+    keyword VARCHAR(255) NOT NULL,
+    UNIQUE(asset_id, keyword)
 );
 
 CREATE TABLE IF NOT EXISTS user_subscriptions (
@@ -194,8 +113,6 @@ CREATE TABLE IF NOT EXISTS cve_notes (
     CONSTRAINT chk_cve_notes_user_xor_team CHECK ((user_id IS NULL) <> (team_id IS NULL))
 );
 
-CREATE INDEX IF NOT EXISTS idx_cve_notes_team_id ON cve_notes(team_id);
-
 CREATE TABLE IF NOT EXISTS alert_history (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -226,12 +143,89 @@ CREATE TABLE IF NOT EXISTS email_change_requests (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS sync_state (
-    key VARCHAR(100) PRIMARY KEY,
-    value TEXT NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+-- 3. Ensure team_id columns exist for all relevant tables (Upgrades)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'assets') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'assets' AND column_name = 'team_id') THEN
+            ALTER TABLE assets ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE;
+        END IF;
+    END IF;
 
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_subscriptions') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'team_id') THEN
+            ALTER TABLE user_subscriptions ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE;
+        END IF;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_cve_status') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_cve_status' AND column_name = 'team_id') THEN
+            ALTER TABLE user_cve_status ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE;
+        END IF;
+        -- Handle potential PK change if it was (user_id, cve_id)
+        IF EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE table_name = 'user_cve_status' AND constraint_type = 'PRIMARY KEY') THEN
+             IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_cve_status' AND column_name = 'id') THEN
+                 ALTER TABLE user_cve_status DROP CONSTRAINT IF EXISTS user_cve_status_pkey;
+                 ALTER TABLE user_cve_status ADD COLUMN id SERIAL PRIMARY KEY;
+             END IF;
+        END IF;
+    END IF;
+
+    -- Rename user_cve_notes to cve_notes if it exists
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_cve_notes') AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cve_notes') THEN
+        ALTER TABLE user_cve_notes RENAME TO cve_notes;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cve_notes') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cve_notes' AND column_name = 'team_id') THEN
+            ALTER TABLE cve_notes ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE;
+        END IF;
+        -- Add id column if missing (it was (user_id, cve_id) in older versions)
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cve_notes' AND column_name = 'id') THEN
+            ALTER TABLE cve_notes DROP CONSTRAINT IF EXISTS user_cve_notes_pkey;
+            ALTER TABLE cve_notes ADD COLUMN id SERIAL PRIMARY KEY;
+        END IF;
+    END IF;
+END $$;
+
+-- 4. Automated updated_at refresh
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+DROP TRIGGER IF EXISTS update_cves_updated_at ON cves;
+CREATE TRIGGER update_cves_updated_at
+    BEFORE UPDATE ON cves
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_worker_sync_stats_updated_at ON worker_sync_stats;
+CREATE TRIGGER update_worker_sync_stats_updated_at
+    BEFORE UPDATE ON worker_sync_stats
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Ensure updated_at column and other recent columns exist for cves if table was already created
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cves') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'updated_at') THEN
+            ALTER TABLE cves ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'vector_string') THEN
+            ALTER TABLE cves ADD COLUMN vector_string TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'references') THEN
+            ALTER TABLE cves ADD COLUMN "references" TEXT[];
+        END IF;
+    END IF;
+END $$;
+
+-- 5. Indexes
 CREATE INDEX IF NOT EXISTS idx_user_activity_logs_user_id_created_at ON user_activity_logs (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_user_activity_logs_created_at ON user_activity_logs (created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_email_change_requests_old_token ON email_change_requests (old_email_token);
@@ -241,11 +235,11 @@ CREATE INDEX IF NOT EXISTS idx_cves_cvss_score ON cves (cvss_score);
 CREATE INDEX IF NOT EXISTS idx_cves_updated_date ON cves (updated_date DESC);
 CREATE INDEX IF NOT EXISTS idx_assets_team_id ON assets(team_id);
 CREATE INDEX IF NOT EXISTS idx_user_cve_status_team_id ON user_cve_status(team_id);
+CREATE INDEX IF NOT EXISTS idx_cve_notes_team_id ON cve_notes(team_id);
 
 -- Partial Unique Indexes for status and notes
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_status ON user_cve_status (user_id, cve_id) WHERE team_id IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_team_status ON user_cve_status (team_id, cve_id) WHERE team_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_notes ON cve_notes (user_id, cve_id) WHERE team_id IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_team_notes ON cve_notes (team_id, cve_id) WHERE team_id IS NOT NULL;
-
 `

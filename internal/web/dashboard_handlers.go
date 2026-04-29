@@ -202,8 +202,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Severity distribution query arguments
-	severityArgs := []interface{}{userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss}
-
+	// Use 'args' which contains parameters for whereClause
 	severityQuery := "SELECT " +
 		"COUNT(DISTINCT CASE WHEN c.cvss_score >= 9.0 THEN c.id END), " +
 		"COUNT(DISTINCT CASE WHEN c.cvss_score >= 7.0 AND c.cvss_score < 9.0 THEN c.id END), " +
@@ -211,7 +210,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"COUNT(DISTINCT CASE WHEN c.cvss_score < 4.0 THEN c.id END) " +
 		baseFromJoin + whereClause
 		
-	_ = a.Pool.QueryRow(r.Context(), severityQuery, severityArgs...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
+	_ = a.Pool.QueryRow(r.Context(), severityQuery, args...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
 
 	// Fetch status distribution for the current view
 	var statusCounts struct {
@@ -227,7 +226,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"COUNT(DISTINCT CASE WHEN ucs.status = 'ignored' THEN c.id END) " +
 		baseFromJoin + whereClause
 		
-	_ = a.Pool.QueryRow(r.Context(), statusQuery, severityArgs...).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
+	_ = a.Pool.QueryRow(r.Context(), statusQuery, args...).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
 
 	a.RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
 		"CVEs":           cves,
