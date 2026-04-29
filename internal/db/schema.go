@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS cves (
     cve_id VARCHAR(50) UNIQUE NOT NULL,
     description TEXT,
     cvss_score NUMERIC(4,1),
+    vector_string TEXT,
     cisa_kev BOOLEAN DEFAULT FALSE,
     epss_score NUMERIC(6,5),
     cwe_id VARCHAR(50),
@@ -80,8 +81,53 @@ CREATE TABLE IF NOT EXISTS cves (
     osint_data JSONB DEFAULT '{}',
     published_date TIMESTAMP WITH TIME ZONE,
     updated_date TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    "references" TEXT[],
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS worker_sync_stats (
+    task_name VARCHAR(100) PRIMARY KEY,
+    last_run TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Automated updated_at refresh
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+DROP TRIGGER IF EXISTS update_cves_updated_at ON cves;
+CREATE TRIGGER update_cves_updated_at
+    BEFORE UPDATE ON cves
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_worker_sync_stats_updated_at ON worker_sync_stats;
+CREATE TRIGGER update_worker_sync_stats_updated_at
+    BEFORE UPDATE ON worker_sync_stats
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Ensure updated_at column exists for cves if table was already created
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cves') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'updated_at') THEN
+            ALTER TABLE cves ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'vector_string') THEN
+            ALTER TABLE cves ADD COLUMN vector_string TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'references') THEN
+            ALTER TABLE cves ADD COLUMN "references" TEXT[];
+        END IF;
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS teams (
     id SERIAL PRIMARY KEY,
