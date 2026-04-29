@@ -53,9 +53,11 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	args := []any{userID}
 	argIdx := 2 // $1 is always userID
 
+	teamArgIdx := -1
 	statusJoinCond := "ucs.user_id = $1 AND ucs.team_id IS NULL"
 	if activeTeamID > 0 {
 		statusJoinCond = fmt.Sprintf("ucs.team_id = $%d", argIdx)
+		teamArgIdx = argIdx
 		args = append(args, activeTeamID)
 		argIdx++
 	}
@@ -122,18 +124,8 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	notesJoinCond := "ucn.user_id = $1 AND ucn.team_id IS NULL"
-	if activeTeamID > 0 {
-		// activeTeamID is already in args if it was > 0, find its index
-		teamArgIdx := -1
-		for i, v := range args {
-			if id, ok := v.(int); ok && id == activeTeamID {
-				teamArgIdx = i + 1
-				break
-			}
-		}
-		if teamArgIdx != -1 {
-			notesJoinCond = fmt.Sprintf("ucn.team_id = $%d", teamArgIdx)
-		}
+	if teamArgIdx != -1 {
+		notesJoinCond = fmt.Sprintf("ucn.team_id = $%d", teamArgIdx)
 	}
 
 	query := fmt.Sprintf(`
