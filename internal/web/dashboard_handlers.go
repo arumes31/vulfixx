@@ -50,9 +50,14 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	var totalItems, kevCount, critCount, progressCount int
 
+	args := []any{userID}
+	argIdx := 2 // $1 is always userID
+
 	statusJoinCond := "ucs.user_id = $1 AND ucs.team_id IS NULL"
 	if activeTeamID > 0 {
-		statusJoinCond = "ucs.team_id = $8"
+		statusJoinCond = fmt.Sprintf("ucs.team_id = $%d", argIdx)
+		args = append(args, activeTeamID)
+		argIdx++
 	}
 
 	metricsQuery := fmt.Sprintf(`
@@ -74,37 +79,61 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		if statusFilter == "" || statusFilter == "active" {
 			whereClause += " AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) "
-		} else {
-			whereClause += " AND ucs.status = $7 "
+		} else if statusFilter != "" {
+			whereClause += fmt.Sprintf(" AND ucs.status = $%d ", argIdx)
+			args = append(args, statusFilter)
+			argIdx++
 		}
 	}
 
-	whereClause += " AND ($2 = '' OR c.cve_id ILIKE '%%' || $2 || '%%' OR c.description ILIKE '%%' || $2 || '%%') "
+	if searchQuery != "" {
+		whereClause += fmt.Sprintf(" AND (c.cve_id ILIKE $%d OR c.description ILIKE $%d) ", argIdx, argIdx)
+		args = append(args, "%"+searchQuery+"%")
+		argIdx++
+	}
 	if kevOnly {
 		whereClause += " AND c.cisa_kev = true "
 	}
 	if minCvss > 0 {
-		whereClause += " AND c.cvss_score >= $9 "
+		whereClause += fmt.Sprintf(" AND c.cvss_score >= $%d ", argIdx)
+		args = append(args, minCvss)
+		argIdx++
 	}
 	if maxCvss < 10 {
-		whereClause += " AND c.cvss_score <= $10 "
+		whereClause += fmt.Sprintf(" AND c.cvss_score <= $%d ", argIdx)
+		args = append(args, maxCvss)
+		argIdx++
 	}
 	if startDate != "" {
-		whereClause += " AND c.published_date >= $3 "
+		whereClause += fmt.Sprintf(" AND c.published_date >= $%d ", argIdx)
+		args = append(args, startDate)
+		argIdx++
 	}
 	if endDate != "" {
-		whereClause += " AND c.published_date <= $4 "
+		whereClause += fmt.Sprintf(" AND c.published_date <= $%d ", argIdx)
+		args = append(args, endDate)
+		argIdx++
 	}
 
 	fullMetricsQuery := metricsQuery + whereClause
-	err := a.Pool.QueryRow(r.Context(), fullMetricsQuery, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss).Scan(&totalItems, &kevCount, &critCount, &progressCount)
+	err := a.Pool.QueryRow(r.Context(), fullMetricsQuery, args...).Scan(&totalItems, &kevCount, &critCount, &progressCount)
 	if err != nil {
 		log.Printf("Dashboard metrics error: %v", err)
 	}
 
 	notesJoinCond := "ucn.user_id = $1 AND ucn.team_id IS NULL"
 	if activeTeamID > 0 {
-		notesJoinCond = "ucn.team_id = $8"
+		// activeTeamID is already in args if it was > 0, find its index
+		teamArgIdx := -1
+		for i, v := range args {
+			if id, ok := v.(int); ok && id == activeTeamID {
+				teamArgIdx = i + 1
+				break
+			}
+		}
+		if teamArgIdx != -1 {
+			notesJoinCond = fmt.Sprintf("ucn.team_id = $%d", teamArgIdx)
+		}
 	}
 
 	query := fmt.Sprintf(`
@@ -119,10 +148,13 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query += whereClause
-	query += " ORDER BY c.published_date DESC LIMIT $5 OFFSET $6 "
+	query += fmt.Sprintf(" ORDER BY c.published_date DESC LIMIT $%d OFFSET $%d ", argIdx, argIdx+1)
+	
+	finalArgs := append(args, pageSize, offset)
 
-	rows, err := a.Pool.Query(r.Context(), query, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss)
+	rows, err := a.Pool.Query(r.Context(), query, finalArgs...)
 	if err != nil {
+		log.Printf("Dashboard query error: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -169,7 +201,8 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		baseFromJoin = " FROM cves c "
 	}
 
-	args := []interface{}{userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss}
+	// Severity distribution query arguments
+	severityArgs := []interface{}{userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss}
 
 	severityQuery := "SELECT " +
 		"COUNT(DISTINCT CASE WHEN c.cvss_score >= 9.0 THEN c.id END), " +
@@ -178,7 +211,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"COUNT(DISTINCT CASE WHEN c.cvss_score < 4.0 THEN c.id END) " +
 		baseFromJoin + whereClause
 		
-	_ = a.Pool.QueryRow(r.Context(), severityQuery, args...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
+	_ = a.Pool.QueryRow(r.Context(), severityQuery, severityArgs...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
 
 	// Fetch status distribution for the current view
 	var statusCounts struct {
@@ -194,7 +227,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"COUNT(DISTINCT CASE WHEN ucs.status = 'ignored' THEN c.id END) " +
 		baseFromJoin + whereClause
 		
-	_ = a.Pool.QueryRow(r.Context(), statusQuery, args...).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
+	_ = a.Pool.QueryRow(r.Context(), statusQuery, severityArgs...).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
 
 	a.RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
 		"CVEs":           cves,
@@ -505,27 +538,42 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	`
 
 	whereClause := " WHERE (1=1) "
+	args := []any{}
+	argIdx := 1
 
-	// Arguments for public view: $1=search, $2=start, $3=end, $4=min, $5=max
-	whereClause += " AND ($1 = '' OR c.cve_id ILIKE '%%' || $1 || '%%' OR c.description ILIKE '%%' || $1 || '%%') "
+	if searchQuery != "" {
+		whereClause += fmt.Sprintf(" AND (c.cve_id ILIKE $%d OR c.description ILIKE $%d) ", argIdx, argIdx)
+		args = append(args, "%"+searchQuery+"%")
+		argIdx++
+	}
+
 	if kevOnly {
 		whereClause += " AND c.cisa_kev = true "
 	}
+
 	if minCvss > 0 {
-		whereClause += " AND c.cvss_score >= $4 "
+		whereClause += fmt.Sprintf(" AND c.cvss_score >= $%d ", argIdx)
+		args = append(args, minCvss)
+		argIdx++
 	}
 	if maxCvss < 10 {
-		whereClause += " AND c.cvss_score <= $5 "
+		whereClause += fmt.Sprintf(" AND c.cvss_score <= $%d ", argIdx)
+		args = append(args, maxCvss)
+		argIdx++
 	}
 	if startDate != "" {
-		whereClause += " AND c.published_date >= $2 "
+		whereClause += fmt.Sprintf(" AND c.published_date >= $%d ", argIdx)
+		args = append(args, startDate)
+		argIdx++
 	}
 	if endDate != "" {
-		whereClause += " AND c.published_date <= $3 "
+		whereClause += fmt.Sprintf(" AND c.published_date <= $%d ", argIdx)
+		args = append(args, endDate)
+		argIdx++
 	}
 
 	fullMetricsQuery := metricsQuery + whereClause
-	err := a.Pool.QueryRow(r.Context(), fullMetricsQuery, searchQuery, startDate, endDate, minCvss, maxCvss).Scan(&totalItems, &kevCount, &critCount)
+	err := a.Pool.QueryRow(r.Context(), fullMetricsQuery, args...).Scan(&totalItems, &kevCount, &critCount)
 	if err != nil {
 		log.Printf("Public dashboard metrics error: %v", err)
 	}
@@ -537,10 +585,10 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		FROM cves c
 	`
 	query += whereClause
-	query += " ORDER BY c.published_date DESC LIMIT $6 OFFSET $7 "
+	query += fmt.Sprintf(" ORDER BY c.published_date DESC LIMIT $%d OFFSET $%d ", argIdx, argIdx+1)
+	args = append(args, pageSize, offset)
 
-	// Final args: 1-5 same, $6=pageSize, $7=offset
-	rows, err := a.Pool.Query(r.Context(), query, searchQuery, startDate, endDate, minCvss, maxCvss, pageSize, offset)
+	rows, err := a.Pool.Query(r.Context(), query, args...)
 	if err != nil {
 		log.Printf("Public dashboard query error: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS cves (
     cve_id VARCHAR(50) UNIQUE NOT NULL,
     description TEXT,
     cvss_score NUMERIC(4,1),
+    vector_string TEXT,
     cisa_kev BOOLEAN DEFAULT FALSE,
     epss_score NUMERIC(6,5),
     cwe_id VARCHAR(50),
@@ -24,7 +25,15 @@ CREATE TABLE IF NOT EXISTS cves (
     osint_data JSONB DEFAULT '{}',
     published_date TIMESTAMP WITH TIME ZONE,
     updated_date TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    "references" TEXT[],
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS worker_sync_stats (
+    task_name VARCHAR(100) PRIMARY KEY,
+    last_run TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS teams (
