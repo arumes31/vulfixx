@@ -97,7 +97,7 @@ func TestWorkerSync_NVD(t *testing.T) {
 
 	t.Run("FullSync_Backfill", func(t *testing.T) {
 		mock.ExpectQuery("SELECT last_run FROM worker_sync_stats WHERE task_name = 'nvd_sync'").
-			WillReturnError(pgx.ErrNoRows) 
+			WillReturnError(pgx.ErrNoRows)
 
 		mock.ExpectExec("INSERT INTO cves").
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 7.5, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
@@ -112,13 +112,13 @@ func TestWorkerSync_NVD(t *testing.T) {
 		defer func() { defaultNVDBaseURL = oldURL }()
 
 		w.fetchFromNVD(ctx)
-		
+
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
 
-    t.Run("Status_403_RateLimit", func(t *testing.T) {
+	t.Run("Status_403_RateLimit", func(t *testing.T) {
 		httpClient := &MockHTTPClient{
 			DoFunc: func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
@@ -129,10 +129,10 @@ func TestWorkerSync_NVD(t *testing.T) {
 		}
 		w2 := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, httpClient)
 		mock.ExpectQuery("SELECT last_run FROM worker_sync_stats WHERE task_name = 'nvd_sync'").WillReturnRows(pgxmock.NewRows([]string{"last_run"}).AddRow(time.Now()))
-		
+
 		shortCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 		defer cancel()
-		
+
 		w2.runFullSync(shortCtx, false)
 	})
 }
@@ -170,13 +170,13 @@ func TestWorkerSync_CISA(t *testing.T) {
 		mock.ExpectCommit()
 
 		w.fetchFromCISAKEV(context.Background())
-		
+
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
 
-    t.Run("Non200", func(t *testing.T) {
+	t.Run("Non200", func(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 			rw.WriteHeader(http.StatusInternalServerError)
 		}))
@@ -194,7 +194,7 @@ func TestWorkerSync_EPSS(t *testing.T) {
 		t.Fatalf("failed to setup mock db: %v", err)
 	}
 	defer mock.Close()
-    w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
+	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
 
 	t.Run("Success", func(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
@@ -202,17 +202,17 @@ func TestWorkerSync_EPSS(t *testing.T) {
 			_, _ = fmt.Fprint(rw, data)
 		}))
 		defer ts.Close()
-        oldURL := defaultEPSSBaseURL
+		oldURL := defaultEPSSBaseURL
 		defaultEPSSBaseURL = ts.URL
 		defer func() { defaultEPSSBaseURL = oldURL }()
 
 		mock.ExpectQuery("SELECT cve_id FROM cves").WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-EPSS-1"))
 		mock.ExpectExec("UPDATE cves SET epss_score = \\$1 WHERE cve_id = \\$2").WithArgs(0.0123, "CVE-EPSS-1").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-		
+
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 		defer cancel()
 		w.syncEPSS(ctx)
-		
+
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
 		}
@@ -228,8 +228,8 @@ func TestWorkerSync_GitHub(t *testing.T) {
 	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
 
 	t.Run("Success", func(t *testing.T) {
-        // Override any internal URL if possible, or use MockHTTPClient
-        httpClient := &MockHTTPClient{
+		// Override any internal URL if possible, or use MockHTTPClient
+		httpClient := &MockHTTPClient{
 			DoFunc: func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusOK,
@@ -241,11 +241,11 @@ func TestWorkerSync_GitHub(t *testing.T) {
 
 		mock.ExpectQuery("SELECT cve_id FROM cves").WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-GH-1"))
 		mock.ExpectExec("UPDATE cves SET github_poc_count = \\$1 WHERE cve_id = \\$2").WithArgs(42, "CVE-GH-1").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-		
+
 		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 		defer cancel()
 		w.syncGitHubBuzz(ctx)
-		
+
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
 		}

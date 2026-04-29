@@ -16,9 +16,9 @@ func TestModels(t *testing.T) {
 		IsTOTPEnabled:    true,
 		CreatedAt:        time.Now(),
 	}
-	if u.ID != 1 || u.Email != "test@example.com" || u.PasswordHash != "hash" || 
-	   !u.IsEmailVerified || u.EmailVerifyToken != "token" || u.TOTPSecret != "secret" || 
-	   !u.IsTOTPEnabled || u.CreatedAt.IsZero() {
+	if u.ID != 1 || u.Email != "test@example.com" || u.PasswordHash != "hash" ||
+		!u.IsEmailVerified || u.EmailVerifyToken != "token" || u.TOTPSecret != "secret" ||
+		!u.IsTOTPEnabled || u.CreatedAt.IsZero() {
 		t.Errorf("user model validation failed")
 	}
 
@@ -32,9 +32,9 @@ func TestModels(t *testing.T) {
 		UpdatedDate:   time.Now(),
 		CreatedAt:     time.Now(),
 	}
-	if cve.ID != 1 || cve.CVEID != "CVE-2023-1234" || cve.Description != "test" || 
-	   cve.CVSSScore != 9.8 || !cve.CISAKEV || cve.PublishedDate.IsZero() || 
-	   cve.UpdatedDate.IsZero() || cve.CreatedAt.IsZero() {
+	if cve.ID != 1 || cve.CVEID != "CVE-2023-1234" || cve.Description != "test" ||
+		cve.CVSSScore != 9.8 || !cve.CISAKEV || cve.PublishedDate.IsZero() ||
+		cve.UpdatedDate.IsZero() || cve.CreatedAt.IsZero() {
 		t.Errorf("cve model validation failed")
 	}
 
@@ -46,8 +46,8 @@ func TestModels(t *testing.T) {
 		WebhookURL:  "http://example.com",
 		CreatedAt:   time.Now(),
 	}
-	if sub.ID != 1 || sub.UserID != 1 || sub.Keyword != "test" || 
-	   sub.MinSeverity != 5.0 || sub.WebhookURL != "http://example.com" || sub.CreatedAt.IsZero() {
+	if sub.ID != 1 || sub.UserID != 1 || sub.Keyword != "test" ||
+		sub.MinSeverity != 5.0 || sub.WebhookURL != "http://example.com" || sub.CreatedAt.IsZero() {
 		t.Errorf("subscription model validation failed")
 	}
 

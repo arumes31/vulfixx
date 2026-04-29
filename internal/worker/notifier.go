@@ -22,7 +22,7 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 	log.Printf("ALERT: Sending to %s for %s\n", redactEmail(email), cve.CVEID)
 	var wg sync.WaitGroup
 	successChan := make(chan bool, 2)
-	
+
 	if sub.EnableWebhook && sub.WebhookURL != "" {
 		wg.Add(1)
 		go func() {

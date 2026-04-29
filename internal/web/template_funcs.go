@@ -33,12 +33,22 @@ func (a *App) InitTemplatesWithFuncs() error {
 			}
 			return int(float64(count) / float64(total) * 100)
 		},
-		"add":        func(a, b int) int { return a + b },
-		"subtract":   func(a, b int) int { return a - b },
-		"multiply":   func(a, b float64) float64 { return a * b },
-		"round":      func(f float64) int { return int(f + 0.5) },
-		"min":        func(a, b float64) float64 { if a < b { return a }; return b },
-		"max":        func(a, b float64) float64 { if a > b { return a }; return b },
+		"add":      func(a, b int) int { return a + b },
+		"subtract": func(a, b int) int { return a - b },
+		"multiply": func(a, b float64) float64 { return a * b },
+		"round":    func(f float64) int { return int(f + 0.5) },
+		"min": func(a, b float64) float64 {
+			if a < b {
+				return a
+			}
+			return b
+		},
+		"max": func(a, b float64) float64 {
+			if a > b {
+				return a
+			}
+			return b
+		},
 		"GetBaseURL": GetBaseURL,
 		"safeURL": func(s string) template.URL {
 			parsed, err := url.Parse(s)

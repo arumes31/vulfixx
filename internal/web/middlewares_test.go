@@ -50,8 +50,8 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 		var capturedIP string
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if val := r.Context().Value(clientIPKey); val != nil {
-                capturedIP = val.(string)
-            }
+				capturedIP = val.(string)
+			}
 			w.WriteHeader(http.StatusOK)
 		})
 
@@ -77,8 +77,8 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 		var capturedIP string
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if val := r.Context().Value(clientIPKey); val != nil {
-                capturedIP = val.(string)
-            }
+				capturedIP = val.(string)
+			}
 			w.WriteHeader(http.StatusOK)
 		})
 
@@ -94,7 +94,7 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 			t.Errorf("expected client IP 5.6.7.8, got %s", capturedIP)
 		}
 	})
-	
+
 	t.Run("ProxyMiddleware_UntrustedProxy", func(t *testing.T) {
 		t.Setenv("TRUSTED_PROXIES", "127.0.0.1")
 
@@ -105,8 +105,8 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 		var capturedIP string
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if val := r.Context().Value(clientIPKey); val != nil {
-                capturedIP = val.(string)
-            }
+				capturedIP = val.(string)
+			}
 			w.WriteHeader(http.StatusOK)
 		})
 
@@ -153,13 +153,13 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 		}
 	})
 
-    t.Run("AuthMiddleware_Unverified", func(t *testing.T) {
-        mock, _ := pgxmock.NewPool()
-        defer mock.Close()
-        app := setupTestApp(t, mock)
-        nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-            w.WriteHeader(http.StatusOK)
-        })
+	t.Run("AuthMiddleware_Unverified", func(t *testing.T) {
+		mock, _ := pgxmock.NewPool()
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+		nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
 
 		req := httptest.NewRequest("GET", "/", nil)
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
@@ -185,12 +185,12 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 	})
 
 	t.Run("AdminMiddleware_NonAdmin", func(t *testing.T) {
-        mock, _ := pgxmock.NewPool()
-        defer mock.Close()
-        app := setupTestApp(t, mock)
-        nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-            w.WriteHeader(http.StatusOK)
-        })
+		mock, _ := pgxmock.NewPool()
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+		nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
 
 		req := httptest.NewRequest("GET", "/admin", nil)
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")

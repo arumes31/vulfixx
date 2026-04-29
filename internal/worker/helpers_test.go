@@ -7,8 +7,8 @@ import (
 )
 
 type EmailSenderMock struct {
-	Count int
-	LastTo string
+	Count       int
+	LastTo      string
 	LastSubject string
 }
 

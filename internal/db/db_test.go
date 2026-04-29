@@ -105,7 +105,6 @@ func TestMigrate(t *testing.T) {
 	}
 }
 
-
 func TestCloseDB(t *testing.T) {
 	// Test nil pool
 	Pool = nil
@@ -225,14 +224,14 @@ func TestInitDB_Complex(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "ParseConfig Error",
-			envs: map[string]string{"DB_PORT": "65536"},
+			name:        "ParseConfig Error",
+			envs:        map[string]string{"DB_PORT": "65536"},
 			wantErr:     true,
 			errContains: "unable to parse database URL",
 		},
 		{
-			name: "Pool Creator Error",
-			envs: map[string]string{"DB_HOST": "localhost"},
+			name:        "Pool Creator Error",
+			envs:        map[string]string{"DB_HOST": "localhost"},
 			creatorFail: true,
 			wantErr:     true,
 			errContains: "unable to create connection pool",
@@ -343,7 +342,6 @@ func TestInitRedis_Error(t *testing.T) {
 		}
 	})
 }
-
 
 func TestSetupHelpers(t *testing.T) {
 	t.Run("SetupTestDB", func(t *testing.T) {

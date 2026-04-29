@@ -48,25 +48,25 @@ func TestWorkerAlert_EvaluateSubscriptions(t *testing.T) {
 			WithArgs(cve.Description).
 			WillReturnRows(pgxmock.NewRows([]string{"keyword", "user_id", "email", "name"}).
 				AddRow("wordpress", 1, "user@example.com", "My Site"))
-		
+
 		mock.ExpectQuery("SELECT EXISTS").WithArgs(1, 1).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 		mock.ExpectExec("INSERT INTO alert_history").WithArgs(1, 1).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		w.evaluateSubscriptions(ctx, cve)
-		
+
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
 
-    t.Run("FilterLogic_Complex", func(t *testing.T) {
+	t.Run("FilterLogic_Complex", func(t *testing.T) {
 		cve := &models.CVE{
-			ID:          1,
-			CVEID:       "CVE-COMPLEX",
-			Description: "Serious exploit in software",
-			CVSSScore:   9.8,
-			EPSSScore:   0.5,
-			CISAKEV:     true,
+			ID:             1,
+			CVEID:          "CVE-COMPLEX",
+			Description:    "Serious exploit in software",
+			CVSSScore:      9.8,
+			EPSSScore:      0.5,
+			CISAKEV:        true,
 			GitHubPoCCount: 10,
 		}
 
@@ -102,23 +102,23 @@ func TestWorkerAlert_SendAlert(t *testing.T) {
 	}
 
 	t.Run("Webhook_Detailed", func(t *testing.T) {
-        tests := []struct {
-            name       string
-            statusCode int
-            shouldPass bool
-        }{
-            {"Webhook_200", 200, true},
-            {"Webhook_400", 400, false},
-        }
+		tests := []struct {
+			name       string
+			statusCode int
+			shouldPass bool
+		}{
+			{"Webhook_200", 200, true},
+			{"Webhook_400", 400, false},
+		}
 
-        for _, tt := range tests {
+		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(tt.statusCode)
 				}))
 				defer ts.Close()
 				t.Setenv("TEST_MODE", "1")
-				
+
 				httpClient := &MockHTTPClient{
 					DoFunc: func(req *http.Request) (*http.Response, error) {
 						return &http.Response{
@@ -146,20 +146,20 @@ func TestWorkerAlert_SendAlert(t *testing.T) {
 					t.Errorf("expected success %v, got %v", tt.shouldPass, success)
 				}
 			})
-        }
-    })
+		}
+	})
 
-    t.Run("Email_FullCoverage", func(t *testing.T) {
+	t.Run("Email_FullCoverage", func(t *testing.T) {
 		mailer := &EmailSenderMock{}
 		w := &Worker{Pool: mock, Redis: db.RedisClient, Mailer: mailer, HTTP: http.DefaultClient}
-		
+
 		t.Setenv("BASE_URL", "https://vulfixx.io")
-		
+
 		cve := &models.CVE{CVEID: "CVE-CRIT", CVSSScore: 10.0, CISAKEV: true}
-        sub := models.UserSubscription{EnableEmail: true}
-        
-        w.sendAlert(sub, cve, "user@example.com", "Asset")
-		
+		sub := models.UserSubscription{EnableEmail: true}
+
+		w.sendAlert(sub, cve, "user@example.com", "Asset")
+
 		if mailer.Count != 1 {
 			t.Errorf("expected 1 email sent, got %d", mailer.Count)
 		}
@@ -201,10 +201,10 @@ func TestWorkerAlert_ProcessUserBuffer(t *testing.T) {
 		cve1 := models.CVE{CVEID: "CVE-2023-0001", CVSSScore: 8.0}
 		cve2 := models.CVE{CVEID: "CVE-2023-0002", CVSSScore: 7.0}
 		sub := models.UserSubscription{EnableEmail: true}
-		
+
 		data1, _ := json.Marshal(map[string]interface{}{"cve": cve1, "email": "user@example.com", "asset_name": "A1", "sub": sub})
 		data2, _ := json.Marshal(map[string]interface{}{"cve": cve2, "email": "user@example.com", "asset_name": "", "sub": sub})
-		
+
 		rdb.RPush(context.Background(), key, data1, data2)
 
 		w.processUserBuffer(context.Background(), userID)

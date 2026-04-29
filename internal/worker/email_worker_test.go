@@ -43,19 +43,19 @@ func TestEmailWorker_Queues(t *testing.T) {
 		// Failure case
 		mockMailer.Err = fmt.Errorf("mail error")
 		rdb.LPush(context.Background(), "email_verification_queue", payload)
-		
+
 		ctx2, cancel2 := context.WithTimeout(context.Background(), 200*time.Millisecond)
 		defer cancel2()
 		w.processEmailVerification(ctx2)
-        
-        args := redis.ZRangeArgs{Key: "email_verification_delayed", ByScore: true, Start: "-inf", Stop: "+inf"}
-        items, _ := rdb.ZRangeArgs(context.Background(), args).Result()
-        if len(items) == 0 {
-            t.Errorf("expected item to be re-enqueued on failure")
-        }
+
+		args := redis.ZRangeArgs{Key: "email_verification_delayed", ByScore: true, Start: "-inf", Stop: "+inf"}
+		items, _ := rdb.ZRangeArgs(context.Background(), args).Result()
+		if len(items) == 0 {
+			t.Errorf("expected item to be re-enqueued on failure")
+		}
 	})
 
-    t.Run("EmailChange_Success", func(t *testing.T) {
+	t.Run("EmailChange_Success", func(t *testing.T) {
 		mockMailer := &EmailSenderMockV2{}
 		w := &Worker{
 			Redis:  rdb,
