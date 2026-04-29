@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5"
@@ -129,7 +130,8 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := fmt.Sprintf(`
-		SELECT DISTINCT c.id, c.cve_id, c.description, c.cvss_score, c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, c."references", ucn.notes
+		SELECT DISTINCT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, c."references", ucn.notes,
+		COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0)
 		FROM cves c
 		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s
 		LEFT JOIN cve_notes ucn ON c.id = ucn.cve_id AND %s
@@ -156,7 +158,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var c models.CVE
 		var notes sql.NullString
-		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &notes); err != nil {
+		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &notes, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount); err != nil {
 			log.Printf("Error scanning dashboard CVE row (CVEID=%s): %v", c.CVEID, err)
 			continue
 		}
@@ -507,17 +509,40 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	vendorQuery := r.URL.Query().Get("vendor")
 	productQuery := r.URL.Query().Get("product")
 	cveIDQuery := r.URL.Query().Get("cve")
+	cweQuery := r.URL.Query().Get("cwe")
 
 	startDate := r.URL.Query().Get("start_date")
 	endDate := r.URL.Query().Get("end_date")
 	kevOnly := r.URL.Query().Get("kev") == "true"
+	hasPoC := r.URL.Query().Get("has_poc") == "true"
 	minCvssStr := r.URL.Query().Get("min_cvss")
 	maxCvssStr := r.URL.Query().Get("max_cvss")
+	minEpssStr := r.URL.Query().Get("min_epss")
+	maxEpssStr := r.URL.Query().Get("max_epss")
 
 	minCvss, _ := strconv.ParseFloat(minCvssStr, 64)
 	maxCvss, _ := strconv.ParseFloat(maxCvssStr, 64)
 	if maxCvss == 0 {
 		maxCvss = 10.0
+	}
+	minEpss, _ := strconv.ParseFloat(minEpssStr, 64)
+	maxEpss, _ := strconv.ParseFloat(maxEpssStr, 64)
+	if maxEpss == 0 && maxEpssStr != "" {
+		// if user explicitly put 0, keep it. If empty, default to 1.0
+	} else if maxEpssStr == "" {
+		maxEpss = 1.0
+	}
+
+	// Redis Caching for Default View
+	cacheKey := "public_dashboard_default"
+	if r.URL.RawQuery == "" || r.URL.RawQuery == "page=1" {
+		if val, err := a.Redis.Get(r.Context(), cacheKey).Result(); err == nil {
+			var cachedData map[string]any
+			if err := json.Unmarshal([]byte(val), &cachedData); err == nil {
+				a.RenderTemplate(w, r, "public_dashboard.html", cachedData)
+				return
+			}
+		}
 	}
 
 	var totalItems, kevCount, critCount int
@@ -583,6 +608,27 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		argIdx++
 	}
 
+	if cweQuery != "" {
+		whereClause += fmt.Sprintf(" AND (c.cwe_id ILIKE $%d OR c.cwe_name ILIKE $%d) ", argIdx, argIdx)
+		args = append(args, "%"+cweQuery+"%")
+		argIdx++
+	}
+
+	if hasPoC {
+		whereClause += " AND c.github_poc_count > 0 "
+	}
+
+	if minEpss > 0 {
+		whereClause += fmt.Sprintf(" AND c.epss_score >= $%d ", argIdx)
+		args = append(args, minEpss)
+		argIdx++
+	}
+	if maxEpss < 1.0 {
+		whereClause += fmt.Sprintf(" AND c.epss_score <= $%d ", argIdx)
+		args = append(args, maxEpss)
+		argIdx++
+	}
+
 	fullMetricsQuery := metricsQuery + whereClause
 	err := a.Pool.QueryRow(r.Context(), fullMetricsQuery, args...).Scan(&totalItems, &kevCount, &critCount)
 	if err != nil {
@@ -591,8 +637,9 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	query := `
 		SELECT 
-			c.id, c.cve_id, c.description, c.cvss_score, c.vector_string, c.cisa_kev, 
-			c.published_date, c.updated_date, 'active' as status, c."references", '' as notes
+			c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, 
+			c.published_date, c.updated_date, 'active' as status, c."references",
+			COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0)
 		FROM cves c
 	`
 	query += whereClause
@@ -610,7 +657,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var c models.CVE
 		var notes sql.NullString
-		err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &notes)
+		err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount)
 		if err != nil {
 			log.Printf("Error scanning public CVE: %v", err)
 			continue
@@ -642,7 +689,36 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"FROM cves c " + whereClause
 	_ = a.Pool.QueryRow(r.Context(), severityQuery, args...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
 
-	a.RenderTemplate(w, r, "public_dashboard.html", map[string]interface{}{
+	// Additional Stats for Visualizations
+	type CWEStat struct {
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Count int    `json:"count"`
+	}
+	var topCWEs []CWEStat
+	cweQueryRows, _ := a.Pool.Query(r.Context(), "SELECT cwe_id, COALESCE(cwe_name, 'Unknown'), COUNT(*) as cnt FROM cves c "+whereClause+" AND cwe_id IS NOT NULL GROUP BY cwe_id, cwe_name ORDER BY cnt DESC LIMIT 5", args...)
+	if cweQueryRows != nil {
+		for cweQueryRows.Next() {
+			var s CWEStat
+			if err := cweQueryRows.Scan(&s.ID, &s.Name, &s.Count); err == nil {
+				topCWEs = append(topCWEs, s)
+			}
+		}
+		cweQueryRows.Close()
+	}
+
+	var epssDist []int
+	epssQuery := "SELECT " +
+		"COUNT(*) FILTER (WHERE epss_score < 0.01), " +
+		"COUNT(*) FILTER (WHERE epss_score >= 0.01 AND epss_score < 0.1), " +
+		"COUNT(*) FILTER (WHERE epss_score >= 0.1 AND epss_score < 0.5), " +
+		"COUNT(*) FILTER (WHERE epss_score >= 0.5) " +
+		"FROM cves c " + whereClause
+	var e1, e2, e3, e4 int
+	_ = a.Pool.QueryRow(r.Context(), epssQuery, args...).Scan(&e1, &e2, &e3, &e4)
+	epssDist = []int{e1, e2, e3, e4}
+
+	renderData := map[string]interface{}{
 		"CVEs":            cves,
 		"Total":           totalItems,
 		"KevCount":        kevCount,
@@ -655,26 +731,42 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"Vendor":          vendorQuery,
 		"Product":         productQuery,
 		"CVE":             cveIDQuery,
+		"CWE":             cweQuery,
 		"StartDate":       startDate,
 		"EndDate":         endDate,
 		"KevOnly":         kevOnly,
+		"HasPoC":          hasPoC,
 		"MinCvss":         minCvss,
 		"MaxCvss":         maxCvss,
+		"MinEpss":         minEpss,
+		"MaxEpss":         maxEpss,
 		"SeverityCounts":  severityCounts,
+		"TopCWEs":         topCWEs,
+		"EPSSDist":        epssDist,
 		"MetaTitle":       "Vulfixx - Public CVE Tracker & Threat Intelligence",
 		"MetaDescription": "Monitor real-time vulnerability data, CISA KEV listings, and critical security advisories. The ultimate tracker for security professionals.",
 		"Trending":        a.getTrendingCVEs(r),
-	})
+	}
+
+	// Cache Default View
+	if r.URL.RawQuery == "" || r.URL.RawQuery == "page=1" {
+		if jsonData, err := json.Marshal(renderData); err == nil {
+			_ = a.Redis.Set(r.Context(), cacheKey, jsonData, 5*time.Minute).Err()
+		}
+	}
+
+	a.RenderTemplate(w, r, "public_dashboard.html", renderData)
 }
 
 func (a *App) getTrendingCVEs(r *http.Request) []models.CVE {
 	rows, err := a.Pool.Query(r.Context(), `
 		SELECT 
-			c.id, c.cve_id, c.description, c.cvss_score, c.vector_string, c.cisa_kev, 
-			c.published_date, c.updated_date, 'active' as status, c."references", '' as notes
+			c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, 
+			c.published_date, c.updated_date, 'active' as status, c."references",
+			COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0)
 		FROM cves c
-		WHERE c.cisa_kev = true OR c.cvss_score >= 9.5
-		ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT 4
+		WHERE c.cisa_kev = true OR c.cvss_score >= 9.5 OR c.github_poc_count > 0 OR c.epss_score >= 0.5
+		ORDER BY c.github_poc_count DESC, c.epss_score DESC, c.published_date DESC NULLS LAST, c.id DESC LIMIT 4
 	`)
 	if err != nil {
 		return nil
@@ -684,8 +776,7 @@ func (a *App) getTrendingCVEs(r *http.Request) []models.CVE {
 	var cves []models.CVE
 	for rows.Next() {
 		var c models.CVE
-		var notes sql.NullString
-		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &notes); err != nil {
+		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount); err != nil {
 			log.Printf("Error scanning trending CVE: %v", err)
 			continue
 		}
@@ -701,9 +792,9 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 	var c models.CVE
 	err := a.Pool.QueryRow(r.Context(), `
 		SELECT 
-			id, cve_id, description, cvss_score, vector_string, cisa_kev, 
+			id, cve_id, description, COALESCE(cvss_score, 0), vector_string, cisa_kev, 
 			published_date, updated_date, 'active' as status, "references", 
-			epss_score, cwe_id, cwe_name, github_poc_count
+			COALESCE(epss_score, 0), COALESCE(cwe_id, ''), COALESCE(cwe_name, ''), COALESCE(github_poc_count, 0)
 		FROM cves
 		WHERE cve_id = $1
 	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount)

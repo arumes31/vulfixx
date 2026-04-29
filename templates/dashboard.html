@@ -128,9 +128,15 @@
                             </div>
                         </td>
                         <td class="px-6 py-6">
-                            <div class="flex items-center gap-3">
+                            <div class="flex items-center gap-2 flex-wrap">
                                 {{if .CISAKEV}}
-                                <span class="inline-flex items-center px-2 py-0.5 rounded bg-red-600 text-white text-[9px] font-black uppercase tracking-widest shadow-lg shadow-red-600/20">KEV</span>
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-red-600 text-white text-[9px] font-black uppercase tracking-widest shadow-lg shadow-red-600/20" title="CISA Known Exploited Vulnerability">KEV</span>
+                                {{end}}
+                                {{if gt .GitHubPoCCount 0}}
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30 text-[9px] font-black uppercase tracking-widest" title="Exploit Code Available ({{.GitHubPoCCount}} GitHub PoCs)">PoC</span>
+                                {{end}}
+                                {{if gt .EPSSScore 0.0}}
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[9px] font-black uppercase tracking-widest" title="EPSS Probability Score: {{printf "%.2f%%" (multiply .EPSSScore 100.0)}}">EPSS: {{printf "%.1f%%" (multiply .EPSSScore 100.0)}}</span>
                                 {{end}}
                                 <button data-id="{{.ID}}" data-cve="{{.CVEID}}" data-notes="{{.Notes}}" aria-label="Remediation Notes" class="notes-trigger material-symbols-outlined {{if .Notes}}text-[#00daf3] opacity-100{{else}}text-gray-600 opacity-40 hover:opacity-100{{end}} transition-all" title="Remediation Notes">description</button>
                             </div>

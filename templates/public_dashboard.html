@@ -55,8 +55,9 @@
                 </div>
                 <p class="text-[10px] text-gray-500 line-clamp-3 leading-relaxed mb-4">{{.Description}}</p>
                 <div class="flex items-center gap-2">
-                    <span class="material-symbols-outlined text-[14px] text-primary">visibility</span>
-                    <span class="text-[9px] font-black uppercase tracking-widest text-primary">Deep Analysis</span>
+                    {{if .CISAKEV}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-orange-500/20 text-orange-400 border border-orange-500/20">KEV</span>{{end}}
+                    {{if gt .GitHubPoCCount 0}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-purple-500/20 text-purple-400 border border-purple-500/20">PoC</span>{{end}}
+                    {{if gt .EPSSScore 0.5}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-red-500/20 text-red-400 border border-red-500/20">High EPSS</span>{{end}}
                 </div>
             </a>
             {{end}}
@@ -111,8 +112,11 @@
                 </div>
             </div>
             <div class="space-y-2">
-                <label class="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">CVE ID</label>
-                <input type="text" name="cve" value="{{.CVE}}" placeholder="e.g. CVE-2024-..." class="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all">
+                <label class="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">CVE / CWE ID</label>
+                <div class="flex gap-2">
+                    <input type="text" name="cve" value="{{.CVE}}" placeholder="CVE-..." class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all">
+                    <input type="text" name="cwe" value="{{.CWE}}" placeholder="CWE-..." class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all">
+                </div>
             </div>
             <div class="space-y-2">
                 <label class="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">CVSS Range</label>
@@ -122,21 +126,31 @@
                     <input type="number" step="0.1" name="max_cvss" value="{{.MaxCvss}}" placeholder="10.0" class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all">
                 </div>
             </div>
-            <div class="space-y-2 lg:col-span-2">
+            <div class="space-y-2 lg:col-span-1">
+                <label class="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">EPSS Probability</label>
+                <div class="flex items-center gap-2">
+                    <input type="number" step="0.01" name="min_epss" value="{{.MinEpss}}" placeholder="0.00" class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all">
+                    <span class="text-gray-600 text-xs">-</span>
+                    <input type="number" step="0.01" name="max_epss" value="{{.MaxEpss}}" placeholder="1.00" class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all">
+                </div>
+            </div>
+            <div class="space-y-2 lg:col-span-1">
                 <label class="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Date Published</label>
                 <div class="flex items-center gap-2">
-                    <input type="date" name="start_date" value="{{.StartDate}}" class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all [color-scheme:dark]">
-                    <span class="text-gray-600 text-xs">to</span>
-                    <input type="date" name="end_date" value="{{.EndDate}}" class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all [color-scheme:dark]">
+                    <input type="date" name="start_date" value="{{.StartDate}}" class="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all [color-scheme:dark]">
                 </div>
             </div>
             <div class="flex items-end gap-4 lg:col-span-2">
-                <label class="flex items-center gap-3 cursor-pointer bg-white/5 border border-white/10 rounded-2xl px-6 py-3 hover:bg-white/10 transition-all flex-grow">
+                <label class="flex items-center gap-3 cursor-pointer bg-white/5 border border-white/10 rounded-2xl px-4 py-3 hover:bg-white/10 transition-all flex-grow">
                     <input type="checkbox" name="kev" value="true" {{if .KevOnly}}checked{{end}} class="w-4 h-4 rounded border-white/10 bg-white/5 text-primary focus:ring-primary focus:ring-offset-0">
-                    <span class="text-xs font-bold text-gray-300">Exploited in the Wild (KEV)</span>
+                    <span class="text-[10px] font-bold text-gray-300 uppercase">KEV Only</span>
                 </label>
-                <button type="submit" class="px-8 py-3 bg-primary text-on-primary rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-lg shadow-primary/20 whitespace-nowrap">
-                    Apply Filters
+                <label class="flex items-center gap-3 cursor-pointer bg-white/5 border border-white/10 rounded-2xl px-4 py-3 hover:bg-white/10 transition-all flex-grow">
+                    <input type="checkbox" name="has_poc" value="true" {{if .HasPoC}}checked{{end}} class="w-4 h-4 rounded border-white/10 bg-white/5 text-primary focus:ring-primary focus:ring-offset-0">
+                    <span class="text-[10px] font-bold text-gray-300 uppercase">Has PoC</span>
+                </label>
+                <button type="submit" class="px-6 py-3 bg-primary text-on-primary rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-lg shadow-primary/20 whitespace-nowrap">
+                    Filter
                 </button>
                 <a href="/" class="p-3 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-all hover:bg-white/10" title="Clear All Filters">
                     <span class="material-symbols-outlined text-sm">filter_alt_off</span>
@@ -146,14 +160,32 @@
     </div>
 
     <!-- Charts Section -->
-    <div class="grid grid-cols-1 gap-8">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div class="glass p-8 rounded-[2rem] border border-white/10">
             <h3 class="text-xs font-black uppercase tracking-[0.2em] text-gray-500 mb-6 flex items-center gap-2">
                 <span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                Global Severity Distribution
+                Severity Distribution
             </h3>
             <div class="h-64">
                 <canvas id="severityChart"></canvas>
+            </div>
+        </div>
+        <div class="glass p-8 rounded-[2rem] border border-white/10">
+            <h3 class="text-xs font-black uppercase tracking-[0.2em] text-gray-500 mb-6 flex items-center gap-2">
+                <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+                Top Vulnerability Types
+            </h3>
+            <div class="h-64">
+                <canvas id="cweChart"></canvas>
+            </div>
+        </div>
+        <div class="glass p-8 rounded-[2rem] border border-white/10">
+            <h3 class="text-xs font-black uppercase tracking-[0.2em] text-gray-500 mb-6 flex items-center gap-2">
+                <span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>
+                EPSS Probability Distribution
+            </h3>
+            <div class="h-64">
+                <canvas id="epssChart"></canvas>
             </div>
         </div>
     </div>
@@ -166,6 +198,7 @@
                     <tr class="bg-white/5 border-b border-white/10">
                         <th class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Vulnerability ID</th>
                         <th class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Severity</th>
+                        <th class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Exploit Telemetry</th>
                         <th class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Description</th>
                         <th class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Published</th>
                     </tr>
@@ -176,9 +209,6 @@
                         <td class="p-6">
                             <div class="flex items-center gap-3">
                                 <a href="/cve/{{.CVEID}}" class="text-sm font-black text-white group-hover:text-primary transition-colors">{{.CVEID}}</a>
-                                {{if .CISAKEV}}
-                                <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-orange-500/20 text-orange-400 border border-orange-500/20">KEV</span>
-                                {{end}}
                             </div>
                         </td>
                         <td class="p-6">
@@ -192,6 +222,17 @@
                             </div>
                         </td>
                         <td class="p-6">
+                            <div class="flex flex-wrap gap-2">
+                                {{if .CISAKEV}}
+                                <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-orange-500/20 text-orange-400 border border-orange-500/20">KEV</span>
+                                {{end}}
+                                {{if gt .GitHubPoCCount 0}}
+                                <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-purple-500/20 text-purple-400 border border-purple-500/20">PoC</span>
+                                {{end}}
+                                <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-white/5 text-gray-400 border border-white/10">EPSS: {{printf "%.4f" .EPSSScore}}</span>
+                            </div>
+                        </td>
+                        <td class="p-6">
                             <p class="text-xs text-gray-400 line-clamp-2 max-w-xl leading-relaxed">{{.Description}}</p>
                         </td>
                         <td class="p-6">
@@ -200,7 +241,7 @@
                     </tr>
                     {{else}}
                     <tr>
-                        <td colspan="4" class="p-12 text-center">
+                        <td colspan="5" class="p-12 text-center">
                             <span class="material-symbols-outlined text-4xl text-gray-600 mb-4">search_off</span>
                             <p class="text-gray-500 font-bold uppercase tracking-widest text-xs">No vulnerabilities found matching your filters</p>
                         </td>
@@ -216,12 +257,12 @@
             <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Page {{.Page}} of {{.TotalPages}}</span>
             <div class="flex gap-2">
                 {{if gt .Page 1}}
-                <a href="/?page={{subtract .Page 1}}&q={{urlquery .Query}}&vendor={{urlquery .Vendor}}&product={{urlquery .Product}}&cve={{urlquery .CVE}}&start_date={{urlquery .StartDate}}&end_date={{urlquery .EndDate}}&min_cvss={{urlquery .MinCvss}}&max_cvss={{urlquery .MaxCvss}}&kev={{urlquery .KevOnly}}" class="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all">
+                <a href="/?page={{subtract .Page 1}}&q={{urlquery .Query}}&vendor={{urlquery .Vendor}}&product={{urlquery .Product}}&cve={{urlquery .CVE}}&cwe={{urlquery .CWE}}&start_date={{urlquery .StartDate}}&end_date={{urlquery .EndDate}}&min_cvss={{urlquery .MinCvss}}&max_cvss={{urlquery .MaxCvss}}&kev={{urlquery .KevOnly}}&has_poc={{urlquery .HasPoC}}&min_epss={{urlquery .MinEpss}}&max_epss={{urlquery .MaxEpss}}" class="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all">
                     <span class="material-symbols-outlined text-sm">chevron_left</span>
                 </a>
                 {{end}}
                 {{if lt .Page .TotalPages}}
-                <a href="/?page={{add .Page 1}}&q={{urlquery .Query}}&vendor={{urlquery .Vendor}}&product={{urlquery .Product}}&cve={{urlquery .CVE}}&start_date={{urlquery .StartDate}}&end_date={{urlquery .EndDate}}&min_cvss={{urlquery .MinCvss}}&max_cvss={{urlquery .MaxCvss}}&kev={{urlquery .KevOnly}}" class="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all">
+                <a href="/?page={{add .Page 1}}&q={{urlquery .Query}}&vendor={{urlquery .Vendor}}&product={{urlquery .Product}}&cve={{urlquery .CVE}}&cwe={{urlquery .CWE}}&start_date={{urlquery .StartDate}}&end_date={{urlquery .EndDate}}&min_cvss={{urlquery .MinCvss}}&max_cvss={{urlquery .MaxCvss}}&kev={{urlquery .KevOnly}}&has_poc={{urlquery .HasPoC}}&min_epss={{urlquery .MinEpss}}&max_epss={{urlquery .MaxEpss}}" class="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all">
                     <span class="material-symbols-outlined text-sm">chevron_right</span>
                 </a>
                 {{end}}
@@ -233,6 +274,12 @@
 
 <script nonce="{{.Nonce}}">
 document.addEventListener('DOMContentLoaded', function() {
+    const chartOptions = {
+        plugins: { legend: { position: 'bottom', labels: { color: '#dfe2eb', font: { family: 'Space Grotesk', weight: 'bold', size: 10 } } } },
+        responsive: true,
+        maintainAspectRatio: false
+    };
+
     const ctxSev = document.getElementById('severityChart').getContext('2d');
     new Chart(ctxSev, {
         type: 'doughnut',
@@ -245,36 +292,50 @@ document.addEventListener('DOMContentLoaded', function() {
                 hoverOffset: 10
             }]
         },
+        options: { ...chartOptions, cutout: '70%' }
+    });
+
+    const ctxCwe = document.getElementById('cweChart').getContext('2d');
+    new Chart(ctxCwe, {
+        type: 'pie',
+        data: {
+            labels: [{{range .TopCWEs}}"{{.ID}}",{{end}}],
+            datasets: [{
+                data: [{{range .TopCWEs}}{{.Count}},{{end}}],
+                backgroundColor: ['#d0bcff', '#b69df8', '#9a82db', '#7f67be', '#654da3'],
+                borderWidth: 0
+            }]
+        },
+        options: chartOptions
+    });
+
+    const ctxEpss = document.getElementById('epssChart').getContext('2d');
+    new Chart(ctxEpss, {
+        type: 'bar',
+        data: {
+            labels: ['<1%', '1-10%', '10-50%', '>50%'],
+            datasets: [{
+                label: 'CVE Count',
+                data: {{.EPSSDist}},
+                backgroundColor: '#ffb311',
+                borderRadius: 8
+            }]
+        },
         options: {
-            plugins: { legend: { position: 'right', labels: { color: '#dfe2eb', font: { family: 'Space Grotesk', weight: 'bold' } } } },
-            cutout: '70%',
-            responsive: true,
-            maintainAspectRatio: false
+            ...chartOptions,
+            scales: {
+                y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#919191' } },
+                x: { grid: { display: false }, ticks: { color: '#919191' } }
+            }
         }
     });
 
-    // Navigate rows safely without inline onclick and support keyboard accessibility
+    // Navigate rows safely
     document.querySelectorAll('tr[data-cve-url]').forEach(function(row) {
-        row.setAttribute('tabindex', '0');
-        row.setAttribute('role', 'link');
-        row.style.cursor = 'pointer';
-        
-        const navigate = function() {
-            const url = row.getAttribute('data-cve-url');
-            if (url) window.location.href = url;
-        };
-
         row.addEventListener('click', function(e) {
             if (e.target.closest('a')) return;
-            navigate();
-        });
-
-        row.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' || e.key === ' ') {
-                if (e.target.closest('a')) return;
-                e.preventDefault();
-                navigate();
-            }
+            const url = row.getAttribute('data-cve-url');
+            if (url) window.location.href = url;
         });
     });
 });
