@@ -179,7 +179,7 @@ func TestWorkerAlert_ProcessUserBuffer(t *testing.T) {
 	}
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 
 	mock, err := pgxmock.NewPool()
 	if err != nil {

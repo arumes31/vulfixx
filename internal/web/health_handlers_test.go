@@ -80,7 +80,7 @@ func TestHealthHandlers(t *testing.T) {
 		}
 		defer mr.Close()
 		rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer rdb.Close()
+		defer func() { _ = rdb.Close() }()
 
 		app := &App{Pool: mock, Redis: rdb}
 		mock.ExpectPing().WillReturnError(fmt.Errorf("db down"))

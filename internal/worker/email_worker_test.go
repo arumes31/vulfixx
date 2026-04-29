@@ -18,7 +18,7 @@ func TestEmailWorker_Queues(t *testing.T) {
 	}
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 
 	t.Run("EmailVerification_SuccessAndFailure", func(t *testing.T) {
 		mockMailer := &EmailSenderMockV2{}

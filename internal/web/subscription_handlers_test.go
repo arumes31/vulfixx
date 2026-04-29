@@ -128,7 +128,7 @@ func TestHandleAlertAction(t *testing.T) {
 		}
 		defer mr.Close()
 		rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer rdb.Close()
+		defer func() { _ = rdb.Close() }()
 
 		app := setupTestApp(t, mock)
 		app.Redis = rdb

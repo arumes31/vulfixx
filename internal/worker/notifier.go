@@ -184,7 +184,8 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 				baseURL = "http://localhost:8080"
 			}
 			if u, err := url.Parse(baseURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
-				log.Printf("Worker: Invalid BASE_URL %q, defaulting to localhost", baseURL)
+				// #nosec G706 -- baseURL is sanitized via sanitizeHeader
+				log.Printf("Worker: Invalid BASE_URL %q, defaulting to localhost", sanitizeHeader(baseURL))
 				baseURL = "http://localhost:8080"
 			}
 

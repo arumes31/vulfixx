@@ -47,7 +47,7 @@ func setupTestApp(t *testing.T, mock pgxmock.PgxPoolIface) *App {
 	})
 
 	app := NewApp(mock, redisClient, sessions.NewCookieStore([]byte("test-secret")), &MockMailer{})
-	app.InitTemplatesWithFuncs()
+	_ = app.InitTemplatesWithFuncs()
 
 	return app
 }
