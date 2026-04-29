@@ -53,9 +53,11 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	args := []any{userID}
 	argIdx := 2 // $1 is always userID
 
+	teamArgIdx := -1
 	statusJoinCond := "ucs.user_id = $1 AND ucs.team_id IS NULL"
 	if activeTeamID > 0 {
 		statusJoinCond = fmt.Sprintf("ucs.team_id = $%d", argIdx)
+		teamArgIdx = argIdx
 		args = append(args, activeTeamID)
 		argIdx++
 	}
@@ -122,18 +124,8 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	notesJoinCond := "ucn.user_id = $1 AND ucn.team_id IS NULL"
-	if activeTeamID > 0 {
-		// activeTeamID is already in args if it was > 0, find its index
-		teamArgIdx := -1
-		for i, v := range args {
-			if id, ok := v.(int); ok && id == activeTeamID {
-				teamArgIdx = i + 1
-				break
-			}
-		}
-		if teamArgIdx != -1 {
-			notesJoinCond = fmt.Sprintf("ucn.team_id = $%d", teamArgIdx)
-		}
+	if teamArgIdx != -1 {
+		notesJoinCond = fmt.Sprintf("ucn.team_id = $%d", teamArgIdx)
 	}
 
 	query := fmt.Sprintf(`
@@ -148,13 +140,8 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query += whereClause
-<<<<<<< Updated upstream
-	query += fmt.Sprintf(" ORDER BY c.published_date DESC LIMIT $%d OFFSET $%d ", argIdx, argIdx+1)
-
-=======
 	query += fmt.Sprintf(" ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $%d OFFSET $%d ", argIdx, argIdx+1)
-	
->>>>>>> Stashed changes
+
 	finalArgs := append(args, pageSize, offset)
 
 	rows, err := a.Pool.Query(r.Context(), query, finalArgs...)
@@ -214,11 +201,6 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"COUNT(DISTINCT CASE WHEN c.cvss_score >= 4.0 AND c.cvss_score < 7.0 THEN c.id END), " +
 		"COUNT(DISTINCT CASE WHEN c.cvss_score < 4.0 THEN c.id END) " +
 		baseFromJoin + whereClause
-<<<<<<< Updated upstream
-
-=======
-		
->>>>>>> Stashed changes
 	_ = a.Pool.QueryRow(r.Context(), severityQuery, args...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
 
 	// Fetch status distribution for the current view
@@ -234,12 +216,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"COUNT(DISTINCT CASE WHEN ucs.status = 'resolved' THEN c.id END), " +
 		"COUNT(DISTINCT CASE WHEN ucs.status = 'ignored' THEN c.id END) " +
 		baseFromJoin + whereClause
-<<<<<<< Updated upstream
-=======
 		
-	_ = a.Pool.QueryRow(r.Context(), statusQuery, args...).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
->>>>>>> Stashed changes
-
 	_ = a.Pool.QueryRow(r.Context(), statusQuery, args...).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
 	a.RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
 		"CVEs":           cves,
@@ -614,19 +591,14 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	query := `
 		SELECT 
-<<<<<<< Updated upstream
-			c.id, c.cve_id, c.description, c.cvss_score, vector_string, c.cisa_kev, 
-=======
 			c.id, c.cve_id, c.description, c.cvss_score, c.vector_string, c.cisa_kev, 
->>>>>>> Stashed changes
 			c.published_date, c.updated_date, 'active' as status, c."references", '' as notes
 		FROM cves c
 	`
 	query += whereClause
 	query += fmt.Sprintf(" ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $%d OFFSET $%d ", argIdx, argIdx+1)
-	args = append(args, pageSize, offset)
-
-	rows, err := a.Pool.Query(r.Context(), query, args...)
+	finalArgs := append(args, pageSize, offset)
+	rows, err := a.Pool.Query(r.Context(), query, finalArgs...)
 	if err != nil {
 		log.Printf("Public dashboard query error: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -662,14 +634,13 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		Medium   int
 		Low      int
 	}
-	_ = a.Pool.QueryRow(r.Context(), `
-		SELECT 
-			COUNT(*) FILTER (WHERE cvss_score >= 9.0),
-			COUNT(*) FILTER (WHERE cvss_score >= 7.0 AND cvss_score < 9.0),
-			COUNT(*) FILTER (WHERE cvss_score >= 4.0 AND cvss_score < 7.0),
-			COUNT(*) FILTER (WHERE cvss_score < 4.0)
-		FROM cves
-	`).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
+	severityQuery := "SELECT " +
+		"COUNT(*) FILTER (WHERE cvss_score >= 9.0), " +
+		"COUNT(*) FILTER (WHERE cvss_score >= 7.0 AND cvss_score < 9.0), " +
+		"COUNT(*) FILTER (WHERE cvss_score >= 4.0 AND cvss_score < 7.0), " +
+		"COUNT(*) FILTER (WHERE cvss_score < 4.0) " +
+		"FROM cves c " + whereClause
+	_ = a.Pool.QueryRow(r.Context(), severityQuery, args...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
 
 	a.RenderTemplate(w, r, "public_dashboard.html", map[string]interface{}{
 		"CVEs":            cves,
@@ -699,19 +670,11 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 func (a *App) getTrendingCVEs(r *http.Request) []models.CVE {
 	rows, err := a.Pool.Query(r.Context(), `
 		SELECT 
-<<<<<<< Updated upstream
-			id, cve_id, description, cvss_score, vector_string, cisa_kev, 
-			published_date, updated_date, 'active' as status, c."references", '' as notes
-		FROM cves 
-		WHERE cisa_kev = true OR cvss_score >= 9.5
-		ORDER BY published_date DESC LIMIT 4
-=======
 			c.id, c.cve_id, c.description, c.cvss_score, c.vector_string, c.cisa_kev, 
 			c.published_date, c.updated_date, 'active' as status, c."references", '' as notes
 		FROM cves c
 		WHERE c.cisa_kev = true OR c.cvss_score >= 9.5
 		ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT 4
->>>>>>> Stashed changes
 	`)
 	if err != nil {
 		return nil
@@ -738,19 +701,11 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 	var c models.CVE
 	err := a.Pool.QueryRow(r.Context(), `
 		SELECT 
-<<<<<<< Updated upstream
 			id, cve_id, description, cvss_score, vector_string, cisa_kev, 
-			published_date, updated_date, 'active' as status, c."references", 
+			published_date, updated_date, 'active' as status, "references", 
 			epss_score, cwe_id, cwe_name, github_poc_count
-		FROM cves 
+		FROM cves
 		WHERE cve_id = $1
-=======
-			c.id, c.cve_id, c.description, c.cvss_score, c.vector_string, c.cisa_kev, 
-			c.published_date, c.updated_date, 'active' as status, c."references", 
-			c.epss_score, c.cwe_id, c.cwe_name, c.github_poc_count
-		FROM cves c
-		WHERE c.cve_id = $1
->>>>>>> Stashed changes
 	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount)
 
 	if err != nil {

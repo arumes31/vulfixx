@@ -143,13 +143,8 @@ func TestWorkerSync_NVD(t *testing.T) {
 
 		shortCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 		defer cancel()
-<<<<<<< Updated upstream
-
-		w2.runFullSync(shortCtx, false)
-=======
 		
 		w2.runFullSync(shortCtx, false, 0)
->>>>>>> Stashed changes
 	})
 }
 
