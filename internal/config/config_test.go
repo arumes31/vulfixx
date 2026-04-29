@@ -151,7 +151,7 @@ func TestLoadConfig(t *testing.T) {
 			fatalCalled := false
 			logFatalf = func(format string, v ...interface{}) {
 				fatalCalled = true
-				t.Logf("FATAL CALLED: " + format, v...)
+				t.Logf("FATAL CALLED: "+format, v...)
 				panic(fmt.Sprintf(format, v...))
 			}
 			warningCalled := false
@@ -224,7 +224,6 @@ func TestLoadConfig(t *testing.T) {
 		})
 	}
 }
-
 
 func TestGetEnv(t *testing.T) {
 	t.Run("Existing env", func(t *testing.T) {

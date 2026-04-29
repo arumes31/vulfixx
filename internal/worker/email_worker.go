@@ -174,14 +174,14 @@ func (w *Worker) pollDelayedQueue(ctx context.Context, delayedQueue, activeQueue
 		Min: "-inf",
 		Max: fmt.Sprintf("%f", now),
 	}
-	
+
 	// Fetch due items
 	items, err := w.Redis.ZRangeByScore(ctx, delayedQueue, opt).Result()
 	if err != nil {
 		log.Printf("Worker: Error fetching from %s: %v", delayedQueue, err)
 		return
 	}
-	
+
 	for _, item := range items {
 		// Use Lua script for atomic move to prevent dropping items
 		script := `

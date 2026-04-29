@@ -28,13 +28,13 @@ func TestIndexHandler(t *testing.T) {
 		// Expectations for PublicDashboardHandler
 		// Metrics query should have no args if search, dates, and CVSS are empty/defaults
 		mock.ExpectQuery("SELECT").WithArgs().WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit"}).AddRow(100, 10, 5))
-		
+
 		// Main query should have 2 args (pageSize, offset) if others are empty
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.cve_id, c.description, c.cvss_score, vector_string, c.cisa_kev, c.published_date, c.updated_date, 'active' as status, c.references, '' as notes FROM cves c")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.cve_id, c.description, c.cvss_score, vector_string, c.cisa_kev, c.published_date, c.updated_date, 'active' as status, c.\"references\", '' as notes FROM cves c WHERE (1=1) ORDER BY c.published_date DESC LIMIT $1 OFFSET $2")).
 			WithArgs(20, 0).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes"}).
 				AddRow(1, "CVE-2024-0001", "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, ""))
-		
+
 		mock.ExpectQuery("SELECT.*COUNT.*FILTER").WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(0, 1, 0, 0))
 
 		req := httptest.NewRequest("GET", "/", nil)
@@ -176,7 +176,7 @@ func TestCVEDetailHandler_Extra(t *testing.T) {
 		app := setupTestApp(t, mock)
 
 		cveID := "CVE-2023-1234"
-		mock.ExpectQuery(`SELECT id, cve_id, description, cvss_score, vector_string, cisa_kev, published_date, updated_date, 'active' as status, references, epss_score, cwe_id, cwe_name, github_poc_count FROM cves WHERE cve_id = \$1`).
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vector_string, cisa_kev, published_date, updated_date, 'active' as status, c."references", epss_score, cwe_id, cwe_name, github_poc_count FROM cves WHERE cve_id = $1`)).
 			WithArgs(cveID).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count"}).
 				AddRow(1, cveID, "Test description", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", true, time.Now(), time.Now(), "active", "[]", 0.5, "CWE-79", "XSS", 10))

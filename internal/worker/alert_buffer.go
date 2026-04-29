@@ -66,13 +66,13 @@ func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, s
 				defer cancel()
 				w.Redis.Del(cleanupCtx, pKey)
 			}()
-			
+
 			// Initial wait
 			time.Sleep(bTime)
-			
+
 			for {
 				w.processUserBuffer(bgCtx, uid)
-				
+
 				// Re-check buffer length
 				bufferKey := fmt.Sprintf("alert_buffer:%d", uid)
 				llen, err := w.Redis.LLen(bgCtx, bufferKey).Result()

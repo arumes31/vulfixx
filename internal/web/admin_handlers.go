@@ -74,7 +74,6 @@ func (a *App) AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	idStr := r.FormValue("id")
 	if idStr == "" {
 		http.Error(w, "User ID is required", http.StatusBadRequest)
@@ -113,7 +112,6 @@ func (a *App) AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "User not found or cannot be deleted", http.StatusNotFound)
 		return
 	}
-
 
 	http.Redirect(w, r, "/admin/users", http.StatusFound)
 }

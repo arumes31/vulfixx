@@ -149,7 +149,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	query += whereClause
 	query += fmt.Sprintf(" ORDER BY c.published_date DESC LIMIT $%d OFFSET $%d ", argIdx, argIdx+1)
-	
+
 	finalArgs := append(args, pageSize, offset)
 
 	rows, err := a.Pool.Query(r.Context(), query, finalArgs...)
@@ -191,7 +191,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		Medium   int
 		Low      int
 	}
-	
+
 	// Create base query from metricsQuery by replacing its SELECT list
 	idx := strings.Index(metricsQuery, "FROM cves c")
 	var baseFromJoin string
@@ -209,8 +209,8 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"COUNT(DISTINCT CASE WHEN c.cvss_score >= 4.0 AND c.cvss_score < 7.0 THEN c.id END), " +
 		"COUNT(DISTINCT CASE WHEN c.cvss_score < 4.0 THEN c.id END) " +
 		baseFromJoin + whereClause
-		
-	_ = a.Pool.QueryRow(r.Context(), severityQuery, severityArgs...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
+
+	_ = a.Pool.QueryRow(r.Context(), severityQuery, args...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
 
 	// Fetch status distribution for the current view
 	var statusCounts struct {
@@ -225,9 +225,8 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"COUNT(DISTINCT CASE WHEN ucs.status = 'resolved' THEN c.id END), " +
 		"COUNT(DISTINCT CASE WHEN ucs.status = 'ignored' THEN c.id END) " +
 		baseFromJoin + whereClause
-		
-	_ = a.Pool.QueryRow(r.Context(), statusQuery, severityArgs...).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
 
+	_ = a.Pool.QueryRow(r.Context(), statusQuery, args...).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
 	a.RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
 		"CVEs":           cves,
 		"Total":          totalItems,
@@ -514,6 +513,10 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	offset := (page - 1) * pageSize
 
 	searchQuery := r.URL.Query().Get("q")
+	vendorQuery := r.URL.Query().Get("vendor")
+	productQuery := r.URL.Query().Get("product")
+	cveIDQuery := r.URL.Query().Get("cve")
+
 	startDate := r.URL.Query().Get("start_date")
 	endDate := r.URL.Query().Get("end_date")
 	kevOnly := r.URL.Query().Get("kev") == "true"
@@ -543,6 +546,24 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	if searchQuery != "" {
 		whereClause += fmt.Sprintf(" AND (c.cve_id ILIKE $%d OR c.description ILIKE $%d) ", argIdx, argIdx)
 		args = append(args, "%"+searchQuery+"%")
+		argIdx++
+	}
+
+	if vendorQuery != "" {
+		whereClause += fmt.Sprintf(" AND c.description ILIKE $%d ", argIdx)
+		args = append(args, "%"+vendorQuery+"%")
+		argIdx++
+	}
+
+	if productQuery != "" {
+		whereClause += fmt.Sprintf(" AND c.description ILIKE $%d ", argIdx)
+		args = append(args, "%"+productQuery+"%")
+		argIdx++
+	}
+
+	if cveIDQuery != "" {
+		whereClause += fmt.Sprintf(" AND c.cve_id ILIKE $%d ", argIdx)
+		args = append(args, "%"+cveIDQuery+"%")
 		argIdx++
 	}
 
@@ -580,7 +601,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	query := `
 		SELECT 
 			c.id, c.cve_id, c.description, c.cvss_score, vector_string, c.cisa_kev, 
-			c.published_date, c.updated_date, 'active' as status, c.references, '' as notes
+			c.published_date, c.updated_date, 'active' as status, c."references", '' as notes
 		FROM cves c
 	`
 	query += whereClause
@@ -642,6 +663,9 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"Page":            page,
 		"TotalPages":      totalPages,
 		"Query":           searchQuery,
+		"Vendor":          vendorQuery,
+		"Product":         productQuery,
+		"CVE":             cveIDQuery,
 		"StartDate":       startDate,
 		"EndDate":         endDate,
 		"KevOnly":         kevOnly,
@@ -658,7 +682,7 @@ func (a *App) getTrendingCVEs(r *http.Request) []models.CVE {
 	rows, err := a.Pool.Query(r.Context(), `
 		SELECT 
 			id, cve_id, description, cvss_score, vector_string, cisa_kev, 
-			published_date, updated_date, 'active' as status, references, '' as notes
+			published_date, updated_date, 'active' as status, c."references", '' as notes
 		FROM cves 
 		WHERE cisa_kev = true OR cvss_score >= 9.5
 		ORDER BY published_date DESC LIMIT 4
@@ -689,7 +713,7 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 	err := a.Pool.QueryRow(r.Context(), `
 		SELECT 
 			id, cve_id, description, cvss_score, vector_string, cisa_kev, 
-			published_date, updated_date, 'active' as status, references, 
+			published_date, updated_date, 'active' as status, c."references", 
 			epss_score, cwe_id, cwe_name, github_poc_count
 		FROM cves 
 		WHERE cve_id = $1
@@ -733,6 +757,6 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 		"MetaDescription": fmt.Sprintf("Security analysis of %s. Severity: %.1f. %s", c.CVEID, c.CVSSScore, c.Description),
 		"Canonical":       fmt.Sprintf("/cve/%s", c.CVEID),
 		/* #nosec G203 */
-		"JSONLD":          template.JS(safeJSONLD), // safe: JSON-marshaled then </script>-escaped
+		"JSONLD": template.JS(safeJSONLD), // safe: JSON-marshaled then </script>-escaped
 	})
 }
