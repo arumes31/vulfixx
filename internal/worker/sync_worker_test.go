@@ -99,13 +99,24 @@ func TestWorkerSync_NVD(t *testing.T) {
 		mock.ExpectQuery("SELECT last_run FROM worker_sync_stats WHERE task_name = 'nvd_sync'").
 			WillReturnError(pgx.ErrNoRows)
 
+		mock.ExpectQuery("SELECT value FROM sync_state WHERE key = 'nvd_backfill_index'").
+			WillReturnError(pgx.ErrNoRows)
+
 		mock.ExpectExec("INSERT INTO cves").
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 7.5, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		mock.ExpectExec("INSERT INTO sync_state").
+			WithArgs(pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		mock.ExpectExec("INSERT INTO worker_sync_stats").
 			WithArgs(pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		mock.ExpectExec("DELETE FROM sync_state").
+			WithArgs().
+			WillReturnResult(pgxmock.NewResult("DELETE", 1))
 
 		oldURL := defaultNVDBaseURL
 		defaultNVDBaseURL = ts.URL
@@ -132,8 +143,13 @@ func TestWorkerSync_NVD(t *testing.T) {
 
 		shortCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 		defer cancel()
+<<<<<<< Updated upstream
 
 		w2.runFullSync(shortCtx, false)
+=======
+		
+		w2.runFullSync(shortCtx, false, 0)
+>>>>>>> Stashed changes
 	})
 }
 
