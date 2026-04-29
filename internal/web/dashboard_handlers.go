@@ -696,7 +696,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		Count int    `json:"count"`
 	}
 	var topCWEs []CWEStat
-	cweQueryRows, _ := a.Pool.Query(r.Context(), "SELECT cwe_id, COALESCE(cwe_name, 'Unknown'), COUNT(*) as cnt FROM cves c "+whereClause+" AND cwe_id IS NOT NULL GROUP BY cwe_id, cwe_name ORDER BY cnt DESC LIMIT 5", args...)
+	cweQueryRows, _ := a.Pool.Query(r.Context(), "SELECT cwe_id, COALESCE(cwe_name, 'Unknown'), COUNT(*) as cnt FROM cves c "+whereClause+" AND cwe_id IS NOT NULL AND cwe_id != '' GROUP BY cwe_id, cwe_name ORDER BY cnt DESC LIMIT 5", args...)
 	if cweQueryRows != nil {
 		for cweQueryRows.Next() {
 			var s CWEStat
