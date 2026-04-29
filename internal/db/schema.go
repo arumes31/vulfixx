@@ -1,6 +1,59 @@
 package db
 
 const schemaSQL = `
+CREATE TABLE IF NOT EXISTS teams (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    invite_code VARCHAR(50) UNIQUE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Ensure team_id columns exist for all relevant tables
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'assets') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'assets' AND column_name = 'team_id') THEN
+            ALTER TABLE assets ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE;
+        END IF;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_subscriptions') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'team_id') THEN
+            ALTER TABLE user_subscriptions ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE;
+        END IF;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_cve_status') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_cve_status' AND column_name = 'team_id') THEN
+            ALTER TABLE user_cve_status ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE;
+        END IF;
+        -- Handle potential PK change if it was (user_id, cve_id)
+        IF EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE table_name = 'user_cve_status' AND constraint_type = 'PRIMARY KEY') THEN
+             -- Check if it has 'id' column, if not, it's the old PK
+             IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_cve_status' AND column_name = 'id') THEN
+                 ALTER TABLE user_cve_status DROP CONSTRAINT IF EXISTS user_cve_status_pkey;
+                 ALTER TABLE user_cve_status ADD COLUMN id SERIAL PRIMARY KEY;
+             END IF;
+        END IF;
+    END IF;
+
+    -- Rename user_cve_notes to cve_notes if it exists
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_cve_notes') AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cve_notes') THEN
+        ALTER TABLE user_cve_notes RENAME TO cve_notes;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cve_notes') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cve_notes' AND column_name = 'team_id') THEN
+            ALTER TABLE cve_notes ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE;
+        END IF;
+        -- Add id column if missing (it was (user_id, cve_id) in older versions)
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cve_notes' AND column_name = 'id') THEN
+            ALTER TABLE cve_notes DROP CONSTRAINT IF EXISTS user_cve_notes_pkey;
+            ALTER TABLE cve_notes ADD COLUMN id SERIAL PRIMARY KEY;
+        END IF;
+    END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
