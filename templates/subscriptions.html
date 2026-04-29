@@ -28,27 +28,27 @@
                     <form action="/subscriptions" method="POST" class="space-y-5">
                         {{.csrfField}}
                         <div class="space-y-2">
-                            <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Target Keyword <span class="opacity-50 lowercase font-normal">(e.g. Fortigate)</span></label>
-                            <input type="text" name="keyword" class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-tertiary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors">
+                            <label for="keyword" class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Target Keyword <span class="opacity-50 lowercase font-normal">(e.g. Fortigate)</span></label>
+                            <input id="keyword" type="text" name="keyword" class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-tertiary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors">
                         </div>
                         <div class="space-y-2">
-                            <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Min CVSS Score</label>
-                            <input type="number" step="0.1" name="min_severity" value="7.0" required class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-tertiary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
+                            <label for="min_severity" class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Min CVSS Score</label>
+                            <input id="min_severity" type="number" step="0.1" name="min_severity" value="7.0" required class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-tertiary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
                         </div>
                         <div class="space-y-2">
-                            <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Webhook Endpoint <span class="opacity-50 lowercase font-normal">(optional)</span></label>
-                            <input type="url" name="webhook_url" placeholder="https://..." class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-tertiary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors">
+                            <label for="webhook_url" class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Webhook Endpoint <span class="opacity-50 lowercase font-normal">(optional)</span></label>
+                            <input id="webhook_url" type="url" name="webhook_url" placeholder="https://..." class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-tertiary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors">
                         </div>
                         <div class="space-y-3 pt-2">
-                            <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Notification Channels</label>
+                            <span class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Notification Channels</span>
                             
                             <div class="flex items-center justify-between bg-surface-container/50 p-3 rounded-lg border border-outline-variant/30">
                                 <div class="flex items-center gap-3">
                                     <span class="material-symbols-outlined text-[20px] text-primary">mail</span>
-                                    <span class="text-xs font-medium text-on-surface">Email Delivery</span>
+                                    <label for="enable_email" class="text-xs font-medium text-on-surface cursor-pointer">Email Delivery</label>
                                 </div>
-                                <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" name="enable_email" value="true" checked class="sr-only peer">
+                                <label for="enable_email" class="relative inline-flex items-center cursor-pointer">
+                                    <input id="enable_email" type="checkbox" name="enable_email" value="true" checked class="sr-only peer">
                                     <div class="w-11 h-6 bg-surface-container-high peer-focus:ring-2 peer-focus:ring-primary peer-focus:ring-offset-2 peer-focus:ring-offset-surface rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                                 </label>
                             </div>
@@ -56,10 +56,10 @@
                             <div class="flex items-center justify-between bg-surface-container/50 p-3 rounded-lg border border-outline-variant/30">
                                 <div class="flex items-center gap-3">
                                     <span class="material-symbols-outlined text-[20px] text-secondary">webhook</span>
-                                    <span class="text-xs font-medium text-on-surface">Webhook Sync</span>
+                                    <label for="enable_webhook" class="text-xs font-medium text-on-surface cursor-pointer">Webhook Sync</label>
                                 </div>
-                                <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" name="enable_webhook" value="true" class="sr-only peer">
+                                <label for="enable_webhook" class="relative inline-flex items-center cursor-pointer">
+                                    <input id="enable_webhook" type="checkbox" name="enable_webhook" value="true" class="sr-only peer">
                                     <div class="w-11 h-6 bg-surface-container-high peer-focus:ring-2 peer-focus:ring-secondary peer-focus:ring-offset-2 peer-focus:ring-offset-surface rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-secondary"></div>
                                 </label>
                             </div>

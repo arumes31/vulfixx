@@ -40,12 +40,12 @@
                 <form action="/settings/email" method="POST" class="max-w-md space-y-4">
                     {{.csrfField}}
                     <div class="space-y-2">
-                        <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">New Email Address</label>
-                        <input type="email" name="new_email" required class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors">
+                        <label for="new_email" class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">New Email Address</label>
+                        <input id="new_email" type="email" name="new_email" required class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors">
                     </div>
                     <div class="space-y-2">
-                        <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Current Passphrase</label>
-                        <input type="password" name="password" required class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
+                        <label for="email_change_password" class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Current Passphrase</label>
+                        <input id="email_change_password" type="password" name="password" required class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
                     </div>
                     <button type="submit" class="bg-surface-container-high hover:bg-primary hover:text-on-primary border border-outline-variant/50 hover:border-primary text-on-surface font-label font-bold uppercase tracking-widest text-xs py-2 px-6 rounded transition-all duration-200 mt-2">
                         Commit Identity
@@ -92,8 +92,8 @@
                                 <form action="/settings/totp/verify" method="POST" class="space-y-4">
                                     {{.csrfField}}
                                     <div class="space-y-2">
-                                        <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Verification Code</label>
-                                        <input type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456" class="w-48 bg-surface-container border-b-2 border-outline-variant/50 focus:border-tertiary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono tracking-[0.3em] text-center">
+                                        <label for="verify_totp_code" class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Verification Code</label>
+                                        <input id="verify_totp_code" type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456" class="w-48 bg-surface-container border-b-2 border-outline-variant/50 focus:border-tertiary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono tracking-[0.3em] text-center">
                                     </div>
                                     <button type="submit" class="bg-surface-container-high hover:bg-tertiary hover:text-on-primary border border-outline-variant/50 hover:border-tertiary text-on-surface font-label font-bold uppercase tracking-widest text-xs py-2 px-6 rounded transition-all duration-200">
                                         Verify & Enable
@@ -136,21 +136,21 @@
             <form action="/settings/password" method="POST" class="max-w-md space-y-4">
                 {{.csrfField}}
                 <div class="space-y-2">
-                    <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Current Passphrase</label>
-                    <input type="password" name="current_password" required class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
+                    <label for="current_password" class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Current Passphrase</label>
+                    <input id="current_password" type="password" name="current_password" required class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
                 </div>
                 <div class="space-y-2 mt-6">
-                    <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">New Passphrase (min 8 chars)</label>
-                    <input type="password" name="new_password" required minlength="8" class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
+                    <label for="new_password" class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">New Passphrase (min 8 chars)</label>
+                    <input id="new_password" type="password" name="new_password" required minlength="8" class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
                 </div>
                 <div class="space-y-2">
-                    <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Confirm New</label>
-                    <input type="password" name="confirm_password" required minlength="8" class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
+                    <label for="confirm_password" class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Confirm New</label>
+                    <input id="confirm_password" type="password" name="confirm_password" required minlength="8" class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
                 </div>
                 {{if .IsTOTPEnabled}}
                 <div class="space-y-2 mt-6">
-                    <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-tertiary block">TOTP Authorization</label>
-                    <input type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456" class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-tertiary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono tracking-widest">
+                    <label for="totp_code" class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-tertiary block">TOTP Authorization</label>
+                    <input id="totp_code" type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456" class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-tertiary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono tracking-widest">
                 </div>
                 {{end}}
                 <button type="submit" class="bg-surface-container-high hover:bg-primary hover:text-on-primary border border-outline-variant/50 hover:border-primary text-on-surface font-label font-bold uppercase tracking-widest text-xs py-2 px-6 rounded transition-all duration-200 mt-6">
@@ -179,8 +179,8 @@
             <form action="/settings/delete" method="POST" class="max-w-md space-y-4" onsubmit="return confirm('CRITICAL WARNING: Are you certain you want to initiate complete system wipe for this operator?');">
                 {{.csrfField}}
                 <div class="space-y-2">
-                    <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-error block">Authorization Passphrase</label>
-                    <input type="password" name="password" required class="w-full bg-surface-container border-b-2 border-error/50 focus:border-error px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
+                    <label for="delete_password" class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-error block">Authorization Passphrase</label>
+                    <input id="delete_password" type="password" name="password" required class="w-full bg-surface-container border-b-2 border-error/50 focus:border-error px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
                 </div>
                 <button type="submit" class="bg-error-container/80 hover:bg-error hover:text-on-error border border-error text-[#ffdad6] font-label font-bold uppercase tracking-widest text-xs py-2 px-6 rounded transition-all duration-200 mt-2">
                     Purge Operator
