@@ -3,14 +3,16 @@ package web
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 
 	"cve-tracker/internal/models"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func generateInviteCode() (string, error) {
@@ -101,7 +103,8 @@ func (a *App) CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 	var teamID int
 	err = tx.QueryRow(r.Context(), "INSERT INTO teams (name, invite_code) VALUES ($1, $2) RETURNING id", name, inviteCode).Scan(&teamID)
 	if err != nil {
-		if strings.Contains(err.Error(), "duplicate key value") || strings.Contains(err.Error(), "23505") {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			a.SendResponse(w, r, false, "", "", "Team name already exists")
 			return
 		}
@@ -148,14 +151,18 @@ func (a *App) JoinTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = a.Pool.Exec(r.Context(), "INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING", teamID, userID)
+	cmdTag, err := a.Pool.Exec(r.Context(), "INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING", teamID, userID)
 	if err != nil {
 		a.SendResponse(w, r, false, "", "", "Internal server error")
 		return
 	}
 
-	a.LogActivity(r.Context(), userID, "team_joined", fmt.Sprintf("Joined team ID %d", teamID), r.RemoteAddr, r.UserAgent())
-	a.SendResponse(w, r, true, "Joined workspace successfully", "/teams", "")
+	if cmdTag.RowsAffected() > 0 {
+		a.LogActivity(r.Context(), userID, "team_joined", fmt.Sprintf("Joined team ID %d", teamID), r.RemoteAddr, r.UserAgent())
+		a.SendResponse(w, r, true, "Joined workspace successfully", "/teams", "")
+	} else {
+		a.SendResponse(w, r, true, "Already a member of this workspace", "/teams", "")
+	}
 }
 
 func (a *App) LeaveTeamHandler(w http.ResponseWriter, r *http.Request) {

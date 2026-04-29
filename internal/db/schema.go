@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS team_members (
 CREATE TABLE IF NOT EXISTS assets (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+    team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     type VARCHAR(100),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -63,8 +63,8 @@ CREATE TABLE IF NOT EXISTS asset_keywords (
 
 CREATE TABLE IF NOT EXISTS user_subscriptions (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
     keyword VARCHAR(255),
     min_severity NUMERIC(4,1),
     webhook_url TEXT,
@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS user_subscriptions (
     enable_webhook BOOLEAN DEFAULT TRUE,
     filter_logic TEXT DEFAULT '',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT chk_user_subscriptions_user_xor_team CHECK ((user_id IS NOT NULL) OR (team_id IS NOT NULL))
+    CONSTRAINT chk_user_subscriptions_user_xor_team CHECK ((user_id IS NULL) <> (team_id IS NULL))
 );
 
 CREATE TABLE IF NOT EXISTS user_cve_status (

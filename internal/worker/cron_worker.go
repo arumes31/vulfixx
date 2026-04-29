@@ -2,6 +2,8 @@ package worker
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"log"
 	"time"
 )
@@ -25,7 +27,11 @@ func (w *Worker) runWeeklySummaryWithLock(ctx context.Context) {
 	err = tx.QueryRow(ctx, "SELECT value FROM sync_state WHERE key = 'weekly_summary_last_run'").Scan(&lastRunStr)
 	shouldRun := false
 	if err != nil {
-		shouldRun = true // First time or error
+		if errors.Is(err, sql.ErrNoRows) {
+			shouldRun = true
+		} else {
+			log.Printf("Worker: [CRON] Error querying last run: %v", err)
+		}
 	} else {
 		lastRun, err := time.Parse(time.RFC3339, lastRunStr)
 		if err != nil {
@@ -39,8 +45,15 @@ func (w *Worker) runWeeklySummaryWithLock(ctx context.Context) {
 	if shouldRun {
 		log.Println("Worker: [CRON] Executing weekly summary run...")
 		if err := w.sendWeeklySummaries(ctx); err == nil {
-			_, _ = tx.Exec(ctx, "INSERT INTO sync_state (key, value, updated_at) VALUES ('weekly_summary_last_run', $1, NOW()) ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()", time.Now().Format(time.RFC3339))
-			_ = tx.Commit(ctx)
+			_, err = tx.Exec(ctx, "INSERT INTO sync_state (key, value, updated_at) VALUES ('weekly_summary_last_run', $1, NOW()) ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()", time.Now().Format(time.RFC3339))
+			if err != nil {
+				log.Printf("Worker: [CRON] Failed to update sync state: %v", err)
+				return
+			}
+			if err := tx.Commit(ctx); err != nil {
+				log.Printf("Worker: [CRON] Failed to commit weekly summary: %v", err)
+				return
+			}
 			log.Println("Worker: [CRON] Weekly summary run complete.")
 		} else {
 			log.Printf("Worker: [CRON] sendWeeklySummaries failed: %v", err)

@@ -24,7 +24,7 @@ func (a *App) ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
 		WHERE (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored'))
 		  AND c.cvss_score >= us.min_severity
-		  AND (us.keyword = '' OR c.description ILIKE '%' || us.keyword || '%')
+		  AND (us.keyword = '' OR c.description ILIKE '%' || REPLACE(REPLACE(REPLACE(us.keyword, '\', '\\'), '%', '\%'), '_', '\_') || '%' ESCAPE '\')
 		ORDER BY c.published_date DESC
 	`
 	rows, err := a.Pool.Query(r.Context(), query, userID)

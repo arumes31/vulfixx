@@ -32,9 +32,8 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		query := `
 			SELECT us.id, us.keyword, us.min_severity, us.webhook_url, us.enable_email, us.enable_webhook,
-			       us.team_id, COALESCE(t.name, '') as team_name
+			       us.team_id
 			FROM user_subscriptions us
-			LEFT JOIN teams t ON us.team_id = t.id
 			WHERE us.user_id = $1 OR us.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
 		`
 		rows, err := a.Pool.Query(r.Context(), query, userID)
@@ -47,8 +46,7 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 		var subs []models.UserSubscription
 		for rows.Next() {
 			var s models.UserSubscription
-			var teamName string
-			if err := rows.Scan(&s.ID, &s.Keyword, &s.MinSeverity, &s.WebhookURL, &s.EnableEmail, &s.EnableWebhook, &s.TeamID, &teamName); err != nil {
+			if err := rows.Scan(&s.ID, &s.Keyword, &s.MinSeverity, &s.WebhookURL, &s.EnableEmail, &s.EnableWebhook, &s.TeamID); err != nil {
 				log.Printf("Error scanning subscription: %v", err)
 				continue
 			}
@@ -81,19 +79,6 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 		minSeverity, err := strconv.ParseFloat(minSeverityStr, 64)
 		if err != nil || minSeverity < 0 || minSeverity > 10 {
 			a.SendResponse(w, r, false, "", "", "Invalid severity score (must be 0-10)")
-			return
-		}
-
-		// Enforce limit
-		var count int
-		err = a.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1", userID).Scan(&count)
-		if err != nil {
-			log.Printf("Error counting subscriptions: %v", err)
-			a.SendResponse(w, r, false, "", "", "Internal server error")
-			return
-		}
-		if count >= 20 {
-			a.SendResponse(w, r, false, "", "", "Maximum of 20 subscriptions allowed")
 			return
 		}
 
@@ -142,6 +127,20 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
 
+		// Enforce limit atomically
+		var count int
+		// Lock the user row to prevent concurrent subscription additions
+		err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1 FOR UPDATE", userID).Scan(&count)
+		if err != nil {
+			log.Printf("Error counting subscriptions: %v", err)
+			a.SendResponse(w, r, false, "", "", "Internal server error")
+			return
+		}
+		if count >= 20 {
+			a.SendResponse(w, r, false, "", "", "Maximum of 20 subscriptions allowed")
+			return
+		}
+
 		_, err = tx.Exec(ctx, `
 			INSERT INTO user_subscriptions (user_id, keyword, min_severity, webhook_url, enable_email, enable_webhook)
 			VALUES ($1, $2, $3, $4, $5, $6)
@@ -157,8 +156,9 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 			a.SendResponse(w, r, false, "", "", "Internal server error")
 			return
 		}
-		a.LogActivity(r.Context(), userID, "subscription_added", "Added keyword: "+keyword, r.RemoteAddr, r.UserAgent())
+		a.LogActivity(ctx, userID, "subscription_added", "Added keyword: "+keyword, r.RemoteAddr, r.UserAgent())
 		a.SendResponse(w, r, true, "Telemetry monitor initialized", "/subscriptions", "")
+		return
 	}
 }
 

@@ -106,6 +106,8 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
 	}
 
 	params := url.Values{}
+	endTime := time.Now().UTC()
+
 	if !isBackfill {
 		lastSync, err := w.getLastSyncTime(ctx)
 		if err != nil {
@@ -113,7 +115,7 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
 			return
 		}
 		params.Set("lastModStartDate", lastSync.Format(time.RFC3339))
-		params.Set("lastModEndDate", time.Now().UTC().Format(time.RFC3339))
+		params.Set("lastModEndDate", endTime.Format(time.RFC3339))
 	}
 
 	resultsPerPage := 2000
@@ -160,7 +162,6 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
 			}
 			continue
 		}
-		retryCount = 0 // reset on success
 
 		if resp.StatusCode == 403 || resp.StatusCode == 429 {
 			retryCount++
@@ -181,6 +182,8 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
 			}
 			continue
 		}
+
+		retryCount = 0 // reset on success
 
 		if resp.StatusCode != http.StatusOK {
 			/* #nosec G706 */
@@ -220,7 +223,7 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
 		}
 	}
 
-	w.updateLastSyncTime(ctx)
+	w.updateLastSyncTime(ctx, endTime)
 }
 
 func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfill bool) {
@@ -263,7 +266,14 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 
 		var references []string
 		for _, ref := range cve.References {
-			references = append(references, ref.URL)
+			u, err := url.Parse(ref.URL)
+			if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+				continue
+			}
+			// Normalize
+			u.Fragment = ""
+			u.User = nil
+			references = append(references, u.String())
 		}
 
 		pubDate, err := time.Parse(time.RFC3339Nano, cve.Published)
@@ -314,7 +324,9 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 
 		// Check for alerts after successful upsert (only if not backfilling)
 		if !isBackfill {
-			w.enqueueAlertsForCVE(ctx, model)
+			if err := w.enqueueAlertsForCVE(ctx, model); err != nil {
+				log.Printf("Worker: [ERROR] %v", err)
+			}
 		}
 	}
 }
@@ -331,12 +343,12 @@ func (w *Worker) getLastSyncTime(ctx context.Context) (time.Time, error) {
 	return lastSync, nil
 }
 
-func (w *Worker) updateLastSyncTime(ctx context.Context) {
+func (w *Worker) updateLastSyncTime(ctx context.Context, t time.Time) {
 	_, err := w.Pool.Exec(ctx, `
 		INSERT INTO worker_sync_stats (task_name, last_run)
-		VALUES ('nvd_sync', CURRENT_TIMESTAMP)
-		ON CONFLICT (task_name) DO UPDATE SET last_run = CURRENT_TIMESTAMP
-	`)
+		VALUES ('nvd_sync', $1)
+		ON CONFLICT (task_name) DO UPDATE SET last_run = EXCLUDED.last_run
+	`, t)
 	if err != nil {
 		log.Printf("Worker: Error updating sync stats: %v", err)
 	}

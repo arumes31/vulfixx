@@ -312,21 +312,24 @@
             fetch: async (url, options = {}) => {
                 try {
                     const response = await fetch(url, options);
-                    const contentType = response.headers.get('content-type') || '';
-                    if (!response.ok || !contentType.includes('application/json')) {
+                    if (!response.ok) {
                         const text = await response.text().catch(() => response.statusText);
                         vulfixx.toast(`Server error ${response.status}: ${text.slice(0, 120)}`, 'error');
                         return null;
                     }
-                    const data = await response.json();
-                    if (data.success) {
-                        if (data.message) vulfixx.toast(data.message, 'success');
-                        if (data.redirect) setTimeout(() => window.location.href = data.redirect, 1000);
-                        return data;
-                    } else {
-                        vulfixx.toast(data.error || 'Action failed', 'error');
-                        return null;
+                    const contentType = response.headers.get('content-type') || '';
+                    if (contentType.includes('application/json')) {
+                        const data = await response.json();
+                        if (data.success) {
+                            if (data.message) vulfixx.toast(data.message, 'success');
+                            if (data.redirect) setTimeout(() => window.location.href = data.redirect, 1000);
+                            return data;
+                        } else {
+                            vulfixx.toast(data.error || 'Action failed', 'error');
+                            return null;
+                        }
                     }
+                    return response;
                 } catch (e) {
                     vulfixx.toast(`Network error: ${e.message}`, 'error');
                     return null;

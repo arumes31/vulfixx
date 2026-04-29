@@ -100,6 +100,11 @@ CVELoop:
 				if waitDur == 0 {
 					waitDur = time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
 				}
+				// Clamp to a safe maximum
+				maxWait := 5 * time.Minute
+				if waitDur > maxWait {
+					waitDur = maxWait
+				}
 				log.Printf("Worker: [WARN] GitHub rate limited for %s, waiting %v (attempt %d/%d)", cveID, waitDur, attempt+1, maxGHRetries)
 				select {
 				case <-ctx.Done():

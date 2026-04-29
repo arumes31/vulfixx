@@ -12,9 +12,13 @@ import (
 )
 
 func TestEmailWorker_Queues(t *testing.T) {
-	mr, _ := miniredis.Run()
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis.Run failed: %v", err)
+	}
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
 
 	t.Run("EmailVerification_SuccessAndFailure", func(t *testing.T) {
 		mockMailer := &EmailSenderMockV2{}

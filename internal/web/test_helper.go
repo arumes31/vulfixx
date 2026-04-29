@@ -75,8 +75,11 @@ func expectBaseQueries(mock pgxmock.PgxPoolIface, userID int) {
 	}
 	// Team list query in RenderTemplate
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT t.id, t.name FROM teams t JOIN team_members tm ON t.id = tm.team_id WHERE tm.user_id = $1")).
-		WithArgs(pgxmock.AnyArg()).
+		WithArgs(userID).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "name"}))
+
+	// Note: ActiveTeamName query only happens if team_id is in session and != 0.
+	// Most tests don't set team_id, so we don't expect it by default.
 }
 
 func setupTestServer(t *testing.T, mock pgxmock.PgxPoolIface) (*httptest.Server, *App, *http.Client) {
@@ -96,6 +99,8 @@ func setupTestServer(t *testing.T, mock pgxmock.PgxPoolIface) (*httptest.Server,
 	r.Handle("/alerts", app.AuthMiddleware(http.HandlerFunc(app.AlertHistoryHandler)))
 
 	ts := httptest.NewServer(r)
+	t.Cleanup(ts.Close)
+
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse

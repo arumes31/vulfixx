@@ -3,6 +3,7 @@ package web
 import (
 	"cve-tracker/internal/db"
 	"html/template"
+	"sync"
 
 	"github.com/gorilla/sessions"
 )
@@ -18,6 +19,7 @@ type App struct {
 	SessionStore sessions.Store
 	Mailer       EmailSender
 	TemplateMap  map[string]*template.Template
+	TemplateMu   sync.RWMutex
 }
 
 func NewApp(pool db.DBPool, redis db.RedisProvider, sessionStore sessions.Store, mailer EmailSender) *App {

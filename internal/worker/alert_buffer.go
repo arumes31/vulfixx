@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"log"
+	"net/url"
 	"os"
 	"time"
 )
@@ -16,19 +17,21 @@ var (
 	bufferTimeStandard = 5 * time.Minute
 )
 
-func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, email, assetName string) bool {
+func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, sub models.UserSubscription, email, assetName string) bool {
 	// Severity-Based Routing:
 	// Critical (>= 9.0) gets immediate delivery.
-	// High (>= 7.0) gets a short buffer (configurable, default 1 min).
-	// Others get a longer buffer (configurable, default 5 min) for digest creation.
-
 	if cve.CVSSScore >= 9.0 {
-		sub := models.UserSubscription{EnableEmail: true, EnableWebhook: true}
 		return w.sendAlert(sub, cve, email, assetName)
 	}
 
 	key := fmt.Sprintf("alert_buffer:%d", userID)
-	data := map[string]interface{}{"cve": cve, "email": email, "asset_name": assetName}
+	data := map[string]interface{}{
+		"id":         fmt.Sprintf("%d_%d", time.Now().UnixNano(), userID), // Unique ID for safe LRem
+		"cve":        cve,
+		"email":      email,
+		"asset_name": assetName,
+		"sub":        sub,
+	}
 	blob, err := json.Marshal(data)
 	if err != nil {
 		log.Printf("Error marshaling alert buffer data: %v", err)
@@ -40,7 +43,8 @@ func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, e
 	}
 
 	processingKey := fmt.Sprintf("alert_processing:%d", userID)
-	set, err := w.Redis.SetNX(ctx, processingKey, "true", 10*time.Minute).Result()
+	// Lock TTL = buffer time + processing buffer
+	set, err := w.Redis.SetNX(ctx, processingKey, "true", bufferTimeStandard+10*time.Minute).Result()
 	if err != nil {
 		log.Printf("Error setting alert processing lock for key %s: %v", processingKey, err)
 		// Rollback the pushed alert
@@ -102,20 +106,24 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 	if len(blobs) == 0 {
 		return
 	}
+
+	type alertData struct {
+		CVE       models.CVE              `json:"cve"`
+		Email     string                  `json:"email"`
+		AssetName string                  `json:"asset_name"`
+		Sub       models.UserSubscription `json:"sub"`
+	}
+
 	if len(blobs) == 1 {
-		var data struct {
-			CVE       models.CVE `json:"cve"`
-			Email     string     `json:"email"`
-			AssetName string     `json:"asset_name"`
-		}
+		var data alertData
 		if err := json.Unmarshal([]byte(blobs[0]), &data); err != nil {
 			log.Printf("Error unmarshaling single buffered alert: %v", err)
 			return
 		}
-		sub := models.UserSubscription{EnableEmail: true, EnableWebhook: true}
-		w.sendAlert(sub, &data.CVE, data.Email, data.AssetName)
+		w.sendAlert(data.Sub, &data.CVE, data.Email, data.AssetName)
 		return
 	}
+
 	uniqueEmails := make(map[string]bool)
 	type AlertItem struct {
 		CVEID     string
@@ -127,11 +135,7 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 	}
 	var items []AlertItem
 	for _, b := range blobs {
-		var data struct {
-			CVE       models.CVE `json:"cve"`
-			Email     string     `json:"email"`
-			AssetName string     `json:"asset_name"`
-		}
+		var data alertData
 		if err := json.Unmarshal([]byte(b), &data); err != nil {
 			log.Printf("Error unmarshaling alert blob: %v", err)
 			continue
@@ -146,9 +150,8 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 			hasOSINT = true
 		}
 		// Also invoke webhook for each item individually since it's a digest
-		sub := models.UserSubscription{EnableWebhook: true}
 		cveCopy := data.CVE
-		w.sendAlert(sub, &cveCopy, data.Email, data.AssetName)
+		w.sendAlert(data.Sub, &cveCopy, data.Email, data.AssetName)
 
 		items = append(items, AlertItem{
 			CVEID:     data.CVE.CVEID,
@@ -192,9 +195,15 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 			</tr>
 		`, html.EscapeString(item.CVEID), assetInfo, html.EscapeString(buzzBadge), item.Score)
 	}
-	baseURL := os.Getenv("BASE_URL")
-	if baseURL == "" {
-		baseURL = "http://localhost:8080"
+	baseURLStr := os.Getenv("BASE_URL")
+	if baseURLStr == "" {
+		baseURLStr = "http://localhost:8080"
+	}
+	parsedBase, err := url.Parse(baseURLStr)
+	if err != nil || (parsedBase.Scheme != "http" && parsedBase.Scheme != "https") {
+		baseURLStr = "http://localhost:8080"
+	} else {
+		baseURLStr = parsedBase.String()
 	}
 
 	body := fmt.Sprintf(`
@@ -212,7 +221,7 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 			</table>
 			<a href="%s/dashboard" style="display: block; width: 100%%; background: #00daf3; color: #101418; text-align: center; padding: 15px 0; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 14px; text-transform: uppercase;">Review All Threats</a>
 		</div>
-	`, len(items), rowsHTML, baseURL)
+	`, len(items), rowsHTML, baseURLStr)
 
 	if len(uniqueEmails) == 0 {
 		log.Printf("Error: No recipient email found for user %d digest", userID)

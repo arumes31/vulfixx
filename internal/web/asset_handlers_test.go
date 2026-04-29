@@ -174,5 +174,8 @@ func TestDeleteAssetHandler(t *testing.T) {
 		if rr.Code != http.StatusFound {
 			t.Errorf("expected 302, got %d", rr.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 }

@@ -18,15 +18,22 @@ import (
 
 func TestIndexHandler(t *testing.T) {
 	t.Run("Unauthenticated", func(t *testing.T) {
-		mock, _ := db.SetupTestDB()
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
 		// Expectations for PublicDashboardHandler
 		mock.ExpectQuery("SELECT").WithArgs("", "", "", 0.0, 10.0).WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit"}).AddRow(100, 10, 5))
-		mock.ExpectQuery("SELECT").WithArgs("", "", "", 0.0, 10.0, 20, 0).WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "cvss_vector", "cisa_kev", "published_date", "updated_date", "status", "references", "notes"}).
-			AddRow(1, "CVE-2024-0001", "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, ""))
-		mock.ExpectQuery("SELECT cvss_score").WithArgs().WillReturnRows(pgxmock.NewRows([]string{"cvss_score"}).AddRow(7.5))
+		
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.cve_id, c.description, c.cvss_score, vector_string, c.cisa_kev, c.published_date, c.updated_date, 'active' as status, c.references, '' as notes FROM cves c")).
+			WithArgs("", "", "", 0.0, 10.0, 20, 0).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes"}).
+				AddRow(1, "CVE-2024-0001", "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, ""))
+		
+		mock.ExpectQuery("SELECT.*COUNT.*FILTER").WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(0, 1, 0, 0))
 
 		req := httptest.NewRequest("GET", "/", nil)
 		rr := httptest.NewRecorder()
@@ -34,10 +41,16 @@ func TestIndexHandler(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
 	t.Run("Authenticated", func(t *testing.T) {
-		mock, _ := db.SetupTestDB()
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
@@ -57,12 +70,18 @@ func TestIndexHandler(t *testing.T) {
 		if rr2.Code != http.StatusFound {
 			t.Errorf("expected 302 redirect, got %d", rr2.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 }
 
 func TestDashboardHandler(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		mock, _ := db.SetupTestDB()
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
@@ -82,7 +101,7 @@ func TestDashboardHandler(t *testing.T) {
 				AddRow(100, 5, 10, 2))
 
 		now := time.Now()
-		mock.ExpectQuery("SELECT").WithArgs(1, "", "", "", 20, 0, "", 0, 0.0, 10.0).
+		mock.ExpectQuery("SELECT DISTINCT").WithArgs(1, "", "", "", 20, 0, "", 0, 0.0, 10.0).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes"}).
 				AddRow(1, "CVE-2024-0001", "Test CVE", 7.5, "CVSS:3.1/...", false, now, now, "active", []string{"http://example.com"}, "some notes"))
 
@@ -97,15 +116,21 @@ func TestDashboardHandler(t *testing.T) {
 		rr2 := httptest.NewRecorder()
 		app.DashboardHandler(rr2, req)
 
-		if rr2.Code != http.StatusOK && rr2.Code != http.StatusBadRequest {
+		if rr2.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr2.Code)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
 		}
 	})
 }
 
 func TestBulkUpdateCVEStatusHandler(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		mock, _ := db.SetupTestDB()
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
@@ -130,19 +155,21 @@ func TestBulkUpdateCVEStatusHandler(t *testing.T) {
 		rr2 := httptest.NewRecorder()
 		app.BulkUpdateCVEStatusHandler(rr2, req)
 
+		if rr2.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr2.Code)
+		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
-		}
-
-		if rr2.Code != http.StatusOK && rr2.Code != http.StatusBadRequest {
-			t.Errorf("expected 200 OK, got %d", rr2.Code)
 		}
 	})
 }
 
 func TestCVEDetailHandler_Extra(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		mock, _ := pgxmock.NewPool()
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
@@ -161,10 +188,16 @@ func TestCVEDetailHandler_Extra(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
 	t.Run("NotFound", func(t *testing.T) {
-		mock, _ := pgxmock.NewPool()
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
@@ -182,10 +215,16 @@ func TestCVEDetailHandler_Extra(t *testing.T) {
 		if rr.Code != http.StatusNotFound {
 			t.Errorf("expected 404 Not Found, got %d", rr.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
 	t.Run("DatabaseError", func(t *testing.T) {
-		mock, _ := pgxmock.NewPool()
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
@@ -203,12 +242,18 @@ func TestCVEDetailHandler_Extra(t *testing.T) {
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("expected 500 Internal Server Error, got %d", rr.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 }
 
 func TestExportCVEsHandler_Extra(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
-		mock, _ := pgxmock.NewPool()
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
@@ -233,10 +278,16 @@ func TestExportCVEsHandler_Extra(t *testing.T) {
 		if !strings.Contains(rr.Body.String(), "CVE-2023-0001") {
 			t.Errorf("expected body to contain CVE-2023-0001")
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
 	t.Run("DatabaseError", func(t *testing.T) {
-		mock, _ := pgxmock.NewPool()
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
@@ -253,10 +304,16 @@ func TestExportCVEsHandler_Extra(t *testing.T) {
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("expected 500 Internal Server Error, got %d", rr.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
 	t.Run("ScanError", func(t *testing.T) {
-		mock, _ := pgxmock.NewPool()
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
@@ -274,15 +331,21 @@ func TestExportCVEsHandler_Extra(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK (even with scan errors), got %d", rr.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 }
 
 func TestUpdateCVENoteHandler(t *testing.T) {
-	mock, _ := db.SetupTestDB()
-	defer mock.Close()
-	app := setupTestApp(t, mock)
-
 	t.Run("Success_Private", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
 		req := httptest.NewRequest("POST", "/api/notes", bytes.NewReader([]byte(`{"cve_id": 1, "notes": "test notes"}`)))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Requested-With", "XMLHttpRequest")
@@ -304,15 +367,22 @@ func TestUpdateCVENoteHandler(t *testing.T) {
 
 		rr2 := httptest.NewRecorder()
 		app.UpdateCVENoteHandler(rr2, req)
+		if rr2.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr2.Code)
+		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
-		}
-		if rr2.Code != http.StatusOK && rr2.Code != http.StatusBadRequest {
-			t.Errorf("expected 200 OK, got %d", rr2.Code)
 		}
 	})
 
 	t.Run("Success_Team", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
 		req := httptest.NewRequest("POST", "/api/notes", bytes.NewReader([]byte(`{"cve_id": 1, "notes": "team notes"}`)))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Requested-With", "XMLHttpRequest")
@@ -336,11 +406,11 @@ func TestUpdateCVENoteHandler(t *testing.T) {
 
 		rr2 := httptest.NewRecorder()
 		app.UpdateCVENoteHandler(rr2, req)
+		if rr2.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr2.Code)
+		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
-		}
-		if rr2.Code != http.StatusOK && rr2.Code != http.StatusBadRequest {
-			t.Errorf("expected 200 OK, got %d", rr2.Code)
 		}
 	})
 }

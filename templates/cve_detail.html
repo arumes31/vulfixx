@@ -5,7 +5,7 @@
     <!-- Breadcrumbs -->
     <nav class="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-gray-500">
         <a href="/" class="hover:text-primary">Intelligence</a>
-        <span class="material-symbols-outlined text-[12px]">chevron_right</span>
+        <span class="material-symbols-outlined text-[12px]" aria-hidden="true">chevron_right</span>
         <span class="text-white">{{.CVE.CVEID}}</span>
     </nav>
 
@@ -43,9 +43,9 @@
                     <span class="text-[10px] font-bold text-gray-500 uppercase">EPSS Score</span>
                     <span class="text-sm font-mono text-white">{{printf "%.4f" .CVE.EPSSScore}}</span>
                 </div>
-                <div class="w-full h-1 bg-white/5 rounded-full overflow-hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{multiply .CVE.EPSSScore 100}}">
+                <div class="w-full h-1 bg-white/5 rounded-full overflow-hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{round (multiply .CVE.EPSSScore 100)}}">
                     <div class="h-full bg-primary" style="width: {{multiply .CVE.EPSSScore 100}}%"></div>
-                    <span class="sr-only">EPSS score: {{multiply .CVE.EPSSScore 100}}%</span>
+                    <span class="sr-only">EPSS score: {{round (multiply .CVE.EPSSScore 100)}}%</span>
                 </div>
             </div>
         </div>
@@ -83,7 +83,7 @@
             {{range .CVE.References}}
             <a href="{{. | safeURL}}" target="_blank" rel="noopener noreferrer" class="glass p-4 rounded-xl border border-white/5 hover:border-primary/30 hover:bg-white/[0.02] transition-all flex items-center justify-between group">
                 <span class="text-xs text-gray-400 truncate max-w-[80%] font-mono">{{.}}</span>
-                <span class="material-symbols-outlined text-[16px] text-gray-600 group-hover:text-primary">open_in_new</span>
+                <span class="material-symbols-outlined text-[16px] text-gray-600 group-hover:text-primary" aria-hidden="true">open_in_new</span>
             </a>
             {{end}}
         </div>

@@ -1,11 +1,12 @@
 package web
 
 import (
+	"crypto/rand"
 	"cve-tracker/internal/models"
+	"encoding/hex"
 	"log"
 	"net/http"
 	"strconv"
-	"time"
 )
 
 func (a *App) AdminUserManagementHandler(w http.ResponseWriter, r *http.Request) {
@@ -32,10 +33,20 @@ func (a *App) AdminUserManagementHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-
-	session, _ := a.SessionStore.Get(r, "vulfixx-session")
-	// Generate a simple token for admin actions
-	token := strconv.FormatInt(time.Now().UnixNano(), 16)
+	session, err := a.SessionStore.Get(r, "vulfixx-session")
+	if err != nil {
+		log.Printf("Error getting session: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	// Generate a secure token for admin actions
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		log.Printf("Error generating random CSRF token: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	token := hex.EncodeToString(b)
 	session.Values["admin_csrf_token"] = token
 	if err := session.Save(r, w); err != nil {
 		log.Printf("Error saving admin CSRF token: %v", err)

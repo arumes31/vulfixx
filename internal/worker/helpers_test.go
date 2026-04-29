@@ -6,9 +6,18 @@ import (
 	"testing"
 )
 
-type EmailSenderMock struct{}
+type EmailSenderMock struct {
+	Count int
+	LastTo string
+	LastSubject string
+}
 
-func (m *EmailSenderMock) SendEmail(to, subject, body string) error { return nil }
+func (m *EmailSenderMock) SendEmail(to, subject, body string) error {
+	m.Count++
+	m.LastTo = to
+	m.LastSubject = subject
+	return nil
+}
 
 type MockHTTPClient struct {
 	DoFunc func(req *http.Request) (*http.Response, error)
@@ -57,7 +66,7 @@ func TestWorkerHelpers(t *testing.T) {
 		}
 	})
 
-    t.Run("SanitizeHeader", func(t *testing.T) {
+	t.Run("SanitizeHeader", func(t *testing.T) {
 		input := "Line 1\r\nLine 2\nLine 3"
 		expected := "Line 1Line 2Line 3"
 		if got := sanitizeHeader(input); got != expected {

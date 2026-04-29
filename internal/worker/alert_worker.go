@@ -100,7 +100,7 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		JOIN users u ON s.user_id = u.id
 		WHERE u.is_email_verified = TRUE
 		  AND s.min_severity <= $1
-		  AND (s.keyword = '' OR $2 ILIKE '%' || REPLACE(REPLACE(s.keyword, '\', '\\'), '%', '\%') || '%' ESCAPE '\')
+		  AND (s.keyword = '' OR $2 ILIKE '%' || REPLACE(REPLACE(REPLACE(s.keyword, '\', '\\'), '%', '\%'), '_', '\_') || '%' ESCAPE '\')
 	`, cve.CVSSScore, cve.Description)
 	if err != nil {
 		log.Println("Error fetching subscriptions:", err)
@@ -249,12 +249,10 @@ func evaluateComplexFilter(logic string, cve *models.CVE) bool {
 }
 
 func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, sub models.UserSubscription, email, assetName string) bool {
-	res, err := w.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id, created_at) VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING", userID, cve.ID)
-	if err != nil {
-		log.Printf("Failed to record alert history: %v", err)
-		return false
-	}
-	if res.RowsAffected() == 0 {
+	// Check if already notified
+	var exists bool
+	_ = w.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM alert_history WHERE user_id = $1 AND cve_id = $2)", userID, cve.ID).Scan(&exists)
+	if exists {
 		return false
 	}
 
@@ -264,7 +262,7 @@ func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, s
 	// Let's ensure it has what bufferAlert needs.
 	// Ensure we have full details if the job only provided minimal data
 	if cve.CVEID == "" || cve.Description == "" {
-		err = w.Pool.QueryRow(ctx, `
+		err := w.Pool.QueryRow(ctx, `
 			SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, github_poc_count, published_date, "references" 
 			FROM cves WHERE id = $1
 		`, cve.ID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.VectorString, &cve.CISAKEV, &cve.EPSSScore, &cve.CWEID, &cve.GitHubPoCCount, &cve.PublishedDate, &cve.References)
@@ -275,5 +273,15 @@ func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, s
 	}
 
 	cve.OSINTData = w.fetchOSINTLinks(ctx, cve.CVEID)
-	return w.bufferAlert(ctx, userID, cve, email, assetName)
+	
+	if !w.bufferAlert(ctx, userID, cve, sub, email, assetName) {
+		return false
+	}
+
+	_, err := w.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id, sent_at) VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING", userID, cve.ID)
+	if err != nil {
+		log.Printf("Failed to record alert history: %v", err)
+	}
+
+	return true
 }

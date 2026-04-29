@@ -60,7 +60,7 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Verify rate limit before checking TOTP
-		rlKey := "totp_failures:" + r.RemoteAddr
+		rlKey := "login_failures:" + r.RemoteAddr
 		if count, err := a.Redis.Get(r.Context(), rlKey).Int(); err == nil && count >= 5 {
 			a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Too many attempts"})
 			return
@@ -125,7 +125,7 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rlKeyLogin := "totp_failures:" + r.RemoteAddr
+	rlKeyLogin := "login_failures:" + r.RemoteAddr
 	if count, err := a.Redis.Get(r.Context(), rlKeyLogin).Int(); err == nil && count >= 5 {
 		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Too many attempts"})
 		return
@@ -133,6 +133,8 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	user, err := auth.Login(r.Context(), email, password)
 	if err != nil {
+		a.Redis.Incr(r.Context(), rlKeyLogin)
+		a.Redis.Expire(r.Context(), rlKeyLogin, 15*time.Minute)
 		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Invalid credentials"})
 		return
 	}

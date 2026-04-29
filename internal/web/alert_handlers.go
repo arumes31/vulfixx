@@ -42,11 +42,17 @@ func (a *App) AlertHistoryHandler(w http.ResponseWriter, r *http.Request) {
 			skippedRows++
 			continue
 		}
+		var score interface{}
+		if cvssScore.Valid {
+			score = cvssScore.Float64
+		} else {
+			score = nil
+		}
 		alerts = append(alerts, map[string]interface{}{
 			"SentAt":      sentAt,
 			"CVEID":       cveID,
 			"Description": description.String,
-			"CVSSScore":   cvssScore.Float64,
+			"CVSSScore":   score,
 		})
 	}
 	if err := rows.Err(); err != nil {

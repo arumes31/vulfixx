@@ -17,7 +17,10 @@ import (
 
 func TestLoginHandler(t *testing.T) {
 	t.Run("GET", func(t *testing.T) {
-		mock, _ := db.SetupTestDB()
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
@@ -28,10 +31,16 @@ func TestLoginHandler(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
 	t.Run("POST_InvalidCredentials", func(t *testing.T) {
-		mock, _ := db.SetupTestDB()
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
@@ -45,10 +54,16 @@ func TestLoginHandler(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
 	t.Run("POST_Success", func(t *testing.T) {
-		mock, _ := db.SetupTestDB()
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
@@ -65,45 +80,71 @@ func TestLoginHandler(t *testing.T) {
 		if rr.Code != http.StatusFound {
 			t.Errorf("expected 302 redirect, got %d", rr.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 }
 
 func TestVerifyTOTPHandler(t *testing.T) {
-	t.Run("InvalidCode", func(t *testing.T) {
-		mock, _ := db.SetupTestDB()
+	t.Run("VerifyTOTP_Success", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
-		req := httptest.NewRequest("POST", "/settings/totp/verify", strings.NewReader("totp_code=123456"))
+		secret := "JBSWY3DPEHPK3PXP"
+		code, _ := totp.GenerateCode(secret, time.Now())
+
+		req := httptest.NewRequest("POST", "/settings/totp/verify", strings.NewReader("totp_code="+code))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["user_id"] = 1
 		session.Values["totp_setup_ts"] = time.Now().Unix()
+		session.Values["totp_setup_attempts"] = 0
 		rr := httptest.NewRecorder()
 		_ = session.Save(req, rr)
 
-		req = httptest.NewRequest("POST", "/settings/totp/verify", strings.NewReader("totp_code=123456"))
+		req = httptest.NewRequest("POST", "/settings/totp/verify", strings.NewReader("totp_code="+code))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		for _, c := range rr.Result().Cookies() {
 			req.AddCookie(c)
 		}
 
 		mock.ExpectQuery("SELECT totp_secret FROM users WHERE id = \\$1").WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"totp_secret"}).AddRow("secret"))
+			WillReturnRows(pgxmock.NewRows([]string{"totp_secret"}).AddRow(secret))
+		
+		mock.ExpectExec("UPDATE users SET is_totp_enabled = TRUE").WithArgs(1).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(1, "totp_enabled", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		rr2 := httptest.NewRecorder()
 		app.VerifyTOTPHandler(rr2, req)
 		if rr2.Code != http.StatusFound {
 			t.Errorf("expected 302, got %d", rr2.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 }
 
 func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 	t.Run("Login_RequireTOTP", func(t *testing.T) {
-		mock, _ := pgxmock.NewPool()
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
 		defer mock.Close()
+		
+		oldPool := db.Pool
 		db.Pool = mock
+		defer func() { db.Pool = oldPool }()
+		
 		app := setupTestApp(t, mock)
 
 		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
@@ -119,8 +160,7 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
-		expectBaseQueries(mock, 1)
-		expectBaseQueries(mock, 1)
+		expectBaseQueries(mock, 0)
 		app.LoginHandler(rr, req)
 
 		if rr.Code != http.StatusOK {
@@ -129,12 +169,22 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 		if !strings.Contains(rr.Body.String(), "name=\"totp_code\"") {
 			t.Errorf("expected body to contain TOTP input")
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
 	t.Run("Login_VerifyTOTP_Success", func(t *testing.T) {
-		mock, _ := pgxmock.NewPool()
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
 		defer mock.Close()
+		
+		oldPool := db.Pool
 		db.Pool = mock
+		defer func() { db.Pool = oldPool }()
+		
 		app := setupTestApp(t, mock)
 
 		secret := "JBSWY3DPEHPK3PXP"
@@ -166,18 +216,28 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 
 		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		rr := httptest.NewRecorder()
-		expectBaseQueries(mock, 1)
+		expectBaseQueries(mock, 0)
 		app.LoginHandler(rr, req)
 
 		if rr.Code != http.StatusFound {
 			t.Errorf("expected 302 Found, got %d", rr.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
 	t.Run("Login_VerifyTOTP_Failure", func(t *testing.T) {
-		mock, _ := pgxmock.NewPool()
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
 		defer mock.Close()
+		
+		oldPool := db.Pool
 		db.Pool = mock
+		defer func() { db.Pool = oldPool }()
+		
 		app := setupTestApp(t, mock)
 
 		secret := "JBSWY3DPEHPK3PXP"
@@ -203,22 +263,33 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"is_totp_enabled", "totp_secret"}).AddRow(true, secret))
 
 		rr := httptest.NewRecorder()
-		expectBaseQueries(mock, 1)
+		expectBaseQueries(mock, 0)
 		app.LoginHandler(rr, req)
 
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
-    t.Run("Login_VerifyTOTP_TooManyAttempts", func(t *testing.T) {
-		mock, _ := pgxmock.NewPool()
+	t.Run("Login_VerifyTOTP_TooManyAttempts", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
 		defer mock.Close()
+		
+		oldPool := db.Pool
 		db.Pool = mock
+		defer func() { db.Pool = oldPool }()
+		
 		app := setupTestApp(t, mock)
 
 		form := url.Values{"totp_code": {"123456"}}
 		req := httptest.NewRequest("POST", "/login", strings.NewReader(form.Encode()))
+		req.RemoteAddr = "192.0.2.1:1234"
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
@@ -232,7 +303,7 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 			req.AddCookie(c)
 		}
 
-		app.Redis.Set(req.Context(), "totp_failures:"+req.RemoteAddr, 5, 0)
+		app.Redis.Set(req.Context(), "login_failures:"+req.RemoteAddr, 5, 0)
 
 		rr := httptest.NewRecorder()
 		app.LoginHandler(rr, req)
@@ -240,8 +311,11 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr.Code)
 		}
-        if !strings.Contains(rr.Body.String(), "Too many attempts") {
-            t.Errorf("expected too many attempts error")
-        }
+		if !strings.Contains(rr.Body.String(), "Too many attempts") {
+			t.Errorf("expected too many attempts error")
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 }

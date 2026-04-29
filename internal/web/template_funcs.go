@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"html/template"
 	"log"
 	"net/url"
@@ -9,7 +10,7 @@ import (
 	"strings"
 )
 
-func (a *App) InitTemplatesWithFuncs() {
+func (a *App) InitTemplatesWithFuncs() error {
 	funcs := template.FuncMap{
 		"map": func(values ...interface{}) map[string]interface{} {
 			if len(values)%2 != 0 {
@@ -35,10 +36,21 @@ func (a *App) InitTemplatesWithFuncs() {
 		"add":        func(a, b int) int { return a + b },
 		"subtract":   func(a, b int) int { return a - b },
 		"multiply":   func(a, b float64) float64 { return a * b },
+		"round":      func(f float64) int { return int(f + 0.5) },
+		"min":        func(a, b float64) float64 { if a < b { return a }; return b },
+		"max":        func(a, b float64) float64 { if a > b { return a }; return b },
 		"GetBaseURL": GetBaseURL,
 		"safeURL": func(s string) template.URL {
 			parsed, err := url.Parse(s)
-			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			if err != nil {
+				return template.URL("#invalid-url")
+			}
+			// Allow empty scheme (relative URLs) but avoid protocol-relative //host
+			if parsed.Scheme == "" {
+				if parsed.Host != "" {
+					return template.URL("#invalid-url")
+				}
+			} else if parsed.Scheme != "http" && parsed.Scheme != "https" {
 				return template.URL("#invalid-url")
 			}
 			/* #nosec G203 */
@@ -76,7 +88,9 @@ func (a *App) InitTemplatesWithFuncs() {
 		},
 	}
 
+	a.TemplateMu.Lock()
 	a.TemplateMap = make(map[string]*template.Template)
+	a.TemplateMu.Unlock()
 
 	// Locate the templates directory by walking up from the current working directory.
 	// This avoids os.Chdir which is not goroutine-safe.
@@ -84,14 +98,14 @@ func (a *App) InitTemplatesWithFuncs() {
 	if templateDir == "" {
 		wd, _ := os.Getwd()
 		log.Printf("No templates found starting from %s", wd)
-		return
+		return fmt.Errorf("no templates directory found")
 	}
 
 	baseFile := filepath.Join(templateDir, "base.html")
 	pattern := filepath.Join(templateDir, "*.html")
 	files, err := filepath.Glob(pattern)
 	if err != nil {
-		log.Printf("Error globbing templates: %v", err)
+		return fmt.Errorf("error globbing templates: %w", err)
 	}
 
 	for _, file := range files {
@@ -104,12 +118,18 @@ func (a *App) InitTemplatesWithFuncs() {
 			log.Printf("Error parsing template %s: %v", name, err)
 			continue
 		}
+		a.TemplateMu.Lock()
 		a.TemplateMap[name] = tmpl
+		a.TemplateMu.Unlock()
 	}
 
-	if len(a.TemplateMap) == 0 {
+	a.TemplateMu.RLock()
+	mapLen := len(a.TemplateMap)
+	a.TemplateMu.RUnlock()
+	if mapLen == 0 {
 		log.Printf("No renderable templates loaded from %s", templateDir)
 	}
+	return nil
 }
 
 // findTemplatesDir walks up from the current working directory looking for a

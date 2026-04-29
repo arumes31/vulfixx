@@ -135,7 +135,7 @@
                                     {{printf "%.1f" .CVSSScore}}
                                 </span>
                                 <div class="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
-                                    <div class="h-full {{severityBg .CVSSScore}}" style="width: {{multiply .CVSSScore 10}}%"></div>
+                                    <div class="h-full {{severityBg .CVSSScore}} max-w-full" style="width: {{multiply (min 10.0 (max 0.0 .CVSSScore)) 10}}%"></div>
                                 </div>
                             </div>
                         </td>

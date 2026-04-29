@@ -5,8 +5,10 @@ import (
 	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
 	"encoding/json"
+	"fmt"
 	"log"
 	"sync"
+	"time"
 )
 
 type Worker struct {
@@ -57,23 +59,29 @@ func (w *Worker) Start(ctx context.Context) {
 	log.Println("Worker: All tasks gracefully stopped.")
 }
 
-func (w *Worker) enqueueAlertsForCVE(ctx context.Context, cve models.CVE) {
+func (w *Worker) enqueueAlertsForCVE(ctx context.Context, cve models.CVE) error {
 	// First, get the internal ID for the CVE as it might be needed by the alert processor
 	var id int
 	err := w.Pool.QueryRow(ctx, "SELECT id FROM cves WHERE cve_id = $1", cve.CVEID).Scan(&id)
 	if err != nil {
-		log.Printf("Worker: Failed to get internal ID for CVE %s for alert: %v", cve.CVEID, err)
-		return
+		return fmt.Errorf("failed to get internal ID for CVE %s: %w", cve.CVEID, err)
 	}
 	cve.ID = id
 
 	alertJob, err := json.Marshal(cve)
 	if err != nil {
-		log.Printf("Worker: Failed to marshal alert for %s: %v", cve.CVEID, err)
-		return
+		return fmt.Errorf("failed to marshal alert for %s: %w", cve.CVEID, err)
 	}
 
-	if err := w.Redis.LPush(ctx, "cve_alerts_queue", alertJob).Err(); err != nil {
-		log.Printf("Worker: Failed to enqueue alert for %s: %v", cve.CVEID, err)
+	var lastErr error
+	for i := 0; i < 3; i++ {
+		if err := w.Redis.LPush(ctx, "cve_alerts_queue", alertJob).Err(); err != nil {
+			lastErr = err
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		return nil
 	}
+
+	return fmt.Errorf("failed to enqueue alert for %s after retries: %w", cve.CVEID, lastErr)
 }

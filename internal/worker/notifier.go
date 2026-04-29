@@ -22,6 +22,7 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 	log.Printf("ALERT: Sending to %s for %s\n", redactEmail(email), cve.CVEID)
 	var wg sync.WaitGroup
 	successChan := make(chan bool, 2)
+	
 	if sub.EnableWebhook && sub.WebhookURL != "" {
 		wg.Add(1)
 		go func() {
@@ -32,36 +33,6 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 			redacted := redactURL(sub.WebhookURL)
 			if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
 				log.Printf("Skipping invalid webhook URL scheme: %s", redacted)
-				return
-			}
-
-			// DNS Pinning / SSRF Protection
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cancel()
-			ips, err := net.DefaultResolver.LookupIPAddr(ctx, parsedURL.Hostname())
-			if err != nil {
-				log.Printf("Failed to resolve webhook host: %s, err: %v", redacted, err)
-				return
-			}
-
-			isSafe := true
-			var safeIP net.IP
-			for _, ipAddr := range ips {
-				if addr, ok := netip.AddrFromSlice(ipAddr.IP); ok {
-					if addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified() {
-						if os.Getenv("TEST_MODE") != "1" {
-							isSafe = false
-							break
-						}
-					}
-					if safeIP == nil {
-						safeIP = ipAddr.IP
-					}
-				}
-			}
-
-			if !isSafe || safeIP == nil {
-				log.Printf("Skipping unsafe webhook URL IP: %s", redacted)
 				return
 			}
 
@@ -80,25 +51,45 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 				return
 			}
 
-			port := parsedURL.Port()
-			if port == "" {
-				if parsedURL.Scheme == "https" {
-					port = "443"
-				} else {
-					port = "80"
-				}
-			}
-			safeAddr := net.JoinHostPort(safeIP.String(), port)
-
 			const webhookTimeout = 10 * time.Second
 			httpCtx, httpCancel := context.WithTimeout(context.Background(), webhookTimeout)
 			defer httpCancel()
 
-			// Pin the TCP connection to the validated IP to defeat DNS rebinding.
+			// DNS Pinning / SSRF Protection via custom dialer inside DialContext
 			dialer := &net.Dialer{Timeout: webhookTimeout}
 			transport := &http.Transport{
 				DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-					return dialer.DialContext(ctx, network, safeAddr)
+					ips, err := net.DefaultResolver.LookupIPAddr(ctx, parsedURL.Hostname())
+					if err != nil {
+						return nil, err
+					}
+
+					var safeIP net.IP
+					for _, ipAddr := range ips {
+						if addr, ok := netip.AddrFromSlice(ipAddr.IP); ok {
+							if addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified() {
+								if os.Getenv("TEST_MODE") != "1" {
+									continue
+								}
+							}
+							safeIP = ipAddr.IP
+							break
+						}
+					}
+
+					if safeIP == nil {
+						return nil, fmt.Errorf("no safe IP found for host %s", parsedURL.Hostname())
+					}
+
+					port := parsedURL.Port()
+					if port == "" {
+						if parsedURL.Scheme == "https" {
+							port = "443"
+						} else {
+							port = "80"
+						}
+					}
+					return dialer.DialContext(ctx, network, net.JoinHostPort(safeIP.String(), port))
 				},
 				IdleConnTimeout: 1 * time.Second,
 			}
@@ -133,6 +124,7 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 			}
 		}()
 	}
+
 	if sub.EnableEmail {
 		wg.Add(1)
 		go func() {
@@ -192,7 +184,6 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 				baseURL = "http://localhost:8080"
 			}
 			if u, err := url.Parse(baseURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
-				// #nosec G706 -- baseURL is from admin-controlled environment variable
 				log.Printf("Worker: Invalid BASE_URL %q, defaulting to localhost", baseURL)
 				baseURL = "http://localhost:8080"
 			}
@@ -224,6 +215,9 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 			`, html.EscapeString(cve.CVEID), kevBadge, advisoryHTML, severityColor, cve.CVSSScore, severity, epssDisplay, html.EscapeString(cve.Description), buttonsHTML, baseURL)
 			if err := w.Mailer.SendEmail(email, "Security Alert: "+cve.CVEID, body); err == nil {
 				successChan <- true
+			} else {
+				log.Printf("Failed to send email alert to %s for %s: %v", redactEmail(email), cve.CVEID, err)
+				successChan <- false
 			}
 		}()
 	}

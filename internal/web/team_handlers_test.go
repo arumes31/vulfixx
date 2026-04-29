@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pashagolub/pgxmock/v3"
 )
 
@@ -49,7 +50,10 @@ func TestTeamsHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mock, _ := db.SetupTestDB()
+			mock, err := db.SetupTestDB()
+			if err != nil {
+				t.Fatalf("failed to setup mock db: %v", err)
+			}
 			defer mock.Close()
 			app := setupTestApp(t, mock)
 			tt.mockExpect(mock)
@@ -133,7 +137,7 @@ func TestCreateTeamHandler(t *testing.T) {
 				mock.ExpectBegin()
 				mock.ExpectQuery("INSERT INTO teams").
 					WithArgs("Existing Team", pgxmock.AnyArg()).
-					WillReturnError(fmt.Errorf("duplicate key value 23505"))
+					WillReturnError(&pgconn.PgError{Code: "23505"})
 				mock.ExpectRollback()
 			},
 			expectedStatus: http.StatusBadRequest,
@@ -206,7 +210,10 @@ func TestCreateTeamHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mock, _ := db.SetupTestDB()
+			mock, err := db.SetupTestDB()
+			if err != nil {
+				t.Fatalf("failed to setup mock db: %v", err)
+			}
 			defer mock.Close()
 			app := setupTestApp(t, mock)
 			tt.mockExpect(mock)
@@ -319,7 +326,10 @@ func TestJoinTeamHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mock, _ := db.SetupTestDB()
+			mock, err := db.SetupTestDB()
+			if err != nil {
+				t.Fatalf("failed to setup mock db: %v", err)
+			}
 			defer mock.Close()
 			app := setupTestApp(t, mock)
 			tt.mockExpect(mock)
@@ -392,6 +402,7 @@ func TestLeaveTeamHandler(t *testing.T) {
 				mock.ExpectQuery("SELECT role FROM team_members .* FOR UPDATE").
 					WithArgs(10, 1).
 					WillReturnError(fmt.Errorf("not member"))
+				mock.ExpectRollback()
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedBody:   "You are not a member of this team",
@@ -409,6 +420,7 @@ func TestLeaveTeamHandler(t *testing.T) {
 				mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM team_members WHERE team_id = \\$1 AND role = 'owner'").
 					WithArgs(10).
 					WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
+				mock.ExpectRollback()
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedBody:   "You are the last owner",
@@ -470,6 +482,7 @@ func TestLeaveTeamHandler(t *testing.T) {
 				mock.ExpectExec("DELETE FROM team_members").
 					WithArgs(10, 1).
 					WillReturnError(fmt.Errorf("db error"))
+				mock.ExpectRollback()
 			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "Internal server error",
@@ -478,7 +491,10 @@ func TestLeaveTeamHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mock, _ := db.SetupTestDB()
+			mock, err := db.SetupTestDB()
+			if err != nil {
+				t.Fatalf("failed to setup mock db: %v", err)
+			}
 			defer mock.Close()
 			app := setupTestApp(t, mock)
 			tt.mockExpect(mock)
@@ -580,7 +596,10 @@ func TestSwitchTeamHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mock, _ := db.SetupTestDB()
+			mock, err := db.SetupTestDB()
+			if err != nil {
+				t.Fatalf("failed to setup mock db: %v", err)
+			}
 			defer mock.Close()
 			app := setupTestApp(t, mock)
 			tt.mockExpect(mock)
@@ -616,4 +635,3 @@ func TestSwitchTeamHandler(t *testing.T) {
 		})
 	}
 }
-

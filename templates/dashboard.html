@@ -15,7 +15,7 @@
         </div>
         <div class="flex items-center gap-3">
             <form id="team-switch-form" action="/teams/switch" method="POST" class="flex items-center gap-2 bg-white/5 border border-white/10 p-1 rounded-lg">
-                {{.csrfField}}
+                {{.CSRFField}}
                 <span class="material-symbols-outlined text-gray-500 ml-2 text-sm">hub</span>
                 <select name="team_id" id="team-selector" class="bg-transparent text-xs font-bold text-[#00daf3] focus:outline-none pr-4 py-1 cursor-pointer">
                     <option value="0" {{if eq .ActiveTeamID 0}}selected{{end}}>Private Workspace</option>
@@ -117,13 +117,13 @@
                         <td class="px-6 py-6">
                             <div class="flex flex-col gap-1.5">
                                 {{if ge .CVSSScore 9.0}}
-                                    <span data-vector="{{.VectorString}}" class="vector-trigger inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-500/10 text-red-500 border border-red-500/20 text-[10px] font-black tracking-widest uppercase cursor-help"><span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> CRITICAL ({{.CVSSScore}})</span>
+                                    <button type="button" data-vector="{{.VectorString}}" class="vector-trigger inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-500/10 text-red-500 border border-red-500/20 text-[10px] font-black tracking-widest uppercase cursor-help"><span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> CRITICAL ({{.CVSSScore}})</button>
                                 {{else if ge .CVSSScore 7.0}}
-                                    <span data-vector="{{.VectorString}}" class="vector-trigger inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-orange-500/10 text-orange-500 border border-orange-500/20 text-[10px] font-black tracking-widest uppercase cursor-help">HIGH ({{.CVSSScore}})</span>
+                                    <button type="button" data-vector="{{.VectorString}}" class="vector-trigger inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-orange-500/10 text-orange-500 border border-orange-500/20 text-[10px] font-black tracking-widest uppercase cursor-help">HIGH ({{.CVSSScore}})</button>
                                 {{else if ge .CVSSScore 4.0}}
-                                    <span data-vector="{{.VectorString}}" class="vector-trigger inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-black tracking-widest uppercase cursor-help">MEDIUM ({{.CVSSScore}})</span>
+                                    <button type="button" data-vector="{{.VectorString}}" class="vector-trigger inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-black tracking-widest uppercase cursor-help">MEDIUM ({{.CVSSScore}})</button>
                                 {{else}}
-                                    <span data-vector="{{.VectorString}}" class="vector-trigger inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 text-gray-500 border border-white/10 text-[10px] font-black tracking-widest uppercase cursor-help">LOW ({{.CVSSScore}})</span>
+                                    <button type="button" data-vector="{{.VectorString}}" class="vector-trigger inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 text-gray-500 border border-white/10 text-[10px] font-black tracking-widest uppercase cursor-help">LOW ({{.CVSSScore}})</button>
                                 {{end}}
                             </div>
                         </td>

@@ -18,10 +18,16 @@ import (
 )
 
 func TestWorkerAlert_EvaluateSubscriptions(t *testing.T) {
-	mock, _ := db.SetupTestDB()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
 	defer mock.Close()
 
-	mr, _ := db.SetupTestRedis()
+	mr, err := db.SetupTestRedis()
+	if err != nil {
+		t.Fatalf("failed to setup redis: %v", err)
+	}
 	defer mr.Close()
 
 	ctx := context.Background()
@@ -35,14 +41,22 @@ func TestWorkerAlert_EvaluateSubscriptions(t *testing.T) {
 			CVSSScore:   8.0,
 		}
 
-		mock.ExpectQuery("SELECT s.id, s.user_id").WillReturnRows(pgxmock.NewRows([]string{"id", "user_id", "keyword", "min_severity", "webhook_url", "enable_email", "enable_webhook", "filter_logic", "email"}))
-		mock.ExpectQuery("SELECT ak.keyword, a.user_id").WillReturnRows(pgxmock.NewRows([]string{"keyword", "user_id", "email", "name"}).
-			AddRow("wordpress", 1, "user@example.com", "My Site"))
+		mock.ExpectQuery("SELECT s.id, s.user_id").
+			WithArgs(cve.CVSSScore, cve.Description).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "user_id", "keyword", "min_severity", "webhook_url", "enable_email", "enable_webhook", "filter_logic", "email"}))
+		mock.ExpectQuery("SELECT ak.keyword, a.user_id").
+			WithArgs(cve.Description).
+			WillReturnRows(pgxmock.NewRows([]string{"keyword", "user_id", "email", "name"}).
+				AddRow("wordpress", 1, "user@example.com", "My Site"))
 		
-		mock.ExpectExec("INSERT INTO alert_history").WillReturnResult(pgxmock.NewResult("INSERT", 1))
-		mock.ExpectQuery("SELECT url FROM cve_osint_links").WillReturnRows(pgxmock.NewRows([]string{"url"}))
+		mock.ExpectQuery("SELECT EXISTS").WithArgs(1, 1).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
+		mock.ExpectExec("INSERT INTO alert_history").WithArgs(1, 1).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		w.evaluateSubscriptions(ctx, cve)
+		
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
     t.Run("FilterLogic_Complex", func(t *testing.T) {
@@ -77,9 +91,15 @@ func TestWorkerAlert_EvaluateSubscriptions(t *testing.T) {
 }
 
 func TestWorkerAlert_SendAlert(t *testing.T) {
-	mock, _ := db.SetupTestDB()
-    mr, _ := db.SetupTestRedis()
-    defer mr.Close()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("SetupTestDB: %v", err)
+	}
+	defer mock.Close()
+	_, err = db.SetupTestRedis()
+	if err != nil {
+		t.Fatalf("SetupTestRedis: %v", err)
+	}
 
 	t.Run("Webhook_Detailed", func(t *testing.T) {
         tests := []struct {
@@ -92,38 +112,40 @@ func TestWorkerAlert_SendAlert(t *testing.T) {
         }
 
         for _, tt := range tests {
-            ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-                w.WriteHeader(tt.statusCode)
-            }))
-            defer ts.Close()
-            t.Setenv("TEST_MODE", "1")
-            
-            httpClient := &MockHTTPClient{
-                DoFunc: func(req *http.Request) (*http.Response, error) {
-                    return &http.Response{
-                        StatusCode: tt.statusCode,
-                        Body:       io.NopCloser(strings.NewReader("")),
-                    }, nil
-                },
-            }
+			t.Run(tt.name, func(t *testing.T) {
+				ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(tt.statusCode)
+				}))
+				defer ts.Close()
+				t.Setenv("TEST_MODE", "1")
+				
+				httpClient := &MockHTTPClient{
+					DoFunc: func(req *http.Request) (*http.Response, error) {
+						return &http.Response{
+							StatusCode: tt.statusCode,
+							Body:       io.NopCloser(strings.NewReader("")),
+						}, nil
+					},
+				}
 
-            w := &Worker{
-                Pool:   mock,
-                Redis:  db.RedisClient,
-                Mailer: &EmailSenderMock{},
-                HTTP:   httpClient,
-            }
+				w := &Worker{
+					Pool:   mock,
+					Redis:  db.RedisClient,
+					Mailer: &EmailSenderMock{},
+					HTTP:   httpClient,
+				}
 
-            sub := models.UserSubscription{
-                EnableWebhook: true,
-                WebhookURL:    ts.URL,
-            }
-            cve := &models.CVE{CVEID: "CVE-2023-0001", CVSSScore: 9.5}
+				sub := models.UserSubscription{
+					EnableWebhook: true,
+					WebhookURL:    ts.URL,
+				}
+				cve := &models.CVE{CVEID: "CVE-2023-0001", CVSSScore: 9.5}
 
-            success := w.sendAlert(sub, cve, "user@example.com", "Asset1")
-            if success != tt.shouldPass {
-                t.Errorf("%s: expected success %v, got %v", tt.name, tt.shouldPass, success)
-            }
+				success := w.sendAlert(sub, cve, "user@example.com", "Asset1")
+				if success != tt.shouldPass {
+					t.Errorf("expected success %v, got %v", tt.shouldPass, success)
+				}
+			})
         }
     })
 
@@ -137,21 +159,39 @@ func TestWorkerAlert_SendAlert(t *testing.T) {
         sub := models.UserSubscription{EnableEmail: true}
         
         w.sendAlert(sub, cve, "user@example.com", "Asset")
+		
+		if mailer.Count != 1 {
+			t.Errorf("expected 1 email sent, got %d", mailer.Count)
+		}
+		if !strings.Contains(mailer.LastSubject, "CVE-CRIT") {
+			t.Errorf("subject should contain CVE ID")
+		}
+		if mailer.LastTo != "user@example.com" {
+			t.Errorf("wrong recipient: %s", mailer.LastTo)
+		}
 	})
 }
 
 func TestWorkerAlert_ProcessUserBuffer(t *testing.T) {
-	mr, _ := miniredis.Run()
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to start miniredis: %v", err)
+	}
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
 
-	mock, _ := pgxmock.NewPool()
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create mock pool: %v", err)
+	}
 	defer mock.Close()
 
 	w := &Worker{
 		Pool:   mock,
 		Redis:  rdb,
 		Mailer: &EmailSenderMock{},
+		HTTP:   http.DefaultClient,
 	}
 
 	userID := 1
@@ -160,9 +200,10 @@ func TestWorkerAlert_ProcessUserBuffer(t *testing.T) {
 	t.Run("MultipleItems_Digest", func(t *testing.T) {
 		cve1 := models.CVE{CVEID: "CVE-2023-0001", CVSSScore: 8.0}
 		cve2 := models.CVE{CVEID: "CVE-2023-0002", CVSSScore: 7.0}
+		sub := models.UserSubscription{EnableEmail: true}
 		
-		data1, _ := json.Marshal(map[string]interface{}{"cve": cve1, "email": "user@example.com", "asset_name": "A1"})
-		data2, _ := json.Marshal(map[string]interface{}{"cve": cve2, "email": "user@example.com", "asset_name": ""})
+		data1, _ := json.Marshal(map[string]interface{}{"cve": cve1, "email": "user@example.com", "asset_name": "A1", "sub": sub})
+		data2, _ := json.Marshal(map[string]interface{}{"cve": cve2, "email": "user@example.com", "asset_name": "", "sub": sub})
 		
 		rdb.RPush(context.Background(), key, data1, data2)
 
@@ -171,6 +212,9 @@ func TestWorkerAlert_ProcessUserBuffer(t *testing.T) {
 		llen, _ := rdb.LLen(context.Background(), key).Result()
 		if llen != 0 {
 			t.Errorf("expected buffer to be empty, got %d", llen)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
 		}
 	})
 }

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -72,8 +74,23 @@ func (w *Worker) syncEPSS(ctx context.Context) {
 			}
 			if resp.StatusCode == http.StatusTooManyRequests {
 				_ = resp.Body.Close()
-				resp = nil
 				waitTime := 5 * time.Second
+				if ra := resp.Header.Get("Retry-After"); ra != "" {
+					if seconds, err := strconv.Atoi(ra); err == nil {
+						waitTime = time.Duration(seconds) * time.Second
+					} else if date, err := http.ParseTime(ra); err == nil {
+						waitTime = time.Until(date)
+					}
+				} else {
+					waitTime = time.Duration(math.Pow(2, float64(retries+1))) * time.Second
+				}
+				if waitTime > 60*time.Second {
+					waitTime = 60 * time.Second
+				}
+				if waitTime < 0 {
+					waitTime = 0
+				}
+				resp = nil
 				log.Printf("EPSS rate limited, waiting %v...", waitTime)
 				select {
 				case <-ctx.Done():

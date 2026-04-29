@@ -114,20 +114,22 @@ func decodeKey(name, val string, expectedLen int, appEnv string) string {
 	var decoded []byte
 	var err error
 
-	// Try hex first
+	// Try hex first only if length matches
 	if len(val) == expectedLen*2 {
 		decoded, err = hex.DecodeString(val)
+		if err == nil && len(decoded) == expectedLen {
+			return string(decoded)
+		}
 	}
 
-	// Try base64 if hex failed or not hex length
-	if err != nil || decoded == nil {
-		decoded, err = base64.StdEncoding.DecodeString(val)
+	// Try base64
+	decoded, err = base64.StdEncoding.DecodeString(val)
+	if err == nil && len(decoded) == expectedLen {
+		return string(decoded)
 	}
 
-	// Fallback to raw bytes if both failed
-	if err != nil || decoded == nil {
-		decoded = []byte(val)
-	}
+	// Fallback to raw bytes
+	decoded = []byte(val)
 
 	if len(decoded) != expectedLen {
 		msg := fmt.Sprintf("%s must be exactly %d bytes (got %d)", name, expectedLen, len(decoded))
@@ -135,6 +137,7 @@ func decodeKey(name, val string, expectedLen int, appEnv string) string {
 			logFatalf("Fatal: %s", msg)
 		} else {
 			logPrintf("Warning: %s", msg)
+			return ""
 		}
 	}
 	return string(decoded)

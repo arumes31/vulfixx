@@ -103,8 +103,16 @@ func TestWebEndpointsCoverage(t *testing.T) {
 		if sessionCookie != nil {
 			req.AddCookie(sessionCookie)
 		}
-		res, _ := client.Do(req)
-		t.Cleanup(func() { _ = res.Body.Close() })
+		res, err := client.Do(req)
+		if err != nil {
+			t.Errorf("Request to %s failed: %v", path, err)
+			return nil
+		}
+		t.Cleanup(func() {
+			if res != nil {
+				_ = res.Body.Close()
+			}
+		})
 		return res
 	}
 

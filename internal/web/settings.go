@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/pquerna/otp/totp"
+	"github.com/redis/go-redis/v9"
 	"rsc.io/qr"
 )
 
@@ -134,6 +135,7 @@ func (a *App) VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
 		delete(session.Values, "totp_setup_ts")
 		delete(session.Values, "totp_setup_attempts")
 		_ = session.Save(r, w)
+		a.LogActivity(r.Context(), userID, "totp_enabled", "Successfully enabled 2FA", r.RemoteAddr, r.UserAgent())
 	} else {
 		session.Values["totp_setup_attempts"] = attempts + 1
 		_ = session.Save(r, w)
@@ -162,9 +164,7 @@ func (a *App) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 
 	var email string
 	var isTOTPEnabled bool
-	var hash string
-	var secret string
-	err := a.Pool.QueryRow(r.Context(), "SELECT email, is_totp_enabled, password_hash, COALESCE(totp_secret, '') FROM users WHERE id = $1", userID).Scan(&email, &isTOTPEnabled, &hash, &secret)
+	err := a.Pool.QueryRow(r.Context(), "SELECT email, is_totp_enabled FROM users WHERE id = $1", userID).Scan(&email, &isTOTPEnabled)
 	if err != nil {
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
@@ -189,6 +189,8 @@ func (a *App) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.LogActivity(r.Context(), userID, "password_changed", "Successfully updated account password", r.RemoteAddr, r.UserAgent())
+
 	a.RenderTemplate(w, r, "settings.html", map[string]interface{}{
 		"Email":           email,
 		"IsTOTPEnabled":   isTOTPEnabled,
@@ -197,6 +199,10 @@ func (a *App) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) ChangeEmailHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	userID, ok := a.GetUserID(r)
 	if !ok {
 		http.Redirect(w, r, "/login", http.StatusFound)
@@ -250,14 +256,17 @@ func (a *App) ChangeEmailHandler(w http.ResponseWriter, r *http.Request) {
 		"type":  "new",
 	})
 	// Push email change notification payloads to redis queue atomically
-	pipe := a.Redis.Pipeline()
-	pipe.LPush(r.Context(), "email_change_queue", oldPayload)
-	pipe.LPush(r.Context(), "email_change_queue", newPayload)
-	if _, err := pipe.Exec(r.Context()); err != nil {
+	if _, err = a.Redis.TxPipelined(r.Context(), func(pipe redis.Pipeliner) error {
+		pipe.LPush(r.Context(), "email_change_queue", oldPayload)
+		pipe.LPush(r.Context(), "email_change_queue", newPayload)
+		return nil
+	}); err != nil {
 		log.Printf("Error enqueueing email change payloads: %v", err)
 		renderError("Error requesting email change")
 		return
 	}
+
+	a.LogActivity(r.Context(), userID, "email_change_requested", "Requested change from "+email+" to "+newEmail, r.RemoteAddr, r.UserAgent())
 
 	a.RenderTemplate(w, r, "settings.html", map[string]interface{}{
 		"Email":         email,

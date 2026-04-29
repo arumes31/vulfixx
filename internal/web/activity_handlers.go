@@ -94,6 +94,6 @@ func (a *App) ExportActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Content-Disposition", "attachment;filename=activity_log.json")
+	w.Header().Set("Content-Disposition", "attachment; filename=\"activity_log.json\"")
 	_, _ = w.Write(buf)
 }

@@ -161,8 +161,16 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	// Create base query from metricsQuery by replacing its SELECT list
-	baseFromJoin := metricsQuery[strings.Index(metricsQuery, "FROM cves c"):]
-	
+	idx := strings.Index(metricsQuery, "FROM cves c")
+	var baseFromJoin string
+	if idx >= 0 {
+		baseFromJoin = metricsQuery[idx:]
+	} else {
+		baseFromJoin = " FROM cves c "
+	}
+
+	args := []interface{}{userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss}
+
 	severityQuery := "SELECT " +
 		"COUNT(DISTINCT CASE WHEN c.cvss_score >= 9.0 THEN c.id END), " +
 		"COUNT(DISTINCT CASE WHEN c.cvss_score >= 7.0 AND c.cvss_score < 9.0 THEN c.id END), " +
@@ -170,7 +178,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"COUNT(DISTINCT CASE WHEN c.cvss_score < 4.0 THEN c.id END) " +
 		baseFromJoin + whereClause
 		
-	_ = a.Pool.QueryRow(r.Context(), severityQuery, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
+	_ = a.Pool.QueryRow(r.Context(), severityQuery, args...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
 
 	// Fetch status distribution for the current view
 	var statusCounts struct {
@@ -186,7 +194,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"COUNT(DISTINCT CASE WHEN ucs.status = 'ignored' THEN c.id END) " +
 		baseFromJoin + whereClause
 		
-	_ = a.Pool.QueryRow(r.Context(), statusQuery, userID, searchQuery, startDate, endDate, pageSize, offset, statusFilter, activeTeamID, minCvss, maxCvss).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
+	_ = a.Pool.QueryRow(r.Context(), statusQuery, args...).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
 
 	a.RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
 		"CVEs":           cves,

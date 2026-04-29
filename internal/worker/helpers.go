@@ -92,8 +92,8 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 		}
 		cleanTo = append(cleanTo, ct)
 	}
-	if _, err := strconv.Atoi(port); err != nil {
-		return fmt.Errorf("invalid port %q: must be numeric", port)
+	if p, err := strconv.Atoi(port); err != nil || p < 1 || p > 65535 {
+		return fmt.Errorf("invalid port %q: must be numeric and between 1 and 65535", port)
 	}
 	addr := net.JoinHostPort(host, port)
 	// #nosec G704 -- Host and port are from controlled environment variables

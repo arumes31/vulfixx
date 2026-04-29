@@ -37,7 +37,7 @@ func TestActivityLogHandler(t *testing.T) {
 		rr2 := httptest.NewRecorder()
 		app.ActivityLogHandler(rr2, req)
 
-		if rr2.Code != http.StatusOK && rr2.Code != http.StatusBadRequest {
+		if rr2.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr2.Code)
 		}
 	})

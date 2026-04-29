@@ -58,18 +58,22 @@ func (w *Worker) fetchFromCISAKEV(ctx context.Context) {
 		}
 	}
 
-	var kevResp CISAKEVResponse
-	// Limit feed size to 50MB
-	limitReader := io.LimitReader(resp.Body, 50*1024*1024)
-	if err := json.NewDecoder(limitReader).Decode(&kevResp); err != nil {
-		log.Printf("Worker: [ERROR] Failed to decode CISA KEV: %v", err)
+	const maxSize = 50 * 1024 * 1024
+	limitReader := io.LimitReader(resp.Body, int64(maxSize)+1)
+	bodyBytes, err := io.ReadAll(limitReader)
+	if err != nil {
+		log.Printf("Worker: [ERROR] Failed to read CISA KEV: %v", err)
 		return
 	}
 
-	// Detect if truncated by trying to read 1 more byte
-	buf := make([]byte, 1)
-	if n, err := resp.Body.Read(buf); err == nil && n > 0 {
+	if len(bodyBytes) > maxSize {
 		log.Printf("Worker: [ERROR] CISA KEV feed exceeded 50MB limit")
+		return
+	}
+
+	var kevResp CISAKEVResponse
+	if err := json.Unmarshal(bodyBytes, &kevResp); err != nil {
+		log.Printf("Worker: [ERROR] Failed to unmarshal CISA KEV: %v", err)
 		return
 	}
 

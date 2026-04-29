@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -22,6 +23,9 @@ func (w *Worker) processEmailVerification(ctx context.Context) {
 		if err != nil {
 			if ctx.Err() != nil {
 				return
+			}
+			if !errors.Is(err, redis.Nil) {
+				log.Printf("Worker: Redis error reading from verification queue: %v", err)
 			}
 			continue
 		}
@@ -70,6 +74,9 @@ func (w *Worker) processEmailChange(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
+			if !errors.Is(err, redis.Nil) {
+				log.Printf("Worker: Redis error reading from email change queue: %v", err)
+			}
 			continue
 		}
 		var payload map[string]interface{}
@@ -113,13 +120,25 @@ func (w *Worker) processEmailChange(ctx context.Context) {
 
 func (w *Worker) sendEmailChangeNotification(email, token, emailType string) error {
 	subject := "Confirm Your Email Change"
+	body := ""
 	baseURL := os.Getenv("BASE_URL")
 	if baseURL == "" {
 		baseURL = "http://localhost:8080"
 	}
 	encodedToken := url.QueryEscape(token)
 	link := fmt.Sprintf("%s/confirm-email-change?token=%s", baseURL, encodedToken)
-	body := fmt.Sprintf("<div style=\"font-family: sans-serif;\"><p>Please click the link below to confirm your new email address:</p><p><a href=\"%s\">%s</a></p></div>", link, link)
+
+	switch emailType {
+	case "old":
+		subject = "Security Alert: Email Change Requested"
+		body = fmt.Sprintf("<div style=\"font-family: sans-serif;\"><p>A request was made to change the email address for your Vulfixx account. If you did not make this request, please secure your account immediately.</p><p>To confirm this change from your current address, click here: <a href=\"%s\">%s</a></p></div>", link, link)
+	case "new":
+		subject = "Confirm Your New Email Address"
+		body = fmt.Sprintf("<div style=\"font-family: sans-serif;\"><p>Please click the link below to confirm your new email address for Vulfixx:</p><p><a href=\"%s\">%s</a></p></div>", link, link)
+	default:
+		body = fmt.Sprintf("<div style=\"font-family: sans-serif;\"><p>Please click the link below to confirm your email change for Vulfixx:</p><p><a href=\"%s\">%s</a></p></div>", link, link)
+	}
+
 	return w.Mailer.SendEmail(email, subject, body)
 }
 
@@ -164,16 +183,16 @@ func (w *Worker) pollDelayedQueue(ctx context.Context, delayedQueue, activeQueue
 	}
 	
 	for _, item := range items {
-		// Attempt to remove it first to avoid duplicates
-		removed, err := w.Redis.ZRem(ctx, delayedQueue, item).Result()
+		// Use Lua script for atomic move to prevent dropping items
+		script := `
+			if redis.call("ZREM", KEYS[1], ARGV[1]) > 0 then
+				return redis.call("LPUSH", KEYS[2], ARGV[1])
+			end
+			return 0
+		`
+		_, err := w.Redis.Eval(ctx, script, []string{delayedQueue, activeQueue}, item).Result()
 		if err != nil {
-			log.Printf("Worker: Error removing from %s: %v", delayedQueue, err)
-			continue
-		}
-		if removed > 0 {
-			if err := w.Redis.LPush(ctx, activeQueue, item).Err(); err != nil {
-				log.Printf("Worker: Error pushing to %s: %v", activeQueue, err)
-			}
+			log.Printf("Worker: Error atomically moving item from %s to %s: %v", delayedQueue, activeQueue, err)
 		}
 	}
 }

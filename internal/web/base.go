@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
 
 	"encoding/json"
 	"errors"
@@ -20,22 +21,33 @@ import (
 
 type contextKey string
 
-var cancelStats context.CancelFunc
+var (
+	cancelStats context.CancelFunc
+	statsMu     sync.Mutex
+)
 
 func (a *App) InitTemplates() {
-	a.InitTemplatesWithFuncs()
+	if err := a.InitTemplatesWithFuncs(); err != nil {
+		log.Printf("InitTemplates failed: %v", err)
+		return
+	}
 	if flag.Lookup("test.v") != nil {
 		return
 	}
 	StopStatsTicker() // Cancel previous ticker if any
+	statsMu.Lock()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancelStats = cancel
+	statsMu.Unlock()
 	go a.StartStatsTicker(ctx)
 }
 
 func StopStatsTicker() {
+	statsMu.Lock()
+	defer statsMu.Unlock()
 	if cancelStats != nil {
 		cancelStats()
+		cancelStats = nil
 	}
 }
 
@@ -57,7 +69,14 @@ func (a *App) ValidateCSRF(r *http.Request) bool {
 	if !ok || token == "" {
 		return false
 	}
-	return r.FormValue("csrf_token") == token
+	reqToken := r.FormValue("csrf_token")
+	if reqToken == "" {
+		return false
+	}
+	if len(token) != len(reqToken) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(token), []byte(reqToken)) == 1
 }
 
 func (a *App) AuthMiddleware(next http.Handler) http.Handler {
@@ -167,7 +186,7 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 	}
 	userID, ok := a.GetUserID(r)
 	data["UserLoggedIn"] = ok
-	if ok {
+	if ok && userID > 0 {
 		data["UserID"] = userID
 		data["IsAdmin"] = a.IsAdmin(r)
 
@@ -220,10 +239,13 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 	statsCache.RUnlock()
 
 	data["csrfField"] = csrf.TemplateField(r)
+	data["CSRFField"] = data["csrfField"]
 	if nonce, ok := r.Context().Value(NonceKey).(string); ok {
 		data["Nonce"] = nonce
 	}
+	a.TemplateMu.RLock()
 	tmpl, ok := a.TemplateMap[name]
+	a.TemplateMu.RUnlock()
 	if !ok {
 		log.Printf("Template %s not found", name)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

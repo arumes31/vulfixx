@@ -53,6 +53,8 @@ func (a *App) AssetsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := rows.Err(); err != nil {
 			log.Printf("Error iterating asset rows: %v", err)
+			http.Error(w, "Error fetching assets", http.StatusInternalServerError)
+			return
 		}
 		a.RenderTemplate(w, r, "assets.html", map[string]interface{}{"Assets": assets})
 		return
@@ -103,20 +105,20 @@ func (a *App) AssetsHandler(w http.ResponseWriter, r *http.Request) {
 
 		var kwList []string
 		if keywords != "" {
-			kwList = strings.Split(keywords, ",")
-			if len(kwList) > 10 {
-				a.SendResponse(w, r, false, "", "", "Too many keywords (maximum 10)")
-				return
-			}
-			for i, kw := range kwList {
+			rawKws := strings.Split(keywords, ",")
+			for _, kw := range rawKws {
 				kw = strings.TrimSpace(kw)
 				if kw != "" {
 					if len(kw) > 50 {
 						a.SendResponse(w, r, false, "", "", "Keyword too long (maximum 50 characters)")
 						return
 					}
-					kwList[i] = kw
+					kwList = append(kwList, kw)
 				}
+			}
+			if len(kwList) > 10 {
+				a.SendResponse(w, r, false, "", "", "Too many keywords (maximum 10)")
+				return
 			}
 		}
 

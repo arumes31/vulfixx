@@ -82,7 +82,10 @@ func TestMigrate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mock, _ := pgxmock.NewPool()
+			mock, err := pgxmock.NewPool()
+			if err != nil {
+				t.Fatalf("pgxmock.NewPool failed: %v", err)
+			}
 			Pool = mock
 			defer mock.Close()
 
@@ -90,7 +93,7 @@ func TestMigrate(t *testing.T) {
 				tt.mockSetup(mock)
 			}
 
-			err := migrate(context.Background())
+			err = migrate(context.Background())
 			if (err != nil) != tt.wantErr {
 				t.Errorf("migrate() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -114,7 +117,10 @@ func TestCloseDB(t *testing.T) {
 }
 
 func TestInitRedisTable(t *testing.T) {
-	mr, _ := miniredis.Run()
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis.Run failed: %v", err)
+	}
 	defer mr.Close()
 
 	tests := []struct {
@@ -171,7 +177,10 @@ func TestCloseRedis(t *testing.T) {
 	})
 
 	t.Run("Valid Client", func(t *testing.T) {
-		mr, _ := miniredis.Run()
+		mr, err := miniredis.Run()
+		if err != nil {
+			t.Fatalf("miniredis.Run failed: %v", err)
+		}
 		defer mr.Close()
 		RedisClient = redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		CloseRedis()
@@ -274,7 +283,10 @@ func TestInitDB_Complex(t *testing.T) {
 				dbRetryDelay = 1 * time.Millisecond
 			}
 
-			mock, _ := pgxmock.NewPool()
+			mock, err := pgxmock.NewPool()
+			if err != nil {
+				t.Fatalf("pgxmock.NewPool failed: %v", err)
+			}
 			if tt.mockSetup != nil {
 				tt.mockSetup(mock)
 			}
@@ -302,7 +314,7 @@ func TestInitDB_Complex(t *testing.T) {
 				}
 			}
 
-			err := InitDB()
+			err = InitDB()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("InitDB() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -356,11 +368,11 @@ func TestSetupHelpers(t *testing.T) {
 	})
 
 	t.Run("SetupTestDB Error", func(t *testing.T) {
-		oldFunc := newPoolCall
+		oldFuncDB := newPoolCall
 		newPoolCall = func() (pgxmock.PgxPoolIface, error) {
 			return nil, fmt.Errorf("forced error")
 		}
-		defer func() { newPoolCall = oldFunc }()
+		defer func() { newPoolCall = oldFuncDB }()
 
 		_, err := SetupTestDB()
 		if err == nil {
@@ -369,11 +381,11 @@ func TestSetupHelpers(t *testing.T) {
 	})
 
 	t.Run("SetupTestRedis Error", func(t *testing.T) {
-		oldFunc := miniredisRunCall
+		oldFuncRedis := miniredisRunCall
 		miniredisRunCall = func() (*miniredis.Miniredis, error) {
 			return nil, fmt.Errorf("forced error")
 		}
-		defer func() { miniredisRunCall = oldFunc }()
+		defer func() { miniredisRunCall = oldFuncRedis }()
 
 		_, err := SetupTestRedis()
 		if err == nil {
@@ -381,4 +393,3 @@ func TestSetupHelpers(t *testing.T) {
 		}
 	})
 }
-

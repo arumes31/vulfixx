@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v3"
 )
 
@@ -96,17 +97,14 @@ func TestWorkerSync_NVD(t *testing.T) {
 
 	t.Run("FullSync_Backfill", func(t *testing.T) {
 		mock.ExpectQuery("SELECT last_run FROM worker_sync_stats WHERE task_name = 'nvd_sync'").
-			WillReturnError(fmt.Errorf("no sync")) 
+			WillReturnError(pgx.ErrNoRows) 
 
 		mock.ExpectExec("INSERT INTO cves").
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 7.5, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-		mock.ExpectQuery("SELECT id FROM cves WHERE cve_id = \\$1").
-			WithArgs("CVE-2023-0001").
-			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
-
 		mock.ExpectExec("INSERT INTO worker_sync_stats").
+			WithArgs(pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		oldURL := defaultNVDBaseURL
@@ -114,6 +112,10 @@ func TestWorkerSync_NVD(t *testing.T) {
 		defer func() { defaultNVDBaseURL = oldURL }()
 
 		w.fetchFromNVD(ctx)
+		
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
     t.Run("Status_403_RateLimit", func(t *testing.T) {
@@ -136,7 +138,10 @@ func TestWorkerSync_NVD(t *testing.T) {
 }
 
 func TestWorkerSync_CISA(t *testing.T) {
-	mock, _ := db.SetupTestDB()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
 	defer mock.Close()
 	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
 
@@ -158,13 +163,17 @@ func TestWorkerSync_CISA(t *testing.T) {
 		defer func() { defaultCISAKEVURL = oldURL }()
 
 		mock.ExpectBegin()
-		mock.ExpectExec("UPDATE cves SET cisa_kev = false").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("UPDATE cves SET cisa_kev = false WHERE cisa_kev = true").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectExec("UPDATE cves SET cisa_kev = true WHERE cve_id = ANY").
 			WithArgs([]string{"CVE-2023-1111"}).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()
 
 		w.fetchFromCISAKEV(context.Background())
+		
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
     t.Run("Non200", func(t *testing.T) {
@@ -180,7 +189,10 @@ func TestWorkerSync_CISA(t *testing.T) {
 }
 
 func TestWorkerSync_EPSS(t *testing.T) {
-	mock, _ := db.SetupTestDB()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
 	defer mock.Close()
     w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
 
@@ -200,11 +212,18 @@ func TestWorkerSync_EPSS(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 		defer cancel()
 		w.syncEPSS(ctx)
+		
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 }
 
 func TestWorkerSync_GitHub(t *testing.T) {
-	mock, _ := db.SetupTestDB()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
 	defer mock.Close()
 	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
 
@@ -226,5 +245,9 @@ func TestWorkerSync_GitHub(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 		defer cancel()
 		w.syncGitHubBuzz(ctx)
+		
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 }
