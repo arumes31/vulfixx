@@ -597,9 +597,8 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	`
 	query += whereClause
 	query += fmt.Sprintf(" ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $%d OFFSET $%d ", argIdx, argIdx+1)
-	args = append(args, pageSize, offset)
-
-	rows, err := a.Pool.Query(r.Context(), query, args...)
+	finalArgs := append(args, pageSize, offset)
+	rows, err := a.Pool.Query(r.Context(), query, finalArgs...)
 	if err != nil {
 		log.Printf("Public dashboard query error: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
