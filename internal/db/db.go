@@ -33,7 +33,7 @@ var (
 func InitDB() error {
 	sslMode := os.Getenv("DB_SSLMODE")
 	if sslMode == "" {
-		sslMode = "require"
+		sslMode = "prefer"
 	}
 	if sslMode == "disable" {
 		log.Println("WARNING: DB_SSLMODE is set to 'disable'. Database traffic is unencrypted.")

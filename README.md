@@ -109,7 +109,7 @@ The application follows a modular architecture designed to prevent monolithic fi
 | `DB_USER` | PostgreSQL user | `cveuser` |
 | `DB_PASSWORD`| PostgreSQL password | `cvepass` |
 | `DB_NAME` | PostgreSQL database name | `cvetracker` |
-| `DB_SSLMODE` | PostgreSQL SSL mode (`disable`, `require`, `verify-full`) | `disable` |
+| `DB_SSLMODE` | PostgreSQL SSL mode (`disable`, `prefer`, `require`, `verify-full`) | `prefer` |
 | `REDIS_URL`| Redis connection URL | `redis:6379` |
 | `SMTP_HOST`| External SMTP server | `smtp.example.com` |
 | `SMTP_PORT`| SMTP server port | `587` |
