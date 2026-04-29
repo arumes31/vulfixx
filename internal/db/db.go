@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -20,30 +21,45 @@ type DBPool interface {
 	Ping(ctx context.Context) error
 }
 
-var Pool DBPool
+var (
+	Pool         DBPool
+	dbRetryCount = 15
+	dbRetryDelay = 1 * time.Second
+	poolCreator  = func(ctx context.Context, config *pgxpool.Config) (DBPool, error) {
+		return pgxpool.NewWithConfig(ctx, config)
+	}
+)
 
 func InitDB() error {
-	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"))
+	sslMode := os.Getenv("DB_SSLMODE")
+	if sslMode == "" {
+		sslMode = "require"
+	}
+	if sslMode == "disable" {
+		log.Println("WARNING: DB_SSLMODE is set to 'disable'. Database traffic is unencrypted.")
+	}
+
+	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"), sslMode)
 
 	poolConfig, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return fmt.Errorf("unable to parse database URL: %w", err)
 	}
 
-	Pool, err = pgxpool.NewWithConfig(context.Background(), poolConfig)
+	Pool, err = poolCreator(context.Background(), poolConfig)
 	if err != nil {
 		return fmt.Errorf("unable to create connection pool: %w", err)
 	}
 
 	// Wait for database to be ready
 	var pingErr error
-	for i := 0; i < 15; i++ {
+	for i := 0; i < dbRetryCount; i++ {
 		pingErr = Pool.Ping(context.Background())
 		if pingErr == nil {
 			break
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(dbRetryDelay)
 	}
 	if pingErr != nil {
 		return fmt.Errorf("database connection failed after retries: %w", pingErr)
@@ -90,6 +106,12 @@ func migrate(ctx context.Context) error {
 		);`,
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS vector_string TEXT;",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS \"references\" TEXT[];",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS epss_score NUMERIC(6,5);",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS cwe_id VARCHAR(50);",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS cwe_name TEXT;",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS github_poc_count INTEGER DEFAULT 0;",
+		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS filter_logic TEXT DEFAULT '';",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS osint_data JSONB DEFAULT '{}';",
 		`CREATE TABLE IF NOT EXISTS user_cve_notes (
 			user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
 			cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,

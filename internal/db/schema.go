@@ -20,29 +20,82 @@ CREATE TABLE IF NOT EXISTS cves (
     description TEXT,
     cvss_score NUMERIC(4,1),
     cisa_kev BOOLEAN DEFAULT FALSE,
+    epss_score NUMERIC(6,5),
+    cwe_id VARCHAR(50),
+    cwe_name TEXT,
+    github_poc_count INTEGER DEFAULT 0,
+    osint_data JSONB DEFAULT '{}',
     published_date TIMESTAMP WITH TIME ZONE,
     updated_date TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS teams (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    invite_code VARCHAR(50) UNIQUE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS team_members (
+    team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(20) DEFAULT 'member', -- 'owner', 'admin', 'member'
+    joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (team_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS assets (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(100),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_assets_user_xor_team CHECK ((user_id IS NULL) <> (team_id IS NULL))
+);
+
+CREATE TABLE IF NOT EXISTS asset_keywords (
+    id SERIAL PRIMARY KEY,
+    asset_id INTEGER REFERENCES assets(id) ON DELETE CASCADE,
+    keyword VARCHAR(255) NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS user_subscriptions (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
     keyword VARCHAR(255),
     min_severity NUMERIC(4,1),
     webhook_url TEXT,
     enable_email BOOLEAN DEFAULT TRUE,
     enable_webhook BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    filter_logic TEXT DEFAULT '',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_user_subscriptions_user_xor_team CHECK ((user_id IS NULL) <> (team_id IS NULL))
 );
 
 CREATE TABLE IF NOT EXISTS user_cve_status (
+    id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
     cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,
-    status VARCHAR(50) NOT NULL, -- e.g., 'resolved', 'ignored'
+    status VARCHAR(50) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (user_id, cve_id)
+    CONSTRAINT chk_user_cve_status_user_xor_team CHECK ((user_id IS NULL) <> (team_id IS NULL))
 );
+
+CREATE TABLE IF NOT EXISTS cve_notes (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+    cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,
+    notes TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_cve_notes_user_xor_team CHECK ((user_id IS NULL) <> (team_id IS NULL))
+);
+
+CREATE INDEX IF NOT EXISTS idx_cve_notes_team_id ON cve_notes(team_id);
 
 CREATE TABLE IF NOT EXISTS alert_history (
     id SERIAL PRIMARY KEY,
@@ -55,11 +108,13 @@ CREATE TABLE IF NOT EXISTS alert_history (
 CREATE TABLE IF NOT EXISTS user_activity_logs (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    activity_type VARCHAR(100) NOT NULL, -- e.g., 'login', 'password_change', 'subscription_added'
+    activity_type VARCHAR(50) NOT NULL,
     description TEXT,
     ip_address VARCHAR(45),
     user_agent TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    retention_expires_at TIMESTAMP WITH TIME ZONE,
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
 
 CREATE TABLE IF NOT EXISTS email_change_requests (
@@ -85,4 +140,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_email_change_requests_new_token ON email_c
 CREATE INDEX IF NOT EXISTS idx_cves_published_date ON cves (published_date DESC);
 CREATE INDEX IF NOT EXISTS idx_cves_cvss_score ON cves (cvss_score);
 CREATE INDEX IF NOT EXISTS idx_cves_updated_date ON cves (updated_date DESC);
+CREATE INDEX IF NOT EXISTS idx_assets_team_id ON assets(team_id);
+CREATE INDEX IF NOT EXISTS idx_user_cve_status_team_id ON user_cve_status(team_id);
+
+-- Partial Unique Indexes for status and notes
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_status ON user_cve_status (user_id, cve_id) WHERE team_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_team_status ON user_cve_status (team_id, cve_id) WHERE team_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_notes ON cve_notes (user_id, cve_id) WHERE team_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_team_notes ON cve_notes (team_id, cve_id) WHERE team_id IS NOT NULL;
+
 `

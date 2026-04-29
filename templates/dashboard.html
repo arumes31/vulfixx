@@ -2,184 +2,157 @@
 
 {{define "content"}}
 <div class="space-y-8">
-    <header class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-outline-variant/30 pb-6">
+    <header class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/10 pb-6">
         <div class="flex items-center gap-4">
             <div>
-                <h1 class="text-3xl font-display font-medium tracking-tight mb-2">Threat Intelligence</h1>
-                <p class="text-on-surface-variant font-label text-sm uppercase tracking-widest">Real-time vulnerability telemetry</p>
+                <h1 class="text-3xl font-bold text-white mb-2">Threat Intelligence</h1>
+                <p class="text-gray-400 text-sm uppercase tracking-widest font-bold">Real-time vulnerability telemetry</p>
             </div>
-            <div class="mb-2 px-3 py-1 rounded-full border border-outline-variant/50 bg-surface-container-high flex items-center gap-2">
-                <span class="text-[10px] font-black uppercase tracking-[0.2em] opacity-60">Appliance Status</span>
+            <div class="mb-2 px-3 py-1 rounded-full border border-white/10 bg-white/5 flex items-center gap-2">
+                <span class="text-[10px] font-black uppercase tracking-[0.2em] opacity-60">Status</span>
                 <span class="text-xs font-black uppercase tracking-widest {{.ThreatColor}} animate-pulse">{{.ThreatLevel}}</span>
             </div>
         </div>
-        <div class="flex gap-3">
-            <a href="/export" class="flex items-center gap-2 px-4 py-2 bg-surface border border-outline-variant/50 rounded-md text-sm font-label uppercase tracking-widest hover:bg-surface-container-high transition-colors">
+        <div class="flex items-center gap-3">
+            <form id="team-switch-form" action="/teams/switch" method="POST" class="flex items-center gap-2 bg-white/5 border border-white/10 p-1 rounded-lg">
+                {{.CSRFField}}
+                <span class="material-symbols-outlined text-gray-500 ml-2 text-sm">hub</span>
+                <select name="team_id" id="team-selector" class="bg-transparent text-xs font-bold text-[#00daf3] focus:outline-none pr-4 py-1 cursor-pointer">
+                    <option value="0" {{if eq .ActiveTeamID 0}}selected{{end}}>Private Workspace</option>
+                    {{range .UserTeams}}
+                    <option value="{{.ID}}" {{if eq $.ActiveTeamID .ID}}selected{{end}}>Team: {{.Name}}</option>
+                    {{end}}
+                </select>
+            </form>
+            <a href="/export" class="flex items-center gap-2 px-4 py-2 bg-[#00daf3]/10 border border-[#00daf3]/20 text-[#00daf3] rounded-md text-xs font-bold uppercase tracking-widest hover:bg-[#00daf3]/20 transition-colors">
                 <span class="material-symbols-outlined text-sm">download</span>
-                Export Data
+                Export
             </a>
         </div>
     </header>
 
-    <!-- Risk Analysis Row -->
-    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <!-- Distribution Chart -->
-        <div class="lg:col-span-1 bg-surface-container p-5 rounded-xl border border-outline-variant/30">
-            <h3 class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant mb-4">Risk Profile</h3>
-            <div class="space-y-3">
-                {{$total := .Total}}
-                {{range $label, $count := .SeverityDist}}
-                <div class="space-y-1">
-                    <div class="flex justify-between text-[9px] font-black uppercase tracking-widest">
-                        <span>{{$label}}</span>
-                        <span>{{$count}}</span>
-                    </div>
-                    <div class="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden">
-                        <div class="h-full {{if eq $label "Critical"}}bg-error{{else if eq $label "High"}}bg-error{{else if eq $label "Medium"}}bg-tertiary{{else}}bg-surface-variant{{end}} {{if eq $label "High"}}opacity-70{{end}}" style="width: {{if gt $total 0}}{{percent $count $total}}{{else}}0{{end}}%;"></div>
-                    </div>
-                </div>
-                {{end}}
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div class="glass p-6 rounded-3xl border border-white/10 relative overflow-hidden group">
+            <div class="absolute -right-4 -top-4 w-20 h-20 bg-[#00daf3]/5 rounded-full blur-2xl group-hover:bg-[#00daf3]/10 transition-all"></div>
+            <div class="flex justify-between items-start mb-4">
+                <span class="text-[10px] font-black tracking-widest uppercase text-gray-500">Active Threats</span>
+                <span class="material-symbols-outlined text-[#00daf3]">security</span>
             </div>
+            <h2 class="text-4xl font-black text-white tracking-tighter">{{.Total}}</h2>
         </div>
 
-        <!-- Summary Cards -->
-        <div class="lg:col-span-3 grid grid-cols-1 md:grid-cols-4 gap-6">
-            <!-- Card 1: Total CVEs -->
-            <div class="bg-surface-container p-5 rounded-xl border-l-4 border-primary transition-transform duration-200 hover:scale-[1.02]">
-                <div class="flex justify-between items-start mb-3">
-                    <span class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant">Active Threats</span>
-                    <span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">security</span>
-                </div>
-                <div class="flex items-baseline gap-2">
-                    <h2 class="text-4xl font-display font-bold text-on-surface">{{.Total}}</h2>
-                </div>
+        <div class="glass p-6 rounded-3xl border border-white/10 relative overflow-hidden group">
+            <div class="absolute -right-4 -top-4 w-20 h-20 bg-orange-500/5 rounded-full blur-2xl group-hover:bg-orange-500/10 transition-all"></div>
+            <div class="flex justify-between items-start mb-4">
+                <span class="text-[10px] font-black tracking-widest uppercase text-gray-500">CISA KEV</span>
+                <span class="material-symbols-outlined text-orange-400">warning</span>
             </div>
+            <h2 class="text-4xl font-black text-white tracking-tighter">{{.KevCount}}</h2>
+        </div>
 
-            <!-- Card 2: KEV Count -->
-            <div class="bg-surface-container p-5 rounded-xl border-l-4 border-tertiary transition-transform duration-200 hover:scale-[1.02]">
-                <div class="flex justify-between items-start mb-3">
-                    <span class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant">CISA KEV</span>
-                    <span class="material-symbols-outlined text-tertiary" style="font-variation-settings: 'FILL' 1;">warning</span>
-                </div>
-                <div class="flex items-baseline gap-2">
-                    <h2 class="text-4xl font-display font-bold text-on-surface">{{.KevCount}}</h2>
-                    <span class="text-[10px] text-tertiary font-medium tracking-tight uppercase">Exploited</span>
-                </div>
+        <div class="glass p-6 rounded-3xl border border-white/10 relative overflow-hidden group">
+            <div class="absolute -right-4 -top-4 w-20 h-20 bg-red-500/5 rounded-full blur-2xl group-hover:bg-red-500/10 transition-all"></div>
+            <div class="flex justify-between items-start mb-4">
+                <span class="text-[10px] font-black tracking-widest uppercase text-gray-500">Critical (9.0+)</span>
+                <span class="material-symbols-outlined text-red-500">dangerous</span>
             </div>
+            <h2 class="text-4xl font-black text-red-500 tracking-tighter">{{.CritCount}}</h2>
+        </div>
 
-            <!-- Card 3: Critical Severity -->
-            <div class="bg-surface-container p-5 rounded-xl border-l-4 border-error transition-transform duration-200 hover:scale-[1.02]">
-                <div class="flex justify-between items-start mb-3">
-                    <span class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant">Critical</span>
-                    <span class="material-symbols-outlined text-error" style="font-variation-settings: 'FILL' 1;">dangerous</span>
-                </div>
-                <div class="flex items-baseline gap-2">
-                    <h2 class="text-4xl font-display font-bold text-error">{{.CritCount}}</h2>
-                    <span class="text-[10px] text-error font-medium tracking-tight uppercase">CVSS 9.0+</span>
-                </div>
+        <div class="glass p-6 rounded-3xl border border-white/10 relative overflow-hidden group">
+            <div class="absolute -right-4 -top-4 w-20 h-20 bg-blue-500/5 rounded-full blur-2xl group-hover:bg-blue-500/10 transition-all"></div>
+            <div class="flex justify-between items-start mb-4">
+                <span class="text-[10px] font-black tracking-widest uppercase text-gray-500">Remediating</span>
+                <span class="material-symbols-outlined text-blue-400">engineering</span>
             </div>
+            <h2 class="text-4xl font-black text-white tracking-tighter">{{.ProgressCount}}</h2>
+        </div>
+    </div>
 
-            <!-- Card 4: In Progress -->
-            <div class="bg-surface-container p-5 rounded-xl border-l-4 border-secondary transition-transform duration-200 hover:scale-[1.02]">
-                <div class="flex justify-between items-start mb-3">
-                    <span class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant">Remediating</span>
-                    <span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1;">engineering</span>
-                </div>
-                <div class="flex items-baseline gap-2">
-                    <h2 class="text-4xl font-display font-bold text-secondary">{{.ProgressCount}}</h2>
-                    <span class="text-[10px] text-secondary font-medium tracking-tight uppercase">In Progress</span>
-                </div>
+    <!-- Charts Section -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="glass p-8 rounded-[2rem] border border-white/10">
+            <h3 class="text-xs font-black uppercase tracking-[0.2em] text-gray-500 mb-6 flex items-center gap-2">
+                <span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                Global Severity Distribution
+            </h3>
+            <div class="h-64">
+                <canvas id="severityChart"></canvas>
+            </div>
+        </div>
+        <div class="glass p-8 rounded-[2rem] border border-white/10">
+            <h3 class="text-xs font-black uppercase tracking-[0.2em] text-gray-500 mb-6 flex items-center gap-2">
+                <span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+                Remediation Status
+            </h3>
+            <div class="h-64">
+                <canvas id="statusChart"></canvas>
             </div>
         </div>
     </div>
 
-    <!-- Main Data Table -->
-    <div class="bg-surface rounded-xl border border-outline-variant/30 overflow-hidden shadow-2xl">
+    <!-- Main Table -->
+    <div class="glass rounded-[2rem] border border-white/10 overflow-hidden shadow-2xl">
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
                 <thead>
-                    <tr class="bg-surface-container-low border-b border-outline-variant/30">
-                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Reference</th>
-                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Severity & Vector</th>
-                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Intelligence</th>
-                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Status</th>
-                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant text-right">Workflow</th>
+                    <tr class="bg-white/5 border-b border-white/10">
+                        <th class="px-6 py-5 text-[10px] font-black tracking-widest uppercase text-gray-500">Reference</th>
+                        <th class="px-6 py-5 text-[10px] font-black tracking-widest uppercase text-gray-500">Risk Metric</th>
+                        <th class="px-6 py-5 text-[10px] font-black tracking-widest uppercase text-gray-500">Intelligence</th>
+                        <th class="px-6 py-5 text-[10px] font-black tracking-widest uppercase text-gray-500">Remediation</th>
+                        <th class="px-6 py-5 text-[10px] font-black tracking-widest uppercase text-gray-500 text-right">Action</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-outline-variant/10">
+                <tbody class="divide-y divide-white/5">
                     {{range .CVEs}}
-                    <tr class="hover:bg-surface-container/50 transition-colors duration-150 group">
-                        <td class="px-6 py-5">
+                    <tr class="hover:bg-white/[0.02] transition-colors group">
+                        <td class="px-6 py-6">
                             <div class="flex flex-col">
-                                <a href="https://nvd.nist.gov/vuln/detail/{{.CVEID}}" target="_blank" rel="noopener noreferrer" class="text-sm font-bold font-display text-primary hover:underline">{{.CVEID}}</a>
-                                <p class="text-[10px] text-on-surface-variant mt-1 font-mono uppercase tracking-tighter opacity-60">Published {{.PublishedDate.Format "Jan 02, 2006"}}</p>
+                                <a href="https://nvd.nist.gov/vuln/detail/{{.CVEID}}" target="_blank" rel="noopener noreferrer" class="text-sm font-bold text-[#00daf3] hover:underline transition-all">{{.CVEID}}</a>
+                                <span class="text-[10px] text-gray-600 mt-1 font-mono uppercase tracking-tighter">{{.PublishedDate.Format "Jan 02, 2006"}}</span>
                             </div>
                         </td>
-                        <td class="px-6 py-5">
+                        <td class="px-6 py-6">
                             <div class="flex flex-col gap-1.5">
                                 {{if ge .CVSSScore 9.0}}
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-error/10 text-error border border-error/20 text-[10px] font-black tracking-widest uppercase cursor-help vector-explainer" data-vector="{{.VectorString}}"><span class="w-1.5 h-1.5 rounded-full bg-error animate-pulse"></span> CRITICAL ({{.CVSSScore}})</span>
+                                    <button type="button" data-vector="{{.VectorString}}" class="vector-trigger inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-500/10 text-red-500 border border-red-500/20 text-[10px] font-black tracking-widest uppercase cursor-help"><span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> CRITICAL ({{.CVSSScore}})</button>
                                 {{else if ge .CVSSScore 7.0}}
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-error-container/20 text-error border border-error/20 text-[10px] font-bold tracking-widest uppercase cursor-help vector-explainer" data-vector="{{.VectorString}}">HIGH ({{.CVSSScore}})</span>
+                                    <button type="button" data-vector="{{.VectorString}}" class="vector-trigger inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-orange-500/10 text-orange-500 border border-orange-500/20 text-[10px] font-black tracking-widest uppercase cursor-help">HIGH ({{.CVSSScore}})</button>
                                 {{else if ge .CVSSScore 4.0}}
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-tertiary-container/20 text-tertiary border border-tertiary/20 text-[10px] font-bold tracking-widest uppercase cursor-help vector-explainer" data-vector="{{.VectorString}}">MEDIUM ({{.CVSSScore}})</span>
+                                    <button type="button" data-vector="{{.VectorString}}" class="vector-trigger inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-black tracking-widest uppercase cursor-help">MEDIUM ({{.CVSSScore}})</button>
                                 {{else}}
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-surface-variant/40 text-on-surface-variant border border-outline-variant/30 text-[10px] font-bold tracking-widest uppercase cursor-help vector-explainer" data-vector="{{.VectorString}}">LOW ({{.CVSSScore}})</span>
+                                    <button type="button" data-vector="{{.VectorString}}" class="vector-trigger inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 text-gray-500 border border-white/10 text-[10px] font-black tracking-widest uppercase cursor-help">LOW ({{.CVSSScore}})</button>
                                 {{end}}
-                                <div class="text-[8px] font-mono opacity-40 group-hover:opacity-100 transition-opacity">{{.VectorString}}</div>
                             </div>
                         </td>
-                        <td class="px-6 py-5">
+                        <td class="px-6 py-6">
                             <div class="flex items-center gap-3">
                                 {{if .CISAKEV}}
-                                <span class="inline-flex items-center px-2 py-0.5 rounded bg-error text-on-error text-[9px] font-black uppercase tracking-widest shadow-sm shadow-error/20">KEV</span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded bg-red-600 text-white text-[9px] font-black uppercase tracking-widest shadow-lg shadow-red-600/20">KEV</span>
                                 {{end}}
-                                
-                                {{range .References}}
-                                    {{if contains . "exploit-db.com"}}
-                                    <a href="{{.}}" target="_blank" class="material-symbols-outlined text-tertiary text-lg hover:scale-110 transition-transform" title="Exploit-DB PoC Available">code</a>
-                                    {{else if contains . "github.com"}}
-                                    <a href="{{.}}" target="_blank" class="material-symbols-outlined text-secondary text-lg hover:scale-110 transition-transform" title="GitHub Resource Found">terminal</a>
-                                    {{end}}
-                                {{end}}
-
-                                <button data-id="{{.ID}}" data-cveid="{{.CVEID}}" data-notes="{{.Notes}}" class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors remediation-notes-btn {{if .Notes}}text-primary opacity-100{{else}}opacity-30{{end}}" title="Remediation Notes" aria-label="Remediation Notes">description</button>
+                                <button data-id="{{.ID}}" data-cve="{{.CVEID}}" data-notes="{{.Notes}}" aria-label="Remediation Notes" class="notes-trigger material-symbols-outlined {{if .Notes}}text-[#00daf3] opacity-100{{else}}text-gray-600 opacity-40 hover:opacity-100{{end}} transition-all" title="Remediation Notes">description</button>
                             </div>
                         </td>
-                        <td class="px-6 py-5">
+                        <td class="px-6 py-6">
                             {{if eq .Status "resolved"}}
-                            <span class="text-[10px] text-primary font-black uppercase tracking-widest flex items-center gap-1.5 bg-primary/10 px-2 py-1 rounded-full w-fit"><span class="material-symbols-outlined text-[14px]">check_circle</span> Resolved</span>
+                            <span class="text-[10px] text-[#00daf3] font-black uppercase tracking-widest flex items-center gap-1.5 bg-[#00daf3]/10 px-3 py-1.5 rounded-full w-fit"><span class="material-symbols-outlined text-[14px]">check_circle</span> Resolved</span>
                             {{else if eq .Status "ignored"}}
-                            <span class="text-[10px] text-on-surface-variant font-black uppercase tracking-widest flex items-center gap-1.5 bg-surface-variant/50 px-2 py-1 rounded-full w-fit opacity-60"><span class="material-symbols-outlined text-[14px]">visibility_off</span> Ignored</span>
+                            <span class="text-[10px] text-gray-500 font-black uppercase tracking-widest flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-full w-fit opacity-60"><span class="material-symbols-outlined text-[14px]">visibility_off</span> Ignored</span>
                             {{else if eq .Status "in_progress"}}
-                            <span class="text-[10px] text-secondary font-black uppercase tracking-widest flex items-center gap-1.5 bg-secondary/10 px-2 py-1 rounded-full w-fit"><span class="material-symbols-outlined text-[14px] animate-spin" style="animation-duration: 3s;">settings</span> In Progress</span>
-                            {{else if eq .Status "waiting_patch"}}
-                            <span class="text-[10px] text-tertiary font-black uppercase tracking-widest flex items-center gap-1.5 bg-tertiary/10 px-2 py-1 rounded-full w-fit"><span class="material-symbols-outlined text-[14px]">hourglass_empty</span> Waiting Patch</span>
+                            <span class="text-[10px] text-blue-400 font-black uppercase tracking-widest flex items-center gap-1.5 bg-blue-400/10 px-3 py-1.5 rounded-full w-fit"><span class="material-symbols-outlined text-[14px] animate-spin" style="animation-duration: 3s;">settings</span> In Progress</span>
                             {{else}}
-                            <span class="text-[10px] text-error font-black uppercase tracking-widest flex items-center gap-1.5 bg-error/10 px-2 py-1 rounded-full w-fit shadow-sm shadow-error/5"><span class="material-symbols-outlined text-[14px]">warning</span> Active</span>
+                            <span class="text-[10px] text-red-400 font-black uppercase tracking-widest flex items-center gap-1.5 bg-red-400/10 px-3 py-1.5 rounded-full w-fit"><span class="material-symbols-outlined text-[14px]">warning</span> Active</span>
                             {{end}}
                         </td>
-                        <td class="px-6 py-5 text-right">
-                            <form action="/api/status" method="POST" class="inline">
-                                {{$.csrfField}}
-                                <input type="hidden" name="cve_id" value="{{.ID}}">
-                                <select name="status" onchange="updateCVEStatus(this.form)" class="bg-surface-container text-[10px] font-black uppercase tracking-widest py-1.5 px-3 rounded-lg border border-outline-variant/30 text-on-surface focus:outline-none focus:border-primary transition-all hover:bg-surface-container-high cursor-pointer">
-                                    <option value="active" {{if eq .Status "active"}}selected{{end}}>Mark Active</option>
-                                    <option value="in_progress" {{if eq .Status "in_progress"}}selected{{end}}>In Progress</option>
-                                    <option value="waiting_patch" {{if eq .Status "waiting_patch"}}selected{{end}}>Wait Patch</option>
-                                    <option value="resolved" {{if eq .Status "resolved"}}selected{{end}}>Resolved</option>
-                                    <option value="ignored" {{if eq .Status "ignored"}}selected{{end}}>Ignore</option>
-                                </select>
-                            </form>
-                        </td>
-                    </tr>
-                    {{else}}
-                    <tr>
-                        <td colspan="5">
-                            <div class="p-20 text-center flex flex-col items-center">
-                                <span class="material-symbols-outlined text-6xl text-outline-variant/30 mb-4" style="font-variation-settings: 'wght' 100;">database_off</span>
-                                <p class="text-on-surface-variant font-label tracking-widest uppercase text-sm">No vulnerability intelligence matching your criteria</p>
-                            </div>
+                        <td class="px-6 py-6 text-right">
+                            <select data-id="{{.ID}}" class="status-selector bg-[#181c22] text-[10px] font-black uppercase tracking-widest py-2 px-3 rounded-xl border border-white/10 text-gray-300 focus:outline-none focus:border-[#00daf3] transition-all hover:bg-white/5 cursor-pointer">
+                                <option value="active" {{if eq .Status "active"}}selected{{end}}>Active</option>
+                                <option value="in_progress" {{if eq .Status "in_progress"}}selected{{end}}>Progress</option>
+                                <option value="resolved" {{if eq .Status "resolved"}}selected{{end}}>Resolve</option>
+                                <option value="ignored" {{if eq .Status "ignored"}}selected{{end}}>Ignore</option>
+                            </select>
                         </td>
                     </tr>
                     {{end}}
@@ -189,141 +162,190 @@
     </div>
 </div>
 
-<!-- Vector Modal -->
-<div id="vectorModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-    <div class="bg-surface-container w-full max-w-lg rounded-2xl border border-outline-variant/30 shadow-2xl overflow-hidden">
-        <div class="p-6 border-b border-outline-variant/30 flex justify-between items-center">
-            <h3 class="font-display font-bold text-lg tracking-tight">CVSS Vector Analysis</h3>
-            <button onclick="closeVector()" class="material-symbols-outlined text-on-surface-variant hover:text-on-surface" aria-label="Close Vector Analysis">close</button>
-        </div>
-        <div id="vectorContent" class="p-6 space-y-4"></div>
-    </div>
-</div>
+<script nonce="{{.Nonce}}">
+    function explainVector(vector) {
+        if (!vector || typeof vector !== 'string') {
+            vulfixx.toast('CVSS vector data unavailable for this CVE', 'info');
+            return;
+        }
+        const parts = vector.split('/');
+        const container = document.createElement('div');
+        container.className = 'space-y-6';
 
-<!-- Notes Modal -->
-<div id="notesModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-    <div class="bg-surface-container w-full max-w-lg rounded-2xl border border-outline-variant/30 shadow-2xl overflow-hidden">
-        <div class="p-6 border-b border-outline-variant/30 flex justify-between items-center">
-            <h3 id="notesTitle" class="font-display font-bold text-lg tracking-tight">Remediation Notes</h3>
-            <button onclick="closeNotes()" class="material-symbols-outlined text-on-surface-variant hover:text-on-surface" aria-label="Close Remediation Notes">close</button>
-        </div>
-        <div class="p-6 space-y-4">
-            <textarea id="notesText" rows="6" class="bg-surface w-full p-4 rounded-xl border border-outline-variant/30 focus:border-primary focus:outline-none text-sm font-label transition-colors" placeholder="Internal remediation steps, ticket IDs, or patch status..."></textarea>
-            <div class="flex justify-end gap-3">
-                <button onclick="closeNotes()" class="px-4 py-2 text-xs font-bold uppercase tracking-widest opacity-60">Cancel</button>
-                <button id="saveNotesBtn" class="bg-primary text-on-primary px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest shadow-lg shadow-primary/20 transition-all active:scale-95">Save Notes</button>
-            </div>
-        </div>
-    </div>
-</div>
+        const vectorDisplay = document.createElement('div');
+        vectorDisplay.className = 'p-4 bg-white/5 rounded-2xl font-mono text-[10px] border border-white/10';
+        vectorDisplay.textContent = vector;
+        container.appendChild(vectorDisplay);
 
-<script>
-let currentCveId = null;
+        const list = document.createElement('div');
+        list.className = 'space-y-3';
+        
+        const mappings = {
+            'AV': { 'name': 'Attack Vector', 'N': 'Network', 'A': 'Adjacent', 'L': 'Local', 'P': 'Physical' },
+            'AC': { 'name': 'Attack Complexity', 'L': 'Low', 'H': 'High' },
+            'PR': { 'name': 'Privileges Required', 'N': 'None', 'L': 'Low', 'H': 'High' },
+            'UI': { 'name': 'User Interaction', 'N': 'None', 'R': 'Required' },
+            'S':  { 'name': 'Scope', 'U': 'Unchanged', 'C': 'Changed' },
+            'C':  { 'name': 'Confidentiality', 'H': 'High', 'L': 'Low', 'N': 'None' },
+            'I':  { 'name': 'Integrity', 'H': 'High', 'L': 'Low', 'N': 'None' },
+            'A':  { 'name': 'Availability', 'H': 'High', 'L': 'Low', 'N': 'None' }
+        };
 
-function explainVector(vector) {
-    const modal = document.getElementById('vectorModal');
-    const content = document.getElementById('vectorContent');
-    modal.classList.remove('hidden');
-    
-    const parts = vector.split('/');
-    let html = `<div class="p-4 bg-surface rounded-lg font-mono text-[10px] border border-outline-variant/20 mb-6">${vector}</div>`;
-    html += `<div class="grid grid-cols-1 gap-4">`;
-    
-    const mappings = {
-        'AV': { 'name': 'Attack Vector', 'N': 'Network (Remote)', 'A': 'Adjacent Network', 'L': 'Local', 'P': 'Physical' },
-        'AC': { 'name': 'Attack Complexity', 'L': 'Low', 'H': 'High' },
-        'PR': { 'name': 'Privileges Required', 'N': 'None', 'L': 'Low', 'H': 'High' },
-        'UI': { 'name': 'User Interaction', 'N': 'None', 'R': 'Required' },
-        'S':  { 'name': 'Scope', 'U': 'Unchanged', 'C': 'Changed' },
-        'C':  { 'name': 'Confidentiality', 'H': 'High Impact', 'L': 'Low Impact', 'N': 'No Impact' },
-        'I':  { 'name': 'Integrity', 'H': 'High Impact', 'L': 'Low Impact', 'N': 'No Impact' },
-        'A':  { 'name': 'Availability', 'H': 'High Impact', 'L': 'Low Impact', 'N': 'No Impact' }
-    };
+        parts.forEach(p => {
+            const [k, v] = p.split(':');
+            if (mappings[k]) {
+                const row = document.createElement('div');
+                row.className = 'flex justify-between items-center py-2 border-b border-white/5';
+                
+                const label = document.createElement('span');
+                label.className = 'text-[10px] font-black uppercase tracking-widest text-gray-500';
+                label.textContent = mappings[k].name;
+                
+                const val = document.createElement('span');
+                val.className = 'text-xs font-bold text-[#00daf3]';
+                val.textContent = mappings[k][v] || v;
+                
+                row.appendChild(label);
+                row.appendChild(val);
+                list.appendChild(row);
+            }
+        });
+        container.appendChild(list);
+        
+        vulfixx.modal('CVSS Vector Analysis', container, [{ label: 'Dismiss', onClick: () => vulfixx.closeModal() }]);
+    }
 
-    parts.forEach(p => {
-        const [k, v] = p.split(':');
-        if (mappings[k]) {
-            html += `
-                <div class="flex justify-between items-center py-2 border-b border-outline-variant/10">
-                    <span class="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">${mappings[k].name}</span>
-                    <span class="text-xs font-bold text-primary">${mappings[k][v] || v}</span>
-                </div>
-            `;
+    function showNotes(id, cveId, notes) {
+        const container = document.createElement('div');
+        container.className = 'space-y-4';
+
+        const desc = document.createElement('p');
+        desc.className = 'text-gray-400 text-xs';
+        desc.textContent = 'Record remediation progress, ticket references, or internal findings for this vulnerability.';
+        container.appendChild(desc);
+
+        const textarea = document.createElement('textarea');
+        textarea.id = 'notes-text';
+        textarea.rows = 6;
+        textarea.className = 'w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white focus:outline-none focus:border-[#00daf3] transition-all text-sm';
+        textarea.value = (notes === 'null' || !notes) ? '' : notes;
+        container.appendChild(textarea);
+
+        vulfixx.modal(`Notes: ${cveId}`, container, [
+            { label: 'Cancel', onClick: () => vulfixx.closeModal() },
+            { label: 'Save Changes', primary: true, onClick: () => submitNotes(id) }
+        ]);
+    }
+
+    async function submitNotes(id) {
+        const cveId = parseInt(id, 10);
+        if (!Number.isFinite(cveId) || cveId <= 0) {
+            vulfixx.toast('Invalid CVE ID', 'error');
+            return;
+        }
+        const notesEl = document.getElementById('notes-text');
+        if (!notesEl) return;
+        const notes = notesEl.value;
+        const data = await vulfixx.fetch('/api/notes', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-Token': '{{.csrfToken}}'
+            },
+            body: JSON.stringify({ cve_id: cveId, notes: notes })
+        });
+        
+        if (data) setTimeout(() => window.location.reload(), 1000);
+    }
+
+    async function updateCVEStatus(id, status) {
+        const cveId = parseInt(id, 10);
+        if (!Number.isFinite(cveId) || cveId <= 0) {
+            vulfixx.toast('Invalid CVE ID', 'error');
+            return;
+        }
+        const data = await vulfixx.fetch('/api/status', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-Token': '{{.csrfToken}}'
+            },
+            body: JSON.stringify({ cve_id: cveId, status: status })
+        });
+        
+        if (data) setTimeout(() => window.location.reload(), 1000);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('team-selector')?.addEventListener('change', (e) => {
+            e.target.form.submit();
+        });
+
+        document.querySelectorAll('.vector-trigger').forEach(el => {
+            el.addEventListener('click', () => explainVector(el.dataset.vector));
+        });
+
+        document.querySelectorAll('.notes-trigger').forEach(el => {
+            el.addEventListener('click', () => showNotes(el.dataset.id, el.dataset.cve, el.dataset.notes));
+        });
+
+        document.querySelectorAll('.status-selector').forEach(el => {
+            el.addEventListener('change', (e) => updateCVEStatus(el.dataset.id, e.target.value));
+        });
+
+        // Initialize Charts
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right',
+                    labels: { color: '#94a3b8', font: { family: 'Space Grotesk', weight: 'bold', size: 10 }, padding: 20 }
+                }
+            }
+        };
+
+        try {
+            if (window.Chart) {
+                const sevEl = document.getElementById('severityChart');
+                if (sevEl) {
+                    new Chart(sevEl, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['Critical', 'High', 'Medium', 'Low'],
+                            datasets: [{
+                                data: [{{.SeverityCounts.Critical}}, {{.SeverityCounts.High}}, {{.SeverityCounts.Medium}}, {{.SeverityCounts.Low}}],
+                                backgroundColor: ['#ef4444', '#f97316', '#3b82f6', '#475569'],
+                                borderWidth: 0,
+                                spacing: 5
+                            }]
+                        },
+                        options: commonOptions
+                    });
+                }
+
+                const statEl = document.getElementById('statusChart');
+                if (statEl) {
+                    new Chart(statEl, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['Active', 'In Progress', 'Resolved', 'Ignored'],
+                            datasets: [{
+                                data: [{{.StatusCounts.Active}}, {{.StatusCounts.InProgress}}, {{.StatusCounts.Resolved}}, {{.StatusCounts.Ignored}}],
+                                backgroundColor: ['#f87171', '#60a5fa', '#00daf3', '#4b5563'],
+                                borderWidth: 0,
+                                spacing: 5
+                            }]
+                        },
+                        options: commonOptions
+                    });
+                }
+            }
+        } catch (e) {
+            console.error('Error initializing charts:', e);
         }
     });
-    
-    html += `</div>`;
-    content.innerHTML = html;
-}
-
-function closeVector() {
-    document.getElementById('vectorModal').classList.add('hidden');
-}
-
-function openNotesFromBtn(btn) {
-    const id = btn.getAttribute('data-id');
-    const cveid = btn.getAttribute('data-cveid');
-    const notes = btn.getAttribute('data-notes');
-    openNotes(id, cveid, notes);
-}
-
-function openNotes(id, name, text) {
-    currentCveId = id;
-    document.getElementById('notesTitle').innerText = `Notes: ${name}`;
-    document.getElementById('notesText').value = text || '';
-    document.getElementById('notesModal').classList.remove('hidden');
-}
-
-function closeNotes() {
-    document.getElementById('notesModal').classList.add('hidden');
-}
-
-document.getElementById('saveNotesBtn').onclick = function() {
-    if (!currentCveId) return;
-    const notes = document.getElementById('notesText').value;
-    const csrfToken = document.querySelector('input[name="gorilla.csrf.Token"]').value;
-
-    fetch('/api/notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-        body: JSON.stringify({ cve_id: Number(currentCveId), notes: notes })
-    }).then(r => {
-        if (!r.ok) throw new Error();
-        window.location.reload();
-    }).catch(() => alert('Failed to save notes'));
-};
-
-document.addEventListener('DOMContentLoaded', () => {
-    // Vector explanation listener
-    document.querySelectorAll('.vector-explainer').forEach(el => {
-        el.addEventListener('click', () => explainVector(el.getAttribute('data-vector')));
-    });
-
-    // Notes modal listener
-    document.querySelectorAll('.remediation-notes-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const id = btn.getAttribute('data-id');
-            const cveid = btn.getAttribute('data-cveid');
-            const notes = btn.getAttribute('data-notes');
-            openNotes(id, cveid, notes);
-        });
-    });
-});
-
-function updateCVEStatus(form) {
-    const cveId = form.elements['cve_id'].value;
-    const selectElem = form.elements['status'];
-    const status = selectElem.value;
-    const csrfToken = form.querySelector('input[name="gorilla.csrf.Token"]').value;
-
-    fetch('/api/status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-        body: JSON.stringify({ cve_id: Number(cveId), status: status })
-    }).then(r => {
-        if (!r.ok) throw new Error();
-        window.location.reload();
-    }).catch(() => alert('Status update failed'));
-}
 </script>
 {{end}}

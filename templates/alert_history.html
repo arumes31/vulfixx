@@ -2,52 +2,55 @@
 
 {{define "content"}}
 <div class="space-y-8">
-    <header class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-outline-variant/30 pb-6">
+    <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-white/10 pb-8">
         <div>
-            <h1 class="text-3xl font-display font-medium tracking-tight mb-2">Notification Telemetry</h1>
-            <p class="text-on-surface-variant font-label text-sm uppercase tracking-widest">History of dispatched alerts</p>
+            <h1 class="text-4xl font-bold text-white mb-2 tracking-tight">Notification Telemetry</h1>
+            <p class="text-gray-400 text-sm">Historical log of dispatched vulnerability intelligence alerts.</p>
         </div>
     </header>
 
-    <div class="bg-surface rounded-xl border border-outline-variant/30 overflow-hidden shadow-xl">
+    <div class="glass rounded-[2.5rem] border border-white/10 overflow-hidden shadow-2xl">
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
                 <thead>
-                    <tr class="bg-surface-container-low border-b border-outline-variant/30">
-                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Timestamp</th>
-                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">ID Reference</th>
-                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Severity</th>
-                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Details</th>
+                    <tr class="bg-white/5 border-b border-white/10">
+                        <th class="px-6 py-5 text-xs font-black tracking-widest uppercase text-gray-500">Dispatch Time</th>
+                        <th class="px-6 py-5 text-xs font-black tracking-widest uppercase text-gray-500">Reference</th>
+                        <th class="px-6 py-5 text-xs font-black tracking-widest uppercase text-gray-500">Risk Score</th>
+                        <th class="px-6 py-5 text-xs font-black tracking-widest uppercase text-gray-500">Telemetry Summary</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-outline-variant/10">
+                <tbody class="divide-y divide-white/5">
                     {{range .Alerts}}
-                    <tr class="hover:bg-surface-container transition-colors duration-150">
-                        <td class="px-6 py-4 text-xs font-mono text-on-surface-variant whitespace-nowrap">
+                    <tr class="hover:bg-white/[0.02] transition-colors group">
+                        <td class="px-6 py-6 text-xs font-mono text-gray-500 whitespace-nowrap">
                             {{.SentAt.Format "2006-01-02 15:04:05"}}
                         </td>
-                        <td class="px-6 py-4">
-                            <span class="text-sm font-bold font-display text-primary">{{.CVEID}}</span>
+                        <td class="px-6 py-6">
+                            <span class="text-sm font-bold text-[#00daf3]">{{.CVEID}}</span>
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
+                        <td class="px-6 py-6 whitespace-nowrap">
                             {{if ge .CVSSScore 7.0}}
-                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-error-container/30 text-error border border-error/20 text-[10px] font-bold tracking-wider uppercase font-mono"><span class="w-1.5 h-1.5 rounded-full bg-error"></span> {{.CVSSScore}}</span>
+                                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/10 text-red-500 border border-red-500/20 text-xs font-black tracking-widest uppercase"><span class="w-1.5 h-1.5 rounded-full bg-red-500" aria-hidden="true"></span> {{.CVSSScore}}</span>
                             {{else if ge .CVSSScore 4.0}}
-                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-tertiary-container/30 text-tertiary border border-tertiary/20 text-[10px] font-bold tracking-wider uppercase font-mono"><span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span> {{.CVSSScore}}</span>
+                                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-500/10 text-orange-500 border border-orange-500/20 text-xs font-black tracking-widest uppercase"><span class="w-1.5 h-1.5 rounded-full bg-orange-500" aria-hidden="true"></span> {{.CVSSScore}}</span>
                             {{else}}
-                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-surface-variant text-on-surface border border-outline-variant/30 text-[10px] font-bold tracking-wider uppercase font-mono"><span class="w-1.5 h-1.5 rounded-full bg-on-surface-variant"></span> {{.CVSSScore}}</span>
+                                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 text-gray-500 border border-white/10 text-xs font-black tracking-widest uppercase"><span class="w-1.5 h-1.5 rounded-full bg-gray-600" aria-hidden="true"></span> {{.CVSSScore}}</span>
                             {{end}}
                         </td>
-                        <td class="px-6 py-4 text-sm text-on-surface">
+                        <td class="px-6 py-6 text-xs text-gray-400 leading-relaxed max-w-xl">
                             {{.Description}}
                         </td>
                     </tr>
                     {{else}}
                     <tr>
                         <td colspan="4">
-                            <div class="p-12 text-center flex flex-col items-center">
-                                <span class="material-symbols-outlined text-6xl text-outline-variant/50 mb-4" style="font-variation-settings: 'wght' 200;">notifications_paused</span>
-                                <p class="text-on-surface-variant font-label tracking-widest uppercase text-sm">No alerts dispatched</p>
+                            <div class="py-24 text-center flex flex-col items-center">
+                                <div class="w-20 h-20 rounded-3xl bg-white/5 flex items-center justify-center mb-6 border border-white/10">
+                                    <span class="material-symbols-outlined text-5xl text-gray-700">notifications_paused</span>
+                                </div>
+                                <h2 class="text-xl font-bold text-white mb-2">No Alerts Dispatched</h2>
+                                <p class="text-gray-500 max-w-xs mx-auto">Dispatched notifications will appear here once your telemetry monitors trigger hits.</p>
                             </div>
                         </td>
                     </tr>

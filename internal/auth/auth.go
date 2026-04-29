@@ -9,15 +9,25 @@ import (
 	"errors"
 	"fmt"
 
+	"log"
+	"strings"
+
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
 )
 
 const MinPasswordLength = 8
 
+var (
+	randRead               = rand.Read
+	bcryptGeneratePassword = bcrypt.GenerateFromPassword
+
+	ErrConflict = errors.New("unable to create account")
+)
+
 func GenerateToken() (string, error) {
 	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
+	if _, err := randRead(bytes); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
@@ -27,7 +37,7 @@ func Register(ctx context.Context, email, password string) (string, error) {
 	if len(password) < MinPasswordLength {
 		return "", errors.New("password must be at least 8 characters long")
 	}
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hashedPassword, err := bcryptGeneratePassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return "", err
 	}
@@ -43,9 +53,19 @@ func Register(ctx context.Context, email, password string) (string, error) {
 	}
 
 	_, err = db.Pool.Exec(ctx, "INSERT INTO users (email, password_hash, email_verify_token, rss_feed_token) VALUES ($1, $2, $3, $4)", email, string(hashedPassword), token, rssToken)
-	return token, err
+	if err != nil {
+		// Normalize error to prevent email enumeration
+		if !strings.Contains(err.Error(), "unique constraint") && !strings.Contains(err.Error(), "duplicate key") {
+			masked := email
+			if at := strings.Index(email, "@"); at > 1 {
+				masked = email[:1] + "***" + email[at:]
+			}
+			log.Printf("Registration error for %s: %v", masked, err)
+		}
+		return "", ErrConflict
+	}
+	return token, nil
 }
-
 func VerifyEmail(ctx context.Context, token string) error {
 	res, err := db.Pool.Exec(ctx, "UPDATE users SET is_email_verified = TRUE, email_verify_token = NULL WHERE email_verify_token = $1", token)
 	if err != nil {
@@ -85,7 +105,7 @@ func InitAdmin(ctx context.Context, email, password, totpSecret string) error {
 		return errors.New("ADMIN_TOTP_SECRET is required for admin initialization")
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hashedPassword, err := bcryptGeneratePassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
@@ -132,7 +152,7 @@ func ChangePassword(ctx context.Context, userID int, currentPassword, newPasswor
 		return errors.New("password must be at least 8 characters long")
 	}
 
-	newHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	newHash, err := bcryptGeneratePassword([]byte(newPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
@@ -218,6 +238,7 @@ func ConfirmEmailChange(ctx context.Context, token string) (bool, string, int, e
 			return false, "", 0, err
 		}
 		_, err = tx.Exec(ctx, "DELETE FROM email_change_requests WHERE user_id = $1", userID)
+
 		if err != nil {
 			return false, "", 0, err
 		}

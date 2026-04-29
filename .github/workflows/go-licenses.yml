@@ -1,0 +1,26 @@
+name: Go Licenses Check
+
+on:
+  push:
+    branches: [ v2_test, main ]
+  pull_request:
+    branches: [ v2_test, main ]
+
+jobs:
+  check-licenses:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          
+      - name: Install go-licenses
+        run: go install github.com/google/go-licenses@latest
+        
+      - name: Check for forbidden licenses
+        run: |
+          go-licenses check ./... --ignore "github.com/pashagolub/pgxmock/v3"

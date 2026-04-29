@@ -11,8 +11,6 @@ import (
 	"sync"
 )
 
-type contextKey string
-
 const clientIPKey contextKey = "ClientIP"
 
 var (
@@ -63,7 +61,7 @@ func isTrustedProxy(ip string) bool {
 	return false
 }
 
-func ProxyMiddleware(next http.Handler) http.Handler {
+func (a *App) ProxyMiddleware(next http.Handler) http.Handler {
 	enableCF := os.Getenv("ENABLE_CLOUDFLARE_PROXY") == "true"
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

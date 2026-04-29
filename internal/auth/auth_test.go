@@ -73,6 +73,10 @@ func TestAuthMock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to init admin: %v", err)
 	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations in TestAuthMock: %v", err)
+	}
 }
 
 func TestEmailChangeFlow(t *testing.T) {
@@ -133,6 +137,10 @@ func TestEmailChangeFlow(t *testing.T) {
 	if err != nil || !confirmed || email != "new@example.com" {
 		t.Fatalf("Failed final confirmation: %v, %v, %s", err, confirmed, email)
 	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations in TestEmailChangeFlow: %v", err)
+	}
 }
 
 func TestAuthErrors(t *testing.T) {
@@ -141,10 +149,13 @@ func TestAuthErrors(t *testing.T) {
 	t.Run("RegisterDBFail", func(t *testing.T) {
 		mock, _ := db.SetupTestDB()
 		defer mock.Close()
-		mock.ExpectExec("INSERT INTO users").WillReturnError(errors.New("db fail"))
-		_, err := Register(ctx, "fail@example.com", "pass")
-		if err == nil {
-			t.Error("expected error on register db fail")
+		mock.ExpectExec("INSERT INTO users").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnError(errors.New("db fail"))
+		_, err := Register(ctx, "fail@example.com", "password123")
+		if err == nil || !errors.Is(err, ErrConflict) {
+			t.Errorf("expected ErrConflict on register db fail, got %v", err)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
 		}
 	})
 
@@ -221,19 +232,25 @@ func TestAuthErrors(t *testing.T) {
 			t.Errorf("expected invalid TOTP error, got %v", err)
 		}
 	})
-}
 
+	t.Run("ChangePasswordShortNewPassword", func(t *testing.T) {
+		mock, _ := db.SetupTestDB()
+		defer mock.Close()
+		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
+		mock.ExpectQuery("SELECT password_hash").WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(string(hashedPassword), false, ""))
+		err := ChangePassword(ctx, 1, "password", "short", "")
+		if err == nil || err.Error() != "password must be at least 8 characters long" {
+			t.Errorf("expected short password error, got %v", err)
+		}
+	})
 
-func TestGenerateTokenError(t *testing.T) {
-	// Register uses GenerateToken. If GenerateToken fails, Register should fail.
-	// We can't easily swap crypto/rand.Reader because it's a global.
-	// But we can test it indirectly if we could inject it.
-	// Since GenerateToken is used in Register, we'll try to trigger it there.
-	
-	// Actually, Register calls it. Let's try to mock rand.Reader.
-	// IMPORTANT: This is a bit hacky and can affect other tests if not restored.
-	// Since tests run in parallel, we should be careful.
-	// But here we can just test the function itself.
+	t.Run("InitAdminEmpty", func(t *testing.T) {
+		err := InitAdmin(ctx, "", "", "")
+		if err != nil {
+			t.Errorf("expected no error for empty admin config, got %v", err)
+		}
+	})
 }
 
 func TestConfirmEmailChangeMore(t *testing.T) {
@@ -261,7 +278,7 @@ func TestConfirmEmailChangeMore(t *testing.T) {
 			WithArgs(1).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()
-		
+
 		confirmed, _, _, err := ConfirmEmailChange(ctx, "newtok")
 		if err != nil || confirmed {
 			t.Errorf("expected no error and not fully confirmed, got %v, %v", err, confirmed)
@@ -275,11 +292,11 @@ func TestConfirmEmailChangeMore(t *testing.T) {
 		mock.ExpectQuery("SELECT user_id").WithArgs("tok").
 			WillReturnRows(pgxmock.NewRows([]string{"user_id", "new_email", "old_email_confirmed", "new_email_confirmed", "old_email_token", "new_email_token"}).
 				AddRow(1, "new@test.com", false, false, "tok", "other"))
-		mock.ExpectExec("UPDATE email_change_requests").WillReturnError(errors.New("exec fail"))
+		mock.ExpectExec("UPDATE email_change_requests").WithArgs(1).WillReturnError(errors.New("exec fail"))
 		mock.ExpectRollback()
 		_, _, _, err := ConfirmEmailChange(ctx, "tok")
-		if err == nil {
-			t.Error("expected error on exec fail")
+		if err == nil || err.Error() != "exec fail" {
+			t.Errorf("expected exec fail, got %v", err)
 		}
 	})
 
@@ -302,12 +319,187 @@ func TestConfirmEmailChangeMore(t *testing.T) {
 		mock.ExpectQuery("SELECT user_id").WithArgs("tok").
 			WillReturnRows(pgxmock.NewRows([]string{"user_id", "new_email", "old_email_confirmed", "new_email_confirmed", "old_email_token", "new_email_token"}).
 				AddRow(1, "new@test.com", false, false, "tok", "other"))
-		mock.ExpectExec("UPDATE email_change_requests").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("UPDATE email_change_requests").WithArgs(1).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit().WillReturnError(errors.New("commit fail"))
 		mock.ExpectRollback()
 		_, _, _, err := ConfirmEmailChange(ctx, "tok")
-		if err == nil {
-			t.Error("expected error on commit fail")
+		if err == nil || err.Error() != "commit fail" {
+			t.Errorf("expected commit fail, got %v", err)
+		}
+	})
+
+	t.Run("FinalUpdateFail", func(t *testing.T) {
+		mock, _ := db.SetupTestDB()
+		defer mock.Close()
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT user_id").WithArgs("tok").
+			WillReturnRows(pgxmock.NewRows([]string{"user_id", "new_email", "old_email_confirmed", "new_email_confirmed", "old_email_token", "new_email_token"}).
+				AddRow(1, "new@test.com", true, false, "other", "tok"))
+		mock.ExpectExec("UPDATE email_change_requests SET new_email_confirmed = TRUE").WithArgs(1).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("UPDATE users SET email = \\$1").WithArgs("new@test.com", 1).WillReturnError(errors.New("update user fail"))
+		mock.ExpectRollback()
+		_, _, _, err := ConfirmEmailChange(ctx, "tok")
+		if err == nil || err.Error() != "update user fail" {
+			t.Errorf("expected update user fail, got %v", err)
+		}
+	})
+
+	t.Run("FinalDeleteFail", func(t *testing.T) {
+		mock, _ := db.SetupTestDB()
+		defer mock.Close()
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT user_id").WithArgs("tok").
+			WillReturnRows(pgxmock.NewRows([]string{"user_id", "new_email", "old_email_confirmed", "new_email_confirmed", "old_email_token", "new_email_token"}).
+				AddRow(1, "new@test.com", true, false, "other", "tok"))
+		mock.ExpectExec("UPDATE email_change_requests SET new_email_confirmed = TRUE").WithArgs(1).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("UPDATE users SET email = \\$1").WithArgs("new@test.com", 1).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("DELETE FROM email_change_requests").WithArgs(1).WillReturnError(errors.New("delete request fail"))
+		mock.ExpectRollback()
+		_, _, _, err := ConfirmEmailChange(ctx, "tok")
+		if err == nil || err.Error() != "delete request fail" {
+			t.Errorf("expected delete request fail, got %v", err)
+		}
+	})
+}
+
+func TestExtraCoverage(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("ConfirmEmailChange_ElseBranchExecFail", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("setup test db: %v", err)
+		}
+		defer mock.Close()
+		mock.ExpectBegin()
+		// token="newtok", old_email_token="oldtok" => isOldToken=false
+		mock.ExpectQuery("SELECT user_id").WithArgs("newtok").
+			WillReturnRows(pgxmock.NewRows([]string{"user_id", "new_email", "old_email_confirmed", "new_email_confirmed", "old_email_token", "new_email_token"}).
+				AddRow(1, "new@test.com", false, false, "oldtok", "newtok"))
+		mock.ExpectExec("UPDATE email_change_requests SET new_email_confirmed = TRUE").
+			WithArgs(1).
+			WillReturnError(errors.New("else exec fail"))
+		mock.ExpectRollback()
+		_, _, _, err = ConfirmEmailChange(ctx, "newtok")
+		if err == nil || err.Error() != "else exec fail" {
+			t.Errorf("expected else exec fail, got %v", err)
+		}
+	})
+
+	t.Run("ConfirmEmailChange_FinalUpdateFail_isOldToken", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("setup test db: %v", err)
+		}
+		defer mock.Close()
+		mock.ExpectBegin()
+		// token="oldtok", old_email_token="oldtok" => isOldToken=true
+		// new_email_confirmed=true in DB so it enters final block
+		mock.ExpectQuery("SELECT user_id").WithArgs("oldtok").
+			WillReturnRows(pgxmock.NewRows([]string{"user_id", "new_email", "old_email_confirmed", "new_email_confirmed", "old_email_token", "new_email_token"}).
+				AddRow(1, "new@test.com", false, true, "oldtok", "newtok"))
+		mock.ExpectExec("UPDATE email_change_requests SET old_email_confirmed = TRUE").
+			WithArgs(1).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("UPDATE users SET email = \\$1").
+			WithArgs("new@test.com", 1).
+			WillReturnError(errors.New("update user fail"))
+		mock.ExpectRollback()
+		_, _, _, err = ConfirmEmailChange(ctx, "oldtok")
+		if err == nil || err.Error() != "update user fail" {
+			t.Errorf("expected update user fail, got %v", err)
+		}
+	})
+
+	t.Run("ConfirmEmailChange_FinalDeleteFail_isOldToken", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("setup test db: %v", err)
+		}
+		defer mock.Close()
+		mock.ExpectBegin()
+		// token="oldtok", old_email_token="oldtok" => isOldToken=true
+		// new_email_confirmed=true in DB so it enters final block
+		mock.ExpectQuery("SELECT user_id").WithArgs("oldtok").
+			WillReturnRows(pgxmock.NewRows([]string{"user_id", "new_email", "old_email_confirmed", "new_email_confirmed", "old_email_token", "new_email_token"}).
+				AddRow(1, "new@test.com", false, true, "oldtok", "newtok"))
+		mock.ExpectExec("UPDATE email_change_requests SET old_email_confirmed = TRUE").
+			WithArgs(1).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("UPDATE users SET email = \\$1").
+			WithArgs("new@test.com", 1).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("DELETE FROM email_change_requests").
+			WithArgs(1).
+			WillReturnError(errors.New("delete request fail"))
+		mock.ExpectRollback()
+		_, _, _, err = ConfirmEmailChange(ctx, "oldtok")
+		if err == nil || err.Error() != "delete request fail" {
+			t.Errorf("expected delete request fail, got %v", err)
+		}
+	})
+
+	t.Run("ConfirmEmailChange_CommitFail_isOldToken", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("setup test db: %v", err)
+		}
+		defer mock.Close()
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT user_id").WithArgs("oldtok").
+			WillReturnRows(pgxmock.NewRows([]string{"user_id", "new_email", "old_email_confirmed", "new_email_confirmed", "old_email_token", "new_email_token"}).
+				AddRow(1, "new@test.com", true, true, "oldtok", "newtok"))
+		// isOldToken=true. It will call UPDATE email_change_requests.
+		mock.ExpectExec("UPDATE email_change_requests SET old_email_confirmed = TRUE").
+			WithArgs(1).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		// oldConfirmed && newConfirmed is true.
+		mock.ExpectExec("UPDATE users SET email = \\$1").
+			WithArgs("new@test.com", 1).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("DELETE FROM email_change_requests").
+			WithArgs(1).
+			WillReturnResult(pgxmock.NewResult("DELETE", 1))
+		mock.ExpectCommit().WillReturnError(errors.New("commit fail"))
+		mock.ExpectRollback()
+		_, _, _, err = ConfirmEmailChange(ctx, "oldtok")
+		if err == nil || err.Error() != "commit fail" {
+			t.Errorf("expected commit fail, got %v", err)
+		}
+	})
+
+	t.Run("ChangePassword_FinalExecFail", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("setup test db: %v", err)
+		}
+		defer mock.Close()
+		// Mock initial query
+		realHash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
+		mock.ExpectQuery("SELECT password_hash").WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(string(realHash), false, ""))
+		// Mock final exec fail
+		mock.ExpectExec("UPDATE users SET password_hash").
+			WithArgs(pgxmock.AnyArg(), 1).
+			WillReturnError(errors.New("update pass fail"))
+		err = ChangePassword(ctx, 1, "password", "newpassword", "")
+		if err == nil || err.Error() != "update pass fail" {
+			t.Errorf("expected update pass fail, got %v", err)
+		}
+	})
+
+	t.Run("InitAdmin_DBFail", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("setup test db: %v", err)
+		}
+		defer mock.Close()
+		mock.ExpectExec("INSERT INTO users").
+			WithArgs("admin@test.com", pgxmock.AnyArg(), "secret", pgxmock.AnyArg()).
+			WillReturnError(errors.New("init admin db fail"))
+		err = InitAdmin(ctx, "admin@test.com", "password", "secret")
+		if err == nil || err.Error() != "init admin db fail" {
+			t.Errorf("expected init admin db fail, got %v", err)
 		}
 	})
 }

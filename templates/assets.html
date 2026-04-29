@@ -2,110 +2,105 @@
 
 {{define "content"}}
 <div class="space-y-8">
-    <header class="border-b border-outline-variant/30 pb-6">
-        <h1 class="text-3xl font-display font-medium tracking-tight mb-2">Asset Management</h1>
-        <p class="text-on-surface-variant font-label text-sm uppercase tracking-widest">Link infrastructure to vulnerability telemetry</p>
+    <header class="border-b border-white/10 pb-6">
+        <h1 class="text-3xl font-bold text-white mb-2">Asset Management</h1>
+        <p class="text-gray-400 font-label text-sm uppercase tracking-widest">Link infrastructure to vulnerability telemetry</p>
     </header>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <!-- Add Asset Form -->
-        <div class="lg:col-span-1">
-            <div class="bg-surface rounded-xl border border-outline-variant/30 overflow-hidden shadow-xl sticky top-6">
-                <div class="p-6 border-b border-outline-variant/30 bg-surface-container-low">
-                    <h3 class="font-display font-medium tracking-wide flex items-center gap-2">
-                        <span class="material-symbols-outlined text-secondary">inventory_2</span>
-                        New Infrastructure Asset
-                    </h3>
-                </div>
-                <div class="p-6">
-                    <form action="/assets" method="POST" class="space-y-5">
-                        {{.csrfField}}
-                        <div class="space-y-2">
-                            <label for="asset_name" class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant block">Asset Name</label>
-                            <input type="text" id="asset_name" name="name" required placeholder="e.g. Production Firewall" class="bg-surface-container w-full px-4 py-2.5 rounded-md border-b-2 border-transparent focus:border-secondary focus:outline-none text-sm transition-colors">
-                        </div>
-                        
-                        <div class="space-y-2">
-                            <label for="asset_category" class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant block">Asset Category</label>
-                            <select id="asset_category" name="type" class="bg-surface-container w-full px-4 py-2.5 rounded-md border-b-2 border-transparent focus:border-secondary focus:outline-none text-sm transition-colors">
-                                <option value="Server">Server</option>
-                                <option value="Software">Software</option>
-                                <option value="Network">Network Device</option>
-                                <option value="Cloud">Cloud Service</option>
-                                <option value="IoT">IoT / Operational Tech</option>
-                            </select>
-                        </div>
-
-                        <div class="space-y-2">
-                            <label for="asset_keywords" class="text-[10px] font-label font-bold tracking-[0.2em] uppercase text-on-surface-variant block">Monitoring Keywords <span class="opacity-50 lowercase font-normal">(comma separated)</span></label>
-                            <textarea id="asset_keywords" name="keywords" rows="3" placeholder="Fortigate, FortiOS, SSL VPN" class="bg-surface-container w-full px-4 py-2.5 rounded-md border-b-2 border-transparent focus:border-secondary focus:outline-none text-sm transition-colors font-mono"></textarea>
-                            <p class="text-[9px] text-on-surface-variant leading-relaxed">Any new CVE matching these terms will trigger an automated high-priority alert for this asset.</p>
-                        </div>
-
-                        <button type="submit" class="w-full bg-secondary text-on-secondary py-3 rounded-md text-[10px] font-black tracking-[0.2em] uppercase hover:shadow-lg hover:shadow-secondary/20 transition-all active:scale-95">Register Asset</button>
-                    </form>
-                </div>
+    <!-- Add Asset Form -->
+    <div class="glass border border-white/10 p-6 rounded-2xl mb-8 shadow-xl">
+        <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+            <span class="material-symbols-outlined text-blue-400">add_circle</span>
+            New Infrastructure Asset
+        </h2>
+        <form action="/assets" method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+            {{.csrfField}}
+            <div class="space-y-2">
+                <label for="asset_name" class="block text-xs text-gray-500 uppercase font-bold tracking-widest">Asset Name</label>
+                <input type="text" id="asset_name" name="name" required class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:border-blue-500 transition focus:outline-none" placeholder="e.g. Production Web Server">
             </div>
-        </div>
+            <div class="space-y-2">
+                <label for="asset_type" class="block text-xs text-gray-500 uppercase font-bold tracking-widest">Category</label>
+                <select id="asset_type" name="type" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:border-blue-500 transition focus:outline-none appearance-none">
+                    <option value="Server">Server</option>
+                    <option value="Software">Software</option>
+                    <option value="Network">Network Device</option>
+                    <option value="Cloud">Cloud Service</option>
+                    <option value="IoT">IoT / OT</option>
+                </select>
+            </div>
+            <div class="space-y-2">
+                <label for="team_id" class="block text-xs text-gray-500 uppercase font-bold tracking-widest">Workspace</label>
+                <select id="team_id" name="team_id" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:border-blue-500 transition focus:outline-none appearance-none">
+                    <option value="0">Private (Individual)</option>
+                    {{range .UserTeams}}
+                    <option value="{{.ID}}">Team: {{.Name}}</option>
+                    {{end}}
+                </select>
+            </div>
+            <div>
+                <button type="submit" class="w-full bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700 transition shadow-lg shadow-blue-600/20 active:scale-95">Register Asset</button>
+            </div>
+            <div class="md:col-span-4 space-y-2">
+                <label for="asset_keywords" class="block text-xs text-gray-500 uppercase font-bold tracking-widest">Monitoring Keywords (Comma separated)</label>
+                <input type="text" id="asset_keywords" name="keywords" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:border-blue-500 transition focus:outline-none" placeholder="e.g. nginx, ubuntu, openssl">
+                <p class="text-[10px] text-gray-500">Any new CVE matching these terms will trigger an automated high-priority alert for this asset.</p>
+            </div>
+        </form>
+    </div>
 
-        <!-- Current Assets -->
-        <div class="lg:col-span-2">
-            <div class="bg-surface rounded-xl border border-outline-variant/30 overflow-hidden shadow-xl">
-                <div class="p-6 border-b border-outline-variant/30 bg-surface-container-low">
-                    <h3 class="font-display font-medium tracking-wide flex items-center gap-2">
-                        <span class="material-symbols-outlined text-primary">analytics</span>
-                        Infrastructure Inventory
-                    </h3>
-                </div>
-
-                {{if .Assets}}
-                <div class="divide-y divide-outline-variant/10">
-                    {{range .Assets}}
-                    <div class="p-6 hover:bg-surface-container/30 transition-colors">
-                        <div class="flex justify-between items-start mb-4">
-                            <div class="flex items-center gap-4">
-                                <div class="w-12 h-12 rounded-lg bg-secondary/10 flex items-center justify-center text-secondary border border-secondary/20">
-                                    <span class="material-symbols-outlined">{{if eq .Type "Server"}}dns{{else if eq .Type "Software"}}code{{else if eq .Type "Network"}}router{{else if eq .Type "Cloud"}}cloud{{else}}devices{{end}}</span>
-                                </div>
-                                <div>
-                                    <h4 class="text-lg font-display font-bold text-on-surface">{{.Name}}</h4>
-                                    <span class="text-[10px] font-black uppercase tracking-widest text-on-surface-variant opacity-60">{{.Type}}</span>
-                                </div>
-                            </div>
-                            <form action="/assets/delete" method="POST" class="delete-asset-form">
-                                {{$.csrfField}}
-                                <input type="hidden" name="id" value="{{.ID}}">
-                                <button type="submit" class="p-2 text-error hover:bg-error/10 rounded-full transition-colors" aria-label="Archive asset {{.Name}}">
-                                    <span class="material-symbols-outlined text-[20px]">delete_sweep</span>
-                                </button>
-                            </form>
+    <!-- Current Assets Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {{if .Assets}}
+            {{range .Assets}}
+            <div class="glass border border-white/10 p-6 rounded-2xl relative group hover:border-blue-500/30 transition-all duration-300">
+                <div class="flex justify-between items-start mb-4">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400 border border-blue-500/20">
+                            <span class="material-symbols-outlined" aria-hidden="true">{{if eq .Type "Server"}}dns{{else if eq .Type "Software"}}code{{else if eq .Type "Network"}}router{{else if eq .Type "Cloud"}}cloud{{else}}devices{{end}}</span>
                         </div>
-                        
-                        <div class="flex flex-wrap gap-2">
-                            {{range .Keywords}}
-                            <span class="px-2 py-0.5 rounded bg-surface-container text-[10px] font-mono font-bold text-on-surface border border-outline-variant/30">{{.}}</span>
-                            {{end}}
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h3 class="text-lg font-bold text-white">{{.Name}}</h3>
+                                {{if .TeamName}}
+                                <span class="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded border border-blue-500/30 font-bold uppercase">{{.TeamName}}</span>
+                                {{else}}
+                                <span class="text-[10px] bg-gray-500/10 text-gray-500 px-2 py-0.5 rounded border border-white/5 font-bold uppercase">Private</span>
+                                {{end}}
+                            </div>
+                            <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">{{.Type}}</span>
                         </div>
                     </div>
+                    <form action="/assets/delete" method="POST" class="delete-asset-form">
+                        {{$.csrfField}}
+                        <input type="hidden" name="id" value="{{.ID}}">
+                        <button type="submit" class="p-2 text-red-400/50 hover:text-red-400 hover:bg-red-400/10 rounded-full transition-all" aria-label="Delete asset {{.Name}}" title="Delete asset {{.Name}}">
+                            <span class="material-symbols-outlined text-[20px]">delete</span>
+                        </button>
+                    </form>
+                </div>
+                
+                <div class="flex flex-wrap gap-2 mt-4">
+                    {{range .Keywords}}
+                    <span class="px-2 py-0.5 rounded bg-white/5 text-[10px] font-mono font-bold text-blue-300 border border-white/5">{{.}}</span>
                     {{end}}
                 </div>
-                {{else}}
-                <div class="p-20 text-center flex flex-col items-center">
-                    <span class="material-symbols-outlined text-6xl text-outline-variant/20 mb-4" style="font-variation-settings: 'wght' 100;">inventory</span>
-                    <p class="text-on-surface-variant font-label tracking-widest uppercase text-sm">No assets registered for monitoring</p>
-                </div>
-                {{end}}
             </div>
+            {{end}}
+        {{else}}
+        <div class="col-span-full py-20 text-center flex flex-col items-center glass border border-white/10 rounded-2xl">
+            <span class="material-symbols-outlined text-6xl text-gray-700 mb-4">inventory</span>
+            <p class="text-gray-500 font-bold tracking-widest uppercase text-sm">No assets registered for monitoring</p>
         </div>
+        {{end}}
     </div>
-</div>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.delete-asset-form').forEach(form => {
         form.addEventListener('submit', (e) => {
-            if (!confirm('Archive this asset and stop automated monitoring?')) {
+            if (!confirm('Are you sure you want to delete this asset and stop automated monitoring?')) {
                 e.preventDefault();
             }
         });

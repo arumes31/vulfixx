@@ -1,6 +1,27 @@
 /cve-tracker
-coverage*
+/auth
+*.cov
+*.out
 .env
 .qodo
 *.exe
 node_modules
+gosec_results*
+.jules/
+.Jules/
+
+# Scoped runtime files
+logs/
+tmp/
+*.log
+*.tmp
+
+# Coverage artifacts – never commit generated profiles
+coverage/
+coverage.*
+*.coverprofile
+*_cov
+*_coverage
+*_coverage.txt
+coverage_stats.txt
+**/coverage.out

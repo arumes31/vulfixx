@@ -1,10 +1,27 @@
 package web
 
-import "net/http"
+import (
+	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"fmt"
+	"log"
+	"net/http"
+)
+
+const NonceKey contextKey = "nonce"
 
 // SecurityHeadersMiddleware adds standard HTTP security headers to all responses.
-func SecurityHeadersMiddleware(next http.Handler) http.Handler {
+func (a *App) SecurityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nonce, err := generateNonce()
+		if err != nil {
+			log.Printf("Failed to generate CSP nonce: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		r = r.WithContext(context.WithValue(r.Context(), NonceKey, nonce))
+
 		// Prevent browsers from performing MIME sniffing
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 
@@ -17,9 +34,20 @@ func SecurityHeadersMiddleware(next http.Handler) http.Handler {
 		// Control referrer information
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 
-		// Cross-Site Scripting protection (modern approach is CSP, but this is a good fallback)
+		// Cross-Site Scripting protection (modern approach is CSP)
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Content-Security-Policy", fmt.Sprintf("default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-%s'; font-src 'self' data:; img-src 'self' data:;", nonce))
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// generateNonce returns a cryptographically random base64 nonce, or an error if
+// the OS CSPRNG is unavailable. Callers must handle the error rather than panic.
+func generateNonce() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("failed to generate nonce: %w", err)
+	}
+	return base64.StdEncoding.EncodeToString(b), nil
 }
