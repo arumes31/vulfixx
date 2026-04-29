@@ -643,14 +643,13 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		Medium   int
 		Low      int
 	}
-	_ = a.Pool.QueryRow(r.Context(), `
-		SELECT 
-			COUNT(*) FILTER (WHERE cvss_score >= 9.0),
-			COUNT(*) FILTER (WHERE cvss_score >= 7.0 AND cvss_score < 9.0),
-			COUNT(*) FILTER (WHERE cvss_score >= 4.0 AND cvss_score < 7.0),
-			COUNT(*) FILTER (WHERE cvss_score < 4.0)
-		FROM cves
-	`).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
+	severityQuery := "SELECT " +
+		"COUNT(*) FILTER (WHERE cvss_score >= 9.0), " +
+		"COUNT(*) FILTER (WHERE cvss_score >= 7.0 AND cvss_score < 9.0), " +
+		"COUNT(*) FILTER (WHERE cvss_score >= 4.0 AND cvss_score < 7.0), " +
+		"COUNT(*) FILTER (WHERE cvss_score < 4.0) " +
+		"FROM cves c " + whereClause
+	_ = a.Pool.QueryRow(r.Context(), severityQuery, args...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
 
 	a.RenderTemplate(w, r, "public_dashboard.html", map[string]interface{}{
 		"CVEs":            cves,
