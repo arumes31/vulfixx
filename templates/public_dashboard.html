@@ -93,6 +93,58 @@
         </div>
     </div>
 
+    <!-- Filters Section -->
+    <div class="glass p-8 rounded-[2rem] border border-white/10">
+        <form action="/" method="GET" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div class="space-y-2">
+                <label class="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Search Keywords</label>
+                <div class="relative">
+                    <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm">search</span>
+                    <input type="text" name="q" value="{{.Query}}" placeholder="Search in description..." class="w-full bg-white/5 border border-white/10 rounded-2xl pl-12 pr-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all">
+                </div>
+            </div>
+            <div class="space-y-2">
+                <label class="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Vendor / Product</label>
+                <div class="flex gap-2">
+                    <input type="text" name="vendor" value="{{.Vendor}}" placeholder="Vendor..." class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all">
+                    <input type="text" name="product" value="{{.Product}}" placeholder="Product..." class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all">
+                </div>
+            </div>
+            <div class="space-y-2">
+                <label class="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">CVE ID</label>
+                <input type="text" name="cve" value="{{.CVE}}" placeholder="e.g. CVE-2024-..." class="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all">
+            </div>
+            <div class="space-y-2">
+                <label class="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">CVSS Range</label>
+                <div class="flex items-center gap-2">
+                    <input type="number" step="0.1" name="min_cvss" value="{{.MinCvss}}" placeholder="0.0" class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all">
+                    <span class="text-gray-600 text-xs">-</span>
+                    <input type="number" step="0.1" name="max_cvss" value="{{.MaxCvss}}" placeholder="10.0" class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all">
+                </div>
+            </div>
+            <div class="space-y-2 lg:col-span-2">
+                <label class="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Date Published</label>
+                <div class="flex items-center gap-2">
+                    <input type="date" name="start_date" value="{{.StartDate}}" class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all [color-scheme:dark]">
+                    <span class="text-gray-600 text-xs">to</span>
+                    <input type="date" name="end_date" value="{{.EndDate}}" class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all [color-scheme:dark]">
+                </div>
+            </div>
+            <div class="flex items-end gap-4 lg:col-span-2">
+                <label class="flex items-center gap-3 cursor-pointer bg-white/5 border border-white/10 rounded-2xl px-6 py-3 hover:bg-white/10 transition-all flex-grow">
+                    <input type="checkbox" name="kev" value="true" {{if .KevOnly}}checked{{end}} class="w-4 h-4 rounded border-white/10 bg-white/5 text-primary focus:ring-primary focus:ring-offset-0">
+                    <span class="text-xs font-bold text-gray-300">Exploited in the Wild (KEV)</span>
+                </label>
+                <button type="submit" class="px-8 py-3 bg-primary text-on-primary rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-lg shadow-primary/20 whitespace-nowrap">
+                    Apply Filters
+                </button>
+                <a href="/" class="p-3 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-all hover:bg-white/10" title="Clear All Filters">
+                    <span class="material-symbols-outlined text-sm">filter_alt_off</span>
+                </a>
+            </div>
+        </form>
+    </div>
+
     <!-- Charts Section -->
     <div class="grid grid-cols-1 gap-8">
         <div class="glass p-8 rounded-[2rem] border border-white/10">
@@ -146,6 +198,13 @@
                             <span class="text-[10px] font-mono text-gray-500">{{if not .PublishedDate.IsZero}}{{.PublishedDate.Format "2006-01-02"}}{{end}}</span>
                         </td>
                     </tr>
+                    {{else}}
+                    <tr>
+                        <td colspan="4" class="p-12 text-center">
+                            <span class="material-symbols-outlined text-4xl text-gray-600 mb-4">search_off</span>
+                            <p class="text-gray-500 font-bold uppercase tracking-widest text-xs">No vulnerabilities found matching your filters</p>
+                        </td>
+                    </tr>
                     {{end}}
                 </tbody>
             </table>
@@ -157,12 +216,12 @@
             <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Page {{.Page}} of {{.TotalPages}}</span>
             <div class="flex gap-2">
                 {{if gt .Page 1}}
-                <a href="/?page={{subtract .Page 1}}&q={{urlquery .Query}}&start_date={{urlquery .StartDate}}&end_date={{urlquery .EndDate}}&min_cvss={{urlquery .MinCvss}}&max_cvss={{urlquery .MaxCvss}}&kev={{urlquery .KevOnly}}" class="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all">
+                <a href="/?page={{subtract .Page 1}}&q={{urlquery .Query}}&vendor={{urlquery .Vendor}}&product={{urlquery .Product}}&cve={{urlquery .CVE}}&start_date={{urlquery .StartDate}}&end_date={{urlquery .EndDate}}&min_cvss={{urlquery .MinCvss}}&max_cvss={{urlquery .MaxCvss}}&kev={{urlquery .KevOnly}}" class="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all">
                     <span class="material-symbols-outlined text-sm">chevron_left</span>
                 </a>
                 {{end}}
                 {{if lt .Page .TotalPages}}
-                <a href="/?page={{add .Page 1}}&q={{urlquery .Query}}&start_date={{urlquery .StartDate}}&end_date={{urlquery .EndDate}}&min_cvss={{urlquery .MinCvss}}&max_cvss={{urlquery .MaxCvss}}&kev={{urlquery .KevOnly}}" class="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all">
+                <a href="/?page={{add .Page 1}}&q={{urlquery .Query}}&vendor={{urlquery .Vendor}}&product={{urlquery .Product}}&cve={{urlquery .CVE}}&start_date={{urlquery .StartDate}}&end_date={{urlquery .EndDate}}&min_cvss={{urlquery .MinCvss}}&max_cvss={{urlquery .MaxCvss}}&kev={{urlquery .KevOnly}}" class="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all">
                     <span class="material-symbols-outlined text-sm">chevron_right</span>
                 </a>
                 {{end}}

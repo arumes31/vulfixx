@@ -227,7 +227,6 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		baseFromJoin + whereClause
 
 	_ = a.Pool.QueryRow(r.Context(), statusQuery, args...).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
-
 	a.RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
 		"CVEs":           cves,
 		"Total":          totalItems,
@@ -514,6 +513,10 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	offset := (page - 1) * pageSize
 
 	searchQuery := r.URL.Query().Get("q")
+	vendorQuery := r.URL.Query().Get("vendor")
+	productQuery := r.URL.Query().Get("product")
+	cveIDQuery := r.URL.Query().Get("cve")
+
 	startDate := r.URL.Query().Get("start_date")
 	endDate := r.URL.Query().Get("end_date")
 	kevOnly := r.URL.Query().Get("kev") == "true"
@@ -543,6 +546,24 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	if searchQuery != "" {
 		whereClause += fmt.Sprintf(" AND (c.cve_id ILIKE $%d OR c.description ILIKE $%d) ", argIdx, argIdx)
 		args = append(args, "%"+searchQuery+"%")
+		argIdx++
+	}
+
+	if vendorQuery != "" {
+		whereClause += fmt.Sprintf(" AND c.description ILIKE $%d ", argIdx)
+		args = append(args, "%"+vendorQuery+"%")
+		argIdx++
+	}
+
+	if productQuery != "" {
+		whereClause += fmt.Sprintf(" AND c.description ILIKE $%d ", argIdx)
+		args = append(args, "%"+productQuery+"%")
+		argIdx++
+	}
+
+	if cveIDQuery != "" {
+		whereClause += fmt.Sprintf(" AND c.cve_id ILIKE $%d ", argIdx)
+		args = append(args, "%"+cveIDQuery+"%")
 		argIdx++
 	}
 
@@ -580,7 +601,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	query := `
 		SELECT 
 			c.id, c.cve_id, c.description, c.cvss_score, vector_string, c.cisa_kev, 
-			c.published_date, c.updated_date, 'active' as status, c.references, '' as notes
+			c.published_date, c.updated_date, 'active' as status, c."references", '' as notes
 		FROM cves c
 	`
 	query += whereClause
@@ -642,6 +663,9 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"Page":            page,
 		"TotalPages":      totalPages,
 		"Query":           searchQuery,
+		"Vendor":          vendorQuery,
+		"Product":         productQuery,
+		"CVE":             cveIDQuery,
 		"StartDate":       startDate,
 		"EndDate":         endDate,
 		"KevOnly":         kevOnly,
@@ -658,7 +682,7 @@ func (a *App) getTrendingCVEs(r *http.Request) []models.CVE {
 	rows, err := a.Pool.Query(r.Context(), `
 		SELECT 
 			id, cve_id, description, cvss_score, vector_string, cisa_kev, 
-			published_date, updated_date, 'active' as status, references, '' as notes
+			published_date, updated_date, 'active' as status, c."references", '' as notes
 		FROM cves 
 		WHERE cisa_kev = true OR cvss_score >= 9.5
 		ORDER BY published_date DESC LIMIT 4
@@ -689,7 +713,7 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 	err := a.Pool.QueryRow(r.Context(), `
 		SELECT 
 			id, cve_id, description, cvss_score, vector_string, cisa_kev, 
-			published_date, updated_date, 'active' as status, references, 
+			published_date, updated_date, 'active' as status, c."references", 
 			epss_score, cwe_id, cwe_name, github_poc_count
 		FROM cves 
 		WHERE cve_id = $1
