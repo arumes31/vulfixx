@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -88,15 +89,20 @@ func (w *Worker) fetchFromNVD(ctx context.Context) {
 		return
 	}
 	if lastSync.IsZero() {
-		log.Println("Worker: No prior sync found — starting full NVD backfill...")
-		w.runFullSync(ctx, true)
+		startIndex := w.getBackfillProgress(ctx)
+		if startIndex > 0 {
+			log.Printf("Worker: Resuming NVD backfill from index %d...", startIndex)
+		} else {
+			log.Println("Worker: No prior sync found — starting full NVD backfill...")
+		}
+		w.runFullSync(ctx, true, startIndex)
 	} else {
 		log.Printf("Worker: Incremental sync — fetching CVEs modified since %s", lastSync.Format(time.RFC3339))
-		w.runFullSync(ctx, false)
+		w.runFullSync(ctx, false, 0)
 	}
 }
 
-func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
+func (w *Worker) runFullSync(ctx context.Context, isBackfill bool, startIndex int) {
 	baseURL := defaultNVDBaseURL
 	if envURL := os.Getenv("NVD_API_URL"); envURL != "" {
 		parsed, err := url.Parse(envURL)
@@ -118,8 +124,7 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
 		params.Set("lastModEndDate", endTime.Format(time.RFC3339))
 	}
 
-	resultsPerPage := 2000
-	startIndex := 0
+	resultsPerPage := 500
 
 	retryCount := 0
 	const maxNVDRetries = 5
@@ -206,6 +211,10 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
 
 		w.upsertCVEs(ctx, nvdResp.Vulnerabilities, isBackfill)
 
+		if isBackfill {
+			w.updateBackfillProgress(ctx, startIndex)
+		}
+
 		startIndex += resultsPerPage
 		if startIndex >= nvdResp.TotalResults {
 			break
@@ -224,6 +233,25 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool) {
 	}
 
 	w.updateLastSyncTime(ctx, endTime)
+	if isBackfill {
+		w.clearBackfillProgress(ctx)
+	}
+}
+
+func parseNVDDate(dateStr string) (time.Time, error) {
+	formats := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02T15:04:05.000",
+		"2006-01-02T15:04:05",
+	}
+	for _, f := range formats {
+		t, err := time.Parse(f, dateStr)
+		if err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("could not parse date %q", dateStr)
 }
 
 func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfill bool) {
@@ -276,21 +304,15 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			references = append(references, u.String())
 		}
 
-		pubDate, err := time.Parse(time.RFC3339Nano, cve.Published)
+		pubDate, err := parseNVDDate(cve.Published)
 		if err != nil {
-			pubDate, err = time.Parse(time.RFC3339, cve.Published)
-			if err != nil {
-				log.Printf("Worker: Invalid published date %q for %s: %v — skipping", cve.Published, cve.ID, err)
-				continue
-			}
+			log.Printf("Worker: Invalid published date %q for %s: %v — skipping", cve.Published, cve.ID, err)
+			continue
 		}
-		modDate, err := time.Parse(time.RFC3339Nano, cve.LastModified)
+		modDate, err := parseNVDDate(cve.LastModified)
 		if err != nil {
-			modDate, err = time.Parse(time.RFC3339, cve.LastModified)
-			if err != nil {
-				log.Printf("Worker: Invalid lastModified date %q for %s: %v — skipping", cve.LastModified, cve.ID, err)
-				continue
-			}
+			log.Printf("Worker: Invalid lastModified date %q for %s: %v — skipping", cve.LastModified, cve.ID, err)
+			continue
 		}
 
 		model := models.CVE{
@@ -303,6 +325,7 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			PublishedDate: pubDate,
 			UpdatedDate:   modDate,
 		}
+
 
 		query := `
 			INSERT INTO cves (cve_id, description, cvss_score, vector_string, cwe_id, "references", published_date, updated_date)
@@ -352,4 +375,28 @@ func (w *Worker) updateLastSyncTime(ctx context.Context, t time.Time) {
 	if err != nil {
 		log.Printf("Worker: Error updating sync stats: %v", err)
 	}
+}
+
+func (w *Worker) getBackfillProgress(ctx context.Context) int {
+	var val string
+	err := w.Pool.QueryRow(ctx, "SELECT value FROM sync_state WHERE key = 'nvd_backfill_index'").Scan(&val)
+	if err != nil {
+		return 0
+	}
+	idx, _ := strconv.Atoi(val)
+	return idx
+}
+
+func (w *Worker) updateBackfillProgress(ctx context.Context, idx int) {
+	_, err := w.Pool.Exec(ctx, `
+		INSERT INTO sync_state (key, value) VALUES ('nvd_backfill_index', $1)
+		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+	`, fmt.Sprintf("%d", idx))
+	if err != nil {
+		log.Printf("Worker: Error updating backfill progress: %v", err)
+	}
+}
+
+func (w *Worker) clearBackfillProgress(ctx context.Context) {
+	_, _ = w.Pool.Exec(ctx, "DELETE FROM sync_state WHERE key = 'nvd_backfill_index'")
 }
