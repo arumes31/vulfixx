@@ -493,6 +493,36 @@ func (a *App) BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request)
 	a.SendResponse(w, r, true, fmt.Sprintf("Updated %d CVEs", len(req.CVEIDs)), "", "")
 }
 
+type PublicDashboardData struct {
+	CVEs            []models.CVE           `json:"cves"`
+	Total           int                    `json:"total"`
+	KevCount        int                    `json:"kev_count"`
+	CritCount       int                    `json:"crit_count"`
+	ThreatLevel     string                 `json:"threat_level"`
+	ThreatColor     string                 `json:"threat_color"`
+	Page            int                    `json:"page"`
+	TotalPages      int                    `json:"total_pages"`
+	Query           string                 `json:"query"`
+	Vendor          string                 `json:"vendor"`
+	Product         string                 `json:"product"`
+	CVE             string                 `json:"cve"`
+	CWE             string                 `json:"cwe"`
+	StartDate       string                 `json:"start_date"`
+	EndDate         string                 `json:"end_date"`
+	KevOnly         bool                   `json:"kev_only"`
+	HasPoC          bool                   `json:"has_poc"`
+	MinCvss         float64                `json:"min_cvss"`
+	MaxCvss         float64                `json:"max_cvss"`
+	MinEpss         float64                `json:"min_epss"`
+	MaxEpss         float64                `json:"max_epss"`
+	SeverityCounts  interface{}            `json:"severity_counts"`
+	TopCWEs         interface{}            `json:"top_cwes"`
+	EPSSDist        []int                  `json:"epss_dist"`
+	MetaTitle       string                 `json:"meta_title"`
+	MetaDescription string                 `json:"meta_description"`
+	Trending        []models.CVE           `json:"trending"`
+}
+
 func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	pageStr := r.URL.Query().Get("page")
 	page, _ := strconv.Atoi(pageStr)
@@ -534,12 +564,55 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Redis Caching for Default View
-	cacheKey := "public_dashboard_default"
+	cacheKey := "public_dashboard_default_v2"
 	if r.URL.RawQuery == "" || r.URL.RawQuery == "page=1" {
 		if val, err := a.Redis.Get(r.Context(), cacheKey).Result(); err == nil {
-			var cachedData map[string]any
+			var cachedData PublicDashboardData
 			if err := json.Unmarshal([]byte(val), &cachedData); err == nil {
-				a.RenderTemplate(w, r, "public_dashboard.html", cachedData)
+				// Convert struct to map for RenderTemplate
+				renderData := make(map[string]interface{})
+				b, _ := json.Marshal(cachedData)
+				_ = json.Unmarshal(b, &renderData)
+				
+				// Fix: Ensure Trending and CVEs are correct types if needed, 
+				// but RenderTemplate with map[string]any is what we usually do.
+				// However, if we unmarshal back to map, we get lowercase keys again.
+				// SO, let's just pass the struct to a new RenderTemplateStruct or similar.
+				
+				// Wait, RenderTemplate takes map[string]interface{}.
+				// If I pass the struct, I'll have to change RenderTemplate.
+				
+				// Actually, I'll just manually populate the map from the struct to keep keys correct.
+				m := map[string]interface{}{
+					"CVEs":            cachedData.CVEs,
+					"Total":           cachedData.Total,
+					"KevCount":        cachedData.KevCount,
+					"CritCount":       cachedData.CritCount,
+					"ThreatLevel":     cachedData.ThreatLevel,
+					"ThreatColor":     cachedData.ThreatColor,
+					"Page":            cachedData.Page,
+					"TotalPages":      cachedData.TotalPages,
+					"Query":           cachedData.Query,
+					"Vendor":          cachedData.Vendor,
+					"Product":         cachedData.Product,
+					"CVE":             cachedData.CVE,
+					"CWE":             cachedData.CWE,
+					"StartDate":       cachedData.StartDate,
+					"EndDate":         cachedData.EndDate,
+					"KevOnly":         cachedData.KevOnly,
+					"HasPoC":          cachedData.HasPoC,
+					"MinCvss":         cachedData.MinCvss,
+					"MaxCvss":         cachedData.MaxCvss,
+					"MinEpss":         cachedData.MinEpss,
+					"MaxEpss":         cachedData.MaxEpss,
+					"SeverityCounts":  cachedData.SeverityCounts,
+					"TopCWEs":         cachedData.TopCWEs,
+					"EPSSDist":        cachedData.EPSSDist,
+					"MetaTitle":       cachedData.MetaTitle,
+					"MetaDescription": cachedData.MetaDescription,
+					"Trending":        cachedData.Trending,
+				}
+				a.RenderTemplate(w, r, "public_dashboard.html", m)
 				return
 			}
 		}
@@ -750,7 +823,37 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Cache Default View
 	if r.URL.RawQuery == "" || r.URL.RawQuery == "page=1" {
-		if jsonData, err := json.Marshal(renderData); err == nil {
+		// Use struct for consistent JSON
+		cachedData := PublicDashboardData{
+			CVEs:            cves,
+			Total:           totalItems,
+			KevCount:        kevCount,
+			CritCount:       critCount,
+			ThreatLevel:     threatLevel,
+			ThreatColor:     threatColor,
+			Page:            page,
+			TotalPages:      totalPages,
+			Query:           searchQuery,
+			Vendor:          vendorQuery,
+			Product:         productQuery,
+			CVE:             cveIDQuery,
+			CWE:             cweQuery,
+			StartDate:       startDate,
+			EndDate:         endDate,
+			KevOnly:         kevOnly,
+			HasPoC:          hasPoC,
+			MinCvss:         minCvss,
+			MaxCvss:         maxCvss,
+			MinEpss:         minEpss,
+			MaxEpss:         maxEpss,
+			SeverityCounts:  severityCounts,
+			TopCWEs:         topCWEs,
+			EPSSDist:        epssDist,
+			MetaTitle:       renderData["MetaTitle"].(string),
+			MetaDescription: renderData["MetaDescription"].(string),
+			Trending:        renderData["Trending"].([]models.CVE),
+		}
+		if jsonData, err := json.Marshal(cachedData); err == nil {
 			_ = a.Redis.Set(r.Context(), cacheKey, jsonData, 5*time.Minute).Err()
 		}
 	}
