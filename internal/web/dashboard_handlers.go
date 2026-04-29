@@ -701,11 +701,11 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 	var c models.CVE
 	err := a.Pool.QueryRow(r.Context(), `
 		SELECT 
-			c.id, c.cve_id, c.description, c.cvss_score, c.vector_string, c.cisa_kev, 
-			c.published_date, c.updated_date, 'active' as status, c."references", 
-			c.epss_score, c.cwe_id, c.cwe_name, c.github_poc_count
-		FROM cves c
-		WHERE c.cve_id = $1
+			id, cve_id, description, cvss_score, vector_string, cisa_kev, 
+			published_date, updated_date, 'active' as status, "references", 
+			epss_score, cwe_id, cwe_name, github_poc_count
+		FROM cves
+		WHERE cve_id = $1
 	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount)
 
 	if err != nil {
