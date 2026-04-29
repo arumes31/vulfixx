@@ -176,7 +176,7 @@ func TestCVEDetailHandler_Extra(t *testing.T) {
 		app := setupTestApp(t, mock)
 
 		cveID := "CVE-2023-1234"
-		mock.ExpectQuery(`SELECT c.id, c.cve_id, c.description, c.cvss_score, c.vector_string, c.cisa_kev, c.published_date, c.updated_date, 'active' as status, c."references", c.epss_score, c.cwe_id, c.cwe_name, c.github_poc_count FROM cves c WHERE c.cve_id = \$1`).
+		mock.ExpectQuery(`SELECT id, cve_id, description, cvss_score, vector_string, cisa_kev, published_date, updated_date, 'active' as status, "references", epss_score, cwe_id, cwe_name, github_poc_count FROM cves WHERE cve_id = \$1`).
 			WithArgs(cveID).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count"}).
 				AddRow(1, cveID, "Test description", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", true, time.Now(), time.Now(), "active", "[]", 0.5, "CWE-79", "XSS", 10))
@@ -204,7 +204,7 @@ func TestCVEDetailHandler_Extra(t *testing.T) {
 		app := setupTestApp(t, mock)
 
 		cveID := "CVE-NOT-FOUND"
-		mock.ExpectQuery(`SELECT .* FROM cves c WHERE c.cve_id = \$1`).
+		mock.ExpectQuery(`SELECT .* FROM cves WHERE cve_id = \$1`).
 			WithArgs(cveID).
 			WillReturnError(pgx.ErrNoRows)
 
@@ -231,7 +231,7 @@ func TestCVEDetailHandler_Extra(t *testing.T) {
 		app := setupTestApp(t, mock)
 
 		cveID := "CVE-ERROR"
-		mock.ExpectQuery(`SELECT .* FROM cves c WHERE c.cve_id = \$1`).
+		mock.ExpectQuery(`SELECT .* FROM cves WHERE cve_id = \$1`).
 			WithArgs(cveID).
 			WillReturnError(fmt.Errorf("db error"))
 
