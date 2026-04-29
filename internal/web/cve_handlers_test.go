@@ -30,12 +30,22 @@ func TestIndexHandler(t *testing.T) {
 		mock.ExpectQuery("SELECT").WithArgs().WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit"}).AddRow(100, 10, 5))
 
 		// Main query should have 2 args (pageSize, offset) if others are empty
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.cve_id, c.description, c.cvss_score, c.vector_string, c.cisa_kev, c.published_date, c.updated_date, 'active' as status, c.\"references\", '' as notes FROM cves c WHERE (1=1) ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $1 OFFSET $2")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, 'active' as status, c.\"references\", COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0) FROM cves c WHERE (1=1) ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $1 OFFSET $2")).
 			WithArgs(20, 0).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes"}).
-				AddRow(1, "CVE-2024-0001", "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, ""))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count"}).
+				AddRow(1, "CVE-2024-0001", "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, 0.123, "CWE-79", "XSS", 1))
 
 		mock.ExpectQuery("SELECT.*COUNT.*FILTER").WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(0, 1, 0, 0))
+
+		// CWE Stats
+		mock.ExpectQuery("SELECT cwe_id").WillReturnRows(pgxmock.NewRows([]string{"cwe_id", "cwe_name", "cnt"}).AddRow("CWE-79", "XSS", 1))
+
+		// EPSS Stats
+		mock.ExpectQuery("SELECT.*COUNT.*FILTER.*epss_score").WillReturnRows(pgxmock.NewRows([]string{"e1", "e2", "e3", "e4"}).AddRow(1, 0, 0, 0))
+
+		// Trending CVEs
+		mock.ExpectQuery("SELECT.*c.id, c.cve_id.*FROM cves c.*ORDER BY c.github_poc_count DESC").WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count"}).
+			AddRow(2, "CVE-2024-9999", "Trending", 9.8, "", true, time.Now(), time.Now(), "active", []string{}, 0.9, "CWE-89", "SQLi", 5))
 
 		req := httptest.NewRequest("GET", "/", nil)
 		rr := httptest.NewRecorder()
@@ -98,14 +108,11 @@ func TestDashboardHandler(t *testing.T) {
 			req.AddCookie(c)
 		}
 
-		mock.ExpectQuery("SELECT").WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"total_cves", "kev_count", "critical_count", "in_progress_count"}).
-				AddRow(100, 5, 10, 2))
-
-		now := time.Now()
-		mock.ExpectQuery("SELECT DISTINCT").WithArgs(1, 20, 0).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes"}).
-				AddRow(1, "CVE-2024-0001", "Test CVE", 7.5, "CVSS:3.1/...", false, now, now, "active", []string{"http://example.com"}, "some notes"))
+		mock.ExpectQuery("SELECT.*COUNT.*DISTINCT").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit", "prog"}).AddRow(100, 10, 5, 2))
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT DISTINCT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, c.\"references\", ucn.notes, COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0)")).
+			WithArgs(1, 20, 0).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes", "epss_score", "cwe_id", "cwe_name", "github_poc_count"}).
+				AddRow(1, "CVE-2024-0001", "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, "", 0.123, "CWE-79", "XSS", 1))
 
 		mock.ExpectQuery("SELECT.*COUNT.*DISTINCT.*cvss_score").
 			WithArgs(1).
@@ -176,10 +183,10 @@ func TestCVEDetailHandler_Extra(t *testing.T) {
 		app := setupTestApp(t, mock)
 
 		cveID := "CVE-2023-1234"
-		mock.ExpectQuery(`SELECT id, cve_id, description, cvss_score, vector_string, cisa_kev, published_date, updated_date, 'active' as status, "references", epss_score, cwe_id, cwe_name, github_poc_count FROM cves WHERE cve_id = \$1`).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cve_id, description, COALESCE(cvss_score, 0), vector_string, cisa_kev, published_date, updated_date, 'active' as status, \"references\", COALESCE(epss_score, 0), COALESCE(cwe_id, ''), COALESCE(cwe_name, ''), COALESCE(github_poc_count, 0)")).
 			WithArgs(cveID).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count"}).
-				AddRow(1, cveID, "Test description", 7.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", true, time.Now(), time.Now(), "active", "[]", 0.5, "CWE-79", "XSS", 10))
+				AddRow(1, cveID, "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, 0.123, "CWE-79", "XSS", 1))
 
 		req, _ := http.NewRequest("GET", "/cve/"+cveID, nil)
 		req = mux.SetURLVars(req, map[string]string{"id": cveID})
