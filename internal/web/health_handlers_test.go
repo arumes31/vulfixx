@@ -38,7 +38,7 @@ func TestHealthHandlers(t *testing.T) {
 		}
 		// setupTestApp already sets app.Redis to a local client
 		// but let's be explicit and handle errors.
-		
+
 		req := httptest.NewRequest("GET", "/readyz", nil)
 		rr := httptest.NewRecorder()
 		app.ReadyzHandler(rr, req)

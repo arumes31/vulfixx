@@ -25,11 +25,11 @@ func TestSubscriptionHandlers(t *testing.T) {
 			t.Fatalf("failed to create mock pool: %v", err)
 		}
 		defer mock.Close()
-		
+
 		oldPool := db.Pool
 		db.Pool = mock
 		defer func() { db.Pool = oldPool }()
-		
+
 		app := setupTestApp(t, mock)
 
 		userID := 1
@@ -99,7 +99,7 @@ func TestHandleAlertAction(t *testing.T) {
 		// POST actually writes to DB with status 'in_progress'
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO user_cve_status")).WithArgs(1, 100).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO user_activity_logs")).WithArgs(1, "remediation", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
-		
+
 		reqPost := httptest.NewRequest("POST", "/alert-action?token="+token+"&action=acknowledge", nil)
 		rrPost := httptest.NewRecorder()
 		app.HandleAlertAction(rrPost, reqPost)
@@ -117,7 +117,7 @@ func TestHandleAlertAction(t *testing.T) {
 			t.Fatalf("failed to create mock pool: %v", err)
 		}
 		defer mock.Close()
-		
+
 		oldPool := db.Pool
 		db.Pool = mock
 		defer func() { db.Pool = oldPool }()

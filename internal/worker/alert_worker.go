@@ -273,7 +273,7 @@ func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, s
 	}
 
 	cve.OSINTData = w.fetchOSINTLinks(ctx, cve.CVEID)
-	
+
 	if !w.bufferAlert(ctx, userID, cve, sub, email, assetName) {
 		return false
 	}

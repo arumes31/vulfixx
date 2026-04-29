@@ -1,7 +1,6 @@
 package web
 
 import (
-
 	"cve-tracker/internal/models"
 	"fmt"
 	"log"

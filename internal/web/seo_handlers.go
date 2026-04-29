@@ -71,4 +71,3 @@ func GetBaseURL() string {
 	}
 	return strings.TrimSuffix(url, "/")
 }
-

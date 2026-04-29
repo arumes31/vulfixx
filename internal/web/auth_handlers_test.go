@@ -115,10 +115,10 @@ func TestVerifyTOTPHandler(t *testing.T) {
 
 		mock.ExpectQuery("SELECT totp_secret FROM users WHERE id = \\$1").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"totp_secret"}).AddRow(secret))
-		
+
 		mock.ExpectExec("UPDATE users SET is_totp_enabled = TRUE").WithArgs(1).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-		
+
 		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(1, "totp_enabled", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
@@ -140,11 +140,11 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 			t.Fatalf("failed to create mock pool: %v", err)
 		}
 		defer mock.Close()
-		
+
 		oldPool := db.Pool
 		db.Pool = mock
 		defer func() { db.Pool = oldPool }()
-		
+
 		app := setupTestApp(t, mock)
 
 		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
@@ -180,11 +180,11 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 			t.Fatalf("failed to create mock pool: %v", err)
 		}
 		defer mock.Close()
-		
+
 		oldPool := db.Pool
 		db.Pool = mock
 		defer func() { db.Pool = oldPool }()
-		
+
 		app := setupTestApp(t, mock)
 
 		secret := "JBSWY3DPEHPK3PXP"
@@ -193,14 +193,14 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 		form := url.Values{"totp_code": {code}}
 		req := httptest.NewRequest("POST", "/login", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		
+
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["pre_auth_user_id"] = 1
 		session.Values["pre_auth_ts"] = time.Now().Unix()
 		session.Values["pre_auth_attempts"] = 0
 		rr_session := httptest.NewRecorder()
 		if err := session.Save(req, rr_session); err != nil {
-				t.Fatalf("session.Save: %v", err)
+			t.Fatalf("session.Save: %v", err)
 		}
 		for _, c := range rr_session.Result().Cookies() {
 			req.AddCookie(c)
@@ -233,11 +233,11 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 			t.Fatalf("failed to create mock pool: %v", err)
 		}
 		defer mock.Close()
-		
+
 		oldPool := db.Pool
 		db.Pool = mock
 		defer func() { db.Pool = oldPool }()
-		
+
 		app := setupTestApp(t, mock)
 
 		secret := "JBSWY3DPEHPK3PXP"
@@ -245,14 +245,14 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 		form := url.Values{"totp_code": {"000000"}}
 		req := httptest.NewRequest("POST", "/login", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		
+
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["pre_auth_user_id"] = 1
 		session.Values["pre_auth_ts"] = time.Now().Unix()
 		session.Values["pre_auth_attempts"] = 0
 		rr_session := httptest.NewRecorder()
 		if err := session.Save(req, rr_session); err != nil {
-				t.Fatalf("session.Save: %v", err)
+			t.Fatalf("session.Save: %v", err)
 		}
 		for _, c := range rr_session.Result().Cookies() {
 			req.AddCookie(c)
@@ -280,24 +280,24 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 			t.Fatalf("failed to create mock pool: %v", err)
 		}
 		defer mock.Close()
-		
+
 		oldPool := db.Pool
 		db.Pool = mock
 		defer func() { db.Pool = oldPool }()
-		
+
 		app := setupTestApp(t, mock)
 
 		form := url.Values{"totp_code": {"123456"}}
 		req := httptest.NewRequest("POST", "/login", strings.NewReader(form.Encode()))
 		req.RemoteAddr = "192.0.2.1:1234"
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		
+
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["pre_auth_user_id"] = 1
 		session.Values["pre_auth_ts"] = time.Now().Unix()
 		rr_session := httptest.NewRecorder()
 		if err := session.Save(req, rr_session); err != nil {
-				t.Fatalf("session.Save: %v", err)
+			t.Fatalf("session.Save: %v", err)
 		}
 		for _, c := range rr_session.Result().Cookies() {
 			req.AddCookie(c)

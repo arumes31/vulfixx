@@ -28,7 +28,7 @@ func TestWebErrorPaths(t *testing.T) {
 	app.LoginHandler(rr, req)
 	// Actually, ParseForm doesn't fail that easily with strings.NewReader
 	// But let's assume it might or test another error path.
-	
+
 	// Test UpdateCVEStatusHandler Method Not Allowed
 	req = httptest.NewRequest("GET", "/api/status", nil)
 	rr = httptest.NewRecorder()
@@ -53,4 +53,3 @@ func TestWebErrorPaths(t *testing.T) {
 		t.Errorf("RSSFeedHandler should return 401 for missing token, got %d", rr.Code)
 	}
 }
-

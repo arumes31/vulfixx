@@ -149,7 +149,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	query += whereClause
 	query += fmt.Sprintf(" ORDER BY c.published_date DESC LIMIT $%d OFFSET $%d ", argIdx, argIdx+1)
-	
+
 	finalArgs := append(args, pageSize, offset)
 
 	rows, err := a.Pool.Query(r.Context(), query, finalArgs...)
@@ -191,7 +191,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		Medium   int
 		Low      int
 	}
-	
+
 	// Create base query from metricsQuery by replacing its SELECT list
 	idx := strings.Index(metricsQuery, "FROM cves c")
 	var baseFromJoin string
@@ -209,8 +209,8 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"COUNT(DISTINCT CASE WHEN c.cvss_score >= 4.0 AND c.cvss_score < 7.0 THEN c.id END), " +
 		"COUNT(DISTINCT CASE WHEN c.cvss_score < 4.0 THEN c.id END) " +
 		baseFromJoin + whereClause
-		
-	_ = a.Pool.QueryRow(r.Context(), severityQuery, severityArgs...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
+
+	_ = a.Pool.QueryRow(r.Context(), severityQuery, args...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
 
 	// Fetch status distribution for the current view
 	var statusCounts struct {
@@ -225,8 +225,8 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"COUNT(DISTINCT CASE WHEN ucs.status = 'resolved' THEN c.id END), " +
 		"COUNT(DISTINCT CASE WHEN ucs.status = 'ignored' THEN c.id END) " +
 		baseFromJoin + whereClause
-		
-	_ = a.Pool.QueryRow(r.Context(), statusQuery, severityArgs...).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
+
+	_ = a.Pool.QueryRow(r.Context(), statusQuery, args...).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
 
 	a.RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
 		"CVEs":           cves,
@@ -733,6 +733,6 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 		"MetaDescription": fmt.Sprintf("Security analysis of %s. Severity: %.1f. %s", c.CVEID, c.CVSSScore, c.Description),
 		"Canonical":       fmt.Sprintf("/cve/%s", c.CVEID),
 		/* #nosec G203 */
-		"JSONLD":          template.JS(safeJSONLD), // safe: JSON-marshaled then </script>-escaped
+		"JSONLD": template.JS(safeJSONLD), // safe: JSON-marshaled then </script>-escaped
 	})
 }

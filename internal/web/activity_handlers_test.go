@@ -86,7 +86,7 @@ func TestExportActivityLogHandler(t *testing.T) {
 		if rr.Header().Get("Content-Type") != "application/json" {
 			t.Errorf("expected application/json, got %s", rr.Header().Get("Content-Type"))
 		}
-		
+
 		var logs []map[string]interface{}
 		if err := json.NewDecoder(rr.Body).Decode(&logs); err != nil {
 			t.Errorf("failed to decode JSON: %v", err)
