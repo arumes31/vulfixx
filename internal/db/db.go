@@ -83,27 +83,9 @@ func migrate(ctx context.Context) error {
 		"ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;",
 		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS enable_email BOOLEAN DEFAULT TRUE;",
 		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS enable_webhook BOOLEAN DEFAULT TRUE;",
-		`CREATE TABLE IF NOT EXISTS sync_state (
-			key VARCHAR(100) PRIMARY KEY,
-			value TEXT NOT NULL,
-			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-		);`,
 		"CREATE INDEX IF NOT EXISTS idx_cves_published_date ON cves (published_date DESC);",
 		"CREATE INDEX IF NOT EXISTS idx_cves_cvss_score ON cves (cvss_score);",
 		"CREATE INDEX IF NOT EXISTS idx_cves_updated_date ON cves (updated_date DESC);",
-		`CREATE TABLE IF NOT EXISTS assets (
-			id SERIAL PRIMARY KEY,
-			user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-			name VARCHAR(255) NOT NULL,
-			type VARCHAR(100),
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-		);`,
-		`CREATE TABLE IF NOT EXISTS asset_keywords (
-			id SERIAL PRIMARY KEY,
-			asset_id INTEGER REFERENCES assets(id) ON DELETE CASCADE,
-			keyword VARCHAR(255) NOT NULL,
-			UNIQUE(asset_id, keyword)
-		);`,
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS vector_string TEXT;",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS \"references\" TEXT[];",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS epss_score NUMERIC(6,5);",
@@ -112,13 +94,6 @@ func migrate(ctx context.Context) error {
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS github_poc_count INTEGER DEFAULT 0;",
 		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS filter_logic TEXT DEFAULT '';",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS osint_data JSONB DEFAULT '{}';",
-		`CREATE TABLE IF NOT EXISTS user_cve_notes (
-			user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-			cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,
-			notes TEXT,
-			updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY (user_id, cve_id)
-		);`,
 	}
 
 	for i, q := range queries {
