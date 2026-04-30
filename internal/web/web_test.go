@@ -78,7 +78,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	}
 	_ = resLogin.Body.Close()
 
-	doAuthReq := func(method, path string, body []byte, extraMocks func(), expectedCodes ...int) *http.Response {
+	doAuthReq := func(method, path string, body []byte, extraMocks func(), _ ...int) *http.Response {
 		isPublic := path == "/" || strings.HasPrefix(path, "/feed") || path == "/login" || path == "/register" || strings.HasPrefix(path, "/verify-email") || strings.HasPrefix(path, "/confirm-email-change") || path == "/logout" || strings.HasPrefix(path, "/cve/") || path == "/robots.txt" || path == "/sitemap.xml"
 
 		if !isPublic {
