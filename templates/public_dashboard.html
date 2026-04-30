@@ -152,7 +152,7 @@
                 <button type="submit" class="px-6 py-3 bg-primary text-on-primary rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-lg shadow-primary/20 whitespace-nowrap">
                     Filter
                 </button>
-                <a href="/" class="p-3 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-all hover:bg-white/10" title="Clear All Filters">
+                <a href="/" class="p-3 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-all hover:bg-white/10" title="Clear All Filters" aria-label="Clear all filters">
                     <span class="material-symbols-outlined text-sm">filter_alt_off</span>
                 </a>
             </div>
@@ -257,12 +257,12 @@
             <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Page {{.Page}} of {{.TotalPages}}</span>
             <div class="flex gap-2">
                 {{if gt .Page 1}}
-                <a href="/?page={{subtract .Page 1}}&q={{urlquery .Query}}&vendor={{urlquery .Vendor}}&product={{urlquery .Product}}&cve={{urlquery .CVE}}&cwe={{urlquery .CWE}}&start_date={{urlquery .StartDate}}&end_date={{urlquery .EndDate}}&min_cvss={{urlquery .MinCvss}}&max_cvss={{urlquery .MaxCvss}}&kev={{urlquery .KevOnly}}&has_poc={{urlquery .HasPoC}}&min_epss={{urlquery .MinEpss}}&max_epss={{urlquery .MaxEpss}}" class="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all">
+                <a href="/?page={{subtract .Page 1}}&q={{urlquery .Query}}&vendor={{urlquery .Vendor}}&product={{urlquery .Product}}&cve={{urlquery .CVE}}&cwe={{urlquery .CWE}}&start_date={{urlquery .StartDate}}&end_date={{urlquery .EndDate}}&min_cvss={{urlquery .MinCvss}}&max_cvss={{urlquery .MaxCvss}}&kev={{urlquery .KevOnly}}&has_poc={{urlquery .HasPoC}}&min_epss={{urlquery .MinEpss}}&max_epss={{urlquery .MaxEpss}}" aria-label="Previous page" class="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all">
                     <span class="material-symbols-outlined text-sm">chevron_left</span>
                 </a>
                 {{end}}
                 {{if lt .Page .TotalPages}}
-                <a href="/?page={{add .Page 1}}&q={{urlquery .Query}}&vendor={{urlquery .Vendor}}&product={{urlquery .Product}}&cve={{urlquery .CVE}}&cwe={{urlquery .CWE}}&start_date={{urlquery .StartDate}}&end_date={{urlquery .EndDate}}&min_cvss={{urlquery .MinCvss}}&max_cvss={{urlquery .MaxCvss}}&kev={{urlquery .KevOnly}}&has_poc={{urlquery .HasPoC}}&min_epss={{urlquery .MinEpss}}&max_epss={{urlquery .MaxEpss}}" class="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all">
+                <a href="/?page={{add .Page 1}}&q={{urlquery .Query}}&vendor={{urlquery .Vendor}}&product={{urlquery .Product}}&cve={{urlquery .CVE}}&cwe={{urlquery .CWE}}&start_date={{urlquery .StartDate}}&end_date={{urlquery .EndDate}}&min_cvss={{urlquery .MinCvss}}&max_cvss={{urlquery .MaxCvss}}&kev={{urlquery .KevOnly}}&has_poc={{urlquery .HasPoC}}&min_epss={{urlquery .MinEpss}}&max_epss={{urlquery .MaxEpss}}" aria-label="Next page" class="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all">
                     <span class="material-symbols-outlined text-sm">chevron_right</span>
                 </a>
                 {{end}}
