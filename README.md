@@ -32,7 +32,7 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 - **Asset-Linked Monitoring**: Proactive infrastructure defense via asset-keyword mapping.
 - **Secure Integration**: Filtered, token-authenticated RSS feeds for personalized technical intel.
 - **Rich Email Alerts**: Premium HTML notifications with OSINT links, Vendor advisories, and Risk gauges.
-- **Modern UI**: High-density dashboard with a premium glassmorphic Amber theme, built on a custom SPA navigation framework for high-performance, seamless transitions.
+- **Modern UI**: High-density dashboard with a premium glassmorphic Amber theme, built on a custom SPA navigation framework for high-performance, seamless transitions. Features **interactive column sorting**, dynamic multi-variable filtering, and synchronized risk distribution charts.
 
 ## 🏗️ Architecture
 The application follows a modular architecture designed to prevent monolithic files and improve domain separation.
@@ -40,7 +40,7 @@ The application follows a modular architecture designed to prevent monolithic fi
 ### Web Layer (`internal/web`)
 - **`base.go`**: Core middlewares (Auth, Admin, Proxy, Security), template rendering, and global stats caching.
 - **`auth_handlers.go`**: User identity, registration, and email verification.
-- **`dashboard_handlers.go`**: CVE monitoring, status updates, and notes management.
+- **`dashboard_handlers.go`**: CVE monitoring, interactive sorting, status updates, and notes management.
 - **`subscription_handlers.go`**: Keyword subscriptions, RSS feeds, and alert actions.
 - **`asset_handlers.go`**: IT Asset inventory and keyword mapping.
 - **`activity_handlers.go`**: Audit logging and JSON activity exports.

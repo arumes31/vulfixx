@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"cve-tracker/internal/models"
 	"database/sql"
 	"encoding/json"
@@ -525,9 +526,12 @@ type PublicDashboardData struct {
 	MetaTitle       string                 `json:"meta_title"`
 	MetaDescription string                 `json:"meta_description"`
 	Trending        []models.CVE           `json:"trending"`
+	Sort            string                 `json:"sort"`
+	Order           string                 `json:"order"`
 }
 
 func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
+	isAJAX := r.URL.Query().Get("ajax") == "true"
 	pageStr := r.URL.Query().Get("page")
 	page, _ := strconv.Atoi(pageStr)
 	if page < 1 {
@@ -567,9 +571,21 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		maxEpss = 1.0
 	}
 
+	// Normalize sort/order
+	sort := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort")))
+	order := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("order")))
+
+	// Default sort
+	if sort == "" {
+		sort = "published"
+	}
+	if order != "asc" && order != "desc" {
+		order = "desc"
+	}
+
 	// Redis Caching for Default View
 	cacheKey := "public_dashboard_default_v2"
-	if r.URL.RawQuery == "" || r.URL.RawQuery == "page=1" {
+	if (r.URL.RawQuery == "" || r.URL.RawQuery == "page=1") && sort == "" && order == "" {
 		if val, err := a.Redis.Get(r.Context(), cacheKey).Result(); err == nil {
 			var cachedData PublicDashboardData
 			if err := json.Unmarshal([]byte(val), &cachedData); err == nil {
@@ -602,6 +618,10 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 					"ActiveTab":       "cves",
 					"CanScroll":       cachedData.Total > cachedData.Page*20,
 					"csrfField":       csrf.TemplateField(r),
+				}
+				if isAJAX {
+					a.renderAJAX(w, renderData)
+					return
 				}
 				a.RenderTemplate(w, r, "public_dashboard.html", renderData)
 				return
@@ -710,8 +730,25 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 			COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0)
 		FROM cves c
 	`
+	// Dynamic Sort
+	sortCol := "c.published_date"
+	sortOrder := "DESC"
+	switch sort {
+	case "id":
+		sortCol = "c.cve_id"
+	case "severity":
+		sortCol = "c.cvss_score"
+	case "epss":
+		sortCol = "c.epss_score"
+	case "published":
+		sortCol = "c.published_date"
+	}
+	if strings.ToUpper(order) == "ASC" {
+		sortOrder = "ASC"
+	}
+
 	query += whereClause
-	query += fmt.Sprintf(" ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $%d OFFSET $%d ", argIdx, argIdx+1)
+	query += fmt.Sprintf(" ORDER BY %s %s NULLS LAST, c.id DESC LIMIT $%d OFFSET $%d ", sortCol, sortOrder, argIdx, argIdx+1)
 	finalArgs := append(args, pageSize, offset)
 	var cves []models.CVE
 	rows, err := a.Pool.Query(r.Context(), query, finalArgs...)
@@ -732,7 +769,6 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	isAJAX := r.URL.Query().Get("ajax") == "true"
 	totalPages := (totalItems + pageSize - 1) / pageSize
 	if totalPages < 1 {
 		totalPages = 1
@@ -811,7 +847,9 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"SeverityCounts":  severityCounts,
 		"TopCWEs":         topCWEs,
 		"EPSSDist":        epssDist,
-		"MetaTitle":       "Vulfixx - Public CVE Tracker & Threat Intelligence",
+		"Sort":            sort,
+		"Order":           order,
+		"MetaTitle":       "Vulfixx - Public CVE Tracker",
 		"MetaDescription": "Monitor real-time vulnerability data, CISA KEV listings, and critical security advisories. The ultimate tracker for security professionals.",
 		"Trending":        a.getTrendingCVEs(r),
 		"csrfField":       csrf.TemplateField(r),
@@ -855,16 +893,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if isAJAX {
-		a.TemplateMu.RLock()
-		tmpl, ok := a.TemplateMap["public_dashboard.html"]
-		a.TemplateMu.RUnlock()
-		if !ok {
-			http.Error(w, "Template not found", http.StatusInternalServerError)
-			return
-		}
-		if err := tmpl.ExecuteTemplate(w, "cve_rows", renderData); err != nil {
-			log.Printf("Error executing AJAX template: %v", err)
-		}
+		a.renderAJAX(w, renderData)
 		return
 	}
 
@@ -975,4 +1004,29 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 		/* #nosec G203 */
 		"JSONLD": template.JS(safeJSONLD), // safe: JSON-marshaled then </script>-escaped
 	})
+}
+
+func (a *App) renderAJAX(w http.ResponseWriter, renderData map[string]interface{}) {
+	a.TemplateMu.RLock()
+	tmpl, ok := a.TemplateMap["public_dashboard.html"]
+	a.TemplateMu.RUnlock()
+	if !ok {
+		http.Error(w, "Template not found", http.StatusInternalServerError)
+		return
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&buf, "cve_rows", renderData); err != nil {
+		log.Printf("Error executing AJAX template: %v", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"html": buf.String(),
+		"meta": renderData,
+	}); err != nil {
+		log.Printf("Error encoding AJAX JSON response: %v", err)
+	}
 }

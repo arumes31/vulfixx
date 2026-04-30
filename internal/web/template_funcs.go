@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
@@ -95,6 +96,10 @@ func (a *App) InitTemplatesWithFuncs() error {
 				return "bg-yellow-500"
 			}
 			return "bg-blue-500"
+		},
+		"marshal": func(v interface{}) template.JS {
+			a, _ := json.Marshal(v)
+			return template.JS(a) // #nosec G203
 		},
 	}
 
