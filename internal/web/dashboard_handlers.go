@@ -728,7 +728,6 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Public dashboard query error: %v", err)
 		totalItems = 0
-		totalPages = 1
 	} else {
 		defer rows.Close()
 		for rows.Next() {

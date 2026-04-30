@@ -213,7 +213,7 @@ func TestWorkerSync_EPSS(t *testing.T) {
 			gz := gzip.NewWriter(rw)
 			data := "cve,epss,percentile\nCVE-EPSS-1,0.0123,0.1234\n"
 			_, _ = gz.Write([]byte(data))
-			gz.Close()
+			_ = gz.Close()
 		}))
 		defer ts.Close()
 		oldURL := defaultEPSSBaseURL

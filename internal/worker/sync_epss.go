@@ -43,7 +43,7 @@ func (w *Worker) syncEPSS(ctx context.Context) {
 		log.Printf("Worker: [ERROR] Failed to download EPSS bulk CSV: %v", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Worker: [ERROR] EPSS bulk CSV returned status %d", resp.StatusCode)
@@ -55,7 +55,7 @@ func (w *Worker) syncEPSS(ctx context.Context) {
 		log.Printf("Worker: [ERROR] Failed to create gzip reader for EPSS CSV: %v", err)
 		return
 	}
-	defer gzReader.Close()
+	defer func() { _ = gzReader.Close() }()
 
 	scanner := bufio.NewScanner(gzReader)
 	var batchRows [][]interface{}
