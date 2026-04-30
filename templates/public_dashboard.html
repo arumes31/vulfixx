@@ -285,7 +285,7 @@
 </script>
 
 <script nonce="{{.Nonce}}">
-const initPublicDashboard = () => {
+var initPublicDashboard = () => {
     const rawData = document.getElementById('dashboard-data').textContent;
     const dashboardData = JSON.parse(rawData);
 
