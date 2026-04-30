@@ -1,10 +1,10 @@
 package worker
 
 import (
+	"compress/gzip"
 	"context"
 	"cve-tracker/internal/db"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -209,16 +209,20 @@ func TestWorkerSync_EPSS(t *testing.T) {
 
 	t.Run("Success", func(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-			data := `{"data":[{"epss":"0.0123"}]}`
-			_, _ = fmt.Fprint(rw, data)
+			rw.Header().Set("Content-Type", "application/gzip")
+			gz := gzip.NewWriter(rw)
+			data := "cve,epss,percentile\nCVE-EPSS-1,0.0123,0.1234\n"
+			_, _ = gz.Write([]byte(data))
+			_ = gz.Close()
 		}))
 		defer ts.Close()
 		oldURL := defaultEPSSBaseURL
 		defaultEPSSBaseURL = ts.URL
 		defer func() { defaultEPSSBaseURL = oldURL }()
 
-		mock.ExpectQuery("SELECT cve_id FROM cves").WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-EPSS-1"))
-		mock.ExpectExec("UPDATE cves SET epss_score = \\$1 WHERE cve_id = \\$2").WithArgs(0.0123, "CVE-EPSS-1").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("UPDATE cves SET epss_score = u.epss_score").
+			WithArgs([]string{"CVE-EPSS-1"}, []float64{0.0123}).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 		defer cancel()

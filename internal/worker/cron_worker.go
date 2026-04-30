@@ -80,7 +80,7 @@ func (w *Worker) startWeeklySummaryTask(ctx context.Context) {
 	}
 }
 
-func (w *Worker) sendWeeklySummaries(ctx context.Context) error {
+func (w *Worker) sendWeeklySummaries(_ context.Context) error {
 	log.Println("Worker: [CRON] Starting weekly summaries distribution...")
 	start := time.Now()
 	// Implementation logic for weekly summaries

@@ -2,14 +2,14 @@
 
 {{define "content"}}
 <div class="flex items-center justify-center min-h-[80vh]">
-    <div class="bg-surface-container border border-outline-variant/30 rounded-xl p-8 max-w-md w-full shadow-2xl relative overflow-hidden">
+    <div class="glass border border-white/10 rounded-[2.5rem] p-10 max-w-md w-full shadow-2xl relative overflow-hidden">
         <!-- Decorative subtle gradient glow -->
-        <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-primary-container"></div>
+        <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-orange-500"></div>
 
         <div class="text-center mb-8">
-            <img src="/static/img/logo.png" alt="Vulfixx Logo" class="h-12 w-auto mx-auto mb-4">
-            <h2 class="text-2xl font-display font-bold tracking-wide">System Authentication</h2>
-            <p class="text-sm font-label text-on-surface-variant tracking-widest uppercase mt-2">Identify to access telemetry</p>
+            <img src="/static/img/logo.png" alt="Vulfixx Logo" class="h-16 w-auto mx-auto mb-6">
+            <h2 class="text-3xl font-display font-bold tracking-tight text-white">System Access</h2>
+            <p class="text-xs font-label text-gray-500 tracking-widest uppercase mt-3">Identify to access telemetry</p>
         </div>
 
         {{if .Message}}
@@ -29,29 +29,29 @@
             {{.csrfField}}
         {{if .RequireTOTP}}
             <div class="space-y-2">
-                <label for="totp_code" class="text-xs font-label font-bold tracking-widest uppercase text-on-surface-variant block">TOTP Code</label>
+                <label for="totp_code" class="text-xs font-label font-bold tracking-widest uppercase text-gray-500 block">TOTP Code</label>
                 <input id="totp_code" type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456" autofocus
-                       class="w-full bg-surface-container-low border-b-2 border-outline-variant/50 focus:border-primary px-4 py-3 rounded-t-md text-on-surface focus:outline-none transition-colors font-mono tracking-widest placeholder:text-on-surface-variant/30">
+                       class="w-full bg-white/5 border border-white/10 px-4 py-4 rounded-2xl text-white focus:outline-none focus:border-primary transition-all font-mono tracking-widest placeholder:text-white/10 text-center">
             </div>
         {{else}}
             <div class="space-y-2">
-                <label for="email" class="text-xs font-label font-bold tracking-widest uppercase text-on-surface-variant block">Email Operator</label>
+                <label for="email" class="text-xs font-label font-bold tracking-widest uppercase text-gray-500 block">Email Operator</label>
                 <input id="email" type="email" name="email" required placeholder="operator@system.core" autofocus
-                       class="w-full bg-surface-container-low border-b-2 border-outline-variant/50 focus:border-primary px-4 py-3 rounded-t-md text-on-surface focus:outline-none transition-colors placeholder:text-on-surface-variant/30">
+                       class="w-full bg-white/5 border border-white/10 px-4 py-4 rounded-2xl text-white focus:outline-none focus:border-primary transition-all placeholder:text-white/10">
             </div>
             <div class="space-y-2">
-                <label for="password" class="text-xs font-label font-bold tracking-widest uppercase text-on-surface-variant block">Passphrase</label>
+                <label for="password" class="text-xs font-label font-bold tracking-widest uppercase text-gray-500 block">Passphrase</label>
                 <input id="password" type="password" name="password" required placeholder="••••••••"
-                       class="w-full bg-surface-container-low border-b-2 border-outline-variant/50 focus:border-primary px-4 py-3 rounded-t-md text-on-surface focus:outline-none transition-colors placeholder:text-on-surface-variant/30 font-mono tracking-widest">
+                       class="w-full bg-white/5 border border-white/10 px-4 py-4 rounded-2xl text-white focus:outline-none focus:border-primary transition-all placeholder:text-white/10 font-mono tracking-widest">
             </div>
         {{end}}
-            <button type="submit" class="w-full bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold font-label tracking-widest uppercase py-3 rounded-md shadow-[0_0_15px_rgba(0,218,243,0.3)] hover:shadow-[0_0_25px_rgba(0,218,243,0.5)] transition-all duration-300">
+            <button type="submit" class="w-full bg-primary text-on-primary font-bold font-label tracking-widest uppercase py-4 rounded-2xl shadow-lg shadow-primary/20 hover:bg-primary/80 transition-all duration-300 active:scale-95">
                 Authenticate
             </button>
         </form>
 
-        <div class="mt-8 pt-6 border-t border-outline-variant/30 text-center">
-            <p class="text-sm font-label text-on-surface-variant">Unregistered operator? <a href="/register" class="text-primary hover:underline font-bold tracking-widest uppercase">Request Access</a></p>
+        <div class="mt-8 pt-6 border-t border-white/5 text-center">
+            <p class="text-sm font-label text-gray-500">Unregistered operator? <a href="/register" class="text-primary hover:underline font-bold tracking-widest uppercase">Request Access</a></p>
         </div>
     </div>
 </div>

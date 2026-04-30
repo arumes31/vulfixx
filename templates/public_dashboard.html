@@ -15,8 +15,6 @@
         </div>
     </header>
 
-
-
     <!-- Trending Threats Section -->
     <section class="space-y-6">
         <div class="flex items-center justify-between">
@@ -47,10 +45,10 @@
     <!-- Summary Cards -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div class="glass p-6 rounded-3xl border border-white/10 relative overflow-hidden group">
-            <div class="absolute -right-4 -top-4 w-20 h-20 bg-[#00daf3]/5 rounded-full blur-2xl group-hover:bg-[#00daf3]/10 transition-all"></div>
+            <div class="absolute -right-4 -top-4 w-20 h-20 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-all"></div>
             <div class="flex justify-between items-start mb-4">
                 <span class="text-[10px] font-black tracking-widest uppercase text-gray-500">Global CVE Vault</span>
-                <span class="material-symbols-outlined text-[#00daf3]">database</span>
+                <span class="material-symbols-outlined text-primary">database</span>
             </div>
             <h2 class="text-4xl font-black text-white tracking-tighter">{{.Total}}</h2>
         </div>
@@ -75,9 +73,9 @@
     </div>
 
     <!-- Filters Section -->
-    <div class="glass p-8 rounded-[2rem] border border-white/10">
-        <form id="search-form" action="/" method="GET" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div class="space-y-2">
+    <div class="glass p-8 rounded-[2rem] border border-white/10 relative z-10 -mt-10 mb-12 shadow-2xl shadow-black/50">
+        <form id="filter-form" method="GET" action="/" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div class="space-y-2 lg:col-span-2">
                 <label class="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Search Keywords</label>
                 <div class="relative">
                     <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm">search</span>
@@ -106,7 +104,7 @@
                     <input id="filter-max-cvss" type="number" step="0.1" name="max_cvss" value="{{.MaxCvss}}" placeholder="10.0" class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all">
                 </div>
             </div>
-            <div class="space-y-2 lg:col-span-1">
+            <div class="space-y-2">
                 <label class="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">EPSS Probability</label>
                 <div class="flex items-center gap-2">
                     <input id="filter-min-epss" type="number" step="0.01" name="min_epss" value="{{.MinEpss}}" placeholder="0.00" class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all">
@@ -114,13 +112,11 @@
                     <input id="filter-max-epss" type="number" step="0.01" name="max_epss" value="{{.MaxEpss}}" placeholder="1.00" class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all">
                 </div>
             </div>
-            <div class="space-y-2 lg:col-span-1">
+            <div class="space-y-2">
                 <label class="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Date Published</label>
-                <div class="flex items-center gap-2">
-                    <input type="date" name="start_date" value="{{.StartDate}}" class="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all [color-scheme:dark]">
-                </div>
+                <input type="date" name="start_date" value="{{.StartDate}}" class="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all [color-scheme:dark]">
             </div>
-            <div class="flex items-end gap-4 lg:col-span-2">
+            <div class="flex items-end gap-4 lg:col-span-3">
                 <label class="flex items-center gap-3 cursor-pointer bg-white/5 border border-white/10 rounded-2xl px-4 py-3 hover:bg-white/10 transition-all flex-grow">
                     <input type="checkbox" name="kev" value="true" {{if .KevOnly}}checked{{end}} class="w-4 h-4 rounded border-white/10 bg-white/5 text-primary focus:ring-primary focus:ring-offset-0">
                     <span class="text-[10px] font-bold text-gray-300 uppercase">KEV Only</span>
@@ -132,9 +128,9 @@
                 <button type="submit" class="px-6 py-3 bg-primary text-on-primary rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-lg shadow-primary/20 whitespace-nowrap">
                     Filter
                 </button>
-                <a href="/" class="p-3 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-all hover:bg-white/10" title="Clear All Filters">
+                <button type="button" id="clear-filters" class="p-3 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-all hover:bg-white/10" title="Clear All Filters">
                     <span class="material-symbols-outlined text-sm">filter_alt_off</span>
-                </a>
+                </button>
             </div>
         </form>
     </div>
@@ -183,72 +179,20 @@
                         <th class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Published</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-white/5">
-                    {{range .CVEs}}
-                    <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer" data-cve-url="/cve/{{.CVEID}}">
-                        <td class="p-6">
-                            <div class="flex items-center gap-3">
-                                <a href="/cve/{{.CVEID}}" class="text-sm font-black text-white group-hover:text-primary transition-colors">{{.CVEID}}</a>
-                            </div>
-                        </td>
-                        <td class="p-6">
-                            <div class="flex items-center gap-2">
-                                <span class="text-sm font-bold {{severityColor .CVSSScore}}">
-                                    {{printf "%.1f" .CVSSScore}}
-                                </span>
-                                <div class="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
-                                    <div class="h-full {{severityBg .CVSSScore}} max-w-full" style="width: {{multiply (min 10.0 (max 0.0 .CVSSScore)) 10}}%"></div>
-                                </div>
-                            </div>
-                        </td>
-                        <td class="p-6">
-                            <div class="flex flex-wrap gap-2">
-                                {{if .CISAKEV}}
-                                <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-orange-500/20 text-orange-400 border border-orange-500/20">KEV</span>
-                                {{end}}
-                                {{if gt .GitHubPoCCount 0}}
-                                <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-purple-500/20 text-purple-400 border border-purple-500/20">PoC</span>
-                                {{end}}
-                                <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-white/5 text-gray-400 border border-white/10">EPSS: {{printf "%.4f" .EPSSScore}}</span>
-                            </div>
-                        </td>
-                        <td class="p-6">
-                            <p class="text-xs text-gray-400 line-clamp-2 max-w-xl leading-relaxed">{{.Description}}</p>
-                        </td>
-                        <td class="p-6">
-                            <span class="text-[10px] font-mono text-gray-500">{{if not .PublishedDate.IsZero}}{{.PublishedDate.Format "2006-01-02"}}{{end}}</span>
-                        </td>
-                    </tr>
-                    {{else}}
-                    <tr>
-                        <td colspan="5" class="p-12 text-center">
-                            <span class="material-symbols-outlined text-4xl text-gray-600 mb-4">search_off</span>
-                            <p class="text-gray-500 font-bold uppercase tracking-widest text-xs">No vulnerabilities found matching your filters</p>
-                        </td>
-                    </tr>
-                    {{end}}
+                <tbody id="cve-tbody" class="divide-y divide-white/5">
+                    {{template "cve_rows" .}}
                 </tbody>
             </table>
         </div>
         
-        <!-- Pagination -->
-        {{if gt .TotalPages 1}}
-        <div class="p-6 border-t border-white/10 flex justify-between items-center bg-white/5">
-            <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Page {{.Page}} of {{.TotalPages}}</span>
-            <div class="flex gap-2">
-                {{if gt .Page 1}}
-                <a href="/?page={{subtract .Page 1}}&q={{urlquery .Query}}&vendor={{urlquery .Vendor}}&product={{urlquery .Product}}&cve={{urlquery .CVE}}&cwe={{urlquery .CWE}}&start_date={{urlquery .StartDate}}&end_date={{urlquery .EndDate}}&min_cvss={{urlquery .MinCvss}}&max_cvss={{urlquery .MaxCvss}}&kev={{urlquery .KevOnly}}&has_poc={{urlquery .HasPoC}}&min_epss={{urlquery .MinEpss}}&max_epss={{urlquery .MaxEpss}}" class="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all">
-                    <span class="material-symbols-outlined text-sm">chevron_left</span>
-                </a>
-                {{end}}
-                {{if lt .Page .TotalPages}}
-                <a href="/?page={{add .Page 1}}&q={{urlquery .Query}}&vendor={{urlquery .Vendor}}&product={{urlquery .Product}}&cve={{urlquery .CVE}}&cwe={{urlquery .CWE}}&start_date={{urlquery .StartDate}}&end_date={{urlquery .EndDate}}&min_cvss={{urlquery .MinCvss}}&max_cvss={{urlquery .MaxCvss}}&kev={{urlquery .KevOnly}}&has_poc={{urlquery .HasPoC}}&min_epss={{urlquery .MinEpss}}&max_epss={{urlquery .MaxEpss}}" class="p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white transition-all">
-                    <span class="material-symbols-outlined text-sm">chevron_right</span>
-                </a>
-                {{end}}
-            </div>
+        <!-- Sentinel for IntersectionObserver -->
+        <div id="sentinel" class="h-4 w-full"></div>
+
+        <!-- Loading Indicator for Infinite Scroll -->
+        <div id="loading-indicator" class="p-12 text-center hidden">
+            <div class="inline-block w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+            <p class="mt-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Loading Intelligence...</p>
         </div>
-        {{end}}
     </div>
 
     <!-- SEO Optimized Footer Hero Section -->
@@ -261,10 +205,14 @@
             <p class="text-gray-400 max-w-xl mx-auto text-lg leading-relaxed">
                 Vulfixx provides real-time monitoring of the NIST National Vulnerability Database and CISA Known Exploited Vulnerabilities.
             </p>
-            <div class="pt-4">
-                <a href="/register" class="inline-flex items-center gap-3 px-8 py-4 bg-white/5 border border-white/10 rounded-2xl font-bold text-[#00daf3] hover:bg-white/10 transition-all group">
-                    Create Free Account
-                    <span class="material-symbols-outlined group-hover:translate-x-1 transition-transform">arrow_forward</span>
+            <div class="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4">
+                <a href="/register" class="inline-flex items-center gap-3 px-8 py-4 bg-primary text-on-primary rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 transition-all group shadow-lg shadow-primary/20">
+                    Get Started Free
+                    <span class="material-symbols-outlined group-hover:translate-x-1 transition-transform">rocket_launch</span>
+                </a>
+                <a href="/login" class="inline-flex items-center gap-3 px-8 py-4 bg-white/5 border border-white/10 rounded-2xl font-black text-gray-300 hover:text-white hover:bg-white/10 transition-all text-xs uppercase tracking-widest">
+                    Member Login
+                    <span class="material-symbols-outlined">login</span>
                 </a>
             </div>
         </div>
@@ -303,63 +251,176 @@
     animation-play-state: paused;
 }
 </style>
+<script>
+const initPublicDashboard = () => {
+    let currentPage = {{.Page}};
+    const totalPages = {{.TotalPages}};
+    let isLoading = false;
+    const tbody = document.getElementById('cve-tbody');
+    const loadingIndicator = document.getElementById('loading-indicator');
 
-<script nonce="{{.Nonce}}">
-document.addEventListener('DOMContentLoaded', function() {
+    function loadMore() {
+        if (isLoading || currentPage >= totalPages) return;
+        
+        isLoading = true;
+        loadingIndicator.classList.remove('hidden');
+
+        const url = new URL(window.location.href);
+        const nextPage = currentPage + 1;
+        url.searchParams.set('page', nextPage);
+        url.searchParams.set('ajax', 'true');
+
+        fetch(url)
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+                return response.text();
+            })
+            .then(html => {
+                if (html.trim() === '') {
+                    currentPage = totalPages;
+                } else {
+                    currentPage = nextPage;
+                    const temp = document.createElement('tbody');
+                    temp.innerHTML = html;
+                    
+                    // Add click listeners to new rows
+                    temp.querySelectorAll('tr').forEach(row => {
+                        row.addEventListener('click', function(e) {
+                            if (e.target.closest('a')) return;
+                            const url = row.getAttribute('data-cve-url');
+                            if (url) vulfixx.navigate(url);
+                        });
+                        tbody.appendChild(row);
+                    });
+                }
+                isLoading = false;
+                loadingIndicator.classList.add('hidden');
+            })
+            .catch(err => {
+                console.error('Error loading more CVEs:', err);
+                vulfixx.toast('Failed to load more CVEs', 'error');
+                isLoading = false;
+                loadingIndicator.classList.add('hidden');
+            });
+    }
+
+    const filterForm = document.getElementById('filter-form');
+    let debounceTimer;
+
+    function applyFilters() {
+        const url = new URL(window.location.href);
+        url.search = new URLSearchParams(new FormData(filterForm)).toString();
+        url.searchParams.set('ajax', 'true');
+        url.searchParams.delete('page');
+
+        tbody.innerHTML = '<tr><td colspan="5" class="p-12 text-center text-gray-500"><span class="material-symbols-outlined animate-spin text-4xl text-primary">autorenew</span></td></tr>';
+        
+        fetch(url)
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+                return response.text();
+            })
+            .then(html => {
+                tbody.innerHTML = html;
+                currentPage = 1;
+                const newUrl = new URL(window.location.href);
+                newUrl.search = new URLSearchParams(new FormData(filterForm)).toString();
+                window.history.pushState({}, '', newUrl);
+                
+                tbody.querySelectorAll('tr').forEach(row => {
+                    row.addEventListener('click', function(e) {
+                        if (e.target.closest('a')) return;
+                        const url = row.getAttribute('data-cve-url');
+                        if (url) vulfixx.navigate(url);
+                    });
+                });
+            })
+            .catch(err => {
+                console.error('Error applying filters:', err);
+                vulfixx.toast('Failed to update search results', 'error');
+            });
+    }
+
+    filterForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        applyFilters();
+    });
+
+    filterForm.querySelectorAll('input:not([type="checkbox"]), select').forEach(input => {
+        input.addEventListener('input', function() {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(applyFilters, 400);
+        });
+    });
+
+    filterForm.querySelectorAll('input[type="checkbox"]').forEach(input => {
+        input.addEventListener('change', applyFilters);
+    });
+
+    document.getElementById('clear-filters').addEventListener('click', function() {
+        filterForm.reset();
+        filterForm.querySelectorAll('input[type="text"], input[type="number"], input[type="date"]').forEach(input => input.value = '');
+        filterForm.querySelectorAll('input[type="checkbox"]').forEach(input => input.checked = false);
+        applyFilters();
+    });
+
+    // IntersectionObserver for Infinite Scroll
+    const sentinel = document.getElementById('sentinel');
+    const observer = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && !isLoading && currentPage < totalPages) {
+            loadMore();
+        }
+    }, {
+        rootMargin: '200px'
+    });
+    
+    if (sentinel) {
+        observer.observe(sentinel);
+    }
+
     const chartOptions = {
-        plugins: {
-            legend: {
-                position: 'bottom',
-                labels: { color: '#919191', font: { family: 'Space Grotesk', weight: 'bold', size: 10 }, padding: 20 }
-            },
-            tooltip: {
-                backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                titleFont: { family: 'Space Grotesk', size: 13 },
-                bodyFont: { family: 'Space Grotesk', size: 12 },
-                padding: 12,
-                cornerRadius: 12,
-                displayColors: true
-            }
-        },
         responsive: true,
         maintainAspectRatio: false,
-        onClick: (event, elements, chart) => {
-            if (elements.length > 0) {
-                const index = elements[0].index;
-                const label = chart.data.labels[index];
-                applyChartFilter(chart.canvas.id, label, index);
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: '#1a1f26',
+                titleColor: '#ffb311',
+                bodyColor: '#fff',
+                borderColor: 'rgba(255,255,255,0.1)',
+                borderWidth: 1,
+                padding: 12,
+                cornerRadius: 12,
+                displayColors: false
             }
         },
-        onHover: (event, elements) => {
-            event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+        onClick: (evt, activeElements, chart) => {
+            if (activeElements.length > 0) {
+                const index = activeElements[activeElements.length - 1].index;
+                const label = chart.data.labels[index];
+                const form = document.getElementById('search-form');
+                
+                if (chart.canvas.id === 'severityChart') {
+                    const ranges = { 'Critical': [9, 10], 'High': [7, 8.9], 'Medium': [4, 6.9], 'Low': [0, 3.9] };
+                    if (ranges[label]) {
+                        document.getElementById('filter-min-cvss').value = ranges[label][0];
+                        document.getElementById('filter-max-cvss').value = ranges[label][1];
+                        applyFilters();
+                    }
+                } else if (chart.canvas.id === 'cweChart') {
+                    document.getElementById('filter-cwe').value = label;
+                    applyFilters();
+                } else if (chart.canvas.id === 'epssChart') {
+                    const epssRanges = { '<1%': [0, 0.01], '1-10%': [0.01, 0.1], '10-50%': [0.1, 0.5], '>50%': [0.5, 1.0] };
+                    if (epssRanges[label]) {
+                        document.getElementById('filter-min-epss').value = epssRanges[label][0];
+                        document.getElementById('filter-max-epss').value = epssRanges[label][1];
+                        applyFilters();
+                    }
+                }
+            }
         }
     };
-
-    function applyChartFilter(chartId, label, index) {
-        const form = document.getElementById('search-form');
-        if (!form) return;
-
-        if (chartId === 'severityChart') {
-            const minInput = document.getElementById('filter-min-cvss');
-            const maxInput = document.getElementById('filter-max-cvss');
-            if (label === 'Critical') { minInput.value = '9.0'; maxInput.value = '10.0'; }
-            else if (label === 'High') { minInput.value = '7.0'; maxInput.value = '8.9'; }
-            else if (label === 'Medium') { minInput.value = '4.0'; maxInput.value = '6.9'; }
-            else if (label === 'Low') { minInput.value = '0.0'; maxInput.value = '3.9'; }
-        } else if (chartId === 'cweChart') {
-            const cweInput = document.getElementById('filter-cwe');
-            cweInput.value = label;
-        } else if (chartId === 'epssChart') {
-            const minEpss = document.getElementById('filter-min-epss');
-            const maxEpss = document.getElementById('filter-max-epss');
-            if (label === '<1%') { minEpss.value = '0.0'; maxEpss.value = '0.01'; }
-            else if (label === '1-10%') { minEpss.value = '0.01'; maxEpss.value = '0.10'; }
-            else if (label === '10-50%') { minEpss.value = '0.10'; maxEpss.value = '0.50'; }
-            else if (label === '>50%') { minEpss.value = '0.50'; maxEpss.value = '1.0'; }
-        }
-        
-        form.submit();
-    }
 
     const ctxSev = document.getElementById('severityChart').getContext('2d');
     new Chart(ctxSev, {
@@ -368,12 +429,15 @@ document.addEventListener('DOMContentLoaded', function() {
             labels: ['Critical', 'High', 'Medium', 'Low'],
             datasets: [{
                 data: [{{.SeverityCounts.Critical}}, {{.SeverityCounts.High}}, {{.SeverityCounts.Medium}}, {{.SeverityCounts.Low}}],
-                backgroundColor: ['#ff5449', '#ffb4ab', '#ffb400', '#00daf3'],
+                backgroundColor: ['#ef4444', '#f97316', '#eab308', '#3b82f6'],
                 borderWidth: 0,
-                hoverOffset: 10
+                hoverOffset: 20
             }]
         },
-        options: { ...chartOptions, cutout: '70%' }
+        options: {
+            ...chartOptions,
+            cutout: '70%'
+        }
     });
 
     const ctxCwe = document.getElementById('cweChart').getContext('2d');
@@ -414,11 +478,63 @@ document.addEventListener('DOMContentLoaded', function() {
     // Navigate rows safely
     document.querySelectorAll('tr[data-cve-url]').forEach(function(row) {
         row.addEventListener('click', function(e) {
-            if (e.target.closest('a')) return;
+            if (e.target.closest('a, button, select, input, textarea, label')) return;
             const url = row.getAttribute('data-cve-url');
-            if (url) window.location.href = url;
+            if (url) vulfixx.navigate(url);
         });
     });
-});
+};
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initPublicDashboard);
+} else {
+    initPublicDashboard();
+}
 </script>
+{{end}}
+
+{{define "cve_rows"}}
+    {{range .CVEs}}
+    <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer" data-cve-url="/cve/{{.CVEID}}">
+        <td class="p-6">
+            <div class="flex items-center gap-3">
+                <a href="/cve/{{.CVEID}}" class="text-sm font-black text-white group-hover:text-primary transition-colors">{{.CVEID}}</a>
+            </div>
+        </td>
+        <td class="p-6">
+            <div class="flex items-center gap-2">
+                <span class="text-sm font-bold {{severityColor .CVSSScore}}">
+                    {{printf "%.1f" .CVSSScore}}
+                </span>
+                <div class="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
+                    <div class="h-full {{severityBg .CVSSScore}} max-w-full" style="width: {{multiply (min 10.0 (max 0.0 .CVSSScore)) 10}}%"></div>
+                </div>
+            </div>
+        </td>
+        <td class="p-6">
+            <div class="flex flex-wrap gap-2">
+                {{if .CISAKEV}}
+                <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-orange-500/20 text-orange-400 border border-orange-500/20">KEV</span>
+                {{end}}
+                {{if gt .GitHubPoCCount 0}}
+                <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-purple-500/20 text-purple-400 border border-purple-500/20">PoC</span>
+                {{end}}
+                <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-white/5 text-gray-400 border border-white/10">EPSS: {{printf "%.4f" .EPSSScore}}</span>
+            </div>
+        </td>
+        <td class="p-6">
+            <p class="text-xs text-gray-400 line-clamp-2 max-w-xl leading-relaxed">{{.Description}}</p>
+        </td>
+        <td class="p-6">
+            <span class="text-[10px] font-mono text-gray-500">{{if not .PublishedDate.IsZero}}{{.PublishedDate.Format "2006-01-02"}}{{end}}</span>
+        </td>
+    </tr>
+    {{else}}
+    <tr class="no-results">
+        <td colspan="5" class="p-12 text-center">
+            <span class="material-symbols-outlined text-4xl text-gray-600 mb-4">search_off</span>
+            <p class="text-gray-500 font-bold uppercase tracking-widest text-xs">No vulnerabilities found matching your filters</p>
+        </td>
+    </tr>
+    {{end}}
 {{end}}

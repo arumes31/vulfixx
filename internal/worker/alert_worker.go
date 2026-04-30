@@ -184,13 +184,11 @@ func evaluateComplexFilter(logic string, cve *models.CVE) bool {
 				if err != nil {
 					return false
 				}
-				if err == nil {
-					if tokens[i+1] == ">" && cve.EPSSScore <= val {
-						return false
-					}
-					if tokens[i+1] == ">=" && cve.EPSSScore < val {
-						return false
-					}
+				if tokens[i+1] == ">" && cve.EPSSScore <= val {
+					return false
+				}
+				if tokens[i+1] == ">=" && cve.EPSSScore < val {
+					return false
 				}
 				i += 2
 			}
@@ -207,13 +205,11 @@ func evaluateComplexFilter(logic string, cve *models.CVE) bool {
 				if err != nil {
 					return false
 				}
-				if err == nil {
-					if tokens[i+1] == ">" && cve.GitHubPoCCount <= val {
-						return false
-					}
-					if tokens[i+1] == ">=" && cve.GitHubPoCCount < val {
-						return false
-					}
+				if tokens[i+1] == ">" && cve.GitHubPoCCount <= val {
+					return false
+				}
+				if tokens[i+1] == ">=" && cve.GitHubPoCCount < val {
+					return false
 				}
 				i += 2
 			}

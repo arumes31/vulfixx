@@ -2,30 +2,30 @@
 
 {{define "content"}}
 <div class="space-y-8">
-    <header class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-outline-variant/30 pb-6">
+    <header class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/10 pb-6">
         <div>
-            <h1 class="text-3xl font-display font-medium tracking-tight mb-2">Operator Matrix</h1>
-            <p class="text-on-surface-variant font-label text-sm uppercase tracking-widest">Global access administration</p>
+            <h1 class="text-3xl font-display font-medium tracking-tight mb-2 text-white">Operator Matrix</h1>
+            <p class="text-gray-400 font-label text-sm uppercase tracking-widest">Global access administration</p>
         </div>
     </header>
 
-    <div class="bg-surface rounded-xl border border-outline-variant/30 overflow-hidden shadow-xl">
+    <div class="glass rounded-[2rem] border border-white/10 overflow-hidden shadow-xl">
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
                 <thead>
-                    <tr class="bg-surface-container-low border-b border-outline-variant/30">
-                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Identity</th>
-                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Authentication</th>
-                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Clearance</th>
-                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant">Initialization Date</th>
-                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-on-surface-variant text-right">Actions</th>
+                    <tr class="bg-white/5 border-b border-white/10">
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-gray-500">Identity</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-gray-500">Authentication</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-gray-500">Clearance</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-gray-500">Initialization Date</th>
+                        <th class="px-6 py-4 text-[10px] font-label font-black tracking-widest uppercase text-gray-500 text-right">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-outline-variant/10">
                     {{range .Users}}
-                    <tr class="hover:bg-surface-container transition-colors duration-150">
+                    <tr class="hover:bg-white/5 transition-colors duration-150">
                         <td class="px-6 py-4">
-                            <span class="text-sm font-bold font-mono text-on-surface">{{.Email}}</span>
+                            <span class="text-sm font-bold font-mono text-white">{{.Email}}</span>
                         </td>
                         <td class="px-6 py-4">
                             {{if .IsEmailVerified}}
@@ -36,12 +36,12 @@
                         </td>
                         <td class="px-6 py-4">
                             {{if .IsAdmin}}
-                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-tertiary-container/20 text-tertiary border border-tertiary/20 text-[10px] font-bold tracking-widest uppercase font-mono">SYS_ADMIN</span>
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-tertiary/10 text-tertiary border border-tertiary/20 text-[10px] font-bold tracking-widest uppercase font-mono">SYS_ADMIN</span>
                             {{else}}
-                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-surface-variant text-on-surface border border-outline-variant/30 text-[10px] font-bold tracking-widest uppercase font-mono">OPERATOR</span>
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white/5 text-gray-400 border border-white/10 text-[10px] font-bold tracking-widest uppercase font-mono">OPERATOR</span>
                             {{end}}
                         </td>
-                        <td class="px-6 py-4 text-xs font-mono text-on-surface-variant">
+                        <td class="px-6 py-4 text-xs font-mono text-gray-500">
                             {{.CreatedAt.Format "2006-01-02 15:04:05"}}
                         </td>
                         <td class="px-6 py-4 text-right">
@@ -54,7 +54,7 @@
                                 </button>
                             </form>
                             {{else}}
-                            <span class="text-xs text-on-surface-variant italic font-label pr-2">Protected</span>
+                            <span class="text-xs text-gray-500 italic font-label pr-2">Protected</span>
                             {{end}}
                         </td>
                     </tr>
