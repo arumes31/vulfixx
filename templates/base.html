@@ -8,7 +8,7 @@
     {{if .MetaDescription}}<meta name="description" content="{{.MetaDescription}}">{{end}}
     <link rel="stylesheet" href="/static/css/main.css">
     <link rel="stylesheet" href="/static/fonts/fonts.css">
-    <script src="/static/js/chart.min.js"></script>
+    <script nonce="{{.Nonce}}" src="/static/js/chart.min.js"></script>
     <link rel="icon" type="image/png" href="/static/favicon.png">
     {{if .Canonical}}<link rel="canonical" href="{{GetBaseURL}}{{.Canonical}}">{{end}}
     <style>
@@ -79,7 +79,7 @@
             <span class="material-symbols-outlined" aria-hidden="true" data-icon="settings">settings</span>
             <span>Settings</span>
         </a>
-        <button onclick="vulfixx.toggleTheme()" class="w-full flex items-center gap-4 px-4 py-3 text-[#dfe2eb] opacity-70 hover:bg-[#1c2026] hover:opacity-100 hover:text-[#00daf3] transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase border-none cursor-pointer bg-transparent">
+        <button class="theme-toggle-btn w-full flex items-center gap-4 px-4 py-3 text-[#dfe2eb] opacity-70 hover:bg-[#1c2026] hover:opacity-100 hover:text-[#00daf3] transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase border-none cursor-pointer bg-transparent">
             <span class="material-symbols-outlined" aria-hidden="true" id="theme-toggle-icon">light_mode</span>
             <span>Switch Theme</span>
         </button>
@@ -127,7 +127,7 @@
             <span class="font-black text-[#dfe2eb] font-['Space_Grotesk'] tracking-widest uppercase text-sm">CVE Tracker</span>
         </div>
         <div class="flex items-center gap-3">
-            <button onclick="vulfixx.toggleTheme()" class="material-symbols-outlined text-gray-400 text-xl" aria-label="Toggle Theme" title="Toggle Theme">contrast</button>
+            <button class="theme-toggle-btn material-symbols-outlined text-gray-400 text-xl" aria-label="Toggle Theme" title="Toggle Theme">contrast</button>
         </div>
     </header>
     {{end}}
@@ -158,7 +158,7 @@
         <form action="/logout" method="POST" id="mobile-logout-form" class="hidden">
             {{.csrfField}}
         </form>
-        <button onclick="document.getElementById('mobile-logout-form').submit()" class="flex flex-col items-center gap-1 text-gray-500 hover:text-red-400 transition-colors bg-transparent border-none p-0 cursor-pointer">
+        <button id="mobile-logout-btn" class="flex flex-col items-center gap-1 text-gray-500 hover:text-red-400 transition-colors bg-transparent border-none p-0 cursor-pointer">
             <span class="material-symbols-outlined text-xl">logout</span>
             <span class="text-[9px] font-black uppercase tracking-widest">Exit</span>
         </button>
@@ -171,6 +171,7 @@
 
     <script nonce="{{.Nonce}}">
         const vulfixx = {
+            nonce: '{{.Nonce}}',
             toast: (message, type = 'info') => {
                 const container = document.getElementById('toast-container');
                 const toast = document.createElement('div');
@@ -366,7 +367,15 @@
                         const scripts = newMain.querySelectorAll('script');
                         for (const oldScript of scripts) {
                             const newScript = document.createElement('script');
-                            Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+                            // Copy all attributes
+                            Array.from(oldScript.attributes).forEach(attr => {
+                                if (attr.name !== 'nonce') {
+                                    newScript.setAttribute(attr.name, attr.value);
+                                }
+                            });
+                            // Set the current page's nonce to "bless" the new script
+                            newScript.nonce = vulfixx.nonce;
+                            
                             if (oldScript.src) {
                                 // Prevent duplicate external scripts
                                 if (document.querySelector(`script[src="${oldScript.src}"]`)) continue;
@@ -376,9 +385,8 @@
                                     document.body.appendChild(newScript);
                                 });
                             } else {
-                                newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+                                newScript.textContent = oldScript.innerHTML;
                                 document.body.appendChild(newScript);
-                                newScript.remove(); // Remove inline scripts after execution
                             }
                         }
                         
@@ -398,6 +406,15 @@
         document.addEventListener('DOMContentLoaded', () => {
             vulfixx.initTheme();
             
+            // Register global event listeners
+            document.querySelectorAll('.theme-toggle-btn').forEach(btn => {
+                btn.addEventListener('click', () => vulfixx.toggleTheme());
+            });
+
+            document.getElementById('mobile-logout-btn')?.addEventListener('click', () => {
+                document.getElementById('mobile-logout-form').submit();
+            });
+
             const flashMessage = document.body.dataset.flashMessage;
             const flashType = document.body.dataset.flashType;
             if (flashMessage) {

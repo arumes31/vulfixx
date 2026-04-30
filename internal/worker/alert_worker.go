@@ -252,12 +252,9 @@ func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, s
 		return false
 	}
 
-	// If the CVE object passed in doesn't have some extended fields (unlikely given how evaluateSubscriptions is called),
-	// we would fetch them here, but we've already done the query in evaluateSubscriptions if needed.
-	// However, processAlerts job might only have partial data.
-	// Let's ensure it has what bufferAlert needs.
 	// Ensure we have full details if the job only provided minimal data
-	if cve.CVEID == "" || cve.Description == "" {
+	// If the job unmarshaled from Redis has CVEID, we assume it's full.
+	if cve.CVEID == "" {
 		err := w.Pool.QueryRow(ctx, `
 			SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, github_poc_count, published_date, "references" 
 			FROM cves WHERE id = $1

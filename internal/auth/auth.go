@@ -25,6 +25,18 @@ var (
 	ErrConflict = errors.New("unable to create account")
 )
 
+var dummyHash string
+
+func init() {
+	// Generate a dummy hash for constant-time comparisons when user is not found.
+	// This prevents email enumeration via timing attacks.
+	hash, err := bcrypt.GenerateFromPassword([]byte("dummy-password-for-timing-consistency"), bcrypt.DefaultCost)
+	if err != nil {
+		panic(fmt.Sprintf("failed to generate dummy hash: %v", err))
+	}
+	dummyHash = string(hash)
+}
+
 func GenerateToken() (string, error) {
 	bytes := make([]byte, 32)
 	if _, err := randRead(bytes); err != nil {
@@ -79,15 +91,23 @@ func VerifyEmail(ctx context.Context, token string) error {
 
 func Login(ctx context.Context, email, password string) (*models.User, error) {
 	var user models.User
+	var targetHash string
+
 	// Make sure we scan all relevant fields needed
 	err := db.Pool.QueryRow(ctx, "SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE(totp_secret, ''), is_admin FROM users WHERE email = $1", email).
 		Scan(&user.ID, &user.Email, &user.PasswordHash, &user.IsEmailVerified, &user.IsTOTPEnabled, &user.TOTPSecret, &user.IsAdmin)
+
 	if err != nil {
-		return nil, errors.New("invalid credentials")
+		// User not found, use dummy hash to keep timing consistent
+		targetHash = dummyHash
+	} else {
+		targetHash = user.PasswordHash
 	}
 
-	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
-	if err != nil {
+	// Always perform the comparison to prevent timing side-channels
+	cmpErr := bcrypt.CompareHashAndPassword([]byte(targetHash), []byte(password))
+
+	if err != nil || cmpErr != nil {
 		return nil, errors.New("invalid credentials")
 	}
 

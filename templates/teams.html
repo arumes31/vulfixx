@@ -90,7 +90,7 @@
     {{end}}
 </div>
 
-<script>
+<script nonce="{{.Nonce}}">
     function toggleMenu(id) {
         document.querySelectorAll('.action-menu-dropdown').forEach(el => {
             if (el.id !== id) {
@@ -252,7 +252,7 @@
         if (data) setTimeout(() => window.location.reload(), 1000);
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    const initTeams = () => {
         document.getElementById('btn-join-workspace')?.addEventListener('click', showJoinModal);
         document.getElementById('empty-join-btn')?.addEventListener('click', showJoinModal);
         document.getElementById('btn-create-team')?.addEventListener('click', showCreateModal);
@@ -283,6 +283,12 @@
                 });
             }
         });
-    });
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initTeams);
+    } else {
+        initTeams();
+    }
 </script>
 {{end}}

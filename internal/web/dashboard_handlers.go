@@ -488,18 +488,7 @@ func (a *App) BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request)
 	a.SendResponse(w, r, true, fmt.Sprintf("Updated %d CVEs", len(req.CVEIDs)), "", "")
 }
 
-type CWEStat struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Count int    `json:"count"`
-}
 
-type SeverityCounts struct {
-	Critical int `json:"critical"`
-	High     int `json:"high"`
-	Medium   int `json:"medium"`
-	Low      int `json:"low"`
-}
 
 type StatusCounts struct {
 	Active     int `json:"active"`
@@ -609,8 +598,6 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 					"SeverityCounts":  cachedData.SeverityCounts,
 					"TopCWEs":         cachedData.TopCWEs,
 					"EPSSDist":        cachedData.EPSSDist,
-					"MetaTitle":       cachedData.MetaTitle,
-					"MetaDescription": cachedData.MetaDescription,
 					"Trending":        cachedData.Trending,
 					"ActiveTab":       "cves",
 					"CanScroll":       cachedData.Total > cachedData.Page*20,
@@ -621,16 +608,6 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-
-	var totalItems, kevCount, critCount int
-
-	metricsQuery := `
-		SELECT
-			COUNT(DISTINCT c.id) as total_cves,
-			COUNT(DISTINCT CASE WHEN c.cisa_kev = true THEN c.id END) as kev_count,
-			COUNT(DISTINCT CASE WHEN c.cvss_score >= 9.0 THEN c.id END) as critical_count
-		FROM cves c
-	`
 
 	whereClause := " WHERE (1=1) "
 	args := []any{}
@@ -706,10 +683,24 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		argIdx++
 	}
 
-	fullMetricsQuery := metricsQuery + whereClause
-	err := a.Pool.QueryRow(r.Context(), fullMetricsQuery, args...).Scan(&totalItems, &kevCount, &critCount)
-	if err != nil {
-		log.Printf("Public dashboard metrics error: %v", err)
+	var totalItems, kevCount, critCount int
+	if whereClause == " WHERE (1=1) " {
+		statsCache.RLock()
+		totalItems = statsCache.total
+		kevCount = statsCache.kevCount
+		critCount = statsCache.critCount
+		statsCache.RUnlock()
+	} else {
+		metricsQuery := `
+			SELECT
+				COUNT(DISTINCT c.id) as total_cves,
+				COUNT(DISTINCT CASE WHEN c.cisa_kev = true THEN c.id END) as kev_count,
+				COUNT(DISTINCT CASE WHEN c.cvss_score >= 9.0 THEN c.id END) as critical_count
+			FROM cves c` + whereClause
+		err := a.Pool.QueryRow(r.Context(), metricsQuery, args...).Scan(&totalItems, &kevCount, &critCount)
+		if err != nil {
+			log.Printf("Public dashboard metrics error: %v", err)
+		}
 	}
 
 	query := `
@@ -724,7 +715,6 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	finalArgs := append(args, pageSize, offset)
 	var cves []models.CVE
 	rows, err := a.Pool.Query(r.Context(), query, finalArgs...)
-	var totalPages int
 	if err != nil {
 		log.Printf("Public dashboard query error: %v", err)
 		totalItems = 0
@@ -743,7 +733,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	isAJAX := r.URL.Query().Get("ajax") == "true"
-	totalPages = (totalItems + pageSize - 1) / pageSize
+	totalPages := (totalItems + pageSize - 1) / pageSize
 	if totalPages < 1 {
 		totalPages = 1
 	}
@@ -756,37 +746,45 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var severityCounts SeverityCounts
-	severityQuery := "SELECT " +
-		"COUNT(*) FILTER (WHERE cvss_score >= 9.0), " +
-		"COUNT(*) FILTER (WHERE cvss_score >= 7.0 AND cvss_score < 9.0), " +
-		"COUNT(*) FILTER (WHERE cvss_score >= 4.0 AND cvss_score < 7.0), " +
-		"COUNT(*) FILTER (WHERE cvss_score < 4.0) " +
-		"FROM cves c " + whereClause
-	_ = a.Pool.QueryRow(r.Context(), severityQuery, args...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
-
-	// Additional Stats for Visualizations
 	var topCWEs []CWEStat
-	cweQueryRows, _ := a.Pool.Query(r.Context(), "SELECT cwe_id, COALESCE(cwe_name, 'Unknown'), COUNT(*) as cnt FROM cves c "+whereClause+" AND cwe_id IS NOT NULL AND cwe_id != '' GROUP BY cwe_id, cwe_name ORDER BY cnt DESC LIMIT 5", args...)
-	if cweQueryRows != nil {
-		for cweQueryRows.Next() {
-			var s CWEStat
-			if err := cweQueryRows.Scan(&s.ID, &s.Name, &s.Count); err == nil {
-				topCWEs = append(topCWEs, s)
-			}
-		}
-		cweQueryRows.Close()
-	}
-
 	var epssDist []int
-	epssQuery := "SELECT " +
-		"COUNT(*) FILTER (WHERE epss_score < 0.01), " +
-		"COUNT(*) FILTER (WHERE epss_score >= 0.01 AND epss_score < 0.1), " +
-		"COUNT(*) FILTER (WHERE epss_score >= 0.1 AND epss_score < 0.5), " +
-		"COUNT(*) FILTER (WHERE epss_score >= 0.5) " +
-		"FROM cves c " + whereClause
-	var e1, e2, e3, e4 int
-	_ = a.Pool.QueryRow(r.Context(), epssQuery, args...).Scan(&e1, &e2, &e3, &e4)
-	epssDist = []int{e1, e2, e3, e4}
+
+	if whereClause == " WHERE (1=1) " {
+		statsCache.RLock()
+		severityCounts = statsCache.severityCounts
+		topCWEs = statsCache.topCWEs
+		epssDist = statsCache.epssDist
+		statsCache.RUnlock()
+	} else {
+		severityQuery := "SELECT " +
+			"COUNT(*) FILTER (WHERE cvss_score >= 9.0), " +
+			"COUNT(*) FILTER (WHERE cvss_score >= 7.0 AND cvss_score < 9.0), " +
+			"COUNT(*) FILTER (WHERE cvss_score >= 4.0 AND cvss_score < 7.0), " +
+			"COUNT(*) FILTER (WHERE cvss_score < 4.0) " +
+			"FROM cves c " + whereClause
+		_ = a.Pool.QueryRow(r.Context(), severityQuery, args...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
+
+		cweQueryRows, _ := a.Pool.Query(r.Context(), "SELECT cwe_id, COALESCE(cwe_name, 'Unknown'), COUNT(*) as cnt FROM cves c "+whereClause+" AND cwe_id IS NOT NULL AND cwe_id != '' GROUP BY cwe_id, cwe_name ORDER BY cnt DESC LIMIT 5", args...)
+		if cweQueryRows != nil {
+			for cweQueryRows.Next() {
+				var s CWEStat
+				if err := cweQueryRows.Scan(&s.ID, &s.Name, &s.Count); err == nil {
+					topCWEs = append(topCWEs, s)
+				}
+			}
+			cweQueryRows.Close()
+		}
+
+		epssQuery := "SELECT " +
+			"COUNT(*) FILTER (WHERE epss_score < 0.01), " +
+			"COUNT(*) FILTER (WHERE epss_score >= 0.01 AND epss_score < 0.1), " +
+			"COUNT(*) FILTER (WHERE epss_score >= 0.1 AND epss_score < 0.5), " +
+			"COUNT(*) FILTER (WHERE epss_score >= 0.5) " +
+			"FROM cves c " + whereClause
+		var e1, e2, e3, e4 int
+		_ = a.Pool.QueryRow(r.Context(), epssQuery, args...).Scan(&e1, &e2, &e3, &e4)
+		epssDist = []int{e1, e2, e3, e4}
+	}
 
 	renderData := map[string]interface{}{
 		"CVEs":            cves,
@@ -873,6 +871,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	a.RenderTemplate(w, r, "public_dashboard.html", renderData)
 }
 
+
 func (a *App) getTrendingCVEs(r *http.Request) []models.CVE {
 	rows, err := a.Pool.Query(r.Context(), `
 		SELECT 
@@ -884,6 +883,7 @@ func (a *App) getTrendingCVEs(r *http.Request) []models.CVE {
 		ORDER BY c.github_poc_count DESC, c.epss_score DESC, c.published_date DESC NULLS LAST, c.id DESC LIMIT 4
 	`)
 	if err != nil {
+		log.Printf("Error querying trending CVEs: %v", err)
 		return nil
 	}
 	defer rows.Close()

@@ -20,7 +20,7 @@
                     New Monitor
                 </h3>
                 
-                <form action="/subscriptions" method="POST" class="space-y-6" onsubmit="submitSubscription(event, this); return false;">
+                <form id="subscription-form" action="/subscriptions" method="POST" class="space-y-6">
                     {{.CSRFField}}
                     <div class="space-y-2">
                         <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Target Infrastructure</label>
@@ -110,8 +110,12 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{.Nonce}}">
 const initSubscriptions = () => {
+    document.getElementById('subscription-form')?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        submitSubscription(e, e.target);
+    });
     const webhookToggle = document.querySelector('input[name="enable_webhook"]');
     const webhookURLInput = document.querySelector('input[name="webhook_url"]');
     
