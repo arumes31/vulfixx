@@ -165,38 +165,38 @@
             <table class="w-full text-left border-collapse">
                 <thead>
                     <tr class="border-b border-white/10 bg-white/5">
-                        <th data-col="id" onclick="toggleSort('id')" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 cursor-pointer hover:text-primary transition-colors group">
-                            <div class="flex items-center gap-2">
+                        <th data-col="id" aria-sort="{{if eq .Sort "id"}}{{if eq .Order "asc"}}ascending{{else}}descending{{end}}{{else}}none{{end}}" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 group">
+                            <button type="button" onclick="toggleSort('id')" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
                                 Vulnerability ID
                                 <span class="material-symbols-outlined text-[14px] {{if ne .Sort "id"}}opacity-0 group-hover:opacity-40{{end}} transition-all">
                                     {{if and (eq .Sort "id") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
                                 </span>
-                            </div>
+                            </button>
                         </th>
-                        <th data-col="severity" onclick="toggleSort('severity')" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 cursor-pointer hover:text-primary transition-colors group">
-                            <div class="flex items-center gap-2">
+                        <th data-col="severity" aria-sort="{{if eq .Sort "severity"}}{{if eq .Order "asc"}}ascending{{else}}descending{{end}}{{else}}none{{end}}" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 group">
+                            <button type="button" onclick="toggleSort('severity')" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
                                 Severity
                                 <span class="material-symbols-outlined text-[14px] {{if ne .Sort "severity"}}opacity-0 group-hover:opacity-40{{end}} transition-all">
                                     {{if and (eq .Sort "severity") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
                                 </span>
-                            </div>
+                            </button>
                         </th>
-                        <th data-col="epss" onclick="toggleSort('epss')" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 cursor-pointer hover:text-primary transition-colors group">
-                            <div class="flex items-center gap-2">
+                        <th data-col="epss" aria-sort="{{if eq .Sort "epss"}}{{if eq .Order "asc"}}ascending{{else}}descending{{end}}{{else}}none{{end}}" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 group">
+                            <button type="button" onclick="toggleSort('epss')" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
                                 Exploit Telemetry
                                 <span class="material-symbols-outlined text-[14px] {{if ne .Sort "epss"}}opacity-0 group-hover:opacity-40{{end}} transition-all">
                                     {{if and (eq .Sort "epss") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
                                 </span>
-                            </div>
+                            </button>
                         </th>
                         <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Description</th>
-                        <th data-col="published" onclick="toggleSort('published')" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 cursor-pointer hover:text-primary transition-colors group">
-                            <div class="flex items-center gap-2">
+                        <th data-col="published" aria-sort="{{if eq .Sort "published"}}{{if eq .Order "asc"}}ascending{{else}}descending{{end}}{{else}}none{{end}}" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 group">
+                            <button type="button" onclick="toggleSort('published')" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
                                 Published
                                 <span class="material-symbols-outlined text-[14px] {{if ne .Sort "published"}}opacity-0 group-hover:opacity-40{{end}} transition-all">
                                     {{if and (eq .Sort "published") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
                                 </span>
-                            </div>
+                            </button>
                         </th>
                     </tr>
                 </thead>
@@ -290,10 +290,12 @@ const initPublicDashboard = () => {
     const dashboardData = JSON.parse(rawData);
 
     let currentPage = Number(dashboardData.page) || 1;
-    const totalPages = Number(dashboardData.totalPages) || 1;
+    let totalPages = Number(dashboardData.totalPages) || 1;
     let isLoading = false;
     const tbody = document.getElementById('cve-tbody');
     const loadingIndicator = document.getElementById('loading-indicator');
+    
+    let sevChart, cweChart, epssChart;
 
     window.toggleSort = (col) => {
         const sortInput = document.getElementById('sort-field');
@@ -308,18 +310,23 @@ const initPublicDashboard = () => {
         
         applyFilters();
         
-        // Update header icons instantly
+        // Update header icons and ARIA instantly
         document.querySelectorAll('th[data-col]').forEach(th => {
-            const span = th.querySelector('span');
-            if (!span) return;
             const thCol = th.getAttribute('data-col');
+            const span = th.querySelector('span');
             if (thCol === col) {
-                span.textContent = orderInput.value === 'asc' ? 'arrow_upward' : 'arrow_downward';
-                span.classList.remove('opacity-0', 'group-hover:opacity-40');
-                span.classList.add('opacity-100');
+                if (span) {
+                    span.textContent = orderInput.value === 'asc' ? 'arrow_upward' : 'arrow_downward';
+                    span.classList.remove('opacity-0', 'group-hover:opacity-40');
+                    span.classList.add('opacity-100');
+                }
+                th.setAttribute('aria-sort', orderInput.value === 'asc' ? 'ascending' : 'descending');
             } else {
-                span.classList.add('opacity-0', 'group-hover:opacity-40');
-                span.classList.remove('opacity-100');
+                if (span) {
+                    span.classList.add('opacity-0', 'group-hover:opacity-40');
+                    span.classList.remove('opacity-100');
+                }
+                th.setAttribute('aria-sort', 'none');
             }
         });
     };
@@ -338,20 +345,24 @@ const initPublicDashboard = () => {
         fetch(url)
             .then(response => {
                 if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-                return response.text();
+                return response.json();
             })
-            .then(html => {
+            .then(data => {
+                const html = data.html || "";
+                const meta = data.meta || {};
+                
                 if (html.trim() === '') {
                     currentPage = totalPages;
                 } else {
-                    currentPage = nextPage;
+                    currentPage = Number(meta.Page || meta.page) || (currentPage + 1);
+                    totalPages = Number(meta.TotalPages || meta.totalPages) || totalPages;
+                    
                     const temp = document.createElement('tbody');
                     temp.innerHTML = html;
                     
-                    // Add click listeners to new rows
                     temp.querySelectorAll('tr').forEach(row => {
                         row.addEventListener('click', function(e) {
-                            if (e.target.closest('a')) return;
+                            if (e.target.closest('a, button, select, input, textarea, label')) return;
                             const url = row.getAttribute('data-cve-url');
                             if (url) vulfixx.navigate(url);
                         });
@@ -383,22 +394,32 @@ const initPublicDashboard = () => {
         fetch(url)
             .then(response => {
                 if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-                return response.text();
+                return response.json();
             })
-            .then(html => {
-                tbody.innerHTML = html;
+            .then(data => {
+                tbody.innerHTML = data.html || "";
+                const meta = data.meta || {};
+                
                 currentPage = 1;
+                totalPages = Number(meta.totalPages) || 1;
+                
+                // Update persistent data script
+                document.getElementById('dashboard-data').textContent = JSON.stringify(meta);
+                
                 const newUrl = new URL(window.location.href);
                 newUrl.search = new URLSearchParams(new FormData(filterForm)).toString();
                 window.history.pushState({}, '', newUrl);
                 
                 tbody.querySelectorAll('tr').forEach(row => {
                     row.addEventListener('click', function(e) {
-                        if (e.target.closest('a')) return;
+                        if (e.target.closest('a, button, select, input, textarea, label')) return;
                         const url = row.getAttribute('data-cve-url');
                         if (url) vulfixx.navigate(url);
                     });
                 });
+
+                // Update charts and UI state
+                updateCharts(meta);
             })
             .catch(err => {
                 console.error('Error applying filters:', err);
@@ -487,63 +508,72 @@ const initPublicDashboard = () => {
         }
     };
 
-    const ctxSev = document.getElementById('severityChart').getContext('2d');
-    new Chart(ctxSev, {
-        type: 'doughnut',
-        data: {
-            labels: ['Critical', 'High', 'Medium', 'Low'],
-            datasets: [{
-                data: [
-                    dashboardData.severityCounts.critical, 
-                    dashboardData.severityCounts.high, 
-                    dashboardData.severityCounts.medium, 
-                    dashboardData.severityCounts.low
-                ],
-                backgroundColor: ['#ef4444', '#f97316', '#eab308', '#3b82f6'],
-                borderWidth: 0,
-                hoverOffset: 20
-            }]
-        },
-        options: {
-            ...chartOptions,
-            cutout: '70%'
-        }
-    });
-
-    const ctxCwe = document.getElementById('cweChart').getContext('2d');
-    new Chart(ctxCwe, {
-        type: 'pie',
-        data: {
-            labels: (dashboardData.topCWEs || []).map(x => x.id),
-            datasets: [{
-                data: (dashboardData.topCWEs || []).map(x => x.count),
-                backgroundColor: ['#d0bcff', '#b69df8', '#9a82db', '#7f67be', '#654da3'],
-                borderWidth: 0
-            }]
-        },
-        options: chartOptions
-    });
-
-    const ctxEpss = document.getElementById('epssChart').getContext('2d');
-    new Chart(ctxEpss, {
-        type: 'bar',
-        data: {
-            labels: ['<1%', '1-10%', '10-50%', '>50%'],
-            datasets: [{
-                label: 'CVE Count',
-                data: dashboardData.epssDist,
-                backgroundColor: '#ffb311',
-                borderRadius: 8
-            }]
-        },
-        options: {
-            ...chartOptions,
-            scales: {
-                y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#919191' } },
-                x: { grid: { display: false }, ticks: { color: '#919191' } }
+    const updateCharts = (data) => {
+        if (!data) return;
+        
+        if (sevChart) sevChart.destroy();
+        const ctxSev = document.getElementById('severityChart').getContext('2d');
+        sevChart = new Chart(ctxSev, {
+            type: 'doughnut',
+            data: {
+                labels: ['Critical', 'High', 'Medium', 'Low'],
+                datasets: [{
+                    data: [
+                        (data.SeverityCounts || data.severityCounts).critical, 
+                        (data.SeverityCounts || data.severityCounts).high, 
+                        (data.SeverityCounts || data.severityCounts).medium, 
+                        (data.SeverityCounts || data.severityCounts).low
+                    ],
+                    backgroundColor: ['#ef4444', '#f97316', '#eab308', '#3b82f6'],
+                    borderWidth: 0,
+                    hoverOffset: 20
+                }]
+            },
+            options: {
+                ...chartOptions,
+                cutout: '70%'
             }
-        }
-    });
+        });
+
+        if (cweChart) cweChart.destroy();
+        const ctxCwe = document.getElementById('cweChart').getContext('2d');
+        cweChart = new Chart(ctxCwe, {
+            type: 'pie',
+            data: {
+                labels: (data.TopCWEs || data.topCWEs || []).map(x => x.id),
+                datasets: [{
+                    data: (data.TopCWEs || data.topCWEs || []).map(x => x.count),
+                    backgroundColor: ['#d0bcff', '#b69df8', '#9a82db', '#7f67be', '#654da3'],
+                    borderWidth: 0
+                }]
+            },
+            options: chartOptions
+        });
+
+        if (epssChart) epssChart.destroy();
+        const ctxEpss = document.getElementById('epssChart').getContext('2d');
+        epssChart = new Chart(ctxEpss, {
+            type: 'bar',
+            data: {
+                labels: ['<1%', '1-10%', '10-50%', '>50%'],
+                datasets: [{
+                    label: 'CVE Count',
+                    data: data.EPSSDist || data.epssDist,
+                    backgroundColor: '#ffb311',
+                    borderRadius: 8
+                }]
+            },
+            options: {
+                ...chartOptions,
+                scales: {
+                    y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#919191' } },
+                    x: { grid: { display: false }, ticks: { color: '#919191' } }
+                }
+            }
+        });
+    };
+
+    updateCharts(dashboardData);
 
     // Navigate rows safely
     document.querySelectorAll('tr[data-cve-url]').forEach(function(row) {
@@ -577,7 +607,7 @@ if (document.readyState === 'loading') {
                     {{printf "%.1f" .CVSSScore}}
                 </span>
                 <div class="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
-                    <div class="h-full {{severityBg .CVSSScore}} max-w-full" style="--w: {{printf "%.0f" (multiply (min 10.0 (max 0.0 .CVSSScore)) 10)}}%; width: var(--w)"></div>
+                    <div class="h-full {{severityBg .CVSSScore}} max-w-full" style="--w: {{printf "%.0f" (multiply (min 10.0 (max 0.0 .CVSSScore)) 10.0)}}%; width: var(--w)"></div>
                 </div>
             </div>
         </td>
