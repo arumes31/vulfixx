@@ -43,7 +43,7 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-    container: golang:1.26-alpine
+    container: golang:1.24-alpine
     env:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -63,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    container: golang:1.26-alpine
+    container: golang:1.24-alpine
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install dependencies
@@ -73,14 +73,13 @@ jobs:
         with:
           version: v1.64
           args: --timeout=10m
-          install-mode: goinstall
 
   security:
     name: Security Scan
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    container: golang:1.26-alpine
+    container: golang:1.24-alpine
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install Gosec
