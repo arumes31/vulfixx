@@ -17,6 +17,19 @@ func (a *App) RobotsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) SitemapHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	cacheKey := "cvetracker:sitemap_cache"
+
+	// Try to serve from Redis cache
+	if a.Redis != nil {
+		cached, err := a.Redis.Get(ctx, cacheKey).Bytes()
+		if err == nil {
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = w.Write(cached)
+			return
+		}
+	}
+
 	var buf bytes.Buffer
 	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
 	buf.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
@@ -33,7 +46,7 @@ func (a *App) SitemapHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Recent/Critical CVEs (Top 1000)
-	rows, err := a.Pool.Query(r.Context(), `
+	rows, err := a.Pool.Query(ctx, `
 		SELECT cve_id, updated_at 
 		FROM cves 
 		ORDER BY published_date DESC LIMIT 1000
@@ -60,8 +73,17 @@ func (a *App) SitemapHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	buf.WriteString("</urlset>\n")
+	res := buf.Bytes()
+
+	// Store in Redis cache for 1 hour
+	if a.Redis != nil {
+		if err := a.Redis.Set(ctx, cacheKey, res, 1*time.Hour).Err(); err != nil {
+			log.Printf("Sitemap cache set error: %v", err)
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/xml")
-	_, _ = w.Write(buf.Bytes())
+	_, _ = w.Write(res)
 }
 
 func GetBaseURL() string {
