@@ -69,7 +69,7 @@ jobs:
       - name: Run golangci-lint
         run: |
           go install -v github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
-          $(go env GOPATH)/bin/golangci-lint run --timeout=10m
+          GOFLAGS="-buildvcs=false" $(go env GOPATH)/bin/golangci-lint run --timeout=10m
 
   security:
     name: Security Scan
