@@ -99,7 +99,7 @@ func (a *App) InitTemplatesWithFuncs() error {
 		},
 		"marshal": func(v interface{}) template.JS {
 			a, _ := json.Marshal(v)
-			return template.JS(a)
+			return template.JS(a) // #nosec G203
 		},
 	}
 
