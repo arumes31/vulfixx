@@ -140,7 +140,7 @@ func TestInitRedisTable(t *testing.T) {
 		{
 			name:    "Empty URL (defaults to localhost:6379)",
 			url:     "",
-			wantErr: false,
+			wantErr: true,
 		},
 	}
 
