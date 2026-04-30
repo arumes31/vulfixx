@@ -1023,8 +1023,10 @@ func (a *App) renderAJAX(w http.ResponseWriter, renderData map[string]interface{
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"html": buf.String(),
 		"meta": renderData,
-	})
+	}); err != nil {
+		log.Printf("Error encoding AJAX JSON response: %v", err)
+	}
 }
