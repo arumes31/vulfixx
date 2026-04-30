@@ -346,11 +346,15 @@ const initPublicDashboard = () => {
         applyFilters();
     });
 
-    filterForm.querySelectorAll('input').forEach(input => {
+    filterForm.querySelectorAll('input:not([type="checkbox"]), select').forEach(input => {
         input.addEventListener('input', function() {
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(applyFilters, 400);
         });
+    });
+
+    filterForm.querySelectorAll('input[type="checkbox"]').forEach(input => {
+        input.addEventListener('change', applyFilters);
     });
 
     document.getElementById('clear-filters').addEventListener('click', function() {
@@ -474,7 +478,7 @@ const initPublicDashboard = () => {
     // Navigate rows safely
     document.querySelectorAll('tr[data-cve-url]').forEach(function(row) {
         row.addEventListener('click', function(e) {
-            if (e.target.closest('a')) return;
+            if (e.target.closest('a, button, select, input, textarea, label')) return;
             const url = row.getAttribute('data-cve-url');
             if (url) vulfixx.navigate(url);
         });

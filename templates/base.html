@@ -355,7 +355,7 @@
                     const newContent = newMain.innerHTML;
                     const newTitle = doc.title;
                     
-                    setTimeout(() => {
+                    setTimeout(async () => {
                         main.innerHTML = newContent;
                         document.title = newTitle;
                         main.classList.remove('page-fade-out');
@@ -364,13 +364,23 @@
                         
                         // Execute scripts in the new content
                         const scripts = newMain.querySelectorAll('script');
-                        scripts.forEach(oldScript => {
+                        for (const oldScript of scripts) {
                             const newScript = document.createElement('script');
                             Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
-                            newScript.appendChild(document.createTextNode(oldScript.innerHTML));
-                            document.body.appendChild(newScript);
-                            newScript.remove(); 
-                        });
+                            if (oldScript.src) {
+                                // Prevent duplicate external scripts
+                                if (document.querySelector(`script[src="${oldScript.src}"]`)) continue;
+                                await new Promise((resolve) => {
+                                    newScript.onload = resolve;
+                                    newScript.onerror = resolve;
+                                    document.body.appendChild(newScript);
+                                });
+                            } else {
+                                newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+                                document.body.appendChild(newScript);
+                                newScript.remove(); // Remove inline scripts after execution
+                            }
+                        }
                         
                         window.scrollTo(0, 0);
                         
@@ -395,15 +405,33 @@
             }
 
             document.addEventListener('click', (e) => {
+                // Ignore clicks with modifier keys
+                if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return;
+
                 const link = e.target.closest('a');
-                if (link && link.href && link.href.startsWith(window.location.origin)) {
-                    const url = new URL(link.href);
-                    if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return;
-                    if (link.hasAttribute('download') || link.target === '_blank' || link.getAttribute('href').startsWith('#')) return;
-                    
+                if (!link || !link.href) return;
+
+                // Ignore external links, downloads, and hash links
+                if (!link.href.startsWith(window.location.origin)) return;
+                if (link.hasAttribute('download') || link.target === '_blank' || link.getAttribute('href').startsWith('#')) return;
+
+                // Ignore special protocols
+                const href = link.getAttribute('href');
+                if (href.startsWith('mailto:') || href.startsWith('tel:')) return;
+
+                // Ignore if clicking on interactive elements inside the link (unless the link is the interactive element itself)
+                const interactive = e.target.closest('button, input, select, textarea, label');
+                if (interactive && interactive !== link) return;
+
+                const url = new URL(link.href);
+                if (url.pathname === window.location.pathname && url.search === window.location.search) {
                     e.preventDefault();
-                    vulfixx.navigate(link.href);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    return;
                 }
+                
+                e.preventDefault();
+                vulfixx.navigate(link.href);
             });
 
             window.addEventListener('popstate', (e) => {

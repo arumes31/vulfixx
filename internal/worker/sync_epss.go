@@ -61,6 +61,7 @@ func (w *Worker) syncEPSS(ctx context.Context) {
 	var batchRows [][]interface{}
 	batchSize := 5000
 	totalProcessed := 0
+	parseErrorCount := 0
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -76,8 +77,11 @@ func (w *Worker) syncEPSS(ctx context.Context) {
 			if err == nil {
 				batchRows = append(batchRows, []interface{}{cveID, score})
 				totalProcessed++
-			} else if totalProcessed < 5 {
-				log.Printf("Worker: [DEBUG] Failed to parse EPSS score '%s' for CVE '%s': %v", scoreStr, cveID, err)
+			} else {
+				parseErrorCount++
+				if parseErrorCount < 5 {
+					log.Printf("Worker: [DEBUG] Failed to parse EPSS score '%s' for CVE '%s': %v", scoreStr, cveID, err)
+				}
 			}
 		}
 
@@ -94,6 +98,11 @@ func (w *Worker) syncEPSS(ctx context.Context) {
 
 	if len(batchRows) > 0 {
 		w.updateEPSSBatch(ctx, batchRows)
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Printf("Worker: [ERROR] EPSS CSV scanner error: %v", err)
+		return
 	}
 
 	log.Printf("Worker: [SYNC] EPSS score synchronization complete. Processed %d records. Duration: %v", totalProcessed, time.Since(start))

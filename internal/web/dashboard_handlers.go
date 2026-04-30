@@ -722,11 +722,11 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	query += whereClause
 	query += fmt.Sprintf(" ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $%d OFFSET $%d ", argIdx, argIdx+1)
 	finalArgs := append(args, pageSize, offset)
+	var cves []models.CVE
 	rows, err := a.Pool.Query(r.Context(), query, finalArgs...)
 	var totalPages int
 	if err != nil {
 		log.Printf("Public dashboard query error: %v", err)
-		cves = []models.CVE{}
 		totalItems = 0
 		totalPages = 1
 	} else {
@@ -734,11 +734,11 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var c models.CVE
 			err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount)
-			c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
 			if err != nil {
 				log.Printf("Error scanning public CVE: %v", err)
 				continue
 			}
+			c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
 			cves = append(cves, c)
 		}
 	}
@@ -968,6 +968,8 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	a.RenderTemplate(w, r, "cve_detail.html", map[string]interface{}{
 		"CVE":             c,
+		"prevID":          prevID,
+		"nextID":          nextID,
 		"MetaTitle":       fmt.Sprintf("%s - %s | Vulfixx Threat Intel", c.CVEID, c.Description),
 		"MetaDescription": fmt.Sprintf("Security analysis of %s. Severity: %.1f. %s", c.CVEID, c.CVSSScore, c.Description),
 		"Canonical":       fmt.Sprintf("/cve/%s", c.CVEID),

@@ -108,7 +108,7 @@
                 </thead>
                 <tbody class="divide-y divide-white/5">
                     {{range .CVEs}}
-                    <tr class="hover:bg-white/[0.02] transition-colors group">
+                    <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer" data-cve-url="/cve/{{.CVEID}}">
                         <td class="px-6 py-6">
                             <div class="flex flex-col">
                                 <a href="https://nvd.nist.gov/vuln/detail/{{.CVEID}}" target="_blank" rel="noopener noreferrer" class="text-sm font-bold text-primary hover:underline transition-all">{{.CVEID}}</a>
@@ -357,7 +357,9 @@ const initDashboard = () => {
         // Navigate rows safely
         document.querySelectorAll('tr[data-cve-url]').forEach(function(row) {
             row.addEventListener('click', function(e) {
-                if (e.target.closest('a')) return;
+                // Ignore if clicking on interactive elements
+                if (e.target.closest('a, button, select, input, textarea, label, .notes-trigger, .vector-trigger')) return;
+                
                 const url = row.getAttribute('data-cve-url');
                 if (url) vulfixx.navigate(url);
             });

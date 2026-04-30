@@ -8,16 +8,16 @@
 }
 
 .page-fade-out {
-    animation: fadeOut 0.2s ease-in forwards;
+    animation: pageFadeOut 0.2s ease-in forwards;
 }
 .page-fade-in {
-    animation: fadeIn 0.2s ease-out forwards;
+    animation: pageFadeIn 0.2s ease-out forwards;
 }
-@keyframes fadeOut {
+@keyframes pageFadeOut {
     from { opacity: 1; transform: scale(1); }
     to { opacity: 0; transform: scale(0.98); }
 }
-@keyframes fadeIn {
+@keyframes pageFadeIn {
     from { opacity: 0; transform: scale(1.02); }
     to { opacity: 1; transform: scale(1); }
 }
