@@ -53,9 +53,27 @@ func StopStatsTicker() {
 
 type globalCVEStatsCache struct {
 	sync.RWMutex
-	total       int
-	newLast24h  int
-	lastUpdated time.Time
+	total          int
+	newLast24h     int
+	kevCount       int
+	critCount      int
+	severityCounts SeverityCounts
+	topCWEs        []CWEStat
+	epssDist       []int
+	lastUpdated    time.Time
+}
+
+type SeverityCounts struct {
+	Critical int `json:"critical"`
+	High     int `json:"high"`
+	Medium   int `json:"medium"`
+	Low      int `json:"low"`
+}
+
+type CWEStat struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Count int    `json:"count"`
 }
 
 var statsCache globalCVEStatsCache
@@ -268,20 +286,62 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 		refreshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 
-		var total, new24h int
-		err1 := a.Pool.QueryRow(refreshCtx, "SELECT COUNT(*) FROM cves").Scan(&total)
-		err2 := a.Pool.QueryRow(refreshCtx, "SELECT COUNT(*) FROM cves WHERE updated_date >= NOW() - INTERVAL '24 hours'").Scan(&new24h)
+		var total, new24h, kevCount, critCount int
+		_ = a.Pool.QueryRow(refreshCtx, "SELECT COUNT(*) FROM cves").Scan(&total)
+		_ = a.Pool.QueryRow(refreshCtx, "SELECT COUNT(*) FROM cves WHERE updated_date >= NOW() - INTERVAL '24 hours'").Scan(&new24h)
+		_ = a.Pool.QueryRow(refreshCtx, "SELECT COUNT(*) FROM cves WHERE cisa_kev = TRUE").Scan(&kevCount)
+		_ = a.Pool.QueryRow(refreshCtx, "SELECT COUNT(*) FROM cves WHERE cvss_score >= 9.0").Scan(&critCount)
 
-		if err1 == nil && err2 == nil {
-			statsCache.Lock()
-			statsCache.total = total
-			statsCache.newLast24h = new24h
-			statsCache.lastUpdated = time.Now()
-			statsCache.Unlock()
-			log.Printf("Global stats cache refreshed: Total=%d, New=%d", total, new24h)
-		} else {
-			log.Printf("Error refreshing global stats: %v, %v", err1, err2)
+		var sevCounts SeverityCounts
+		_ = a.Pool.QueryRow(refreshCtx, `
+			SELECT 
+				COUNT(*) FILTER (WHERE cvss_score >= 9.0),
+				COUNT(*) FILTER (WHERE cvss_score >= 7.0 AND cvss_score < 9.0),
+				COUNT(*) FILTER (WHERE cvss_score >= 4.0 AND cvss_score < 7.0),
+				COUNT(*) FILTER (WHERE cvss_score < 4.0)
+			FROM cves
+		`).Scan(&sevCounts.Critical, &sevCounts.High, &sevCounts.Medium, &sevCounts.Low)
+
+		var topCWEs []CWEStat
+		rowsCwe, _ := a.Pool.Query(refreshCtx, `
+			SELECT cwe_id, COALESCE(cwe_name, 'Unknown'), COUNT(*) as cnt 
+			FROM cves 
+			WHERE cwe_id IS NOT NULL AND cwe_id != '' 
+			GROUP BY cwe_id, cwe_name 
+			ORDER BY cnt DESC 
+			LIMIT 5
+		`)
+		if rowsCwe != nil {
+			for rowsCwe.Next() {
+				var s CWEStat
+				if err := rowsCwe.Scan(&s.ID, &s.Name, &s.Count); err == nil {
+					topCWEs = append(topCWEs, s)
+				}
+			}
+			rowsCwe.Close()
 		}
+
+		epssDist := make([]int, 4)
+		_ = a.Pool.QueryRow(refreshCtx, `
+			SELECT 
+				COUNT(*) FILTER (WHERE epss_score < 0.01),
+				COUNT(*) FILTER (WHERE epss_score >= 0.01 AND epss_score < 0.1),
+				COUNT(*) FILTER (WHERE epss_score >= 0.1 AND epss_score < 0.5),
+				COUNT(*) FILTER (WHERE epss_score >= 0.5)
+			FROM cves
+		`).Scan(&epssDist[0], &epssDist[1], &epssDist[2], &epssDist[3])
+
+		statsCache.Lock()
+		statsCache.total = total
+		statsCache.newLast24h = new24h
+		statsCache.kevCount = kevCount
+		statsCache.critCount = critCount
+		statsCache.severityCounts = sevCounts
+		statsCache.topCWEs = topCWEs
+		statsCache.epssDist = epssDist
+		statsCache.lastUpdated = time.Now()
+		statsCache.Unlock()
+		log.Printf("Global stats cache refreshed: Total=%d, New=%d, KEV=%d, Crit=%d", total, new24h, kevCount, critCount)
 	}
 
 	// Initial refresh

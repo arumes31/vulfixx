@@ -46,10 +46,10 @@
                         </td>
                         <td class="px-6 py-4 text-right">
                             {{if not .IsAdmin}}
-                            <form action="/admin/users/delete" method="POST" class="inline" onsubmit="return confirm('WARNING: Permanently purge operator {{.Email}} from the system?');">
+                            <form action="/admin/users/delete" method="POST" class="inline delete-user-form">
                                 {{$.csrfField}}
                                 <input type="hidden" name="id" value="{{.ID}}">
-                                <button type="submit" class="p-2 text-error hover:bg-error-container/30 rounded transition-colors" title="Purge Operator" aria-label="Purge Operator">
+                                <button type="submit" class="p-2 text-error hover:bg-error-container/30 rounded transition-colors" title="Purge Operator" aria-label="Purge Operator" data-email="{{.Email}}">
                                     <span class="material-symbols-outlined text-[18px]">person_remove</span>
                                 </button>
                             </form>
@@ -73,4 +73,24 @@
         </div>
     </div>
 </div>
+
+<script nonce="{{.Nonce}}">
+    const initAdminUsers = () => {
+        document.querySelectorAll('.delete-user-form').forEach(form => {
+            form.addEventListener('submit', (e) => {
+                const btn = form.querySelector('button');
+                const email = btn?.dataset.email || 'this operator';
+                if (!confirm(`WARNING: Permanently purge operator ${email} from the system?`)) {
+                    e.preventDefault();
+                }
+            });
+        });
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initAdminUsers);
+    } else {
+        initAdminUsers();
+    }
+</script>
 {{end}}

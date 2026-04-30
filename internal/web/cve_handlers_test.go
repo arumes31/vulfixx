@@ -25,9 +25,15 @@ func TestIndexHandler(t *testing.T) {
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
-		// Expectations for PublicDashboardHandler
-		// Metrics query should have no args if search, dates, and CVSS are empty/defaults
-		mock.ExpectQuery("SELECT").WithArgs().WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit"}).AddRow(100, 10, 5))
+		// Populate cache to avoid DB hits for metrics
+		statsCache.Lock()
+		statsCache.total = 100
+		statsCache.kevCount = 10
+		statsCache.critCount = 5
+		statsCache.severityCounts = SeverityCounts{High: 1}
+		statsCache.topCWEs = []CWEStat{{ID: "CWE-79", Name: "XSS", Count: 1}}
+		statsCache.epssDist = []int{1, 0, 0, 0}
+		statsCache.Unlock()
 
 		// Main query should have 2 args (pageSize, offset) if others are empty
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, 'active' as status, COALESCE(c.\"references\", '{}'), COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0) FROM cves c WHERE (1=1) ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $1 OFFSET $2")).
@@ -35,13 +41,6 @@ func TestIndexHandler(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count"}).
 				AddRow(1, "CVE-2024-0001", "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, 0.123, "CWE-79", "XSS", 1))
 
-		mock.ExpectQuery("SELECT.*COUNT.*FILTER").WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(0, 1, 0, 0))
-
-		// CWE Stats
-		mock.ExpectQuery("SELECT cwe_id").WillReturnRows(pgxmock.NewRows([]string{"cwe_id", "cwe_name", "cnt"}).AddRow("CWE-79", "XSS", 1))
-
-		// EPSS Stats
-		mock.ExpectQuery("SELECT.*COUNT.*FILTER.*epss_score").WillReturnRows(pgxmock.NewRows([]string{"e1", "e2", "e3", "e4"}).AddRow(1, 0, 0, 0))
 
 		// Trending CVEs
 		mock.ExpectQuery("SELECT.*c.id, c.cve_id.*FROM cves c.*ORDER BY c.github_poc_count DESC").WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count"}).
