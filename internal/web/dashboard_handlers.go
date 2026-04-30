@@ -131,7 +131,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := fmt.Sprintf(`
-		SELECT DISTINCT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, c."references", ucn.notes,
+		SELECT DISTINCT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, COALESCE(c."references", '{}'), ucn.notes,
 		COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0)
 		FROM cves c
 		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s
@@ -164,6 +164,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		c.Notes = notes.String
+		c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
 		cves = append(cves, c)
 	}
 	if err := rows.Err(); err != nil {
@@ -178,14 +179,12 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	totalPages := (totalItems + pageSize - 1) / pageSize
+	if totalPages < 1 {
+		totalPages = 1
+	}
 
 	// Fetch severity distribution
-	var severityCounts struct {
-		Critical int
-		High     int
-		Medium   int
-		Low      int
-	}
+	var severityCounts SeverityCounts
 
 	// Create base query from metricsQuery by replacing its SELECT list
 	idx := strings.Index(metricsQuery, "FROM cves c")
@@ -207,12 +206,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	_ = a.Pool.QueryRow(r.Context(), severityQuery, args...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
 
 	// Fetch status distribution for the current view
-	var statusCounts struct {
-		Active     int
-		InProgress int
-		Resolved   int
-		Ignored    int
-	}
+	var statusCounts StatusCounts
 	statusQuery := "SELECT " +
 		"COUNT(DISTINCT CASE WHEN COALESCE(ucs.status, 'active') = 'active' THEN c.id END), " +
 		"COUNT(DISTINCT CASE WHEN ucs.status = 'in_progress' THEN c.id END), " +
@@ -507,6 +501,13 @@ type SeverityCounts struct {
 	Low      int `json:"low"`
 }
 
+type StatusCounts struct {
+	Active     int `json:"active"`
+	InProgress int `json:"in_progress"`
+	Resolved   int `json:"resolved"`
+	Ignored    int `json:"ignored"`
+}
+
 type PublicDashboardData struct {
 	CVEs            []models.CVE           `json:"cves"`
 	Total           int                    `json:"total"`
@@ -714,7 +715,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	query := `
 		SELECT 
 			c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, 
-			c.published_date, c.updated_date, 'active' as status, c."references",
+			c.published_date, c.updated_date, 'active' as status, COALESCE(c."references", '{}'),
 			COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0)
 		FROM cves c
 	`
@@ -722,27 +723,30 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	query += fmt.Sprintf(" ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $%d OFFSET $%d ", argIdx, argIdx+1)
 	finalArgs := append(args, pageSize, offset)
 	rows, err := a.Pool.Query(r.Context(), query, finalArgs...)
+	var totalPages int
 	if err != nil {
 		log.Printf("Public dashboard query error: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
+		cves = []models.CVE{}
+		totalItems = 0
+		totalPages = 1
+	} else {
+		defer rows.Close()
+		for rows.Next() {
+			var c models.CVE
+			err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount)
+			c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
+			if err != nil {
+				log.Printf("Error scanning public CVE: %v", err)
+				continue
+			}
+			cves = append(cves, c)
+		}
 	}
 
 	isAJAX := r.URL.Query().Get("ajax") == "true"
-
-	defer rows.Close()
-
-	var cves []models.CVE
-	for rows.Next() {
-		var c models.CVE
-		var notes sql.NullString
-		err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount)
-		if err != nil {
-			log.Printf("Error scanning public CVE: %v", err)
-			continue
-		}
-		c.Notes = notes.String
-		cves = append(cves, c)
+	totalPages = (totalItems + pageSize - 1) / pageSize
+	if totalPages < 1 {
+		totalPages = 1
 	}
 
 	threatLevel := "LOW"
@@ -751,8 +755,6 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		threatLevel = "HIGH"
 		threatColor = "text-red-500"
 	}
-
-	totalPages := (totalItems + pageSize - 1) / pageSize
 
 	var severityCounts SeverityCounts
 	severityQuery := "SELECT " +
@@ -913,6 +915,8 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 		WHERE cve_id = $1
 	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount)
 
+	c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
+
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			http.NotFound(w, r)
@@ -921,6 +925,23 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
 		return
+	}
+
+	var prevID, nextID string
+	if !c.PublishedDate.IsZero() {
+		// Next (older)
+		_ = a.Pool.QueryRow(r.Context(), `
+			SELECT cve_id FROM cves 
+			WHERE published_date < $1 OR (published_date = $1 AND id < $2) 
+			ORDER BY published_date DESC, id DESC LIMIT 1
+		`, c.PublishedDate, c.ID).Scan(&nextID)
+
+		// Prev (newer)
+		_ = a.Pool.QueryRow(r.Context(), `
+			SELECT cve_id FROM cves 
+			WHERE published_date > $1 OR (published_date = $1 AND id > $2) 
+			ORDER BY published_date ASC, id ASC LIMIT 1
+		`, c.PublishedDate, c.ID).Scan(&prevID)
 	}
 
 	// Generate JSON-LD safely

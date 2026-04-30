@@ -3,25 +3,25 @@
 {{define "content"}}
 <div class="space-y-8">
     <header class="border-b border-white/10 pb-6">
-        <h1 class="text-3xl font-bold text-white mb-2">Asset Management</h1>
+        <h1 class="text-3xl font-bold text-white mb-2 font-display">Asset Management</h1>
         <p class="text-gray-400 font-label text-sm uppercase tracking-widest">Link infrastructure to vulnerability telemetry</p>
     </header>
 
     <!-- Add Asset Form -->
-    <div class="glass border border-white/10 p-6 rounded-2xl mb-8 shadow-xl">
-        <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <span class="material-symbols-outlined text-blue-400">add_circle</span>
+    <div class="glass border border-white/10 p-6 rounded-3xl mb-8 shadow-xl">
+        <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2 font-display">
+            <span class="material-symbols-outlined text-primary">add_circle</span>
             New Infrastructure Asset
         </h2>
         <form action="/assets" method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
             {{.csrfField}}
             <div class="space-y-2">
                 <label for="asset_name" class="block text-xs text-gray-500 uppercase font-bold tracking-widest">Asset Name</label>
-                <input type="text" id="asset_name" name="name" required class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:border-blue-500 transition focus:outline-none" placeholder="e.g. Production Web Server">
+                <input type="text" id="asset_name" name="name" required class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-primary transition focus:outline-none" placeholder="e.g. Production Web Server">
             </div>
             <div class="space-y-2">
                 <label for="asset_type" class="block text-xs text-gray-500 uppercase font-bold tracking-widest">Category</label>
-                <select id="asset_type" name="type" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:border-blue-500 transition focus:outline-none appearance-none">
+                <select id="asset_type" name="type" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-primary transition focus:outline-none appearance-none">
                     <option value="Server">Server</option>
                     <option value="Software">Software</option>
                     <option value="Network">Network Device</option>
@@ -31,7 +31,7 @@
             </div>
             <div class="space-y-2">
                 <label for="team_id" class="block text-xs text-gray-500 uppercase font-bold tracking-widest">Workspace</label>
-                <select id="team_id" name="team_id" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:border-blue-500 transition focus:outline-none appearance-none">
+                <select id="team_id" name="team_id" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-primary transition focus:outline-none appearance-none">
                     <option value="0">Private (Individual)</option>
                     {{range .UserTeams}}
                     <option value="{{.ID}}">Team: {{.Name}}</option>
@@ -39,11 +39,11 @@
                 </select>
             </div>
             <div>
-                <button type="submit" class="w-full bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700 transition shadow-lg shadow-blue-600/20 active:scale-95">Register Asset</button>
+                <button type="submit" class="w-full bg-primary text-on-primary font-bold py-2 rounded-xl hover:bg-primary/80 transition shadow-lg shadow-primary/20 active:scale-95 uppercase tracking-widest text-xs">Register Asset</button>
             </div>
             <div class="md:col-span-4 space-y-2">
                 <label for="asset_keywords" class="block text-xs text-gray-500 uppercase font-bold tracking-widest">Monitoring Keywords (Comma separated)</label>
-                <input type="text" id="asset_keywords" name="keywords" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:border-blue-500 transition focus:outline-none" placeholder="e.g. nginx, ubuntu, openssl">
+                <input type="text" id="asset_keywords" name="keywords" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-primary transition focus:outline-none" placeholder="e.g. nginx, ubuntu, openssl">
                 <p class="text-[10px] text-gray-500">Any new CVE matching these terms will trigger an automated high-priority alert for this asset.</p>
             </div>
         </form>
@@ -53,17 +53,17 @@
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {{if .Assets}}
             {{range .Assets}}
-            <div class="glass border border-white/10 p-6 rounded-2xl relative group hover:border-blue-500/30 transition-all duration-300">
+            <div class="glass border border-white/10 p-6 rounded-3xl relative group hover:border-primary/30 transition-all duration-300">
                 <div class="flex justify-between items-start mb-4">
                     <div class="flex items-center gap-4">
-                        <div class="w-12 h-12 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400 border border-blue-500/20">
+                        <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary border border-primary/20">
                             <span class="material-symbols-outlined" aria-hidden="true">{{if eq .Type "Server"}}dns{{else if eq .Type "Software"}}code{{else if eq .Type "Network"}}router{{else if eq .Type "Cloud"}}cloud{{else}}devices{{end}}</span>
                         </div>
                         <div>
                             <div class="flex items-center gap-2">
                                 <h3 class="text-lg font-bold text-white">{{.Name}}</h3>
                                 {{if .TeamName}}
-                                <span class="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded border border-blue-500/30 font-bold uppercase">{{.TeamName}}</span>
+                                <span class="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded border border-primary/30 font-bold uppercase">{{.TeamName}}</span>
                                 {{else}}
                                 <span class="text-[10px] bg-gray-500/10 text-gray-500 px-2 py-0.5 rounded border border-white/5 font-bold uppercase">Private</span>
                                 {{end}}
@@ -82,7 +82,7 @@
                 
                 <div class="flex flex-wrap gap-2 mt-4">
                     {{range .Keywords}}
-                    <span class="px-2 py-0.5 rounded bg-white/5 text-[10px] font-mono font-bold text-blue-300 border border-white/5">{{.}}</span>
+                    <span class="px-2 py-0.5 rounded bg-white/5 text-[10px] font-mono font-bold text-primary border border-white/5">{{.}}</span>
                     {{end}}
                 </div>
             </div>
@@ -93,18 +93,29 @@
             <p class="text-gray-500 font-bold tracking-widest uppercase text-sm">No assets registered for monitoring</p>
         </div>
         {{end}}
-    </div>
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', () => {
+const initAssets = () => {
     document.querySelectorAll('.delete-asset-form').forEach(form => {
         form.addEventListener('submit', (e) => {
-            if (!confirm('Are you sure you want to delete this asset and stop automated monitoring?')) {
-                e.preventDefault();
-            }
+            e.preventDefault();
+            vulfixx.modal(
+                'Delete Asset',
+                'Are you sure you want to delete this asset and stop automated monitoring? This action cannot be undone.',
+                [
+                    { label: 'Cancel', onClick: vulfixx.closeModal },
+                    { label: 'Delete', primary: true, onClick: () => form.submit() }
+                ]
+            );
         });
     });
-});
+};
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initAssets);
+} else {
+    initAssets();
+}
 </script>
 {{end}}

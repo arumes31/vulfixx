@@ -1,13 +1,13 @@
 package worker
 
 import (
+	"bufio"
+	"compress/gzip"
 	"context"
-	"encoding/json"
-	"fmt"
 	"log"
-	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -25,118 +25,98 @@ func (w *Worker) syncEPSSPeriodically(ctx context.Context) {
 	}
 }
 
-var defaultEPSSBaseURL = "https://api.first.org/data/v1/epss"
+var defaultEPSSBaseURL = "https://epss.cyentia.com/epss_scores-current.csv.gz"
 
 func (w *Worker) syncEPSS(ctx context.Context) {
 	log.Println("Worker: [SYNC] Starting EPSS score synchronization...")
-	rows, err := w.Pool.Query(ctx, "SELECT cve_id FROM cves WHERE published_date > NOW() - INTERVAL '30 days'")
+	start := time.Now()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", defaultEPSSBaseURL, nil)
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to fetch CVEs for EPSS sync: %v", err)
+		log.Printf("Worker: [ERROR] Failed to create EPSS bulk request: %v", err)
 		return
 	}
-	defer rows.Close()
+	req.Header.Set("User-Agent", "Vulfixx-Threat-Intel-Bot/1.0")
 
-	var cveIDs []string
-	for rows.Next() {
-		var cveID string
-		if err := rows.Scan(&cveID); err != nil {
-			log.Printf("Worker: Error scanning CVE ID: %v", err)
-			continue
-		}
-		cveIDs = append(cveIDs, cveID)
+	resp, err := w.HTTP.Do(req)
+	if err != nil {
+		log.Printf("Worker: [ERROR] Failed to download EPSS bulk CSV: %v", err)
+		return
 	}
-	if err := rows.Err(); err != nil {
-		log.Printf("Worker: [ERROR] Row iteration error in syncEPSS: %v", err)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Worker: [ERROR] EPSS bulk CSV returned status %d", resp.StatusCode)
+		return
 	}
 
-	start := time.Now()
-	for _, cveID := range cveIDs {
-		select {
-		case <-ctx.Done():
-			return
-		default:
+	gzReader, err := gzip.NewReader(resp.Body)
+	if err != nil {
+		log.Printf("Worker: [ERROR] Failed to create gzip reader for EPSS CSV: %v", err)
+		return
+	}
+	defer gzReader.Close()
+
+	scanner := bufio.NewScanner(gzReader)
+	var batchRows [][]interface{}
+	batchSize := 5000
+	totalProcessed := 0
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "#") || strings.HasPrefix(line, "cve,") {
+			continue // Skip headers
 		}
 
-		epssURL := fmt.Sprintf("%s?cve=%s", defaultEPSSBaseURL, cveID)
-		var resp *http.Response
-		var err error
-		for retries := 0; retries < 3; retries++ {
-			var req *http.Request
-			req, err = http.NewRequestWithContext(ctx, "GET", epssURL, nil)
-			if err != nil {
-				log.Printf("Worker: [ERROR] Failed to create EPSS request for %s (retry %d): %v", cveID, retries, err)
-				break
+		parts := strings.Split(line, ",")
+		if len(parts) >= 2 {
+			cveID := strings.TrimSpace(parts[0])
+			scoreStr := strings.TrimSpace(parts[1])
+			score, err := strconv.ParseFloat(scoreStr, 64)
+			if err == nil {
+				batchRows = append(batchRows, []interface{}{cveID, score})
+				totalProcessed++
+			} else if totalProcessed < 5 {
+				log.Printf("Worker: [DEBUG] Failed to parse EPSS score '%s' for CVE '%s': %v", scoreStr, cveID, err)
 			}
-			resp, err = w.HTTP.Do(req)
-			if err != nil {
-				log.Printf("Worker: [ERROR] Failed to fetch EPSS for %s: %v", cveID, err)
-				break
-			}
-			if resp.StatusCode == http.StatusTooManyRequests {
-				_ = resp.Body.Close()
-				waitTime := 5 * time.Second
-				if ra := resp.Header.Get("Retry-After"); ra != "" {
-					if seconds, err := strconv.Atoi(ra); err == nil {
-						waitTime = time.Duration(seconds) * time.Second
-					} else if date, err := http.ParseTime(ra); err == nil {
-						waitTime = time.Until(date)
-					}
-				} else {
-					waitTime = time.Duration(math.Pow(2, float64(retries+1))) * time.Second
-				}
-				if waitTime > 60*time.Second {
-					waitTime = 60 * time.Second
-				}
-				if waitTime < 0 {
-					waitTime = 0
-				}
-				resp = nil
-				log.Printf("EPSS rate limited, waiting %v...", waitTime)
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(waitTime):
-					continue
-				}
-			}
-			break
-		}
-		if err != nil || resp == nil {
-			continue
 		}
 
-		if resp.StatusCode != http.StatusOK {
-			log.Printf("Worker: [WARN] EPSS API returned status %d for %s", resp.StatusCode, cveID)
-			_ = resp.Body.Close()
-			continue
-		}
-		var epssResp struct {
-			Data []struct {
-				EPSS string `json:"epss"`
-			} `json:"data"`
-		}
-		err = json.NewDecoder(resp.Body).Decode(&epssResp)
-		_ = resp.Body.Close()
-		if err != nil {
-			log.Printf("Worker: [ERROR] Failed to decode EPSS for %s: %v", cveID, err)
-			continue
-		}
-		if len(epssResp.Data) > 0 {
-			score := 0.0
-			if _, err := fmt.Sscanf(epssResp.Data[0].EPSS, "%f", &score); err != nil {
-				log.Printf("EPSS: Failed to parse score for %s: %v", cveID, err)
-				continue
+		if len(batchRows) >= batchSize {
+			w.updateEPSSBatch(ctx, batchRows)
+			batchRows = batchRows[:0]
+			select {
+			case <-ctx.Done():
+				return
+			default:
 			}
-			_, err = w.Pool.Exec(ctx, "UPDATE cves SET epss_score = $1 WHERE cve_id = $2", score, cveID)
-			if err != nil {
-				log.Printf("Worker: [ERROR] Failed to update EPSS for %s: %v", cveID, err)
-			}
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(100 * time.Millisecond):
 		}
 	}
-	log.Printf("Worker: [SYNC] EPSS score synchronization complete. Duration: %v", time.Since(start))
+
+	if len(batchRows) > 0 {
+		w.updateEPSSBatch(ctx, batchRows)
+	}
+
+	log.Printf("Worker: [SYNC] EPSS score synchronization complete. Processed %d records. Duration: %v", totalProcessed, time.Since(start))
+}
+
+func (w *Worker) updateEPSSBatch(ctx context.Context, batch [][]interface{}) {
+	cveIDs := make([]string, len(batch))
+	scores := make([]float64, len(batch))
+
+	for i, row := range batch {
+		cveIDs[i] = row[0].(string)
+		scores[i] = row[1].(float64)
+	}
+
+	query := `
+		UPDATE cves 
+		SET epss_score = u.epss_score
+		FROM (SELECT unnest($1::text[]) as cve_id, unnest($2::numeric[]) as epss_score) as u
+		WHERE cves.cve_id = u.cve_id 
+		AND cves.epss_score IS DISTINCT FROM u.epss_score
+	`
+	_, err := w.Pool.Exec(ctx, query, cveIDs, scores)
+	if err != nil {
+		log.Printf("Worker: [ERROR] Failed to bulk update EPSS scores: %v", err)
+	}
 }

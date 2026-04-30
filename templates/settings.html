@@ -10,19 +10,19 @@
     <div class="space-y-6">
 
         <!-- Account Info & Email Change -->
-        <div class="bg-surface rounded-xl border border-outline-variant/30 overflow-hidden shadow-xl p-6">
-            <h3 class="font-display font-medium tracking-wide flex items-center gap-2 mb-6 text-lg border-b border-outline-variant/20 pb-4">
+        <div class="glass rounded-[2rem] border border-white/10 overflow-hidden shadow-xl p-8">
+            <h3 class="font-display font-medium tracking-wide flex items-center gap-2 mb-6 text-xl border-b border-white/5 pb-4 text-white">
                 <span class="material-symbols-outlined text-primary">badge</span>
                 Identity Matrix
             </h3>
 
-            <div class="mb-8 p-4 bg-surface-container-low rounded-lg border border-outline-variant/20">
-                <p class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant mb-1">Current Operator</p>
-                <p class="font-mono text-on-surface text-lg">{{.Email}}</p>
+            <div class="mb-8 p-4 bg-white/5 rounded-2xl border border-white/5">
+                <p class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-gray-500 mb-1">Current Operator</p>
+                <p class="font-mono text-white text-lg">{{.Email}}</p>
             </div>
 
             <div class="mt-6">
-                <h4 class="text-sm font-label font-bold tracking-widest uppercase text-on-surface-variant mb-4">Modify Identity</h4>
+                <h4 class="text-xs font-label font-bold tracking-widest uppercase text-gray-400 mb-4">Modify Identity</h4>
 
                 {{if .EmailError}}
                 <div class="bg-error-container/30 border border-error/30 text-error px-4 py-3 rounded-md text-sm mb-6 flex items-start gap-2">
@@ -40,14 +40,14 @@
                 <form action="/settings/email" method="POST" class="max-w-md space-y-4">
                     {{.csrfField}}
                     <div class="space-y-2">
-                        <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">New Email Address</label>
-                        <input type="email" name="new_email" required class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors">
+                        <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-gray-500 block">New Email Address</label>
+                        <input type="email" name="new_email" required class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:border-primary transition-all">
                     </div>
                     <div class="space-y-2">
-                        <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Current Passphrase</label>
-                        <input type="password" name="password" required class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
+                        <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-gray-500 block">Current Passphrase</label>
+                        <input type="password" name="password" required class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:border-primary transition-all font-mono">
                     </div>
-                    <button type="submit" class="bg-surface-container-high hover:bg-primary hover:text-on-primary border border-outline-variant/50 hover:border-primary text-on-surface font-label font-bold uppercase tracking-widest text-xs py-2 px-6 rounded transition-all duration-200 mt-2">
+                    <button type="submit" class="bg-primary text-on-primary font-label font-bold uppercase tracking-widest text-[10px] py-3 px-8 rounded-xl transition-all duration-200 mt-2 shadow-lg shadow-primary/20 hover:bg-primary/80 active:scale-95">
                         Commit Identity
                     </button>
                 </form>
@@ -55,8 +55,8 @@
         </div>
 
         <!-- 2FA -->
-        <div class="bg-surface rounded-xl border border-outline-variant/30 overflow-hidden shadow-xl p-6">
-            <h3 class="font-display font-medium tracking-wide flex items-center gap-2 mb-6 text-lg border-b border-outline-variant/20 pb-4">
+        <div class="glass rounded-[2rem] border border-white/10 overflow-hidden shadow-xl p-8">
+            <h3 class="font-display font-medium tracking-wide flex items-center gap-2 mb-6 text-xl border-b border-white/5 pb-4 text-white">
                 <span class="material-symbols-outlined text-tertiary">lock_person</span>
                 Two-Factor Auth (TOTP)
             </h3>
@@ -114,8 +114,8 @@
         </div>
 
         <!-- Password Change -->
-        <div class="bg-surface rounded-xl border border-outline-variant/30 overflow-hidden shadow-xl p-6">
-            <h3 class="font-display font-medium tracking-wide flex items-center gap-2 mb-6 text-lg border-b border-outline-variant/20 pb-4">
+        <div class="glass rounded-[2rem] border border-white/10 overflow-hidden shadow-xl p-8">
+            <h3 class="font-display font-medium tracking-wide flex items-center gap-2 mb-6 text-xl border-b border-white/5 pb-4 text-white">
                 <span class="material-symbols-outlined text-primary">key</span>
                 Access Credentials
             </h3>
@@ -136,24 +136,24 @@
             <form action="/settings/password" method="POST" class="max-w-md space-y-4">
                 {{.csrfField}}
                 <div class="space-y-2">
-                    <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Current Passphrase</label>
-                    <input type="password" name="current_password" required class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
+                    <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-gray-500 block">Current Passphrase</label>
+                    <input type="password" name="current_password" required class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:border-primary transition-all font-mono">
                 </div>
                 <div class="space-y-2 mt-6">
-                    <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">New Passphrase (min 8 chars)</label>
-                    <input type="password" name="new_password" required minlength="8" class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
+                    <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-gray-500 block">New Passphrase (min 8 chars)</label>
+                    <input type="password" name="new_password" required minlength="8" class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:border-primary transition-all font-mono">
                 </div>
                 <div class="space-y-2">
-                    <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Confirm New</label>
-                    <input type="password" name="confirm_password" required minlength="8" class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-primary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono">
+                    <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-gray-500 block">Confirm New</label>
+                    <input type="password" name="confirm_password" required minlength="8" class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:border-primary transition-all font-mono">
                 </div>
                 {{if .IsTOTPEnabled}}
                 <div class="space-y-2 mt-6">
                     <label class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-tertiary block">TOTP Authorization</label>
-                    <input type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456" class="w-full bg-surface-container border-b-2 border-outline-variant/50 focus:border-tertiary px-3 py-2 rounded-t-sm text-sm text-on-surface focus:outline-none transition-colors font-mono tracking-widest">
+                    <input type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456" class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:border-tertiary transition-all font-mono tracking-widest text-center">
                 </div>
                 {{end}}
-                <button type="submit" class="bg-surface-container-high hover:bg-primary hover:text-on-primary border border-outline-variant/50 hover:border-primary text-on-surface font-label font-bold uppercase tracking-widest text-xs py-2 px-6 rounded transition-all duration-200 mt-6">
+                <button type="submit" class="bg-primary text-on-primary font-label font-bold uppercase tracking-widest text-[10px] py-3 px-8 rounded-xl transition-all duration-200 mt-6 shadow-lg shadow-primary/20 hover:bg-primary/80 active:scale-95">
                     Update Credentials
                 </button>
             </form>

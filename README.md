@@ -32,7 +32,7 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 - **Asset-Linked Monitoring**: Proactive infrastructure defense via asset-keyword mapping.
 - **Secure Integration**: Filtered, token-authenticated RSS feeds for personalized technical intel.
 - **Rich Email Alerts**: Premium HTML notifications with OSINT links, Vendor advisories, and Risk gauges.
-- **Modern UI**: High-density dashboard with glassmorphism aesthetics and Material Symbol integration.
+- **Modern UI**: High-density dashboard with a premium glassmorphic Amber theme, built on a custom SPA navigation framework for high-performance, seamless transitions.
 
 ## 🏗️ Architecture
 The application follows a modular architecture designed to prevent monolithic files and improve domain separation.

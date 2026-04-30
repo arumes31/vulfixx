@@ -14,30 +14,31 @@
             </div>
         </div>
         <div class="flex items-center gap-3">
-            <form id="team-switch-form" action="/teams/switch" method="POST" class="flex items-center gap-2 bg-white/5 border border-white/10 p-1 rounded-lg">
+            <form id="team-switch-form" action="/teams/switch" method="POST" class="flex items-center gap-2 bg-white/5 border border-white/10 p-1 rounded-2xl">
                 {{.CSRFField}}
                 <span class="material-symbols-outlined text-gray-500 ml-2 text-sm">hub</span>
-                <select name="team_id" id="team-selector" class="bg-transparent text-xs font-bold text-[#00daf3] focus:outline-none pr-4 py-1 cursor-pointer">
+                <select name="team_id" id="team-selector" class="bg-transparent text-xs font-bold text-primary focus:outline-none pr-4 py-1 cursor-pointer">
                     <option value="0" {{if eq .ActiveTeamID 0}}selected{{end}}>Private Workspace</option>
                     {{range .UserTeams}}
                     <option value="{{.ID}}" {{if eq $.ActiveTeamID .ID}}selected{{end}}>Team: {{.Name}}</option>
                     {{end}}
                 </select>
             </form>
-            <a href="/export" class="flex items-center gap-2 px-4 py-2 bg-[#00daf3]/10 border border-[#00daf3]/20 text-[#00daf3] rounded-md text-xs font-bold uppercase tracking-widest hover:bg-[#00daf3]/20 transition-colors">
+            <a href="/export" class="flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/20 text-primary rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-primary/20 transition-colors">
                 <span class="material-symbols-outlined text-sm">download</span>
                 Export
             </a>
+
         </div>
     </header>
 
     <!-- Summary Cards -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div class="glass p-6 rounded-3xl border border-white/10 relative overflow-hidden group">
-            <div class="absolute -right-4 -top-4 w-20 h-20 bg-[#00daf3]/5 rounded-full blur-2xl group-hover:bg-[#00daf3]/10 transition-all"></div>
+            <div class="absolute -right-4 -top-4 w-20 h-20 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-all"></div>
             <div class="flex justify-between items-start mb-4">
                 <span class="text-[10px] font-black tracking-widest uppercase text-gray-500">Active Threats</span>
-                <span class="material-symbols-outlined text-[#00daf3]">security</span>
+                <span class="material-symbols-outlined text-primary">security</span>
             </div>
             <h2 class="text-4xl font-black text-white tracking-tighter">{{.Total}}</h2>
         </div>
@@ -110,7 +111,7 @@
                     <tr class="hover:bg-white/[0.02] transition-colors group">
                         <td class="px-6 py-6">
                             <div class="flex flex-col">
-                                <a href="https://nvd.nist.gov/vuln/detail/{{.CVEID}}" target="_blank" rel="noopener noreferrer" class="text-sm font-bold text-[#00daf3] hover:underline transition-all">{{.CVEID}}</a>
+                                <a href="https://nvd.nist.gov/vuln/detail/{{.CVEID}}" target="_blank" rel="noopener noreferrer" class="text-sm font-bold text-primary hover:underline transition-all">{{.CVEID}}</a>
                                 <span class="text-[10px] text-gray-600 mt-1 font-mono uppercase tracking-tighter">{{.PublishedDate.Format "Jan 02, 2006"}}</span>
                             </div>
                         </td>
@@ -138,12 +139,12 @@
                                 {{if gt .EPSSScore 0.0}}
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[9px] font-black uppercase tracking-widest" title="EPSS Probability Score: {{printf "%.2f%%" (multiply .EPSSScore 100.0)}}">EPSS: {{printf "%.1f%%" (multiply .EPSSScore 100.0)}}</span>
                                 {{end}}
-                                <button data-id="{{.ID}}" data-cve="{{.CVEID}}" data-notes="{{.Notes}}" aria-label="Remediation Notes" class="notes-trigger material-symbols-outlined {{if .Notes}}text-[#00daf3] opacity-100{{else}}text-gray-600 opacity-40 hover:opacity-100{{end}} transition-all" title="Remediation Notes">description</button>
+                                <button data-id="{{.ID}}" data-cve="{{.CVEID}}" data-notes="{{.Notes}}" aria-label="Remediation Notes" class="notes-trigger material-symbols-outlined {{if .Notes}}text-primary opacity-100{{else}}text-gray-600 opacity-40 hover:opacity-100{{end}} transition-all" title="Remediation Notes">description</button>
                             </div>
                         </td>
                         <td class="px-6 py-6">
                             {{if eq .Status "resolved"}}
-                            <span class="text-[10px] text-[#00daf3] font-black uppercase tracking-widest flex items-center gap-1.5 bg-[#00daf3]/10 px-3 py-1.5 rounded-full w-fit"><span class="material-symbols-outlined text-[14px]">check_circle</span> Resolved</span>
+                            <span class="text-[10px] text-primary font-black uppercase tracking-widest flex items-center gap-1.5 bg-primary/10 px-3 py-1.5 rounded-full w-fit"><span class="material-symbols-outlined text-[14px]">check_circle</span> Resolved</span>
                             {{else if eq .Status "ignored"}}
                             <span class="text-[10px] text-gray-500 font-black uppercase tracking-widest flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-full w-fit opacity-60"><span class="material-symbols-outlined text-[14px]">visibility_off</span> Ignored</span>
                             {{else if eq .Status "in_progress"}}
@@ -153,7 +154,7 @@
                             {{end}}
                         </td>
                         <td class="px-6 py-6 text-right">
-                            <select data-id="{{.ID}}" class="status-selector bg-[#181c22] text-[10px] font-black uppercase tracking-widest py-2 px-3 rounded-xl border border-white/10 text-gray-300 focus:outline-none focus:border-[#00daf3] transition-all hover:bg-white/5 cursor-pointer">
+                            <select data-id="{{.ID}}" class="status-selector bg-[#181c22] text-[10px] font-black uppercase tracking-widest py-2 px-3 rounded-xl border border-white/10 text-gray-300 focus:outline-none focus:border-primary transition-all hover:bg-white/5 cursor-pointer">
                                 <option value="active" {{if eq .Status "active"}}selected{{end}}>Active</option>
                                 <option value="in_progress" {{if eq .Status "in_progress"}}selected{{end}}>Progress</option>
                                 <option value="resolved" {{if eq .Status "resolved"}}selected{{end}}>Resolve</option>
@@ -208,7 +209,7 @@
                 label.textContent = mappings[k].name;
                 
                 const val = document.createElement('span');
-                val.className = 'text-xs font-bold text-[#00daf3]';
+                val.className = 'text-xs font-bold text-primary';
                 val.textContent = mappings[k][v] || v;
                 
                 row.appendChild(label);
@@ -233,7 +234,7 @@
         const textarea = document.createElement('textarea');
         textarea.id = 'notes-text';
         textarea.rows = 6;
-        textarea.className = 'w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white focus:outline-none focus:border-[#00daf3] transition-all text-sm';
+        textarea.className = 'w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white focus:outline-none focus:border-primary transition-all text-sm';
         textarea.value = (notes === 'null' || !notes) ? '' : notes;
         container.appendChild(textarea);
 
@@ -284,8 +285,8 @@
         if (data) setTimeout(() => window.location.reload(), 1000);
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
-        document.getElementById('team-selector')?.addEventListener('change', (e) => {
+const initDashboard = () => {
+    document.getElementById('team-selector')?.addEventListener('change', (e) => {
             e.target.form.submit();
         });
 
@@ -340,7 +341,7 @@
                             labels: ['Active', 'In Progress', 'Resolved', 'Ignored'],
                             datasets: [{
                                 data: [{{.StatusCounts.Active}}, {{.StatusCounts.InProgress}}, {{.StatusCounts.Resolved}}, {{.StatusCounts.Ignored}}],
-                                backgroundColor: ['#f87171', '#60a5fa', '#00daf3', '#4b5563'],
+                                backgroundColor: ['#f87171', '#60a5fa', '#ffb311', '#4b5563'],
                                 borderWidth: 0,
                                 spacing: 5
                             }]
@@ -352,6 +353,21 @@
         } catch (e) {
             console.error('Error initializing charts:', e);
         }
-    });
+
+        // Navigate rows safely
+        document.querySelectorAll('tr[data-cve-url]').forEach(function(row) {
+            row.addEventListener('click', function(e) {
+                if (e.target.closest('a')) return;
+                const url = row.getAttribute('data-cve-url');
+                if (url) vulfixx.navigate(url);
+            });
+        });
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initDashboard);
+    } else {
+        initDashboard();
+    }
 </script>
 {{end}}

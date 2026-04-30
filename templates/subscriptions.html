@@ -4,7 +4,7 @@
 <div class="space-y-8">
     <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-white/10 pb-8">
         <div>
-            <h1 class="text-4xl font-bold text-white mb-2 tracking-tight">Alert Intelligence</h1>
+            <h1 class="text-4xl font-bold text-white mb-2 tracking-tight font-display">Alert Intelligence</h1>
             <p class="text-gray-400 text-sm">Configure automated vulnerability telemetry mapping and delivery.</p>
         </div>
     </header>
@@ -13,8 +13,8 @@
         <!-- Add Subscription -->
         <div class="lg:col-span-1">
             <div class="glass border border-white/10 p-8 rounded-[2.5rem] sticky top-6 shadow-2xl">
-                <h3 class="text-xl font-bold text-white mb-6 flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-[#00daf3]/10 flex items-center justify-center text-[#00daf3]">
+                <h3 class="text-xl font-bold text-white mb-6 flex items-center gap-3 font-display">
+                    <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
                         <span class="material-symbols-outlined" aria-hidden="true">add_alert</span>
                     </div>
                     New Monitor
@@ -24,12 +24,12 @@
                     {{.CSRFField}}
                     <div class="space-y-2">
                         <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Target Infrastructure</label>
-                        <input type="text" name="keyword" placeholder="e.g. Cisco, nginx, vcenter" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#00daf3] transition-all">
+                        <input type="text" name="keyword" placeholder="e.g. Cisco, nginx, vcenter" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
                     </div>
                     
                     <div class="space-y-2">
                         <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Minimum CVSS Severity</label>
-                        <input type="number" step="0.1" name="min_severity" value="7.0" min="0.0" max="10.0" required class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#00daf3] transition-all font-mono">
+                        <input type="number" step="0.1" name="min_severity" value="7.0" min="0.0" max="10.0" required class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all font-mono">
                     </div>
 
                     <div class="space-y-3 pt-2">
@@ -41,7 +41,7 @@
                                 <span class="text-xs font-bold text-gray-300">Direct Email</span>
                             </div>
                             <input type="checkbox" name="enable_email" value="true" checked class="sr-only peer">
-                            <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-[#00daf3] after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6 peer-focus-visible:ring-2 peer-focus-visible:ring-[#00daf3] peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#10141a]"></div>
+                            <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-primary after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6 peer-focus-visible:ring-2 peer-focus-visible:ring-primary peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#10141a]"></div>
                         </label>
 
                         <label class="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/10 transition-all">
@@ -56,10 +56,10 @@
 
                     <div id="webhook-field" class="space-y-2 hidden">
                         <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Webhook URL</label>
-                        <input type="url" name="webhook_url" placeholder="https://hooks.slack.com/..." class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#00daf3] transition-all">
+                        <input type="url" name="webhook_url" placeholder="https://hooks.slack.com/..." class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
                     </div>
 
-                    <button type="submit" class="w-full bg-[#00daf3] text-[#00363d] font-black uppercase tracking-widest text-xs py-4 rounded-2xl shadow-lg shadow-[#00daf3]/20 hover:bg-[#00daf3]/80 transition-all active:scale-95">
+                    <button type="submit" class="w-full bg-primary text-on-primary font-black uppercase tracking-widest text-xs py-4 rounded-2xl shadow-lg shadow-primary/20 hover:bg-primary/80 transition-all active:scale-95">
                         Initialize Monitor
                     </button>
                 </form>
@@ -71,10 +71,10 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {{if .Subscriptions}}
                     {{range .Subscriptions}}
-                    <div class="glass border border-white/10 p-6 rounded-3xl relative group hover:border-[#00daf3]/30 transition-all">
+                    <div class="glass border border-white/10 p-6 rounded-3xl relative group hover:border-primary/30 transition-all">
                         <div class="flex justify-between items-start mb-6">
                             <div class="flex items-center gap-4">
-                                <div class="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-[#00daf3] border border-white/10">
+                                <div class="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-primary border border-white/10">
                                     <span class="material-symbols-outlined" aria-hidden="true">analytics</span>
                                 </div>
                                 <div>
@@ -88,7 +88,7 @@
                         </div>
 
                         <div class="flex items-center gap-3">
-                            <span class="flex items-center gap-1.5 text-[10px] font-bold {{if .EnableEmail}}text-[#00daf3]{{else}}text-gray-700{{end}} uppercase">
+                            <span class="flex items-center gap-1.5 text-[10px] font-bold {{if .EnableEmail}}text-primary{{else}}text-gray-700{{end}} uppercase">
                                 <span class="material-symbols-outlined text-[14px]">mail</span> Email
                             </span>
                             <span class="w-1 h-1 rounded-full bg-gray-800"></span>
@@ -111,6 +111,7 @@
 </div>
 
 <script>
+const initSubscriptions = () => {
     const webhookToggle = document.querySelector('input[name="enable_webhook"]');
     const webhookURLInput = document.querySelector('input[name="webhook_url"]');
     
@@ -124,72 +125,78 @@
         }
     });
 
-    async function submitSubscription(event, form) {
-        if (event) event.preventDefault();
-        
-        if (webhookToggle?.checked && !webhookURLInput?.value) {
-            vulfixx.toast('Webhook URL is required when sync is enabled', 'error');
-            return false;
-        }
-        try {
-            const formData = new FormData(form);
-            const data = await vulfixx.fetch('/subscriptions', {
-                method: 'POST',
-                headers: { 
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRF-Token': form.querySelector('input[name="gorilla.csrf.Token"]')?.value
-                },
-                body: new URLSearchParams(formData)
-            });
-            if (data && data.success === true) {
-                window.location.reload();
-            } else {
-                vulfixx.toast((data && data.message) || 'Failed to save monitor', 'error');
-            }
-        } catch (err) {
-            vulfixx.toast('Network error: ' + err.message, 'error');
-        }
+    document.querySelectorAll('.delete-monitor-btn').forEach(btn => {
+        btn.addEventListener('click', () => deleteMonitor(btn.dataset.id));
+    });
+};
+
+async function submitSubscription(event, form) {
+    if (event) event.preventDefault();
+    
+    const webhookToggle = document.querySelector('input[name="enable_webhook"]');
+    const webhookURLInput = document.querySelector('input[name="webhook_url"]');
+
+    if (webhookToggle?.checked && !webhookURLInput?.value) {
+        vulfixx.toast('Webhook URL is required when sync is enabled', 'error');
         return false;
     }
-
-    async function deleteMonitor(id) {
-        const container = document.createElement('div');
-        container.textContent = 'Are you sure you want to disable this telemetry pipeline?';
-        
-        vulfixx.modal('Remove Monitor', container, [
-            { label: 'Cancel', onClick: () => vulfixx.closeModal() },
-            { label: 'Confirm Removal', primary: true, onClick: () => confirmDelete(id) }
-        ]);
-    }
-
-    async function confirmDelete(id) {
-        const csrfToken = document.querySelector('input[name="gorilla.csrf.Token"]')?.value;
-        try {
-            const data = await vulfixx.fetch('/subscriptions/delete', {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRF-Token': csrfToken
-                },
-                body: new URLSearchParams({ id: id })
-            });
-            if (data && data.success === true) {
-                vulfixx.closeModal();
-                window.location.reload();
-            } else {
-                vulfixx.closeModal();
-                vulfixx.toast((data && data.message) || 'Failed to remove monitor', 'error');
-            }
-        } catch (err) {
-            vulfixx.closeModal();
-            vulfixx.toast('Network error: ' + err.message, 'error');
-        }
-    }
-    document.addEventListener('DOMContentLoaded', () => {
-        document.querySelectorAll('.delete-monitor-btn').forEach(btn => {
-            btn.addEventListener('click', () => deleteMonitor(btn.dataset.id));
+    try {
+        const formData = new FormData(form);
+        const data = await vulfixx.fetch('/subscriptions', {
+            method: 'POST',
+            headers: { 
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-Token': form.querySelector('input[name="gorilla.csrf.Token"]')?.value
+            },
+            body: new URLSearchParams(formData)
         });
-    });
+        if (data && data.success === true) {
+            vulfixx.navigate('/subscriptions');
+        } else {
+            vulfixx.toast((data && data.message) || 'Failed to save monitor', 'error');
+        }
+    } catch (err) {
+        vulfixx.toast('Network error: ' + err.message, 'error');
+    }
+    return false;
+}
+
+async function deleteMonitor(id) {
+    vulfixx.modal('Remove Monitor', 'Are you sure you want to disable this telemetry pipeline? This action will stop all automated alerts for this keyword.', [
+        { label: 'Cancel', onClick: () => vulfixx.closeModal() },
+        { label: 'Confirm Removal', primary: true, onClick: () => confirmDelete(id) }
+    ]);
+}
+
+async function confirmDelete(id) {
+    const csrfToken = document.querySelector('input[name="gorilla.csrf.Token"]')?.value;
+    try {
+        const data = await vulfixx.fetch('/subscriptions/delete', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-Token': csrfToken
+            },
+            body: new URLSearchParams({ id: id })
+        });
+        if (data && data.success === true) {
+            vulfixx.closeModal();
+            vulfixx.navigate('/subscriptions');
+        } else {
+            vulfixx.closeModal();
+            vulfixx.toast((data && data.message) || 'Failed to remove monitor', 'error');
+        }
+    } catch (err) {
+        vulfixx.closeModal();
+        vulfixx.toast('Network error: ' + err.message, 'error');
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSubscriptions);
+} else {
+    initSubscriptions();
+}
 </script>
 {{end}}

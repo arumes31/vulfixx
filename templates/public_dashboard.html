@@ -45,10 +45,10 @@
     <!-- Summary Cards -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div class="glass p-6 rounded-3xl border border-white/10 relative overflow-hidden group">
-            <div class="absolute -right-4 -top-4 w-20 h-20 bg-[#00daf3]/5 rounded-full blur-2xl group-hover:bg-[#00daf3]/10 transition-all"></div>
+            <div class="absolute -right-4 -top-4 w-20 h-20 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-all"></div>
             <div class="flex justify-between items-start mb-4">
                 <span class="text-[10px] font-black tracking-widest uppercase text-gray-500">Global CVE Vault</span>
-                <span class="material-symbols-outlined text-[#00daf3]">database</span>
+                <span class="material-symbols-outlined text-primary">database</span>
             </div>
             <h2 class="text-4xl font-black text-white tracking-tighter">{{.Total}}</h2>
         </div>
@@ -73,9 +73,9 @@
     </div>
 
     <!-- Filters Section -->
-    <div class="glass p-8 rounded-[2rem] border border-white/10">
-        <form id="search-form" action="/" method="GET" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div class="space-y-2">
+    <div class="glass p-8 rounded-[2rem] border border-white/10 relative z-10 -mt-10 mb-12 shadow-2xl shadow-black/50">
+        <form id="filter-form" method="GET" action="/" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div class="space-y-2 lg:col-span-2">
                 <label class="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Search Keywords</label>
                 <div class="relative">
                     <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm">search</span>
@@ -104,7 +104,7 @@
                     <input id="filter-max-cvss" type="number" step="0.1" name="max_cvss" value="{{.MaxCvss}}" placeholder="10.0" class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all">
                 </div>
             </div>
-            <div class="space-y-2 lg:col-span-1">
+            <div class="space-y-2">
                 <label class="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">EPSS Probability</label>
                 <div class="flex items-center gap-2">
                     <input id="filter-min-epss" type="number" step="0.01" name="min_epss" value="{{.MinEpss}}" placeholder="0.00" class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all">
@@ -112,13 +112,11 @@
                     <input id="filter-max-epss" type="number" step="0.01" name="max_epss" value="{{.MaxEpss}}" placeholder="1.00" class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all">
                 </div>
             </div>
-            <div class="space-y-2 lg:col-span-1">
+            <div class="space-y-2">
                 <label class="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Date Published</label>
-                <div class="flex items-center gap-2">
-                    <input type="date" name="start_date" value="{{.StartDate}}" class="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all [color-scheme:dark]">
-                </div>
+                <input type="date" name="start_date" value="{{.StartDate}}" class="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all [color-scheme:dark]">
             </div>
-            <div class="flex items-end gap-4 lg:col-span-2">
+            <div class="flex items-end gap-4 lg:col-span-3">
                 <label class="flex items-center gap-3 cursor-pointer bg-white/5 border border-white/10 rounded-2xl px-4 py-3 hover:bg-white/10 transition-all flex-grow">
                     <input type="checkbox" name="kev" value="true" {{if .KevOnly}}checked{{end}} class="w-4 h-4 rounded border-white/10 bg-white/5 text-primary focus:ring-primary focus:ring-offset-0">
                     <span class="text-[10px] font-bold text-gray-300 uppercase">KEV Only</span>
@@ -130,9 +128,9 @@
                 <button type="submit" class="px-6 py-3 bg-primary text-on-primary rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-lg shadow-primary/20 whitespace-nowrap">
                     Filter
                 </button>
-                <a href="/" class="p-3 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-all hover:bg-white/10" title="Clear All Filters">
+                <button type="button" id="clear-filters" class="p-3 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-all hover:bg-white/10" title="Clear All Filters">
                     <span class="material-symbols-outlined text-sm">filter_alt_off</span>
-                </a>
+                </button>
             </div>
         </form>
     </div>
@@ -208,11 +206,11 @@
                 Vulfixx provides real-time monitoring of the NIST National Vulnerability Database and CISA Known Exploited Vulnerabilities.
             </p>
             <div class="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4">
-                <a href="/register" class="inline-flex items-center gap-3 px-8 py-4 bg-[#00daf3] text-[#00363d] rounded-2xl font-bold hover:bg-[#00daf3]/80 transition-all group shadow-lg shadow-[#00daf3]/20">
+                <a href="/register" class="inline-flex items-center gap-3 px-8 py-4 bg-primary text-on-primary rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 transition-all group shadow-lg shadow-primary/20">
                     Get Started Free
                     <span class="material-symbols-outlined group-hover:translate-x-1 transition-transform">rocket_launch</span>
                 </a>
-                <a href="/login" class="inline-flex items-center gap-3 px-8 py-4 bg-white/5 border border-white/10 rounded-2xl font-bold text-gray-300 hover:text-white hover:bg-white/10 transition-all">
+                <a href="/login" class="inline-flex items-center gap-3 px-8 py-4 bg-white/5 border border-white/10 rounded-2xl font-black text-gray-300 hover:text-white hover:bg-white/10 transition-all text-xs uppercase tracking-widest">
                     Member Login
                     <span class="material-symbols-outlined">login</span>
                 </a>
@@ -253,9 +251,8 @@
     animation-play-state: paused;
 }
 </style>
-
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+const initPublicDashboard = () => {
     let currentPage = {{.Page}};
     const totalPages = {{.TotalPages}};
     let isLoading = false;
@@ -291,7 +288,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         row.addEventListener('click', function(e) {
                             if (e.target.closest('a')) return;
                             const url = row.getAttribute('data-cve-url');
-                            if (url) window.location.href = url;
+                            if (url) vulfixx.navigate(url);
                         });
                         tbody.appendChild(row);
                     });
@@ -301,10 +298,67 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .catch(err => {
                 console.error('Error loading more CVEs:', err);
+                vulfixx.toast('Failed to load more CVEs', 'error');
                 isLoading = false;
                 loadingIndicator.classList.add('hidden');
             });
     }
+
+    const filterForm = document.getElementById('filter-form');
+    let debounceTimer;
+
+    function applyFilters() {
+        const url = new URL(window.location.href);
+        url.search = new URLSearchParams(new FormData(filterForm)).toString();
+        url.searchParams.set('ajax', 'true');
+        url.searchParams.delete('page');
+
+        tbody.innerHTML = '<tr><td colspan="5" class="p-12 text-center text-gray-500"><span class="material-symbols-outlined animate-spin text-4xl text-primary">autorenew</span></td></tr>';
+        
+        fetch(url)
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+                return response.text();
+            })
+            .then(html => {
+                tbody.innerHTML = html;
+                currentPage = 1;
+                const newUrl = new URL(window.location.href);
+                newUrl.search = new URLSearchParams(new FormData(filterForm)).toString();
+                window.history.pushState({}, '', newUrl);
+                
+                tbody.querySelectorAll('tr').forEach(row => {
+                    row.addEventListener('click', function(e) {
+                        if (e.target.closest('a')) return;
+                        const url = row.getAttribute('data-cve-url');
+                        if (url) vulfixx.navigate(url);
+                    });
+                });
+            })
+            .catch(err => {
+                console.error('Error applying filters:', err);
+                vulfixx.toast('Failed to update search results', 'error');
+            });
+    }
+
+    filterForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        applyFilters();
+    });
+
+    filterForm.querySelectorAll('input').forEach(input => {
+        input.addEventListener('input', function() {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(applyFilters, 400);
+        });
+    });
+
+    document.getElementById('clear-filters').addEventListener('click', function() {
+        filterForm.reset();
+        filterForm.querySelectorAll('input[type="text"], input[type="number"], input[type="date"]').forEach(input => input.value = '');
+        filterForm.querySelectorAll('input[type="checkbox"]').forEach(input => input.checked = false);
+        applyFilters();
+    });
 
     // IntersectionObserver for Infinite Scroll
     const sentinel = document.getElementById('sentinel');
@@ -327,7 +381,7 @@ document.addEventListener('DOMContentLoaded', function() {
             legend: { display: false },
             tooltip: {
                 backgroundColor: '#1a1f26',
-                titleColor: '#00daf3',
+                titleColor: '#ffb311',
                 bodyColor: '#fff',
                 borderColor: 'rgba(255,255,255,0.1)',
                 borderWidth: 1,
@@ -347,17 +401,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (ranges[label]) {
                         document.getElementById('filter-min-cvss').value = ranges[label][0];
                         document.getElementById('filter-max-cvss').value = ranges[label][1];
-                        form.submit();
+                        applyFilters();
                     }
                 } else if (chart.canvas.id === 'cweChart') {
                     document.getElementById('filter-cwe').value = label;
-                    form.submit();
+                    applyFilters();
                 } else if (chart.canvas.id === 'epssChart') {
                     const epssRanges = { '<1%': [0, 0.01], '1-10%': [0.01, 0.1], '10-50%': [0.1, 0.5], '>50%': [0.5, 1.0] };
                     if (epssRanges[label]) {
                         document.getElementById('filter-min-epss').value = epssRanges[label][0];
                         document.getElementById('filter-max-epss').value = epssRanges[label][1];
-                        form.submit();
+                        applyFilters();
                     }
                 }
             }
@@ -422,10 +476,16 @@ document.addEventListener('DOMContentLoaded', function() {
         row.addEventListener('click', function(e) {
             if (e.target.closest('a')) return;
             const url = row.getAttribute('data-cve-url');
-            if (url) window.location.href = url;
+            if (url) vulfixx.navigate(url);
         });
     });
-});
+};
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initPublicDashboard);
+} else {
+    initPublicDashboard();
+}
 </script>
 {{end}}
 

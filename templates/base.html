@@ -227,7 +227,7 @@
                 actions.forEach(a => {
                     const btn = document.createElement('button');
                     btn.textContent = a.label;
-                    btn.className = `px-6 py-2 rounded-lg font-bold text-xs uppercase tracking-widest transition-all ${a.primary ? 'bg-[#00daf3] text-[#00363d] hover:bg-[#00daf3]/80 shadow-lg shadow-[#00daf3]/20' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`;
+                    btn.className = `px-6 py-2 rounded-lg font-bold text-xs uppercase tracking-widest transition-all ${a.primary ? 'bg-primary text-on-primary hover:bg-primary/80 shadow-lg shadow-primary/20' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`;
                     btn.onclick = () => {
                         if (typeof a.onClick === 'function') {
                             a.onClick();
@@ -324,7 +324,7 @@
                         const normalized = { success: !!data.success, data: data, response: response };
                         if (normalized.success) {
                             if (normalized.data.message) vulfixx.toast(normalized.data.message, 'success');
-                            if (normalized.data.redirect) setTimeout(() => window.location.href = normalized.data.redirect, 1000);
+                            if (normalized.data.redirect) vulfixx.navigate(normalized.data.redirect);
                             return normalized;
                         } else {
                             vulfixx.toast(normalized.data.error || 'Action failed', 'error');
@@ -335,6 +335,52 @@
                 } catch (e) {
                     vulfixx.toast(`Network error: ${e.message}`, 'error');
                     return Promise.reject(e);
+                }
+            },
+
+            navigate: async (url, pushState = true) => {
+                const main = document.querySelector('main');
+                main.classList.add('page-fade-out');
+                
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error('Failed to fetch page');
+                    const html = await response.text();
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    
+                    const newMain = doc.querySelector('main');
+                    if (!newMain) throw new Error('New page content not found');
+                    
+                    const newContent = newMain.innerHTML;
+                    const newTitle = doc.title;
+                    
+                    setTimeout(() => {
+                        main.innerHTML = newContent;
+                        document.title = newTitle;
+                        main.classList.remove('page-fade-out');
+                        main.classList.add('page-fade-in');
+                        if (pushState) window.history.pushState({ url }, newTitle, url);
+                        
+                        // Execute scripts in the new content
+                        const scripts = newMain.querySelectorAll('script');
+                        scripts.forEach(oldScript => {
+                            const newScript = document.createElement('script');
+                            Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+                            newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+                            document.body.appendChild(newScript);
+                            newScript.remove(); 
+                        });
+                        
+                        window.scrollTo(0, 0);
+                        
+                        setTimeout(() => {
+                            main.classList.remove('page-fade-in');
+                        }, 300);
+                    }, 200);
+                } catch (e) {
+                    console.error('Navigation error:', e);
+                    window.location.href = url;
                 }
             }
         };
@@ -347,7 +393,28 @@
             if (flashMessage) {
                 vulfixx.toast(flashMessage, flashType || 'info');
             }
+
+            document.addEventListener('click', (e) => {
+                const link = e.target.closest('a');
+                if (link && link.href && link.href.startsWith(window.location.origin)) {
+                    const url = new URL(link.href);
+                    if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return;
+                    if (link.hasAttribute('download') || link.target === '_blank' || link.getAttribute('href').startsWith('#')) return;
+                    
+                    e.preventDefault();
+                    vulfixx.navigate(link.href);
+                }
+            });
+
+            window.addEventListener('popstate', (e) => {
+                if (e.state && e.state.url) {
+                    vulfixx.navigate(e.state.url, false);
+                } else {
+                    vulfixx.navigate(window.location.href, false);
+                }
+            });
         });
+
     </script>
 </body>
 </html>
