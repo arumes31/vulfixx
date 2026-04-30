@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/csrf"
 	"github.com/gorilla/mux"
 	"github.com/jackc/pgx/v5"
 )
@@ -493,6 +494,19 @@ func (a *App) BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request)
 	a.SendResponse(w, r, true, fmt.Sprintf("Updated %d CVEs", len(req.CVEIDs)), "", "")
 }
 
+type CWEStat struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+type SeverityCounts struct {
+	Critical int `json:"critical"`
+	High     int `json:"high"`
+	Medium   int `json:"medium"`
+	Low      int `json:"low"`
+}
+
 type PublicDashboardData struct {
 	CVEs            []models.CVE           `json:"cves"`
 	Total           int                    `json:"total"`
@@ -515,8 +529,8 @@ type PublicDashboardData struct {
 	MaxCvss         float64                `json:"max_cvss"`
 	MinEpss         float64                `json:"min_epss"`
 	MaxEpss         float64                `json:"max_epss"`
-	SeverityCounts  interface{}            `json:"severity_counts"`
-	TopCWEs         interface{}            `json:"top_cwes"`
+	SeverityCounts  SeverityCounts         `json:"severity_counts"`
+	TopCWEs         []CWEStat              `json:"top_cwes"`
 	EPSSDist        []int                  `json:"epss_dist"`
 	MetaTitle       string                 `json:"meta_title"`
 	MetaDescription string                 `json:"meta_description"`
@@ -569,21 +583,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		if val, err := a.Redis.Get(r.Context(), cacheKey).Result(); err == nil {
 			var cachedData PublicDashboardData
 			if err := json.Unmarshal([]byte(val), &cachedData); err == nil {
-				// Convert struct to map for RenderTemplate
-				renderData := make(map[string]interface{})
-				b, _ := json.Marshal(cachedData)
-				_ = json.Unmarshal(b, &renderData)
-				
-				// Fix: Ensure Trending and CVEs are correct types if needed, 
-				// but RenderTemplate with map[string]any is what we usually do.
-				// However, if we unmarshal back to map, we get lowercase keys again.
-				// SO, let's just pass the struct to a new RenderTemplateStruct or similar.
-				
-				// Wait, RenderTemplate takes map[string]interface{}.
-				// If I pass the struct, I'll have to change RenderTemplate.
-				
-				// Actually, I'll just manually populate the map from the struct to keep keys correct.
-				m := map[string]interface{}{
+				renderData := map[string]interface{}{
 					"CVEs":            cachedData.CVEs,
 					"Total":           cachedData.Total,
 					"KevCount":        cachedData.KevCount,
@@ -611,8 +611,11 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 					"MetaTitle":       cachedData.MetaTitle,
 					"MetaDescription": cachedData.MetaDescription,
 					"Trending":        cachedData.Trending,
+					"ActiveTab":       "cves",
+					"CanScroll":       cachedData.Total > cachedData.Page*20,
+					"csrfField":       csrf.TemplateField(r),
 				}
-				a.RenderTemplate(w, r, "public_dashboard.html", m)
+				a.RenderTemplate(w, r, "public_dashboard.html", renderData)
 				return
 			}
 		}
@@ -724,6 +727,9 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+
+	isAJAX := r.URL.Query().Get("ajax") == "true"
+
 	defer rows.Close()
 
 	var cves []models.CVE
@@ -748,12 +754,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	totalPages := (totalItems + pageSize - 1) / pageSize
 
-	var severityCounts struct {
-		Critical int
-		High     int
-		Medium   int
-		Low      int
-	}
+	var severityCounts SeverityCounts
 	severityQuery := "SELECT " +
 		"COUNT(*) FILTER (WHERE cvss_score >= 9.0), " +
 		"COUNT(*) FILTER (WHERE cvss_score >= 7.0 AND cvss_score < 9.0), " +
@@ -763,11 +764,6 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	_ = a.Pool.QueryRow(r.Context(), severityQuery, args...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
 
 	// Additional Stats for Visualizations
-	type CWEStat struct {
-		ID    string `json:"id"`
-		Name  string `json:"name"`
-		Count int    `json:"count"`
-	}
 	var topCWEs []CWEStat
 	cweQueryRows, _ := a.Pool.Query(r.Context(), "SELECT cwe_id, COALESCE(cwe_name, 'Unknown'), COUNT(*) as cnt FROM cves c "+whereClause+" AND cwe_id IS NOT NULL AND cwe_id != '' GROUP BY cwe_id, cwe_name ORDER BY cnt DESC LIMIT 5", args...)
 	if cweQueryRows != nil {
@@ -819,6 +815,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"MetaTitle":       "Vulfixx - Public CVE Tracker & Threat Intelligence",
 		"MetaDescription": "Monitor real-time vulnerability data, CISA KEV listings, and critical security advisories. The ultimate tracker for security professionals.",
 		"Trending":        a.getTrendingCVEs(r),
+		"csrfField":       csrf.TemplateField(r),
 	}
 
 	// Cache Default View
@@ -856,6 +853,20 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		if jsonData, err := json.Marshal(cachedData); err == nil {
 			_ = a.Redis.Set(r.Context(), cacheKey, jsonData, 5*time.Minute).Err()
 		}
+	}
+
+	if isAJAX {
+		a.TemplateMu.RLock()
+		tmpl, ok := a.TemplateMap["public_dashboard.html"]
+		a.TemplateMu.RUnlock()
+		if !ok {
+			http.Error(w, "Template not found", http.StatusInternalServerError)
+			return
+		}
+		if err := tmpl.ExecuteTemplate(w, "cve_rows", renderData); err != nil {
+			log.Printf("Error executing AJAX template: %v", err)
+		}
+		return
 	}
 
 	a.RenderTemplate(w, r, "public_dashboard.html", renderData)
