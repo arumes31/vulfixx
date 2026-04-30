@@ -166,7 +166,7 @@
                 <thead>
                     <tr class="border-b border-white/10 bg-white/5">
                         <th data-col="id" aria-sort="{{if eq .Sort "id"}}{{if eq .Order "asc"}}ascending{{else}}descending{{end}}{{else}}none{{end}}" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 group">
-                            <button type="button" onclick="toggleSort('id')" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
+                            <button type="button" data-sort-col="id" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
                                 Vulnerability ID
                                 <span class="material-symbols-outlined text-[14px] {{if ne .Sort "id"}}opacity-0 group-hover:opacity-40{{end}} transition-all">
                                     {{if and (eq .Sort "id") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
@@ -174,7 +174,7 @@
                             </button>
                         </th>
                         <th data-col="severity" aria-sort="{{if eq .Sort "severity"}}{{if eq .Order "asc"}}ascending{{else}}descending{{end}}{{else}}none{{end}}" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 group">
-                            <button type="button" onclick="toggleSort('severity')" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
+                            <button type="button" data-sort-col="severity" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
                                 Severity
                                 <span class="material-symbols-outlined text-[14px] {{if ne .Sort "severity"}}opacity-0 group-hover:opacity-40{{end}} transition-all">
                                     {{if and (eq .Sort "severity") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
@@ -182,7 +182,7 @@
                             </button>
                         </th>
                         <th data-col="epss" aria-sort="{{if eq .Sort "epss"}}{{if eq .Order "asc"}}ascending{{else}}descending{{end}}{{else}}none{{end}}" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 group">
-                            <button type="button" onclick="toggleSort('epss')" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
+                            <button type="button" data-sort-col="epss" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
                                 Exploit Telemetry
                                 <span class="material-symbols-outlined text-[14px] {{if ne .Sort "epss"}}opacity-0 group-hover:opacity-40{{end}} transition-all">
                                     {{if and (eq .Sort "epss") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
@@ -191,7 +191,7 @@
                         </th>
                         <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Description</th>
                         <th data-col="published" aria-sort="{{if eq .Sort "published"}}{{if eq .Order "asc"}}ascending{{else}}descending{{end}}{{else}}none{{end}}" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 group">
-                            <button type="button" onclick="toggleSort('published')" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
+                            <button type="button" data-sort-col="published" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
                                 Published
                                 <span class="material-symbols-outlined text-[14px] {{if ne .Sort "published"}}opacity-0 group-hover:opacity-40{{end}} transition-all">
                                     {{if and (eq .Sort "published") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
@@ -318,18 +318,21 @@ const initPublicDashboard = () => {
                 if (span) {
                     span.textContent = orderInput.value === 'asc' ? 'arrow_upward' : 'arrow_downward';
                     span.classList.remove('opacity-0', 'group-hover:opacity-40');
-                    span.classList.add('opacity-100');
                 }
                 th.setAttribute('aria-sort', orderInput.value === 'asc' ? 'ascending' : 'descending');
             } else {
                 if (span) {
+                    span.textContent = 'arrow_downward';
                     span.classList.add('opacity-0', 'group-hover:opacity-40');
-                    span.classList.remove('opacity-100');
                 }
                 th.setAttribute('aria-sort', 'none');
             }
         });
     };
+
+    document.querySelectorAll('button[data-sort-col]').forEach(btn => {
+        btn.addEventListener('click', () => toggleSort(btn.getAttribute('data-sort-col')));
+    });
 
     function loadMore() {
         if (isLoading || currentPage >= totalPages) return;
