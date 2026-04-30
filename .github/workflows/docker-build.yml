@@ -73,6 +73,7 @@ jobs:
         with:
           version: v1.64
           args: --timeout=10m
+          install-mode: goinstall
 
   security:
     name: Security Scan
