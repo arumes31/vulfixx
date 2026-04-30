@@ -4,29 +4,22 @@
 <div class="space-y-8">
     <header class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/10 pb-6">
         <div class="flex items-center gap-4">
-            <div>
-                <h1 class="text-3xl font-bold text-white mb-2">Public Threat Intelligence</h1>
-                <p class="text-gray-400 text-sm uppercase tracking-widest font-bold">Real-time global vulnerability telemetry</p>
-            </div>
-            <div class="mb-2 px-3 py-1 rounded-full border border-white/10 bg-white/5 flex items-center gap-2">
-                <span class="text-[10px] font-black uppercase tracking-[0.2em] opacity-60">Status</span>
-                <span class="text-xs font-black uppercase tracking-widest {{.ThreatColor}} animate-pulse">{{.ThreatLevel}}</span>
-            </div>
+            <h1 class="text-2xl font-bold text-white tracking-tight">CVE Tracker</h1>
         </div>
     </header>
 
     <!-- Trending Threats Section -->
-    <section class="space-y-6">
+    <section class="space-y-4">
         <div class="flex items-center justify-between">
-            <h2 class="text-xs font-black uppercase tracking-[0.3em] text-gray-500 flex items-center gap-2">
+            <h2 class="text-[9px] font-black uppercase tracking-[0.3em] text-gray-500 flex items-center gap-2">
                 <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
                 Active Escalations
             </h2>
-            <span class="text-[10px] font-bold text-primary uppercase tracking-widest">Trending Now</span>
+            <span class="text-[9px] font-bold text-primary uppercase tracking-widest">Trending Now</span>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {{range .Trending}}
-            <a href="/cve/{{.CVEID}}" class="glass p-6 rounded-2xl border border-white/5 hover:border-primary/20 hover:bg-white/[0.02] transition-all group">
+            <a href="/cve/{{.CVEID}}" class="glass p-4 rounded-2xl border border-white/5 hover:border-primary/20 hover:bg-white/[0.02] transition-all group">
                 <div class="flex justify-between items-start mb-4">
                     <span class="text-xs font-black text-white group-hover:text-primary transition-colors">{{.CVEID}}</span>
                     <span class="text-xs font-bold {{severityColor .CVSSScore}}">{{printf "%.1f" .CVSSScore}}</span>
@@ -43,38 +36,38 @@
     </section>
 
     <!-- Summary Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div class="glass p-6 rounded-3xl border border-white/10 relative overflow-hidden group">
-            <div class="absolute -right-4 -top-4 w-20 h-20 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-all"></div>
-            <div class="flex justify-between items-start mb-4">
-                <span class="text-[10px] font-black tracking-widest uppercase text-gray-500">Global CVE Vault</span>
-                <span class="material-symbols-outlined text-primary">database</span>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="glass p-4 rounded-2xl border border-white/10 relative overflow-hidden group">
+            <div class="absolute -right-4 -top-4 w-16 h-16 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-all"></div>
+            <div class="flex justify-between items-start mb-2">
+                <span class="text-[9px] font-black tracking-widest uppercase text-gray-500">Global CVE Vault</span>
+                <span class="material-symbols-outlined text-primary text-lg">database</span>
             </div>
-            <h2 class="text-4xl font-black text-white tracking-tighter">{{.Total}}</h2>
+            <h2 class="text-2xl font-black text-white tracking-tighter">{{.Total}}</h2>
         </div>
-
-        <div class="glass p-6 rounded-3xl border border-white/10 relative overflow-hidden group">
-            <div class="absolute -right-4 -top-4 w-20 h-20 bg-orange-500/5 rounded-full blur-2xl group-hover:bg-orange-500/10 transition-all"></div>
-            <div class="flex justify-between items-start mb-4">
-                <span class="text-[10px] font-black tracking-widest uppercase text-gray-500">Exploited in the Wild</span>
-                <span class="material-symbols-outlined text-orange-400">warning</span>
+        <div class="glass p-4 rounded-2xl border border-white/10 relative overflow-hidden group">
+            <div class="absolute -right-4 -top-4 w-16 h-16 bg-orange-500/5 rounded-full blur-2xl group-hover:bg-orange-500/10 transition-all"></div>
+            <div class="flex justify-between items-start mb-2">
+                <span class="text-[9px] font-black tracking-widest uppercase text-gray-500">Exploited</span>
+                <span class="material-symbols-outlined text-orange-400 text-lg">warning</span>
             </div>
-            <h2 class="text-4xl font-black text-white tracking-tighter">{{.KevCount}}</h2>
+            <h2 class="text-2xl font-black text-white tracking-tighter">{{.KevCount}}</h2>
         </div>
-
-        <div class="glass p-6 rounded-3xl border border-white/10 relative overflow-hidden group">
-            <div class="absolute -right-4 -top-4 w-20 h-20 bg-red-500/5 rounded-full blur-2xl group-hover:bg-red-500/10 transition-all"></div>
-            <div class="flex justify-between items-start mb-4">
-                <span class="text-[10px] font-black tracking-widest uppercase text-gray-500">Critical Rating</span>
-                <span class="material-symbols-outlined text-red-500">dangerous</span>
+        <div class="glass p-4 rounded-2xl border border-white/10 relative overflow-hidden group">
+            <div class="absolute -right-4 -top-4 w-16 h-16 bg-red-500/5 rounded-full blur-2xl group-hover:bg-red-500/10 transition-all"></div>
+            <div class="flex justify-between items-start mb-2">
+                <span class="text-[9px] font-black tracking-widest uppercase text-gray-500">Critical</span>
+                <span class="material-symbols-outlined text-red-500 text-lg">dangerous</span>
             </div>
-            <h2 class="text-4xl font-black text-red-500 tracking-tighter">{{.CritCount}}</h2>
+            <h2 class="text-2xl font-black text-red-500 tracking-tighter">{{.CritCount}}</h2>
         </div>
     </div>
 
     <!-- Filters Section -->
-    <div class="glass p-8 rounded-[2rem] border border-white/10 relative z-10 -mt-10 mb-12 shadow-2xl shadow-black/50">
-        <form id="filter-form" method="GET" action="/" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+    <div class="glass p-6 rounded-3xl border border-white/10 relative z-10 -mt-6 mb-8 shadow-2xl shadow-black/50">
+        <form id="filter-form" method="GET" action="/" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+            <input type="hidden" name="sort" id="sort-field" value="{{.Sort}}">
+            <input type="hidden" name="order" id="order-field" value="{{.Order}}">
             <div class="space-y-2 lg:col-span-2">
                 <label class="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Search Keywords</label>
                 <div class="relative">
@@ -136,47 +129,75 @@
     </div>
 
     <!-- Charts Section -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div class="glass p-8 rounded-[2rem] border border-white/10">
-            <h3 class="text-xs font-black uppercase tracking-[0.2em] text-gray-500 mb-6 flex items-center gap-2">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div class="glass p-4 rounded-2xl border border-white/10">
+            <h3 class="text-[9px] font-black uppercase tracking-[0.2em] text-gray-500 mb-4 flex items-center gap-2">
                 <span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
                 Severity Distribution
             </h3>
-            <div class="h-64">
+            <div class="h-40">
                 <canvas id="severityChart"></canvas>
             </div>
         </div>
-        <div class="glass p-8 rounded-[2rem] border border-white/10">
-            <h3 class="text-xs font-black uppercase tracking-[0.2em] text-gray-500 mb-6 flex items-center gap-2">
+        <div class="glass p-4 rounded-2xl border border-white/10">
+            <h3 class="text-[9px] font-black uppercase tracking-[0.2em] text-gray-500 mb-4 flex items-center gap-2">
                 <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
                 Top Vulnerability Types
             </h3>
-            <div class="h-64">
+            <div class="h-40">
                 <canvas id="cweChart"></canvas>
             </div>
         </div>
-        <div class="glass p-8 rounded-[2rem] border border-white/10">
-            <h3 class="text-xs font-black uppercase tracking-[0.2em] text-gray-500 mb-6 flex items-center gap-2">
+        <div class="glass p-4 rounded-2xl border border-white/10">
+            <h3 class="text-[9px] font-black uppercase tracking-[0.2em] text-gray-500 mb-4 flex items-center gap-2">
                 <span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>
-                EPSS Probability Distribution
+                EPSS Probability
             </h3>
-            <div class="h-64">
+            <div class="h-40">
                 <canvas id="epssChart"></canvas>
             </div>
         </div>
     </div>
 
     <!-- Main Table -->
-    <div class="glass rounded-[2rem] border border-white/10 overflow-hidden shadow-2xl">
+    <div class="glass rounded-3xl border border-white/10 overflow-hidden shadow-2xl">
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
                 <thead>
-                    <tr class="bg-white/5 border-b border-white/10">
-                        <th class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Vulnerability ID</th>
-                        <th class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Severity</th>
-                        <th class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Exploit Telemetry</th>
-                        <th class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Description</th>
-                        <th class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Published</th>
+                    <tr class="border-b border-white/10 bg-white/5">
+                        <th data-col="id" onclick="toggleSort('id')" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 cursor-pointer hover:text-primary transition-colors group">
+                            <div class="flex items-center gap-2">
+                                Vulnerability ID
+                                <span class="material-symbols-outlined text-[14px] {{if ne .Sort "id"}}opacity-0 group-hover:opacity-40{{end}} transition-all">
+                                    {{if and (eq .Sort "id") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
+                                </span>
+                            </div>
+                        </th>
+                        <th data-col="severity" onclick="toggleSort('severity')" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 cursor-pointer hover:text-primary transition-colors group">
+                            <div class="flex items-center gap-2">
+                                Severity
+                                <span class="material-symbols-outlined text-[14px] {{if ne .Sort "severity"}}opacity-0 group-hover:opacity-40{{end}} transition-all">
+                                    {{if and (eq .Sort "severity") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
+                                </span>
+                            </div>
+                        </th>
+                        <th data-col="epss" onclick="toggleSort('epss')" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 cursor-pointer hover:text-primary transition-colors group">
+                            <div class="flex items-center gap-2">
+                                Exploit Telemetry
+                                <span class="material-symbols-outlined text-[14px] {{if ne .Sort "epss"}}opacity-0 group-hover:opacity-40{{end}} transition-all">
+                                    {{if and (eq .Sort "epss") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
+                                </span>
+                            </div>
+                        </th>
+                        <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Description</th>
+                        <th data-col="published" onclick="toggleSort('published')" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 cursor-pointer hover:text-primary transition-colors group">
+                            <div class="flex items-center gap-2">
+                                Published
+                                <span class="material-symbols-outlined text-[14px] {{if ne .Sort "published"}}opacity-0 group-hover:opacity-40{{end}} transition-all">
+                                    {{if and (eq .Sort "published") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
+                                </span>
+                            </div>
+                        </th>
                     </tr>
                 </thead>
                 <tbody id="cve-tbody" class="divide-y divide-white/5">
@@ -251,13 +272,57 @@
     animation-play-state: paused;
 }
 </style>
+<script id="dashboard-data" type="application/json">
+{
+  "page": {{marshal .Page}},
+  "totalPages": {{marshal .TotalPages}},
+  "severityCounts": {{marshal .SeverityCounts}},
+  "topCWEs": {{marshal .TopCWEs}},
+  "epssDist": {{marshal .EPSSDist}},
+  "sort": {{marshal .Sort}},
+  "order": {{marshal .Order}}
+}
+</script>
+
 <script nonce="{{.Nonce}}">
 const initPublicDashboard = () => {
-    let currentPage = {{.Page}};
-    const totalPages = {{.TotalPages}};
+    const rawData = document.getElementById('dashboard-data').textContent;
+    const dashboardData = JSON.parse(rawData);
+
+    let currentPage = Number(dashboardData.page) || 1;
+    const totalPages = Number(dashboardData.totalPages) || 1;
     let isLoading = false;
     const tbody = document.getElementById('cve-tbody');
     const loadingIndicator = document.getElementById('loading-indicator');
+
+    window.toggleSort = (col) => {
+        const sortInput = document.getElementById('sort-field');
+        const orderInput = document.getElementById('order-field');
+        
+        if (sortInput.value === col) {
+            orderInput.value = orderInput.value === 'desc' ? 'asc' : 'desc';
+        } else {
+            sortInput.value = col;
+            orderInput.value = 'desc';
+        }
+        
+        applyFilters();
+        
+        // Update header icons instantly
+        document.querySelectorAll('th[data-col]').forEach(th => {
+            const span = th.querySelector('span');
+            if (!span) return;
+            const thCol = th.getAttribute('data-col');
+            if (thCol === col) {
+                span.textContent = orderInput.value === 'asc' ? 'arrow_upward' : 'arrow_downward';
+                span.classList.remove('opacity-0', 'group-hover:opacity-40');
+                span.classList.add('opacity-100');
+            } else {
+                span.classList.add('opacity-0', 'group-hover:opacity-40');
+                span.classList.remove('opacity-100');
+            }
+        });
+    };
 
     function loadMore() {
         if (isLoading || currentPage >= totalPages) return;
@@ -428,7 +493,12 @@ const initPublicDashboard = () => {
         data: {
             labels: ['Critical', 'High', 'Medium', 'Low'],
             datasets: [{
-                data: [{{.SeverityCounts.Critical}}, {{.SeverityCounts.High}}, {{.SeverityCounts.Medium}}, {{.SeverityCounts.Low}}],
+                data: [
+                    dashboardData.severityCounts.critical, 
+                    dashboardData.severityCounts.high, 
+                    dashboardData.severityCounts.medium, 
+                    dashboardData.severityCounts.low
+                ],
                 backgroundColor: ['#ef4444', '#f97316', '#eab308', '#3b82f6'],
                 borderWidth: 0,
                 hoverOffset: 20
@@ -444,9 +514,9 @@ const initPublicDashboard = () => {
     new Chart(ctxCwe, {
         type: 'pie',
         data: {
-            labels: [{{range .TopCWEs}}"{{.ID}}",{{end}}],
+            labels: (dashboardData.topCWEs || []).map(x => x.id),
             datasets: [{
-                data: [{{range .TopCWEs}}{{.Count}},{{end}}],
+                data: (dashboardData.topCWEs || []).map(x => x.count),
                 backgroundColor: ['#d0bcff', '#b69df8', '#9a82db', '#7f67be', '#654da3'],
                 borderWidth: 0
             }]
@@ -461,7 +531,7 @@ const initPublicDashboard = () => {
             labels: ['<1%', '1-10%', '10-50%', '>50%'],
             datasets: [{
                 label: 'CVE Count',
-                data: {{.EPSSDist}},
+                data: dashboardData.epssDist,
                 backgroundColor: '#ffb311',
                 borderRadius: 8
             }]
@@ -507,7 +577,7 @@ if (document.readyState === 'loading') {
                     {{printf "%.1f" .CVSSScore}}
                 </span>
                 <div class="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
-                    <div class="h-full {{severityBg .CVSSScore}} max-w-full" style="width: {{multiply (min 10.0 (max 0.0 .CVSSScore)) 10}}%"></div>
+                    <div class="h-full {{severityBg .CVSSScore}} max-w-full" style="--w: {{printf "%.0f" (multiply (min 10.0 (max 0.0 .CVSSScore)) 10)}}%; width: var(--w)"></div>
                 </div>
             </div>
         </td>

@@ -567,9 +567,12 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		maxEpss = 1.0
 	}
 
+	sort := r.URL.Query().Get("sort")
+	order := r.URL.Query().Get("order")
+
 	// Redis Caching for Default View
 	cacheKey := "public_dashboard_default_v2"
-	if r.URL.RawQuery == "" || r.URL.RawQuery == "page=1" {
+	if (r.URL.RawQuery == "" || r.URL.RawQuery == "page=1") && sort == "" && order == "" {
 		if val, err := a.Redis.Get(r.Context(), cacheKey).Result(); err == nil {
 			var cachedData PublicDashboardData
 			if err := json.Unmarshal([]byte(val), &cachedData); err == nil {
@@ -710,8 +713,25 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 			COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0)
 		FROM cves c
 	`
+	// Dynamic Sort
+	sortCol := "c.published_date"
+	sortOrder := "DESC"
+	switch sort {
+	case "id":
+		sortCol = "c.cve_id"
+	case "severity":
+		sortCol = "c.cvss_score"
+	case "epss":
+		sortCol = "c.epss_score"
+	case "published":
+		sortCol = "c.published_date"
+	}
+	if strings.ToUpper(order) == "ASC" {
+		sortOrder = "ASC"
+	}
+
 	query += whereClause
-	query += fmt.Sprintf(" ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $%d OFFSET $%d ", argIdx, argIdx+1)
+	query += fmt.Sprintf(" ORDER BY %s %s NULLS LAST, c.id DESC LIMIT $%d OFFSET $%d ", sortCol, sortOrder, argIdx, argIdx+1)
 	finalArgs := append(args, pageSize, offset)
 	var cves []models.CVE
 	rows, err := a.Pool.Query(r.Context(), query, finalArgs...)
@@ -811,7 +831,9 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"SeverityCounts":  severityCounts,
 		"TopCWEs":         topCWEs,
 		"EPSSDist":        epssDist,
-		"MetaTitle":       "Vulfixx - Public CVE Tracker & Threat Intelligence",
+		"Sort":            sort,
+		"Order":           order,
+		"MetaTitle":       "Vulfixx - Public CVE Tracker",
 		"MetaDescription": "Monitor real-time vulnerability data, CISA KEV listings, and critical security advisories. The ultimate tracker for security professionals.",
 		"Trending":        a.getTrendingCVEs(r),
 		"csrfField":       csrf.TemplateField(r),
