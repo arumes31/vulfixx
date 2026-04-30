@@ -13,29 +13,9 @@
                 <span class="text-xs font-black uppercase tracking-widest {{.ThreatColor}} animate-pulse">{{.ThreatLevel}}</span>
             </div>
         </div>
-        <div class="flex items-center gap-3">
-            <a href="/login" class="px-6 py-2 bg-primary text-on-primary rounded-xl font-black uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-lg shadow-primary/20">
-                Sign In to Track
-            </a>
-        </div>
     </header>
 
-    <!-- SEO Optimized Hero Section -->
-    <div class="glass p-12 rounded-[3rem] border border-white/10 text-center space-y-6 relative overflow-hidden">
-        <div class="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-30 pointer-events-none"></div>
-        <h2 class="text-5xl font-black text-white tracking-tighter max-w-2xl mx-auto leading-tight">
-            Stay ahead of the next <span class="text-primary">Zero-Day</span> exploit.
-        </h2>
-        <p class="text-gray-400 max-w-xl mx-auto text-lg leading-relaxed">
-            Vulfixx provides real-time monitoring of the NIST National Vulnerability Database and CISA Known Exploited Vulnerabilities.
-        </p>
-        <div class="pt-4">
-            <a href="/register" class="inline-flex items-center gap-3 px-8 py-4 bg-white/5 border border-white/10 rounded-2xl font-bold text-[#00daf3] hover:bg-white/10 transition-all group">
-                Create Free Account
-                <span class="material-symbols-outlined group-hover:translate-x-1 transition-transform">arrow_forward</span>
-            </a>
-        </div>
-    </div>
+
 
     <!-- Trending Threats Section -->
     <section class="space-y-6">
@@ -270,7 +250,59 @@
         </div>
         {{end}}
     </div>
+
+    <!-- SEO Optimized Footer Hero Section -->
+    <footer class="mt-16 border-t border-white/10 pt-16 pb-0">
+        <div class="glass p-12 rounded-[3rem] border border-white/10 text-center space-y-6 relative overflow-hidden mb-12">
+            <div class="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-30 pointer-events-none"></div>
+            <h2 class="text-5xl font-black text-white tracking-tighter max-w-2xl mx-auto leading-tight">
+                Stay ahead of the next <span class="text-primary">Zero-Day</span> exploit.
+            </h2>
+            <p class="text-gray-400 max-w-xl mx-auto text-lg leading-relaxed">
+                Vulfixx provides real-time monitoring of the NIST National Vulnerability Database and CISA Known Exploited Vulnerabilities.
+            </p>
+            <div class="pt-4">
+                <a href="/register" class="inline-flex items-center gap-3 px-8 py-4 bg-white/5 border border-white/10 rounded-2xl font-bold text-[#00daf3] hover:bg-white/10 transition-all group">
+                    Create Free Account
+                    <span class="material-symbols-outlined group-hover:translate-x-1 transition-transform">arrow_forward</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Always Scroll Footer Ticker -->
+        <div class="w-full bg-white/5 border-t border-white/10 py-3 overflow-hidden whitespace-nowrap relative">
+            <div class="inline-block animate-marquee hover:pause cursor-default">
+                <span class="text-[10px] font-black uppercase tracking-[0.2em] text-primary mx-8">Vulfixx Real-time Telemetry Active</span>
+                <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mx-8">NIST NVD Stream: Connected</span>
+                <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mx-8">CISA KEV Feed: Synced</span>
+                <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mx-8">Trending Threats: Monitoring 24/7</span>
+                <span class="text-[10px] font-black uppercase tracking-[0.2em] text-primary mx-8">Vulfixx Real-time Telemetry Active</span>
+                <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mx-8">NIST NVD Stream: Connected</span>
+                <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mx-8">CISA KEV Feed: Synced</span>
+                <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400 mx-8">Trending Threats: Monitoring 24/7</span>
+            </div>
+        </div>
+        
+        <div class="py-6 text-center text-[10px] font-black uppercase tracking-[0.4em] text-gray-600">
+            &copy; 2026 Vulfixx Intelligence &bull; Secure Command Console
+        </div>
+    </footer>
 </div>
+
+<style>
+@keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+}
+.animate-marquee {
+    display: inline-block;
+    padding-left: 100%;
+    animation: marquee 30s linear infinite;
+}
+.hover\:pause:hover {
+    animation-play-state: paused;
+}
+</style>
 
 <script nonce="{{.Nonce}}">
 document.addEventListener('DOMContentLoaded', function() {
