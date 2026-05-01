@@ -695,7 +695,7 @@ if (document.readyState === 'loading') {
                 {{if .CISAKEV}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-orange-500/20 text-orange-400 border border-orange-500/10">KEV</span>{{end}}
                 {{if gt .GitHubPoCCount 0}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-purple-500/20 text-purple-400 border border-purple-500/10">PoC</span>{{end}}
                 {{if gt .EPSSScore 0.5}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-red-500/20 text-red-400 border border-red-500/10">High EPSS</span>{{end}}
-                {{if gt .EPSSScore 0}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-white/5 text-gray-500 border border-white/5">EPSS: {{printf "%.4f" .EPSSScore}}</span>{{end}}
+                {{if gt .EPSSScore 0.0}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-white/5 text-gray-500 border border-white/5">EPSS: {{printf "%.4f" .EPSSScore}}</span>{{end}}
             </div>
         </td>
         <td class="p-6">
