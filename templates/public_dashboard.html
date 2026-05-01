@@ -2,9 +2,13 @@
 
 {{define "content"}}
 <div class="space-y-8">
-    <header class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/10 pb-6">
+    <header class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-6">
         <div class="flex items-center gap-4">
             <h1 class="text-2xl font-bold text-white tracking-tight">CVE Tracker</h1>
+        </div>
+        <div class="flex items-center gap-3">
+            <a href="/login" class="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-white transition-colors">Login</a>
+            <a href="/register" class="px-5 py-2.5 bg-primary/10 border border-primary/20 text-primary rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-primary hover:text-on-primary transition-all shadow-lg shadow-primary/5">Register</a>
         </div>
     </header>
 

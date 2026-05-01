@@ -849,7 +849,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"EPSSDist":        epssDist,
 		"Sort":            sort,
 		"Order":           order,
-		"MetaTitle":       "Vulfixx - Public CVE Tracker",
+		"MetaTitle":       "Vulfixx - CVE Tracker",
 		"MetaDescription": "Monitor real-time vulnerability data, CISA KEV listings, and critical security advisories. The ultimate tracker for security professionals.",
 		"Trending":        a.getTrendingCVEs(r),
 		"csrfField":       csrf.TemplateField(r),
