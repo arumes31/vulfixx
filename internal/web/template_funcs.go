@@ -161,6 +161,15 @@ func (a *App) InitTemplatesWithFuncs() error {
 			}
 			return map[string]string{"vendor": v, "product": p}
 		},
+		"getLineage": func(c models.CVE) []string {
+			return c.GetLineage()
+		},
+		"contains": func(s, substr string) bool {
+			return strings.Contains(s, substr)
+		},
+		"lower": func(s string) string {
+			return strings.ToLower(s)
+		},
 	}
 
 	a.TemplateMu.Lock()

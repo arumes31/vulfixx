@@ -57,6 +57,30 @@ func (c *CVE) GetDetectedProduct() (vendor, product string) {
 	return "", ""
 }
 
+func (c *CVE) GetLineage() []string {
+	re := regexp.MustCompile(`(?i)CVE-\d{4}-\d{4,}`)
+	unique := make(map[string]bool)
+	var lineage []string
+
+	process := func(text string) {
+		matches := re.FindAllString(text, -1)
+		for _, m := range matches {
+			m = strings.ToUpper(m)
+			if m != strings.ToUpper(c.CVEID) && !unique[m] {
+				unique[m] = true
+				lineage = append(lineage, m)
+			}
+		}
+	}
+
+	process(c.Description)
+	for _, ref := range c.References {
+		process(ref)
+	}
+
+	return lineage
+}
+
 type CVEConfiguration struct {
 	Nodes []ConfigNode `json:"nodes"`
 }

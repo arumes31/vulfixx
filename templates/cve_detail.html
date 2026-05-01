@@ -212,6 +212,38 @@
             {{end}}
         {{end}}
     </section>
+    {{end}}
+
+    <!-- Vulnerability Lineage (Zombie CVE) -->
+    {{$lineage := getLineage .CVE}}
+    {{if $lineage}}
+    <section class="space-y-6">
+        <h2 class="text-2xl font-black text-white flex items-center gap-3">
+            <span class="material-symbols-outlined text-purple-400">account_tree</span>
+            Vulnerability Lineage
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {{range $lineage}}
+            <a href="/cve/{{.}}" class="glass p-6 rounded-2xl border border-white/10 hover:border-purple-400/50 hover:bg-white/[0.02] transition-all flex items-center justify-between group">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-purple-400/10 flex items-center justify-center text-purple-400 group-hover:scale-110 transition-transform">
+                        <span class="material-symbols-outlined">bug_report</span>
+                    </div>
+                    <div>
+                        <div class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Related Vulnerability</div>
+                        <div class="text-xl font-black text-white group-hover:text-purple-400 transition-colors">{{.}}</div>
+                    </div>
+                </div>
+                {{if or (contains (lower $.CVE.Description) "bypass") (contains (lower $.CVE.Description) "incomplete") (contains (lower $.CVE.Description) "regression")}}
+                <span class="px-3 py-1 rounded-full bg-red-500/20 text-red-400 border border-red-500/20 text-[8px] font-black uppercase tracking-widest">Zombie CVE (Bypass)</span>
+                {{end}}
+                <span class="material-symbols-outlined text-xs text-gray-600 group-hover:text-purple-400">arrow_forward</span>
+            </a>
+            {{end}}
+        </div>
+        <p class="text-[10px] text-gray-500 italic">Identified from mentions in security advisories and descriptions.</p>
+    </section>
+    {{end}}
 
     <!-- Call to Action -->
     <div class="glass p-12 rounded-[3rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-transparent text-center space-y-6">

@@ -108,3 +108,44 @@ func TestGetDetectedProduct(t *testing.T) {
 		}
 	}
 }
+
+func TestGetLineage(t *testing.T) {
+	tests := []struct {
+		cveID       string
+		description string
+		references  []string
+		want        []string
+	}{
+		{
+			cveID:       "CVE-2026-1001",
+			description: "Fix for CVE-2025-9999 and related to CVE-2024-8888",
+			references:  []string{"https://example.com/CVE-2023-7777"},
+			want:        []string{"CVE-2025-9999", "CVE-2024-8888", "CVE-2023-7777"},
+		},
+		{
+			cveID:       "CVE-2026-1002",
+			description: "No mentions here",
+			references:  []string{},
+			want:        []string(nil),
+		},
+		{
+			cveID:       "CVE-2026-1003",
+			description: "Duplicate mention of CVE-2025-9999 CVE-2025-9999",
+			references:  []string{"https://example.com/cve-2025-9999"},
+			want:        []string{"CVE-2025-9999"},
+		},
+	}
+
+	for _, tt := range tests {
+		cve := &CVE{CVEID: tt.cveID, Description: tt.description, References: tt.references}
+		got := cve.GetLineage()
+		if len(got) != len(tt.want) {
+			t.Errorf("GetLineage(%q) len = %d; want %d", tt.description, len(got), len(tt.want))
+		}
+		for i, v := range got {
+			if v != tt.want[i] {
+				t.Errorf("GetLineage(%q)[%d] = %q; want %q", tt.description, i, v, tt.want[i])
+			}
+		}
+	}
+}
