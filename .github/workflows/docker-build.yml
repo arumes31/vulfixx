@@ -42,7 +42,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     container:
-      image: golang:1.24-alpine
+      image: golang:1.26-alpine
     env:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -62,7 +62,7 @@ jobs:
     name: Lint Codebase
     runs-on: ubuntu-latest
     container:
-      image: golang:1.24
+      image: golang:1.26
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -75,7 +75,7 @@ jobs:
     name: Security Scan
     runs-on: ubuntu-latest
     container:
-      image: golang:1.24-alpine
+      image: golang:1.26-alpine
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
