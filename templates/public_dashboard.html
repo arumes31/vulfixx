@@ -680,7 +680,7 @@ input[type=number] {
                     backgroundColor: cweGradient,
                     borderRadius: 4,
                     borderWidth: 0,
-                    barThickness: 12
+                    barThickness: 10
                 }]
             },
             options: {
@@ -691,12 +691,11 @@ input[type=number] {
                     tooltip: {
                         ...chartOptions.plugins.tooltip,
                         callbacks: {
-                            title: (items) => {
-                                const item = items[0];
+                            title: (items) => items[0].label,
+                            label: (item) => {
                                 const fullName = item.dataset.fullNames[item.dataIndex];
-                                return `${item.label}: ${fullName}`;
-                            },
-                            label: (item) => `Occurrences: ${item.formattedValue}`
+                                return [`${fullName}`, `Occurrences: ${item.formattedValue}`];
+                            }
                         }
                     }
                 },
@@ -706,7 +705,8 @@ input[type=number] {
                         grid: { display: false }, 
                         ticks: { 
                             color: '#9ca3af', 
-                            font: { family: 'Space Grotesk', size: 9, weight: 'bold' } 
+                            font: { family: 'Space Grotesk', size: 8, weight: 'bold' },
+                            padding: 10
                         } 
                     }
                 }
