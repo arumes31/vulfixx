@@ -256,9 +256,14 @@
 
 <script nonce="{{.Nonce}}">
 function initCVEDetail() {
-    // 1. Interactive CVSS Vector
     const vectorContainer = document.getElementById('cvss-vector');
     if (!vectorContainer) return;
+    
+    // Always clear the loading state eventually
+    const clearLoader = (msg) => {
+        vectorContainer.innerHTML = msg || '';
+    };
+
     const vectorStr = vectorContainer.dataset.vector;
     
     const metricMap = {
@@ -289,6 +294,8 @@ function initCVEDetail() {
                 vectorContainer.appendChild(pill);
             }
         });
+    } else {
+        clearLoader('<span class="text-[9px] font-mono text-gray-600 italic">No vector string available</span>');
     }
 
     // 2. Extract Vendors from CPEs
@@ -346,11 +353,21 @@ function initCVEDetail() {
     });
 }
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initCVEDetail);
-} else {
-    initCVEDetail();
-}
+(function() {
+    const runInit = () => {
+        if (typeof window.requestAnimationFrame !== 'undefined') {
+            window.requestAnimationFrame(initCVEDetail);
+        } else {
+            setTimeout(initCVEDetail, 0);
+        }
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', runInit);
+    } else {
+        runInit();
+    }
+})();
 </script>
 
 <!-- Structured Data (JSON-LD) for SEO -->

@@ -85,12 +85,22 @@
                 }
             });
         });
-    };
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initAdminUsers);
-    } else {
-        initAdminUsers();
     }
+
+    (function() {
+        const runInit = () => {
+            if (typeof window.requestAnimationFrame !== 'undefined') {
+                window.requestAnimationFrame(initAdminUsers);
+            } else {
+                setTimeout(initAdminUsers, 0);
+            }
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', runInit);
+        } else {
+            runInit();
+        }
+    })();
 </script>
 {{end}}

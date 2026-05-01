@@ -283,12 +283,22 @@
                 });
             }
         });
-    };
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initTeams);
-    } else {
-        initTeams();
     }
+
+    (function() {
+        const runInit = () => {
+            if (typeof window.requestAnimationFrame !== 'undefined') {
+                window.requestAnimationFrame(initTeams);
+            } else {
+                setTimeout(initTeams, 0);
+            }
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', runInit);
+        } else {
+            runInit();
+        }
+    })();
 </script>
 {{end}}
