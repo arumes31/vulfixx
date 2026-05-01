@@ -44,6 +44,8 @@ func (w *Worker) Start(ctx context.Context) {
 	runTask(w.fetchCISAKEVPeriodically)
 	runTask(w.syncEPSSPeriodically)
 	runTask(w.syncGitHubBuzzPeriodically)
+	runTask(w.syncIntelligencePeriodically)
+	runTask(w.startHealthCheckPeriodically)
 
 	// Notification & Alert Processing
 	runTask(w.processAlerts)

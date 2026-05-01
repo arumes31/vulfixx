@@ -113,5 +113,6 @@ func (w *Worker) fetchFromCISAKEV(ctx context.Context) {
 		log.Printf("Worker: [ERROR] Failed to commit KEV transaction: %v", err)
 		return
 	}
+	w.updateTaskStats(ctx, "cisa_kev_sync")
 	log.Println("Worker: [SYNC] CISA KEV update complete.")
 }

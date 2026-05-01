@@ -11,6 +11,7 @@ type User struct {
 	TOTPSecret       string    `json:"-"`
 	IsTOTPEnabled    bool      `json:"is_totp_enabled"`
 	IsAdmin          bool      `json:"is_admin"`
+	OnboardingCompleted bool   `json:"onboarding_completed"`
 	CreatedAt        time.Time `json:"created_at"`
 }
 

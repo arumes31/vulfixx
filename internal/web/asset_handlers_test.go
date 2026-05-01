@@ -81,6 +81,12 @@ func TestAssetsHandler(t *testing.T) {
 				},
 				mockExpect: func(mock pgxmock.PgxPoolIface) {
 					mock.ExpectBegin()
+					mock.ExpectQuery("SELECT max_assets FROM users").
+						WithArgs(1).
+						WillReturnRows(pgxmock.NewRows([]string{"max_assets"}).AddRow(10))
+					mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM assets").
+						WithArgs(1).
+						WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 					mock.ExpectQuery("INSERT INTO assets").
 						WithArgs(1, pgxmock.AnyArg(), "My Asset", "Server").
 						WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(101))
@@ -108,6 +114,12 @@ func TestAssetsHandler(t *testing.T) {
 				mockExpect: func(mock pgxmock.PgxPoolIface) {
 					mock.ExpectQuery("SELECT EXISTS").WithArgs(10, 1).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
 					mock.ExpectBegin()
+					mock.ExpectQuery("SELECT max_assets FROM teams").
+						WithArgs(10).
+						WillReturnRows(pgxmock.NewRows([]string{"max_assets"}).AddRow(20))
+					mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM assets").
+						WithArgs(10).
+						WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 					mock.ExpectQuery("INSERT INTO assets").
 						WithArgs(1, pgxmock.AnyArg(), "Team Asset", "Cloud").
 						WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(102))

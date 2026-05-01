@@ -130,6 +130,39 @@ func (a *App) AssetsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
 
+		// Enforce Quota
+		var currentCount int
+		var maxAssets int
+		if teamID != nil {
+			err = tx.QueryRow(ctx, "SELECT max_assets FROM teams WHERE id = $1 FOR UPDATE", *teamID).Scan(&maxAssets)
+			if err != nil {
+				a.SendResponse(w, r, false, "", "", "Internal server error")
+				return
+			}
+			err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM assets WHERE team_id = $1", *teamID).Scan(&currentCount)
+		} else {
+			err = tx.QueryRow(ctx, "SELECT max_assets FROM users WHERE id = $1 FOR UPDATE", userID).Scan(&maxAssets)
+			if err != nil {
+				a.SendResponse(w, r, false, "", "", "Internal server error")
+				return
+			}
+			err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM assets WHERE user_id = $1 AND team_id IS NULL", userID).Scan(&currentCount)
+		}
+		if err != nil {
+			a.SendResponse(w, r, false, "", "", "Internal server error")
+			return
+		}
+
+		if currentCount >= maxAssets {
+			a.SendResponse(w, r, false, "", "", fmt.Sprintf("Maximum of %d assets allowed for this %s", maxAssets, func() string {
+				if teamID != nil {
+					return "team"
+				}
+				return "account"
+			}()))
+			return
+		}
+
 		var assetID int
 		err = tx.QueryRow(ctx, `
 			INSERT INTO assets (user_id, team_id, name, type) VALUES ($1, $2, $3, $4) RETURNING id

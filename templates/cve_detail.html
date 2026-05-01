@@ -34,6 +34,29 @@
         </div>
     </header>
 
+    <!-- Vendor Advisories -->
+    {{$vlinks := vendorLinks .CVE.CVEID .CVE.Description}}
+    {{if $vlinks}}
+    <section class="space-y-6">
+        <h2 class="text-2xl font-black text-white flex items-center gap-3">
+            <span class="material-symbols-outlined text-primary">verified</span>
+            Official Vendor Advisories
+        </h2>
+        <div class="flex flex-wrap gap-4">
+            {{range $vlinks}}
+            <a href="{{.url}}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-3 px-6 py-4 glass border border-white/5 rounded-2xl hover:border-primary/50 hover:bg-white/[0.02] transition-all group">
+                <span class="material-symbols-outlined text-primary group-hover:scale-110 transition-transform">{{.icon}}</span>
+                <div class="flex flex-col">
+                    <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Official Resource</span>
+                    <span class="text-sm font-bold text-white">{{.name}}</span>
+                </div>
+                <span class="material-symbols-outlined text-xs text-gray-600 ml-4">open_in_new</span>
+            </a>
+            {{end}}
+        </div>
+    </section>
+    {{end}}
+
     <!-- Technical Specs -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div class="glass p-8 rounded-3xl border border-white/10 space-y-4">

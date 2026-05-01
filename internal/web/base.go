@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"context"
+	"cve-tracker/internal/config"
 	"crypto/subtle"
 
 	"encoding/json"
@@ -208,6 +209,11 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 		data["UserID"] = userID
 		data["IsAdmin"] = a.IsAdmin(r)
 
+		// Onboarding status
+		var onboardingCompleted bool
+		_ = a.Pool.QueryRow(r.Context(), "SELECT onboarding_completed FROM users WHERE id = $1", userID).Scan(&onboardingCompleted)
+		data["OnboardingCompleted"] = onboardingCompleted
+
 		// Fetch user's teams
 		teamRows, err := a.Pool.Query(r.Context(), `
 			SELECT t.id, t.name 
@@ -255,6 +261,8 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 	data["GlobalTotalCVEs"] = statsCache.total
 	data["GlobalNewCVEs"] = statsCache.newLast24h
 	statsCache.RUnlock()
+
+	data["SentryDSN"] = config.AppConfig.SentryDSN
 
 	data["csrfField"] = csrf.TemplateField(r)
 	data["CSRFField"] = data["csrfField"]

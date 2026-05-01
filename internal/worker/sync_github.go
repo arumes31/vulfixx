@@ -158,5 +158,6 @@ CVELoop:
 		case <-time.After(7 * time.Second):
 		}
 	}
+	w.updateTaskStats(ctx, "github_buzz_sync")
 	log.Printf("Worker: [SYNC] GitHub Social Buzz synchronization complete. Duration: %v", time.Since(start))
 }

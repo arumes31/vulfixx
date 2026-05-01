@@ -105,6 +105,7 @@ func (w *Worker) syncEPSS(ctx context.Context) {
 		return
 	}
 
+	w.updateTaskStats(ctx, "epss_sync")
 	log.Printf("Worker: [SYNC] EPSS score synchronization complete. Processed %d records. Duration: %v", totalProcessed, time.Since(start))
 }
 

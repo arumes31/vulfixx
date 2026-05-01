@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/pquerna/otp/totp"
 )
 
@@ -341,6 +342,40 @@ func (a *App) CaptchaHandler(w http.ResponseWriter, r *http.Request) {
 	`, v1, v2)
 
 	_, _ = w.Write([]byte(strings.TrimSpace(svg)))
+}
+
+func (a *App) CompleteOnboardingHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := a.GetUserID(r)
+	if !ok {
+		a.SendResponse(w, r, false, "", "", "Unauthorized")
+		return
+	}
+	if r.Method != http.MethodPost {
+		a.SendResponse(w, r, false, "", "", "Method not allowed")
+		return
+	}
+
+	_, err := a.Pool.Exec(r.Context(), "UPDATE users SET onboarding_completed = TRUE WHERE id = $1", userID)
+	if err != nil {
+		log.Printf("Error completing onboarding: %v", err)
+		a.SendResponse(w, r, false, "", "", "Internal server error")
+		return
+	}
+
+	a.SendResponse(w, r, true, "Welcome to Vulfixx!", "", "")
+}
+
+func (a *App) ErrorReportHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		return
+	}
+	var data map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		return
+	}
+	log.Printf("FRONTEND ERROR: %v", data)
+	// If Sentry is enabled, this log will be captured if we use sentry.CaptureMessage or if it's hooked into log.
+	sentry.CaptureMessage(fmt.Sprintf("Frontend Error: %v", data["message"]))
 }
 
 func redactEmail(email string) string {
