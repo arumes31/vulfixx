@@ -335,7 +335,7 @@ input[type=number] {
     -moz-appearance: textfield;
 }
 </style>
-<script id="dashboard-data" type="application/json">
+<script id="dashboard-data" type="application/json" nonce="{{.Nonce}}">
 {
   "page": {{marshal .Page}},
   "totalPages": {{marshal .TotalPages}},
@@ -348,7 +348,7 @@ input[type=number] {
 </script>
 
 <script nonce="{{.Nonce}}">
-var initPublicDashboard = () => {
+    const initPublicDashboard = () => {
     const rawData = document.getElementById('dashboard-data').textContent;
     const dashboardData = JSON.parse(rawData);
 
@@ -774,7 +774,7 @@ if (document.readyState === 'loading') {
     }
 </style>
 
-<script>
+<script nonce="{{.Nonce}}">
 (function() {
     function initMarquee() {
         const track = document.getElementById('trending-track');
