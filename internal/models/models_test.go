@@ -141,6 +141,7 @@ func TestGetLineage(t *testing.T) {
 		got := cve.GetLineage()
 		if len(got) != len(tt.want) {
 			t.Errorf("GetLineage(%q) len = %d; want %d", tt.description, len(got), len(tt.want))
+			continue
 		}
 		for i, v := range got {
 			if v != tt.want[i] {

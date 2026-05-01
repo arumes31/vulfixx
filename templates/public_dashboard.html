@@ -725,7 +725,7 @@ input[type=number] {
                     labels: ['<1%', '1-10%', '10-50%', '>50%'],
                     datasets: [{
                         label: 'CVE Count',
-                        data: data.EPSSDist || data.epssDist,
+                        data: data.EPSSDist || data.epssDist || [0, 0, 0, 0],
                         backgroundColor: epssGradient,
                         borderRadius: 8,
                         borderWidth: 0,
@@ -868,6 +868,12 @@ input[type=number] {
     <tr class="no-results">
         <td colspan="5" class="p-12 text-center">
             <span class="material-symbols-outlined text-4xl text-gray-600 mb-4">search_off</span>
+            <p class="text-gray-500 font-bold uppercase tracking-widest text-xs">No vulnerabilities found matching your filters</p>
+        </td>
+    </tr>
+    {{end}}
+{{end}}
+ text-4xl text-gray-600 mb-4">search_off</span>
             <p class="text-gray-500 font-bold uppercase tracking-widest text-xs">No vulnerabilities found matching your filters</p>
         </td>
     </tr>

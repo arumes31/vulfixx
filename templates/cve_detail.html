@@ -429,13 +429,13 @@
 
         // 3. Enhanced References
         const sourceIcons = {
-            'github.com': { icon: 'code', label: 'Exploit / Source', color: 'text-purple-400' },
-            'nvd.nist.gov': { icon: 'verified_user', label: 'Official NVD', color: 'text-blue-400' },
-            'cisa.gov': { icon: 'policy', label: 'CISA Advisory', color: 'text-orange-400' },
-            'exploit-db.com': { icon: 'bug_report', label: 'Exploit Database', color: 'text-red-400' },
-            'mitre.org': { icon: 'security', label: 'MITRE CVE', color: 'text-primary' },
-            'twitter.com': { icon: 'chat', label: 'Social Intel', color: 'text-sky-400' },
-            'x.com': { icon: 'chat', label: 'Social Intel', color: 'text-sky-400' }
+            'github.com': { icon: 'code', label: 'Exploit / Source', color: 'text-purple-400', bgClass: 'bg-purple-500/10' },
+            'nvd.nist.gov': { icon: 'verified_user', label: 'Official NVD', color: 'text-blue-400', bgClass: 'bg-blue-500/10' },
+            'cisa.gov': { icon: 'policy', label: 'CISA Advisory', color: 'text-orange-400', bgClass: 'bg-orange-500/10' },
+            'exploit-db.com': { icon: 'bug_report', label: 'Exploit Database', color: 'text-red-400', bgClass: 'bg-red-500/10' },
+            'mitre.org': { icon: 'security', label: 'MITRE CVE', color: 'text-primary', bgClass: 'bg-primary/10' },
+            'twitter.com': { icon: 'chat', label: 'Social Intel', color: 'text-sky-400', bgClass: 'bg-sky-500/10' },
+            'x.com': { icon: 'chat', label: 'Social Intel', color: 'text-sky-400', bgClass: 'bg-sky-500/10' }
         };
 
         document.querySelectorAll('.reference-card').forEach(card => {
@@ -447,7 +447,7 @@
             for (const [domain, config] of Object.entries(sourceIcons)) {
                 if (url.includes(domain)) {
                     iconContainer.innerHTML = `<span class="material-symbols-outlined text-[18px] ${config.color}">${config.icon}</span>`;
-                    iconContainer.classList.add('bg-' + config.color.split('-')[1] + '-500/10');
+                    iconContainer.classList.add(config.bgClass);
                     labelContainer.textContent = config.label;
                     labelContainer.classList.replace('text-gray-600', config.color);
                     break;
