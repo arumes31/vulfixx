@@ -38,6 +38,9 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	defer mock.Close()
 	db.Pool = mock
 
+	// Set GO_ENV=test for predictable captcha
+	t.Setenv("GO_ENV", "test")
+
 	ts, _, client := setupTestServer(t, mock)
 	t.Cleanup(ts.Close)
 
