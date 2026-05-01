@@ -30,7 +30,7 @@ func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
 func (w *Worker) processIntelligence(ctx context.Context) error {
 	// Fetch top 100 recent/critical CVEs to update intelligence for
 	rows, err := w.Pool.Query(ctx, `
-		SELECT id, cve_id, description, COALESCE(cvss_score, 0), osint_data 
+		SELECT id, cve_id, description, COALESCE(cvss_score, 0), osint_data, github_poc_count, cwe_id, published_date
 		FROM cves 
 		ORDER BY published_date DESC, id DESC LIMIT 100
 	`)
@@ -43,7 +43,7 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 	for rows.Next() {
 		var c models.CVE
 		var osintJSON []byte
-		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &osintJSON); err != nil {
+		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &osintJSON, &c.GitHubPoCCount, &c.CWEID, &c.PublishedDate); err != nil {
 			continue
 		}
 		_ = json.Unmarshal(osintJSON, &c.OSINTData)
@@ -80,26 +80,19 @@ func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
 	var hnData struct {
 		NbHits int `json:"nbHits"`
 	}
-	if err := w.getJSON(hnURL, &hnData); err == nil {
+	if err := w.getJSON(ctx, hnURL, &hnData); err == nil {
 		c.OSINTData["hn_mentions"] = hnData.NbHits
 	}
 
 	// Reddit Mentions (Search)
 	redditURL := fmt.Sprintf("https://www.reddit.com/search.json?q=%s&sort=new&limit=10", c.CVEID)
-	req, _ := http.NewRequestWithContext(ctx, "GET", redditURL, nil)
-	req.Header.Set("User-Agent", "Vulfixx/2.0 (Threat Intelligence Bot)")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err == nil {
-		defer resp.Body.Close()
-		var redditData struct {
-			Data struct {
-				Children []interface{} `json:"children"`
-			} `json:"data"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&redditData); err == nil {
-			c.OSINTData["reddit_mentions"] = len(redditData.Data.Children)
-		}
+	var redditData struct {
+		Data struct {
+			Children []interface{} `json:"children"`
+		} `json:"data"`
+	}
+	if err := w.getJSON(ctx, redditURL, &redditData); err == nil {
+		c.OSINTData["reddit_mentions"] = len(redditData.Data.Children)
 	}
 
 	// Sentiment Score Calculation (Simplified Heat Score)
@@ -115,16 +108,16 @@ func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
 	// Simple duplicate detection: Look for CVEs with similar descriptions published around the same time
 	// or mentions of the same base vulnerability ID in description.
 
-	// This is a placeholder for more complex logic.
-	// For now, we'll look for other CVEs with the same CWE and similar CVSS.
 	if c.CWEID == "" || c.CWEID == "NVD-CWE-noinfo" {
 		return
 	}
 
 	var duplicateIDs []string
+	// Match CVSS within 0.5 tolerance and prefer closer scores
 	rows, err := w.Pool.Query(ctx, `
 		SELECT cve_id FROM cves 
-		WHERE cwe_id = $1 AND id != $2 AND cvss_score = $3 AND published_date > $4
+		WHERE cwe_id = $1 AND id != $2 AND ABS(cvss_score - $3) <= 0.5 AND published_date > $4
+		ORDER BY ABS(cvss_score - $3) ASC
 		LIMIT 5
 	`, c.CWEID, c.ID, c.CVSSScore, c.PublishedDate.AddDate(0, 0, -7))
 
@@ -143,11 +136,22 @@ func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
 	}
 }
 
-func (w *Worker) getJSON(url string, target interface{}) error {
-	resp, err := http.Get(url)
+func (w *Worker) getJSON(ctx context.Context, url string, target interface{}) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", "Vulfixx/2.0 (Threat Intelligence Bot)")
+
+	resp, err := w.HTTP.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP error: %s", resp.Status)
+	}
+
 	return json.NewDecoder(resp.Body).Decode(target)
 }

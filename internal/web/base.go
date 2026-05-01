@@ -211,7 +211,12 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 
 		// Onboarding status
 		var onboardingCompleted bool
-		_ = a.Pool.QueryRow(r.Context(), "SELECT onboarding_completed FROM users WHERE id = $1", userID).Scan(&onboardingCompleted)
+		err := a.Pool.QueryRow(r.Context(), "SELECT onboarding_completed FROM users WHERE id = $1", userID).Scan(&onboardingCompleted)
+		if err != nil {
+			log.Printf("RenderTemplate onboarding query ERR (UserID: %d): %v", userID, err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
 		data["OnboardingCompleted"] = onboardingCompleted
 
 		// Fetch user's teams

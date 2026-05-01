@@ -369,13 +369,37 @@ func (a *App) ErrorReportHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		return
 	}
-	var data map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+
+	// Limit request body to 8KB
+	r.Body = http.MaxBytesReader(w, r.Body, 8192)
+
+	type FrontendError struct {
+		Message   string `json:"message"`
+		Type      string `json:"type"`
+		URL       string `json:"url"`
+		Stack     string `json:"stack"`
+		UserAgent string `json:"userAgent"`
+	}
+
+	var req FrontendError
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return
 	}
-	log.Printf("FRONTEND ERROR: %v", data)
-	// If Sentry is enabled, this log will be captured if we use sentry.CaptureMessage or if it's hooked into log.
-	sentry.CaptureMessage(fmt.Sprintf("Frontend Error: %v", data["message"]))
+
+	// Truncate fields to safe lengths
+	truncate := func(s string, limit int) string {
+		if len(s) > limit {
+			return s[:limit] + "..."
+		}
+		return s
+	}
+
+	msg := truncate(sanitizeForLog(req.Message), 1000)
+	errType := truncate(sanitizeForLog(req.Type), 100)
+	url := truncate(sanitizeForLog(req.URL), 500)
+
+	log.Printf("FRONTEND ERROR: [%s] %s at %s", errType, msg, url)
+	sentry.CaptureMessage(fmt.Sprintf("Frontend Error: %s", msg))
 }
 
 func redactEmail(email string) string {

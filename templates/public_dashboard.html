@@ -348,7 +348,7 @@ input[type=number] {
 </script>
 
 <script nonce="{{.Nonce}}">
-    const initPublicDashboard = () => {
+    function initPublicDashboard() {
     const rawData = document.getElementById('dashboard-data').textContent;
     const dashboardData = JSON.parse(rawData);
 

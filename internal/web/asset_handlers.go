@@ -134,6 +134,13 @@ func (a *App) AssetsHandler(w http.ResponseWriter, r *http.Request) {
 		var currentCount int
 		var maxAssets int
 		if teamID != nil {
+			// Re-verify membership inside transaction
+			var exists bool
+			err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", *teamID, userID).Scan(&exists)
+			if err != nil || !exists {
+				a.SendResponse(w, r, false, "", "", "Permission denied")
+				return
+			}
 			err = tx.QueryRow(ctx, "SELECT max_assets FROM teams WHERE id = $1 FOR UPDATE", *teamID).Scan(&maxAssets)
 			if err != nil {
 				a.SendResponse(w, r, false, "", "", "Internal server error")

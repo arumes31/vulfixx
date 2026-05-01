@@ -196,6 +196,8 @@ BEGIN
     -- Add Quota Columns
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'max_subscriptions') THEN
         ALTER TABLE users ADD COLUMN max_subscriptions INTEGER DEFAULT 5;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'max_assets') THEN
         ALTER TABLE users ADD COLUMN max_assets INTEGER DEFAULT 10;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'onboarding_completed') THEN
@@ -203,6 +205,8 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'teams' AND column_name = 'max_subscriptions') THEN
         ALTER TABLE teams ADD COLUMN max_subscriptions INTEGER DEFAULT 10;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'teams' AND column_name = 'max_assets') THEN
         ALTER TABLE teams ADD COLUMN max_assets INTEGER DEFAULT 20;
     END IF;
 END $$;

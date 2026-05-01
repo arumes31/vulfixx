@@ -43,8 +43,20 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 			msg := fmt.Sprintf("CRITICAL: Worker task '%s' has not run since %v (more than %v ago)!", task, lastRun.Format(time.RFC822), threshold)
 			log.Println(msg)
 
-			// Send alert to admin if configured
-			_ = w.Mailer.SendEmail("admin@example.com", "Vulfixx Health Alert", msg)
+			// Send alert to admin if configured and not recently alerted
+			if w.AdminEmail != "" {
+				w.alertMu.Lock()
+				lastAlert := w.alertTimestamps[task]
+				canAlert := time.Since(lastAlert) >= w.alertResendBackoff
+				if canAlert {
+					w.alertTimestamps[task] = time.Now()
+				}
+				w.alertMu.Unlock()
+
+				if canAlert {
+					_ = w.Mailer.SendEmail(w.AdminEmail, "Vulfixx Health Alert", msg)
+				}
+			}
 		}
 	}
 }

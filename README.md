@@ -20,7 +20,7 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 - **Dynamic Resource Quotas**: Tiered limits for subscriptions and assets per user/team to optimize performance and resource utilization.
 - **Audit Logs for Remediation**: Comprehensive chronological tracking of all vulnerability status changes and manual acknowledgments.
 - **Community OSINT Intelligence**: Automated discovery of technical discussions on Hacker News and Reddit for every threat with **Social Sentiment Heat Scores**.
-- **Vendor Advisory Aggregator**: Intelligent classification and deep-linking to official security bulletins from Microsoft, Cisco, Ubuntu, RedHat, and more.
+- **Vendor Advisory Aggregator**: Intelligent classification and deep-linking to official security bulletins from Microsoft, Cisco, Ubuntu, Red Hat, and more.
 - **Social Buzz & Threat Trending**: GitHub-integrated "Buzz" meter that tracks community interest and public PoC presence.
 - **EPSS Integration**: Exploit Prediction Scoring System (EPSS) integration for probability-based risk assessment.
 - **Smart Alert Batching**: Redis-backed intelligence buffering that groups related threats into unified reports.

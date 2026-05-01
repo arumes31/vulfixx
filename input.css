@@ -104,7 +104,7 @@
   .compact-mode .glass {
     padding: 1rem !important;
   }
-  .compact-mode h1 { font-size: 1.5rem !important; }
-  .compact-mode h2 { font-size: 2rem !important; }
+  .compact-mode h1 { font-size: 2rem !important; }
+  .compact-mode h2 { font-size: 1.5rem !important; }
   .compact-mode .grid { gap: 1rem !important; }
 }

@@ -9,6 +9,8 @@ on:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Set up Go
@@ -23,4 +25,5 @@ jobs:
             echo "Benchmarks completed successfully."
           else
             echo "No benchmarks found!"
+            exit 1
           fi
