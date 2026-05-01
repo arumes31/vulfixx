@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -76,10 +77,20 @@ func LoadConfig() {
 		missingFields = append(missingFields, "DBPassword")
 	}
 	if AppConfig.SessionKey == "" {
-		missingFields = append(missingFields, "SessionKey")
+		if appEnv == "development" {
+			logPrintf("Warning: SESSION_KEY is not set. Generating a random one for development.")
+			AppConfig.SessionKey = generateRandomKey(32)
+		} else {
+			missingFields = append(missingFields, "SessionKey")
+		}
 	}
 	if AppConfig.CSRFKey == "" {
-		missingFields = append(missingFields, "CSRFKey")
+		if appEnv == "development" {
+			logPrintf("Warning: CSRF_KEY is not set. Generating a random one for development.")
+			AppConfig.CSRFKey = generateRandomKey(32)
+		} else {
+			missingFields = append(missingFields, "CSRFKey")
+		}
 	}
 	if AppConfig.SMTPPass == "" {
 		missingFields = append(missingFields, "SMTPPass")
@@ -148,4 +159,12 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func generateRandomKey(n int) string {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		logFatalf("Fatal: failed to generate random key: %v", err)
+	}
+	return base64.StdEncoding.EncodeToString(b)
 }
