@@ -390,7 +390,8 @@ var initPublicDashboard = () => {
         const url = new URL(window.location.href);
         url.search = new URLSearchParams(new FormData(filterForm)).toString();
         url.searchParams.set('ajax', 'true');
-        url.searchParams.delete('page');
+        isLoading = true;
+        currentPage = 1;
 
         tbody.innerHTML = '<tr><td colspan="5" class="p-12 text-center text-gray-500"><span class="material-symbols-outlined animate-spin text-4xl text-primary">autorenew</span></td></tr>';
         
@@ -403,8 +404,8 @@ var initPublicDashboard = () => {
                 tbody.innerHTML = data.html || "";
                 const meta = data.meta || {};
                 
-                currentPage = 1;
-                totalPages = Number(meta.totalPages) || 1;
+                currentPage = Number(meta.Page || meta.page) || 1;
+                totalPages = Number(meta.TotalPages || meta.totalPages) || 1;
                 
                 // Update persistent data script
                 document.getElementById('dashboard-data').textContent = JSON.stringify(meta);
@@ -423,10 +424,12 @@ var initPublicDashboard = () => {
 
                 // Update charts and UI state
                 updateCharts(meta);
+                isLoading = false;
             })
             .catch(err => {
                 console.error('Error applying filters:', err);
                 vulfixx.toast('Failed to update search results', 'error');
+                isLoading = false;
             });
     }
 
