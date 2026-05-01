@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"cve-tracker/internal/models"
 
@@ -268,7 +269,11 @@ func (a *App) SwitchTeamHandler(w http.ResponseWriter, r *http.Request) {
 	redirect := r.Referer()
 	if redirect != "" {
 		if ref, err := url.Parse(redirect); err == nil {
+			// Ensure it's either a relative path (empty host) or matches our current host
 			if ref.Host != "" && ref.Host != r.Host {
+				redirect = "/dashboard"
+			} else if ref.Scheme != "" && ref.Scheme != "http" && ref.Scheme != "https" {
+				// Prevent javascript: or other schemes
 				redirect = "/dashboard"
 			}
 		} else {
@@ -277,5 +282,15 @@ func (a *App) SwitchTeamHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		redirect = "/dashboard"
 	}
-	http.Redirect(w, r, redirect, http.StatusFound)
+	
+	// Final safety check: if it still looks like an absolute URL to another domain, force dashboard
+	if strings.HasPrefix(redirect, "http") {
+		if ref, err := url.Parse(redirect); err == nil {
+			if ref.Host != r.Host {
+				redirect = "/dashboard"
+			}
+		}
+	}
+
+	http.Redirect(w, r, redirect, http.StatusFound) // #nosec G710
 }
