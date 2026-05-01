@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"cve-tracker/internal/config"
+	"cve-tracker/internal/models"
 
 	"encoding/json"
 	"errors"
@@ -331,6 +332,7 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 			for rowsCwe.Next() {
 				var s CWEStat
 				if err := rowsCwe.Scan(&s.ID, &s.Name, &s.Count); err == nil {
+					s.Name = models.GetCWEName(s.ID, s.Name)
 					topCWEs = append(topCWEs, s)
 				}
 			}

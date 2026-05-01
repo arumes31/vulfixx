@@ -223,6 +223,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		for cweQueryRows.Next() {
 			var s CWEStat
 			if err := cweQueryRows.Scan(&s.ID, &s.Name, &s.Count); err == nil {
+				s.Name = models.GetCWEName(s.ID, s.Name)
 				topCWEs = append(topCWEs, s)
 			}
 		}
@@ -817,6 +818,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 			for cweQueryRows.Next() {
 				var s CWEStat
 				if err := cweQueryRows.Scan(&s.ID, &s.Name, &s.Count); err == nil {
+					s.Name = models.GetCWEName(s.ID, s.Name)
 					topCWEs = append(topCWEs, s)
 				}
 			}
