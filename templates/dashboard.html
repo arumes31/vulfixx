@@ -1,7 +1,7 @@
 {{template "base" .}}
 
 {{define "content"}}
-<div class="space-y-8">
+<div class="space-y-6">
     <header class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/10 pb-6">
         <div class="flex items-center gap-4">
             <div>
@@ -72,8 +72,8 @@
     </div>
 
     <!-- Charts Section -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        <div class="glass p-8 rounded-[2rem] border border-white/10">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div class="glass p-6 rounded-[2rem] border border-white/10">
             <h3 class="text-xs font-black uppercase tracking-[0.2em] text-gray-500 mb-6 flex items-center gap-2">
                 <span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
                 Global Severity
@@ -82,7 +82,7 @@
                 <canvas id="severityChart"></canvas>
             </div>
         </div>
-        <div class="glass p-8 rounded-[2rem] border border-white/10">
+        <div class="glass p-6 rounded-[2rem] border border-white/10">
             <h3 class="text-xs font-black uppercase tracking-[0.2em] text-gray-500 mb-6 flex items-center gap-2">
                 <span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
                 Remediation Status
@@ -91,7 +91,7 @@
                 <canvas id="statusChart"></canvas>
             </div>
         </div>
-        <div class="glass p-8 rounded-[2rem] border border-white/10">
+        <div class="glass p-6 rounded-[2rem] border border-white/10">
             <h3 class="text-xs font-black uppercase tracking-[0.2em] text-gray-500 mb-6 flex items-center gap-2">
                 <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
                 Top Vulnerability Types
@@ -178,6 +178,15 @@
     </div>
 </div>
 
+<script id="dashboard-data" type="application/json" nonce="{{.Nonce}}">
+{
+    "severityCounts": {{marshal .SeverityCounts}},
+    "statusCounts": {{marshal .StatusCounts}},
+    "topCWEs": {{marshal .TopCWEs}},
+    "csrfToken": {{marshal .csrfToken}}
+}
+</script>
+
 <script nonce="{{.Nonce}}">
 (function() {
     function explainVector(vector) {
@@ -263,12 +272,13 @@
         const notesEl = document.getElementById('notes-text');
         if (!notesEl) return;
         const notes = notesEl.value;
+        const dashboardData = JSON.parse(document.getElementById('dashboard-data').textContent);
         const data = await vulfixx.fetch('/api/notes', {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
                 'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-Token': '{{.csrfToken}}'
+                'X-CSRF-Token': dashboardData.csrfToken
             },
             body: JSON.stringify({ cve_id: cveId, notes: notes })
         });
@@ -282,12 +292,13 @@
             vulfixx.toast('Invalid CVE ID', 'error');
             return;
         }
+        const dashboardData = JSON.parse(document.getElementById('dashboard-data').textContent);
         const data = await vulfixx.fetch('/api/status', {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
                 'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-Token': '{{.csrfToken}}'
+                'X-CSRF-Token': dashboardData.csrfToken
             },
             body: JSON.stringify({ cve_id: cveId, status: status })
         });
@@ -296,6 +307,8 @@
     }
 
     function initDashboard() {
+        const dashboardData = JSON.parse(document.getElementById('dashboard-data').textContent);
+        
         const teamSelector = document.getElementById('team-selector');
         if (teamSelector) {
             teamSelector.addEventListener('change', (e) => {
@@ -330,13 +343,18 @@
         try {
             if (window.Chart) {
                 const sevEl = document.getElementById('severityChart');
-                if (sevEl) {
+                if (sevEl && dashboardData.severityCounts) {
                     new Chart(sevEl, {
                         type: 'doughnut',
                         data: {
                             labels: ['Critical', 'High', 'Medium', 'Low'],
                             datasets: [{
-                                data: [{{.SeverityCounts.Critical}}, {{.SeverityCounts.High}}, {{.SeverityCounts.Medium}}, {{.SeverityCounts.Low}}],
+                                data: [
+                                    dashboardData.severityCounts.Critical || 0,
+                                    dashboardData.severityCounts.High || 0,
+                                    dashboardData.severityCounts.Medium || 0,
+                                    dashboardData.severityCounts.Low || 0
+                                ],
                                 backgroundColor: ['#ef4444', '#f97316', '#3b82f6', '#475569'],
                                 borderWidth: 0,
                                 spacing: 5
@@ -347,13 +365,18 @@
                 }
 
                 const statEl = document.getElementById('statusChart');
-                if (statEl) {
+                if (statEl && dashboardData.statusCounts) {
                     new Chart(statEl, {
                         type: 'doughnut',
                         data: {
                             labels: ['Active', 'In Progress', 'Resolved', 'Ignored'],
                             datasets: [{
-                                data: [{{.StatusCounts.Active}}, {{.StatusCounts.InProgress}}, {{.StatusCounts.Resolved}}, {{.StatusCounts.Ignored}}],
+                                data: [
+                                    dashboardData.statusCounts.Active || 0,
+                                    dashboardData.statusCounts.InProgress || 0,
+                                    dashboardData.statusCounts.Resolved || 0,
+                                    dashboardData.statusCounts.Ignored || 0
+                                ],
                                 backgroundColor: ['#f87171', '#60a5fa', '#ffb311', '#4b5563'],
                                 borderWidth: 0,
                                 spacing: 5
@@ -364,13 +387,13 @@
                 }
 
                 const cweEl = document.getElementById('cweChart');
-                if (cweEl) {
+                if (cweEl && dashboardData.topCWEs) {
                     const ctxCwe = cweEl.getContext('2d');
                     const cweGradient = ctxCwe.createLinearGradient(0, 0, 400, 0);
                     cweGradient.addColorStop(0, 'rgba(168, 85, 247, 0.8)');
                     cweGradient.addColorStop(1, 'rgba(168, 85, 247, 0.2)');
 
-                    const topCWEData = {{.TopCWEs | marshal}};
+                    const topCWEData = dashboardData.topCWEs;
                     new Chart(ctxCwe, {
                         type: 'bar',
                         data: {

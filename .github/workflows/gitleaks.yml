@@ -5,6 +5,7 @@ on:
     branches: [ main, v2_test ]
   pull_request:
     branches: [ main, v2_test ]
+  workflow_dispatch:
   schedule:
     - cron: '0 0 * * *' # Run daily to catch any leaks in historical commits
 
@@ -13,7 +14,7 @@ jobs:
     name: Secret Scanning
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # Fetch all history for historical scan
 
@@ -21,4 +22,4 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }} # Optional, but good to have if user has one
+          GITLEAKS_LICENSE: ${{ secrets['GITLEAKS_LICENSE'] }}
