@@ -325,7 +325,7 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 			WHERE cwe_id IS NOT NULL AND cwe_id != '' 
 			GROUP BY cwe_id, cwe_name 
 			ORDER BY cnt DESC 
-			LIMIT 5
+			LIMIT 10
 		`)
 		if rowsCwe != nil {
 			for rowsCwe.Next() {
