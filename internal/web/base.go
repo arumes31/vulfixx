@@ -137,7 +137,8 @@ func (a *App) AdminMiddleware(next http.Handler) http.Handler {
 		var isAdmin bool
 		err := a.Pool.QueryRow(r.Context(), "SELECT is_admin FROM users WHERE id = $1", userID).Scan(&isAdmin)
 		if err != nil {
-			log.Printf("AdminMiddleware DB ERROR: %v", err)
+			// #nosec G706 -- sanitized via sanitizeForLog
+			log.Printf("AdminMiddleware DB ERROR: %v", sanitizeForLog(err.Error()))
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
@@ -182,7 +183,8 @@ func (a *App) LogActivity(ctx context.Context, userID int, activityType, descrip
 		VALUES ($1, $2, $3, $4, $5, $6)
 	`, userID, activityType, description, ipAddress, userAgent, expiresAt)
 	if err != nil {
-		log.Printf("Error logging activity: %v", err)
+		// #nosec G706 -- sanitized via sanitizeForLog
+		log.Printf("Error logging activity: %v", sanitizeForLog(err.Error()))
 	}
 }
 
@@ -213,7 +215,8 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 		var onboardingCompleted bool
 		err := a.Pool.QueryRow(r.Context(), "SELECT onboarding_completed FROM users WHERE id = $1", userID).Scan(&onboardingCompleted)
 		if err != nil {
-			log.Printf("RenderTemplate onboarding query ERR (UserID: %d): %v", userID, err)
+			// #nosec G706 -- sanitized via sanitizeForLog
+			log.Printf("RenderTemplate onboarding query ERR (UserID: %d): %v", userID, sanitizeForLog(err.Error()))
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
