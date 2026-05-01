@@ -38,20 +38,36 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	defer mock.Close()
 	db.Pool = mock
 
+	// Set GO_ENV=test for predictable captcha
+	t.Setenv("GO_ENV", "test")
+
 	ts, _, client := setupTestServer(t, mock)
 	t.Cleanup(ts.Close)
 
 	// --- 1. Registration & Authentication Flow ---
+	// Get Captcha (to set session)
+	resCap, err := client.Get(ts.URL + "/captcha")
+	if err != nil || resCap.StatusCode != http.StatusOK {
+		t.Fatalf("Captcha request failed: %v", err)
+	}
+	_ = resCap.Body.Close()
+
 	// User Registration
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO users (email, password_hash, email_verify_token, rss_feed_token) VALUES ($1, $2, $3, $4)")).
 		WithArgs("web_test2@example.com", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-	formReg := url.Values{"email": {"web_test2@example.com"}, "password": {"password123"}}
+	formReg := url.Values{
+		"email":            {"web_test2@example.com"},
+		"password":         {"password123"},
+		"password_confirm": {"password123"},
+		"captcha":          {"10"}, // Fixed value for GO_ENV=test
+	}
 	resReg, err := client.PostForm(ts.URL+"/register", formReg)
 	if err != nil || resReg.StatusCode != http.StatusOK {
 		t.Fatalf("Registration failed: %v", err)
 	}
+	_ = resReg.Body.Close()
 
 	// User Login
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
@@ -65,7 +81,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	formLogin := url.Values{"email": {"web_test2@example.com"}, "password": {"password123"}}
 	resLogin, err := client.PostForm(ts.URL+"/login", formLogin)
 	if err != nil || resLogin.StatusCode != http.StatusFound {
-		t.Fatalf("Login failed: %v", err)
+		t.Fatalf("Login failed (status %d): %v", resLogin.StatusCode, err)
 	}
 	var sessionCookie *http.Cookie
 	for _, c := range resLogin.Cookies() {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -17,20 +18,14 @@ import (
 )
 
 func TestWorkerSync_NVD(t *testing.T) {
-	mock, err := db.SetupTestDB()
-	if err != nil {
-		t.Fatalf("failed to setup mock db: %v", err)
-	}
-	defer mock.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	mr, err := db.SetupTestRedis()
 	if err != nil {
 		t.Fatalf("failed to setup miniredis: %v", err)
 	}
 	defer mr.Close()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	// Mock NVD API
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -93,28 +88,32 @@ func TestWorkerSync_NVD(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
-
 	t.Run("FullSync_Backfill", func(t *testing.T) {
-		mock.ExpectQuery("SELECT last_run FROM worker_sync_stats WHERE task_name = 'nvd_sync'").
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT last_run FROM worker_sync_stats WHERE task_name = 'nvd_sync'")).
+			WillReturnError(pgx.ErrNoRows)
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT value FROM sync_state WHERE key = 'nvd_backfill_index'")).
 			WillReturnError(pgx.ErrNoRows)
 
-		mock.ExpectQuery("SELECT value FROM sync_state WHERE key = 'nvd_backfill_index'").
-			WillReturnError(pgx.ErrNoRows)
-
-		mock.ExpectExec("INSERT INTO cves").
-			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 7.5, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO cves")).
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 7.5, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-		mock.ExpectExec("INSERT INTO sync_state").
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO sync_state")).
 			WithArgs(pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-		mock.ExpectExec("INSERT INTO worker_sync_stats").
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO worker_sync_stats")).
 			WithArgs(pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-		mock.ExpectExec("DELETE FROM sync_state").
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM sync_state")).
 			WithArgs().
 			WillReturnResult(pgxmock.NewResult("DELETE", 1))
 
@@ -130,6 +129,11 @@ func TestWorkerSync_NVD(t *testing.T) {
 	})
 
 	t.Run("Status_403_RateLimit", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
 		httpClient := &MockHTTPClient{
 			DoFunc: func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
@@ -143,7 +147,6 @@ func TestWorkerSync_NVD(t *testing.T) {
 
 		shortCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 		defer cancel()
-		
 		w2.runFullSync(shortCtx, false, 0)
 	})
 }

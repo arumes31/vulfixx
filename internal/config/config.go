@@ -29,6 +29,7 @@ type Config struct {
 	AdminPassword   string
 	AdminTOTPSecret string
 	SecureCookie    bool
+	AppPort         string
 }
 
 var (
@@ -55,6 +56,7 @@ func LoadConfig() {
 		AdminEmail:      getEnv("ADMIN_EMAIL", ""),
 		AdminPassword:   getEnv("ADMIN_PASSWORD", ""),
 		AdminTOTPSecret: getEnv("ADMIN_TOTP_SECRET", ""),
+		AppPort:         getEnv("PORT", "8080"),
 	}
 
 	port, err := strconv.Atoi(getEnv("SMTP_PORT", "587"))

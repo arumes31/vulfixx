@@ -2,36 +2,46 @@
 
 {{define "content"}}
 <div class="space-y-8">
-    <header class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/10 pb-6">
+    <header class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-6">
         <div class="flex items-center gap-4">
             <h1 class="text-2xl font-bold text-white tracking-tight">CVE Tracker</h1>
         </div>
+        <div class="flex items-center gap-3">
+            <a href="/login" class="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-white transition-colors">Login</a>
+            <a href="/register" class="px-5 py-2.5 bg-primary/10 border border-primary/20 text-primary rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-primary hover:text-on-primary transition-all shadow-lg shadow-primary/5">Register</a>
+        </div>
     </header>
 
-    <!-- Trending Threats Section -->
-    <section class="space-y-4">
-        <div class="flex items-center justify-between">
+    <section class="space-y-4 overflow-hidden relative">
+        <div class="flex items-center justify-between mb-2">
             <h2 class="text-[9px] font-black uppercase tracking-[0.3em] text-gray-500 flex items-center gap-2">
                 <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
                 Active Escalations
             </h2>
             <span class="text-[9px] font-bold text-primary uppercase tracking-widest">Trending Now</span>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {{range .Trending}}
-            <a href="/cve/{{.CVEID}}" class="glass p-4 rounded-2xl border border-white/5 hover:border-primary/20 hover:bg-white/[0.02] transition-all group">
-                <div class="flex justify-between items-start mb-4">
-                    <span class="text-xs font-black text-white group-hover:text-primary transition-colors">{{.CVEID}}</span>
-                    <span class="text-xs font-bold {{severityColor .CVSSScore}}">{{printf "%.1f" .CVSSScore}}</span>
-                </div>
-                <p class="text-[10px] text-gray-500 line-clamp-3 leading-relaxed mb-4">{{.Description}}</p>
-                <div class="flex items-center gap-2">
-                    {{if .CISAKEV}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-orange-500/20 text-orange-400 border border-orange-500/20">KEV</span>{{end}}
-                    {{if gt .GitHubPoCCount 0}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-purple-500/20 text-purple-400 border border-purple-500/20">PoC</span>{{end}}
-                    {{if gt .EPSSScore 0.5}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-red-500/20 text-red-400 border border-red-500/20">High EPSS</span>{{end}}
-                </div>
-            </a>
-            {{end}}
+        
+        <div class="marquee-container relative group">
+            <!-- Left/Right Fading Masks -->
+            <div class="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-[#0a0e14] to-transparent z-10 pointer-events-none"></div>
+            <div class="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-[#0a0e14] to-transparent z-10 pointer-events-none"></div>
+            
+            <div class="marquee-track flex gap-4 py-2" id="trending-track">
+                {{range .Trending}}
+                <a href="/cve/{{.CVEID}}" class="trending-item glass p-4 rounded-2xl border border-white/5 hover:border-primary/20 hover:bg-white/[0.02] transition-all flex-shrink-0 w-80 group/card">
+                    <div class="flex justify-between items-start mb-4">
+                        <span class="text-xs font-black text-white group-hover/card:text-primary transition-colors">{{.CVEID}}</span>
+                        <span class="text-xs font-bold {{severityColor .CVSSScore}}">{{printf "%.1f" .CVSSScore}}</span>
+                    </div>
+                    <p class="text-[10px] text-gray-500 line-clamp-3 leading-relaxed mb-4 h-[42px]">{{.Description}}</p>
+                    <div class="flex items-center gap-2">
+                        {{if .CISAKEV}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-orange-500/20 text-orange-400 border border-orange-500/20">KEV</span>{{end}}
+                        {{if gt .GitHubPoCCount 0}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-purple-500/20 text-purple-400 border border-purple-500/20">PoC</span>{{end}}
+                        {{if gt .EPSSScore 0.5}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-red-500/20 text-red-400 border border-red-500/20">High EPSS</span>{{end}}
+                    </div>
+                </a>
+                {{end}}
+            </div>
         </div>
     </section>
 
@@ -40,10 +50,10 @@
         <div class="glass p-4 rounded-2xl border border-white/10 relative overflow-hidden group">
             <div class="absolute -right-4 -top-4 w-16 h-16 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-all"></div>
             <div class="flex justify-between items-start mb-2">
-                <span class="text-[9px] font-black tracking-widest uppercase text-gray-500">Global CVE Vault</span>
+                <span data-summary-label class="text-[9px] font-black tracking-widest uppercase text-gray-500">Global CVE Vault</span>
                 <span class="material-symbols-outlined text-primary text-lg">database</span>
             </div>
-            <h2 class="text-2xl font-black text-white tracking-tighter">{{.Total}}</h2>
+            <h2 data-summary-total class="text-2xl font-black text-white tracking-tighter">{{.Total}}</h2>
         </div>
         <div class="glass p-4 rounded-2xl border border-white/10 relative overflow-hidden group">
             <div class="absolute -right-4 -top-4 w-16 h-16 bg-orange-500/5 rounded-full blur-2xl group-hover:bg-orange-500/10 transition-all"></div>
@@ -51,7 +61,7 @@
                 <span class="text-[9px] font-black tracking-widest uppercase text-gray-500">Exploited</span>
                 <span class="material-symbols-outlined text-orange-400 text-lg">warning</span>
             </div>
-            <h2 class="text-2xl font-black text-white tracking-tighter">{{.KevCount}}</h2>
+            <h2 data-summary-kev class="text-2xl font-black text-white tracking-tighter">{{.KevCount}}</h2>
         </div>
         <div class="glass p-4 rounded-2xl border border-white/10 relative overflow-hidden group">
             <div class="absolute -right-4 -top-4 w-16 h-16 bg-red-500/5 rounded-full blur-2xl group-hover:bg-red-500/10 transition-all"></div>
@@ -59,7 +69,7 @@
                 <span class="text-[9px] font-black tracking-widest uppercase text-gray-500">Critical</span>
                 <span class="material-symbols-outlined text-red-500 text-lg">dangerous</span>
             </div>
-            <h2 class="text-2xl font-black text-red-500 tracking-tighter">{{.CritCount}}</h2>
+            <h2 data-summary-crit class="text-2xl font-black text-red-500 tracking-tighter">{{.CritCount}}</h2>
         </div>
     </div>
 
@@ -106,8 +116,12 @@
                 </div>
             </div>
             <div class="space-y-2">
-                <label class="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Date Published</label>
-                <input type="date" name="start_date" value="{{.StartDate}}" class="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-primary focus:outline-none transition-all [color-scheme:dark]">
+                <label class="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Published Range</label>
+                <div class="flex items-center gap-2">
+                    <input type="date" name="start_date" value="{{.StartDate}}" class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-3 py-3 text-[10px] text-white focus:border-primary focus:outline-none transition-all [color-scheme:dark]" title="Start Date">
+                    <span class="text-gray-600 text-xs">-</span>
+                    <input type="date" name="end_date" value="{{.EndDate}}" class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-3 py-3 text-[10px] text-white focus:border-primary focus:outline-none transition-all [color-scheme:dark]" title="End Date">
+                </div>
             </div>
             <div class="flex items-end gap-4 lg:col-span-3">
                 <label class="flex items-center gap-3 cursor-pointer bg-white/5 border border-white/10 rounded-2xl px-4 py-3 hover:bg-white/10 transition-all flex-grow">
@@ -390,7 +404,8 @@ var initPublicDashboard = () => {
         const url = new URL(window.location.href);
         url.search = new URLSearchParams(new FormData(filterForm)).toString();
         url.searchParams.set('ajax', 'true');
-        url.searchParams.delete('page');
+        isLoading = true;
+        currentPage = 1;
 
         tbody.innerHTML = '<tr><td colspan="5" class="p-12 text-center text-gray-500"><span class="material-symbols-outlined animate-spin text-4xl text-primary">autorenew</span></td></tr>';
         
@@ -403,11 +418,19 @@ var initPublicDashboard = () => {
                 tbody.innerHTML = data.html || "";
                 const meta = data.meta || {};
                 
-                currentPage = 1;
-                totalPages = Number(meta.totalPages) || 1;
+                currentPage = Number(meta.Page || meta.page) || 1;
+                totalPages = Number(meta.TotalPages || meta.totalPages) || 1;
                 
                 // Update persistent data script
                 document.getElementById('dashboard-data').textContent = JSON.stringify(meta);
+                
+                // Update Summary Cards and Label
+                const isFiltered = (new FormData(filterForm)).values().next().value !== ""; 
+                document.querySelectorAll('[data-summary-label]').forEach(el => el.textContent = isFiltered ? "Matching CVE Vault" : "Global CVE Vault");
+                
+                document.querySelectorAll('[data-summary-total]').forEach(el => el.textContent = Number(meta.Total || 0).toLocaleString());
+                document.querySelectorAll('[data-summary-kev]').forEach(el => el.textContent = Number(meta.KevCount || 0).toLocaleString());
+                document.querySelectorAll('[data-summary-crit]').forEach(el => el.textContent = Number(meta.CritCount || 0).toLocaleString());
                 
                 const newUrl = new URL(window.location.href);
                 newUrl.search = new URLSearchParams(new FormData(filterForm)).toString();
@@ -423,10 +446,12 @@ var initPublicDashboard = () => {
 
                 // Update charts and UI state
                 updateCharts(meta);
+                isLoading = false;
             })
             .catch(err => {
                 console.error('Error applying filters:', err);
                 vulfixx.toast('Failed to update search results', 'error');
+                isLoading = false;
             });
     }
 
@@ -514,7 +539,8 @@ var initPublicDashboard = () => {
     const updateCharts = (data) => {
         if (!data) return;
         
-        if (sevChart) sevChart.destroy();
+        const existingSev = Chart.getChart('severityChart');
+        if (existingSev) existingSev.destroy();
         const ctxSev = document.getElementById('severityChart').getContext('2d');
         sevChart = new Chart(ctxSev, {
             type: 'doughnut',
@@ -537,8 +563,9 @@ var initPublicDashboard = () => {
                 cutout: '70%'
             }
         });
-
-        if (cweChart) cweChart.destroy();
+        
+        const existingCwe = Chart.getChart('cweChart');
+        if (existingCwe) existingCwe.destroy();
         const ctxCwe = document.getElementById('cweChart').getContext('2d');
         cweChart = new Chart(ctxCwe, {
             type: 'pie',
@@ -552,8 +579,9 @@ var initPublicDashboard = () => {
             },
             options: chartOptions
         });
-
-        if (epssChart) epssChart.destroy();
+        
+        const existingEpss = Chart.getChart('epssChart');
+        if (existingEpss) existingEpss.destroy();
         const ctxEpss = document.getElementById('epssChart').getContext('2d');
         epssChart = new Chart(ctxEpss, {
             type: 'bar',
@@ -594,6 +622,58 @@ if (document.readyState === 'loading') {
     initPublicDashboard();
 }
 </script>
+
+<!-- Marquee Styles & Logic -->
+<style>
+    .marquee-container {
+        width: 100%;
+        overflow: hidden;
+    }
+    .marquee-track {
+        width: max-content;
+        animation: marquee 60s linear infinite;
+    }
+    .marquee-track:hover {
+        animation-play-state: paused;
+    }
+    @keyframes marquee {
+        0% { transform: translateX(0); }
+        100% { transform: translateX(-50%); }
+    }
+    .trending-item {
+        width: 320px;
+    }
+</style>
+
+<script>
+(function() {
+    function initMarquee() {
+        const track = document.getElementById('trending-track');
+        if (!track || track.dataset.cloned) return;
+        
+        // Clone items for infinite loop
+        const items = Array.from(track.children);
+        items.forEach(item => {
+            const clone = item.cloneNode(true);
+            track.appendChild(clone);
+        });
+        
+        track.dataset.cloned = "true";
+        
+        // Adjust speed based on item count
+        const totalItems = track.children.length;
+        const duration = totalItems * 5; // 5 seconds per item
+        track.style.animationDuration = `${duration}s`;
+    }
+
+    // Run on load and after AJAX
+    initMarquee();
+    
+    // Hook into AJAX updates if needed (though trending is usually static on filter)
+    document.addEventListener('vulfixx:ajaxComplete', initMarquee);
+})();
+</script>
+
 {{end}}
 
 {{define "cve_rows"}}
@@ -615,14 +695,11 @@ if (document.readyState === 'loading') {
             </div>
         </td>
         <td class="p-6">
-            <div class="flex flex-wrap gap-2">
-                {{if .CISAKEV}}
-                <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-orange-500/20 text-orange-400 border border-orange-500/20">KEV</span>
-                {{end}}
-                {{if gt .GitHubPoCCount 0}}
-                <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-purple-500/20 text-purple-400 border border-purple-500/20">PoC</span>
-                {{end}}
-                <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-white/5 text-gray-400 border border-white/10">EPSS: {{printf "%.4f" .EPSSScore}}</span>
+            <div class="flex flex-wrap gap-1.5">
+                {{if .CISAKEV}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-orange-500/20 text-orange-400 border border-orange-500/10">KEV</span>{{end}}
+                {{if gt .GitHubPoCCount 0}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-purple-500/20 text-purple-400 border border-purple-500/10">PoC</span>{{end}}
+                {{if gt .EPSSScore 0.5}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-red-500/20 text-red-400 border border-red-500/10">High EPSS</span>{{end}}
+                {{if gt .EPSSScore 0.0}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-white/5 text-gray-500 border border-white/5">EPSS: {{printf "%.4f" .EPSSScore}}</span>{{end}}
             </div>
         </td>
         <td class="p-6">

@@ -214,7 +214,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"COUNT(DISTINCT CASE WHEN ucs.status = 'resolved' THEN c.id END), " +
 		"COUNT(DISTINCT CASE WHEN ucs.status = 'ignored' THEN c.id END) " +
 		baseFromJoin + whereClause
-		
+
 	_ = a.Pool.QueryRow(r.Context(), statusQuery, args...).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
 	a.RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
 		"CVEs":           cves,
@@ -543,14 +543,14 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	pageSize := 20
 	offset := (page - 1) * pageSize
 
-	searchQuery := r.URL.Query().Get("q")
-	vendorQuery := r.URL.Query().Get("vendor")
-	productQuery := r.URL.Query().Get("product")
-	cveIDQuery := r.URL.Query().Get("cve")
-	cweQuery := r.URL.Query().Get("cwe")
+	searchQuery := strings.TrimSpace(r.URL.Query().Get("q"))
+	vendorQuery := strings.TrimSpace(r.URL.Query().Get("vendor"))
+	productQuery := strings.TrimSpace(r.URL.Query().Get("product"))
+	cveIDQuery := strings.TrimSpace(r.URL.Query().Get("cve"))
+	cweQuery := strings.TrimSpace(r.URL.Query().Get("cwe"))
 
-	startDate := r.URL.Query().Get("start_date")
-	endDate := r.URL.Query().Get("end_date")
+	startDate := strings.TrimSpace(r.URL.Query().Get("start_date"))
+	endDate := strings.TrimSpace(r.URL.Query().Get("end_date"))
 	kevOnly := r.URL.Query().Get("kev") == "true"
 	hasPoC := r.URL.Query().Get("has_poc") == "true"
 	minCvssStr := r.URL.Query().Get("min_cvss")
@@ -849,7 +849,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"EPSSDist":        epssDist,
 		"Sort":            sort,
 		"Order":           order,
-		"MetaTitle":       "Vulfixx - Public CVE Tracker",
+		"MetaTitle":       "Vulfixx - CVE Tracker",
 		"MetaDescription": "Monitor real-time vulnerability data, CISA KEV listings, and critical security advisories. The ultimate tracker for security professionals.",
 		"Trending":        a.getTrendingCVEs(r),
 		"csrfField":       csrf.TemplateField(r),
@@ -909,7 +909,7 @@ func (a *App) getTrendingCVEs(r *http.Request) []models.CVE {
 			COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0)
 		FROM cves c
 		WHERE c.cisa_kev = true OR c.cvss_score >= 9.5 OR c.github_poc_count > 0 OR c.epss_score >= 0.5
-		ORDER BY c.github_poc_count DESC, c.epss_score DESC, c.published_date DESC NULLS LAST, c.id DESC LIMIT 4
+		ORDER BY c.github_poc_count DESC, c.epss_score DESC, c.published_date DESC NULLS LAST, c.id DESC LIMIT 100
 	`)
 	if err != nil {
 		log.Printf("Error querying trending CVEs: %v", err)
@@ -938,10 +938,11 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 		SELECT 
 			id, cve_id, description, COALESCE(cvss_score, 0), vector_string, cisa_kev, 
 			published_date, updated_date, 'active' as status, "references", 
-			COALESCE(epss_score, 0), COALESCE(cwe_id, ''), COALESCE(cwe_name, ''), COALESCE(github_poc_count, 0)
+			COALESCE(epss_score, 0), COALESCE(cwe_id, ''), COALESCE(cwe_name, ''), COALESCE(github_poc_count, 0),
+			configurations
 		FROM cves
 		WHERE cve_id = $1
-	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount)
+	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.Configurations)
 
 	c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
 

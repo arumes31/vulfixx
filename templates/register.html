@@ -31,6 +31,28 @@
                 <input id="password" type="password" name="password" required minlength="8" placeholder="••••••••"
                        class="w-full bg-white/5 border border-white/10 px-4 py-4 rounded-2xl text-white focus:outline-none focus:border-primary transition-all placeholder:text-white/10 font-mono tracking-widest">
             </div>
+            <div class="space-y-2">
+                <label for="password_confirm" class="text-xs font-label font-bold tracking-widest uppercase text-gray-500 block">Confirm Secure Passphrase</label>
+                <input id="password_confirm" type="password" name="password_confirm" required minlength="8" placeholder="••••••••"
+                       class="w-full bg-white/5 border border-white/10 px-4 py-4 rounded-2xl text-white focus:outline-none focus:border-primary transition-all placeholder:text-white/10 font-mono tracking-widest">
+            </div>
+
+            <!-- Captcha Section -->
+            <div class="space-y-2">
+                <label for="captcha" class="text-xs font-label font-bold tracking-widest uppercase text-gray-500 block">Verify Human Presence</label>
+                <div class="flex gap-2">
+                    <div class="relative group cursor-pointer" onclick="document.getElementById('captcha-img').src='/captcha?t=' + Date.now()">
+                        <img id="captcha-img" src="/captcha" alt="Captcha Challenge" class="rounded-xl border border-white/10 h-[58px] min-w-[120px] bg-white/5">
+                        <div class="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center">
+                            <span class="material-symbols-outlined text-white text-sm">refresh</span>
+                        </div>
+                    </div>
+                    <input id="captcha" type="number" name="captcha" required placeholder="?"
+                           class="flex-1 bg-white/5 border border-white/10 px-4 py-4 rounded-2xl text-white focus:outline-none focus:border-primary transition-all placeholder:text-white/10 font-mono text-center">
+                </div>
+                <p class="text-[10px] text-gray-600 italic">Click the image to refresh challenge</p>
+            </div>
+
             <button type="submit" class="w-full bg-primary text-on-primary font-bold font-label tracking-widest uppercase py-4 rounded-2xl shadow-lg shadow-primary/20 hover:bg-primary/80 transition-all duration-300 active:scale-95">
                 Initialize Profile
             </button>
