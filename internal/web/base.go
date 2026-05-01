@@ -321,10 +321,10 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 
 		var topCWEs []CWEStat
 		rowsCwe, _ := a.Pool.Query(refreshCtx, `
-			SELECT cwe_id, COALESCE(cwe_name, 'Unknown'), COUNT(*) as cnt 
+			SELECT cwe_id, COALESCE(MAX(cwe_name), 'Unknown'), COUNT(*) as cnt 
 			FROM cves 
 			WHERE cwe_id IS NOT NULL AND cwe_id != '' 
-			GROUP BY cwe_id, cwe_name 
+			GROUP BY cwe_id 
 			ORDER BY cnt DESC 
 			LIMIT 15
 		`)
