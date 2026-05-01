@@ -71,3 +71,40 @@ func TestModels(t *testing.T) {
 		t.Errorf("alert model validation failed")
 	}
 }
+
+func TestGetDetectedProduct(t *testing.T) {
+	tests := []struct {
+		description string
+		wantVendor  string
+		wantProduct string
+	}{
+		{
+			description: "A security vulnerability has been detected in alexta69 MeTube up to 2026.04.09.",
+			wantVendor:  "alexta69",
+			wantProduct: "MeTube",
+		},
+		{
+			description: "This affects the Linux Kernel before version 5.10.",
+			wantVendor:  "Linux",
+			wantProduct: "Kernel",
+		},
+		{
+			description: "A flaw was found in Microsoft Windows 10.",
+			wantVendor:  "Microsoft",
+			wantProduct: "Windows",
+		},
+		{
+			description: "No product mentioned here.",
+			wantVendor:  "",
+			wantProduct: "",
+		},
+	}
+
+	for _, tt := range tests {
+		cve := CVE{Description: tt.description}
+		gotV, gotP := cve.GetDetectedProduct()
+		if gotV != tt.wantVendor || gotP != tt.wantProduct {
+			t.Errorf("GetDetectedProduct() = (%q, %q), want (%q, %q) for description: %q", gotV, gotP, tt.wantVendor, tt.wantProduct, tt.description)
+		}
+	}
+}
