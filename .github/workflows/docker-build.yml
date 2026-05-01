@@ -52,7 +52,7 @@ jobs:
       REDIS_URL: redis:6379
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Install dependencies
         run: apk add --no-cache git build-base
       - name: Run tests
@@ -65,7 +65,7 @@ jobs:
       image: golang:1.26
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Run golangci-lint
         run: |
           go install -v github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.5
@@ -78,7 +78,7 @@ jobs:
       image: golang:1.26-alpine
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Install Gosec
         run: apk add --no-cache git && go install github.com/securego/gosec/v2/cmd/gosec@latest
       - name: Run Gosec Security Scanner
@@ -93,7 +93,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
