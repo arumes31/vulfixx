@@ -78,6 +78,17 @@ func (c *CVE) GetLineage() []string {
 		process(ref)
 	}
 
+	// Check OSINT data if available
+	if c.OSINTData != nil {
+		if related, ok := c.OSINTData["related_cves"].([]interface{}); ok {
+			for _, r := range related {
+				if s, ok := r.(string); ok {
+					process(s)
+				}
+			}
+		}
+	}
+
 	return lineage
 }
 
