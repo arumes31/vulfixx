@@ -4,32 +4,19 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"os"
 
 	"github.com/gorilla/sessions"
 )
 
 var store *sessions.CookieStore
 
-func InitSession() *sessions.CookieStore {
-	env := os.Getenv("ENV")
-	if env == "" {
-		env = "development"
-	}
-
-	key := os.Getenv("SESSION_KEY")
-	if key == "" {
-		if env != "development" {
-			panic("SESSION_KEY environment variable is required in production. For local testing, set ENV=development or provide a SESSION_KEY")
-		}
-		key = "default-secret-key"
-	}
-	s := sessions.NewCookieStore([]byte(key))
+func InitSession(key []byte, secure bool) *sessions.CookieStore {
+	s := sessions.NewCookieStore(key)
 	s.Options = &sessions.Options{
 		Path:     "/",
 		MaxAge:   86400 * 7,
 		HttpOnly: true,
-		Secure:   os.Getenv("SECURE_COOKIE") == "true",
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	}
 	store = s // Keep global for now to avoid breaking everything at once
