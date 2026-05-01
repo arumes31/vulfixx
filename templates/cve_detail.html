@@ -328,11 +328,11 @@
 
 <script nonce="{{.Nonce}}">
 (function() {
-    const initCVEDetail = () => {
+    const initCVEDetail = function() {
         const vectorContainer = document.getElementById('cvss-vector');
         if (!vectorContainer) return;
 
-        const clearLoader = (msg) => {
+        const clearLoader = function(msg) {
             vectorContainer.innerHTML = msg || '';
         };
 
@@ -349,24 +349,26 @@
                 'A':  { n: 'Avail.', v: { N: 'None', L: 'Low', H: 'High' } }
             };
 
-            if (vectorStr && vectorStr.includes('/')) {
+            if (vectorStr && vectorStr.indexOf('/') !== -1) {
                 const parts = vectorStr.split('/');
                 const v = {};
                 vectorContainer.innerHTML = '';
                 
-                parts.forEach(part => {
-                    const [key, val] = part.split(':');
-                    v[key] = val;
-                    if (metricMap[key]) {
-                        const metric = metricMap[key];
-                        const valName = metric.v[val] || val;
-                        const pill = document.createElement('div');
-                        pill.className = 'tooltip-trigger text-[9px] font-mono text-gray-400 bg-white/5 px-2 py-0.5 rounded-md border border-white/5 hover:bg-white/10 hover:text-white transition-all';
-                        pill.innerHTML = `
-                            <span class="text-gray-600 mr-1">${key}:</span>${val}
-                            <div class="tooltip">${metric.n}: ${valName}</div>
-                        `;
-                        vectorContainer.appendChild(pill);
+                parts.forEach(function(part) {
+                    const kv = part.split(':');
+                    if (kv.length === 2) {
+                        const key = kv[0];
+                        const val = kv[1];
+                        v[key] = val;
+                        if (metricMap[key]) {
+                            const metric = metricMap[key];
+                            const valName = metric.v[val] || val;
+                            const pill = document.createElement('div');
+                            pill.className = 'tooltip-trigger text-[9px] font-mono text-gray-400 bg-white/5 px-2 py-0.5 rounded-md border border-white/5 hover:bg-white/10 hover:text-white transition-all';
+                            pill.innerHTML = '<span class="text-gray-600 mr-1">' + key + ':</span>' + val +
+                                '<div class="tooltip">' + metric.n + ': ' + valName + '</div>';
+                            vectorContainer.appendChild(pill);
+                        }
                     }
                 });
 
@@ -379,16 +381,16 @@
                     if (v.PR) steps.push({ icon: 'person_shield', label: v.PR === 'N' ? 'No Auth' : 'Auth Required' });
                     if (v.UI) steps.push({ icon: 'mouse', label: v.UI === 'N' ? 'No Interaction' : 'Interaction' });
 
-                    tacticalPath.innerHTML = steps.map((s, i) => `
-                        <div class="flex items-center gap-1">
-                            <div class="flex flex-col items-center group">
-                                <span class="material-symbols-outlined text-[14px] text-primary mb-0.5 group-hover:scale-110 transition-transform">${s.icon}</span>
-                                <span class="text-[7px] font-black uppercase tracking-widest text-gray-500">${s.label}</span>
-                            </div>
-                            ${i < steps.length - 1 ? '<span class="material-symbols-outlined text-[10px] text-gray-800 mx-0.5 opacity-30">chevron_right</span>' : ''}
-                        </div>
-                    `).join('');
-                    setTimeout(() => tacticalPath.classList.remove('opacity-0'), 100);
+                    tacticalPath.innerHTML = steps.map(function(s, i) {
+                        return '<div class="flex items-center gap-1">' +
+                                '<div class="flex flex-col items-center group">' +
+                                    '<span class="material-symbols-outlined text-[14px] text-primary mb-0.5 group-hover:scale-110 transition-transform">' + s.icon + '</span>' +
+                                    '<span class="text-[7px] font-black uppercase tracking-widest text-gray-500">' + s.label + '</span>' +
+                                '</div>' +
+                                (i < steps.length - 1 ? '<span class="material-symbols-outlined text-[10px] text-gray-800 mx-0.5 opacity-30">chevron_right</span>' : '') +
+                            '</div>';
+                    }).join('');
+                    setTimeout(function() { tacticalPath.classList.remove('opacity-0'); }, 100);
                 }
 
             } else {
@@ -399,26 +401,28 @@
             clearLoader('<span class="text-[9px] font-mono text-gray-600 italic">Error parsing vector</span>');
         }
 
-        // 2. Extract Vendors from CPEs and Detected Section
+        // 2. Extract Vendors
         const vendorList = document.getElementById('vendor-list');
         if (vendorList) {
             vendorList.innerHTML = '';
             const vendors = new Set();
             
-            document.querySelectorAll('.cpe-string').forEach(el => {
-                const cpe = el.dataset.cpe;
-                if (cpe && cpe.startsWith('cpe:2.3:')) {
+            const cpeStrings = document.querySelectorAll('.cpe-string');
+            for (let i = 0; i < cpeStrings.length; i++) {
+                const cpe = cpeStrings[i].dataset.cpe;
+                if (cpe && cpe.indexOf('cpe:2.3:') === 0) {
                     const parts = cpe.split(':');
                     if (parts.length > 4) vendors.add(parts[3].replace(/_/g, ' '));
                 }
-            });
+            }
 
-            document.querySelectorAll('.product-detected').forEach(el => {
-                const vendor = el.dataset.vendor;
+            const productDetecteds = document.querySelectorAll('.product-detected');
+            for (let i = 0; i < productDetecteds.length; i++) {
+                const vendor = productDetecteds[i].dataset.vendor;
                 if (vendor) vendors.add(vendor.replace(/_/g, ' '));
-            });
+            }
 
-            vendors.forEach(vendor => {
+            vendors.forEach(function(vendor) {
                 const badge = document.createElement('span');
                 badge.className = 'px-3 py-1 bg-tertiary/10 text-tertiary border border-tertiary/20 rounded-full text-[10px] font-black uppercase tracking-widest';
                 badge.textContent = vendor;
@@ -437,25 +441,29 @@
             'x.com': { icon: 'chat', label: 'Social Intel', color: 'text-sky-400', bgClass: 'bg-sky-500/10' }
         };
 
-        document.querySelectorAll('.reference-card').forEach(card => {
+        const referenceCards = document.querySelectorAll('.reference-card');
+        for (let i = 0; i < referenceCards.length; i++) {
+            const card = referenceCards[i];
             const url = card.dataset.url;
             const iconContainer = card.querySelector('.source-icon');
             const labelContainer = card.querySelector('.source-label');
-            if (!iconContainer || !labelContainer) return;
+            if (!iconContainer || !labelContainer) continue;
             
-            for (const [domain, config] of Object.entries(sourceIcons)) {
-                if (url.includes(domain)) {
-                    iconContainer.innerHTML = `<span class="material-symbols-outlined text-[18px] ${config.color}">${config.icon}</span>`;
-                    iconContainer.classList.add(config.bgClass);
+            const domains = Object.keys(sourceIcons);
+            for (let j = 0; j < domains.length; j++) {
+                const domain = domains[j];
+                if (url.indexOf(domain) !== -1) {
+                    const config = sourceIcons[domain];
+                    iconContainer.innerHTML = '<span class="material-symbols-outlined text-[18px] ' + config.color + '">' + config.icon + '</span>';
+                    iconContainer.className = 'source-icon w-10 h-10 rounded-xl flex items-center justify-center ' + config.bgClass;
                     labelContainer.textContent = config.label;
-                    labelContainer.classList.replace('text-gray-600', config.color);
+                    labelContainer.className = 'source-label text-[10px] font-black uppercase tracking-widest ' + config.color;
                     break;
                 }
             }
-        });
+        }
     };
 
-    // Run immediately since SPA framework injects scripts after DOM update
     initCVEDetail();
 })();
 </script>
