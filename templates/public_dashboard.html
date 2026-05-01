@@ -668,29 +668,45 @@ input[type=number] {
         const ctxCwe = document.getElementById('cweChart').getContext('2d');
         const cweGradient = getHorizontalGradient(ctxCwe, 'rgba(168, 85, 247, 0.8)', 'rgba(168, 85, 247, 0.2)');
         
+        const topCWEData = (data.TopCWEs || data.topCWEs || []);
         cweChart = new Chart(ctxCwe, {
             type: 'bar',
             data: {
-                labels: (data.TopCWEs || data.topCWEs || []).map(x => x.id),
+                labels: topCWEData.map(x => x.id),
                 datasets: [{
                     label: 'Count',
-                    data: (data.TopCWEs || data.topCWEs || []).map(x => x.count),
+                    data: topCWEData.map(x => x.count),
+                    fullNames: topCWEData.map(x => x.name),
                     backgroundColor: cweGradient,
-                    borderRadius: 6,
+                    borderRadius: 4,
                     borderWidth: 0,
-                    barThickness: 16
+                    barThickness: 12
                 }]
             },
             options: {
                 ...chartOptions,
                 indexAxis: 'y',
+                plugins: {
+                    ...chartOptions.plugins,
+                    tooltip: {
+                        ...chartOptions.plugins.tooltip,
+                        callbacks: {
+                            title: (items) => {
+                                const item = items[0];
+                                const fullName = item.dataset.fullNames[item.dataIndex];
+                                return `${item.label}: ${fullName}`;
+                            },
+                            label: (item) => `Occurrences: ${item.formattedValue}`
+                        }
+                    }
+                },
                 scales: {
                     x: { display: false, grid: { display: false } },
                     y: { 
                         grid: { display: false }, 
                         ticks: { 
                             color: '#9ca3af', 
-                            font: { family: 'Space Grotesk', size: 10, weight: 'bold' } 
+                            font: { family: 'Space Grotesk', size: 9, weight: 'bold' } 
                         } 
                     }
                 }
