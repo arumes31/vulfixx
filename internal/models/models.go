@@ -1,6 +1,9 @@
 package models
 
 import (
+	"database/sql/driver"
+	"encoding/json"
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -34,10 +37,33 @@ type CVE struct {
 	Status         string                 `json:"status"`
 	Notes          string                 `json:"notes"`
 	References     []string               `json:"references"`
-	Configurations []CVEConfiguration     `json:"configurations"`
+	Configurations CVEConfigurations      `json:"configurations"`
 	PublishedDate  time.Time              `json:"published_date"`
 	UpdatedDate    time.Time              `json:"updated_date"`
 	CreatedAt      time.Time              `json:"created_at"`
+}
+
+type CVEConfigurations []CVEConfiguration
+
+// Scan implements the sql.Scanner interface.
+func (c *CVEConfigurations) Scan(value interface{}) error {
+	if value == nil {
+		*c = nil
+		return nil
+	}
+	b, ok := value.([]byte)
+	if !ok {
+		return fmt.Errorf("type assertion to []byte failed")
+	}
+	return json.Unmarshal(b, &c)
+}
+
+// Value implements the driver.Valuer interface.
+func (c CVEConfigurations) Value() (driver.Value, error) {
+	if c == nil {
+		return nil, nil
+	}
+	return json.Marshal(c)
 }
 
 func (c *CVE) GetDetectedProduct() (vendor, product string) {
