@@ -31,6 +31,8 @@
                 <!-- Populated by JS -->
                 <div class="text-[9px] font-mono text-gray-500 bg-white/5 px-3 py-1 rounded-full animate-pulse">Parsing Vector...</div>
             </div>
+            <!-- Tactical Path Visual -->
+            <div id="tactical-path" class="flex items-center justify-center gap-1 mt-4 opacity-0 transition-opacity duration-500"></div>
         </div>
     </header>
 
@@ -124,12 +126,11 @@
     </section>
 
     <!-- Affected Software Section -->
-    {{if .CVE.Configurations}}
     <section class="space-y-6">
         <div class="flex items-center justify-between">
             <h2 class="text-2xl font-black text-white flex items-center gap-3">
                 <span class="material-symbols-outlined text-tertiary">inventory_2</span>
-                Known Affected Software Configurations
+                {{if .CVE.Configurations}}Known Affected Software Configurations{{else}}Affected Product Details{{end}}
             </h2>
             
             <!-- Dynamic Vendors Badge List -->
@@ -138,6 +139,7 @@
             </div>
         </div>
 
+        {{if .CVE.Configurations}}
         <div class="glass rounded-3xl border border-white/10 overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
@@ -189,6 +191,76 @@
                 </table>
             </div>
         </div>
+        {{else}}
+            {{$detected := detectProduct .CVE}}
+            {{if $detected}}
+            <div class="glass p-8 rounded-3xl border border-white/10 flex items-center gap-6">
+                <div class="w-16 h-16 rounded-2xl bg-tertiary/10 flex items-center justify-center text-tertiary">
+                    <span class="material-symbols-outlined text-3xl">inventory_2</span>
+                </div>
+                <div>
+                    <div class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Detected Software</div>
+                    <div class="text-2xl font-black text-white product-detected" data-vendor="{{index $detected "vendor"}}">
+                        {{index $detected "vendor"}} <span class="text-tertiary">{{index $detected "product"}}</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">Information automatically identified from vulnerability description.</p>
+                </div>
+            </div>
+            {{else}}
+            <div class="glass p-12 rounded-3xl border border-white/5 bg-white/[0.01] text-center">
+                <span class="material-symbols-outlined text-gray-700 text-4xl mb-4">search_off</span>
+                <p class="text-gray-500 text-sm italic">No structured software configurations or products were explicitly identified for this vulnerability.</p>
+            </div>
+            {{end}}
+        {{end}}
+    </section>
+
+    <!-- Vulnerability Lineage (Zombie CVE) -->
+    {{$lineage := getLineage .CVE}}
+    {{if $lineage}}
+    {{$lowDesc := lower .CVE.Description}}
+    {{$isZombie := or (contains $lowDesc "bypass") (contains $lowDesc "incomplete") (contains $lowDesc "regression") (contains $lowDesc "broken patch") (contains $lowDesc "failed fix")}}
+    <section class="space-y-6">
+        <div class="flex items-center justify-between">
+            <h2 class="text-2xl font-black text-white flex items-center gap-3">
+                <span class="material-symbols-outlined text-purple-400 animate-pulse">account_tree</span>
+                Vulnerability Lineage
+                {{if $isZombie}}
+                <div class="px-3 py-1 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 text-[8px] font-black uppercase tracking-[0.2em] shadow-lg shadow-red-500/10 ml-4">
+                    Zombie CVE
+                </div>
+                {{end}}
+            </h2>
+            <div class="text-[10px] font-black uppercase tracking-widest text-purple-400/50 bg-purple-400/5 px-3 py-1 rounded-full border border-purple-400/10">
+                Lineage Explorer
+            </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 relative">
+            {{range $lineage}}
+            <a href="/cve/{{.}}" class="group relative glass p-6 rounded-[2rem] border border-white/5 hover:border-purple-400/40 hover:bg-white/[0.02] transition-all duration-300 flex items-center justify-between overflow-hidden">
+                <!-- Hover Glow -->
+                <div class="absolute inset-0 bg-gradient-to-br from-purple-400/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                
+                <div class="flex items-center gap-5 relative z-10">
+                    <div class="w-14 h-14 rounded-2xl bg-purple-400/10 border border-purple-400/20 flex items-center justify-center text-purple-400 group-hover:rotate-12 transition-transform">
+                        <span class="material-symbols-outlined text-2xl">bug_report</span>
+                    </div>
+                    <div>
+                        <div class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1 group-hover:text-purple-400 transition-colors">Associated Identity</div>
+                        <div class="text-2xl font-black text-white tracking-tighter">{{.}}</div>
+                    </div>
+                </div>
+                
+                <div class="flex flex-col items-end gap-2 relative z-10">
+                    <span class="material-symbols-outlined text-gray-700 group-hover:text-purple-400 group-hover:translate-x-1 transition-all">arrow_forward</span>
+                </div>
+            </a>
+            {{end}}
+        </div>
+        <p class="text-[10px] text-gray-600 font-medium italic flex items-center gap-2">
+            <span class="w-1 h-1 rounded-full bg-purple-400"></span>
+            Lineage automatically constructed from advisory cross-references and vulnerability descriptions.
+        </p>
     </section>
     {{end}}
 
@@ -255,93 +327,137 @@
 </style>
 
 <script nonce="{{.Nonce}}">
-document.addEventListener('DOMContentLoaded', function() {
-    // 1. Interactive CVSS Vector
-    const vectorContainer = document.getElementById('cvss-vector');
-    const vectorStr = vectorContainer.dataset.vector;
-    
-    const metricMap = {
-        'AV': { n: 'Attack Vector', v: { N: 'Network', A: 'Adjacent', L: 'Local', P: 'Physical' } },
-        'AC': { n: 'Complexity', v: { L: 'Low', H: 'High' } },
-        'PR': { n: 'Privileges', v: { N: 'None', L: 'Low', H: 'High' } },
-        'UI': { n: 'Interaction', v: { N: 'None', R: 'Required' } },
-        'S':  { n: 'Scope', v: { U: 'Unchanged', C: 'Changed' } },
-        'C':  { n: 'Confid.', v: { N: 'None', L: 'Low', H: 'High' } },
-        'I':  { n: 'Integrity', v: { N: 'None', L: 'Low', H: 'High' } },
-        'A':  { n: 'Avail.', v: { N: 'None', L: 'Low', H: 'High' } }
-    };
+(function() {
+    const initCVEDetail = () => {
+        const vectorContainer = document.getElementById('cvss-vector');
+        if (!vectorContainer) return;
 
-    if (vectorStr && vectorStr.includes('/')) {
-        const parts = vectorStr.split('/');
-        vectorContainer.innerHTML = '';
-        parts.forEach(part => {
-            const [key, val] = part.split(':');
-            if (metricMap[key]) {
-                const metric = metricMap[key];
-                const valName = metric.v[val] || val;
-                const pill = document.createElement('div');
-                pill.className = 'tooltip-trigger text-[9px] font-mono text-gray-400 bg-white/5 px-2 py-0.5 rounded-md border border-white/5 hover:bg-white/10 hover:text-white transition-all';
-                pill.innerHTML = `
-                    <span class="text-gray-600 mr-1">${key}:</span>${val}
-                    <div class="tooltip">${metric.n}: ${valName}</div>
-                `;
-                vectorContainer.appendChild(pill);
+        const clearLoader = (msg) => {
+            vectorContainer.innerHTML = msg || '';
+        };
+
+        try {
+            const vectorStr = vectorContainer.dataset.vector;
+            const metricMap = {
+                'AV': { n: 'Attack Vector', v: { N: 'Network', A: 'Adjacent', L: 'Local', P: 'Physical' } },
+                'AC': { n: 'Complexity', v: { L: 'Low', H: 'High' } },
+                'PR': { n: 'Privileges', v: { N: 'None', L: 'Low', H: 'High' } },
+                'UI': { n: 'Interaction', v: { N: 'None', R: 'Required' } },
+                'S':  { n: 'Scope', v: { U: 'Unchanged', C: 'Changed' } },
+                'C':  { n: 'Confid.', v: { N: 'None', L: 'Low', H: 'High' } },
+                'I':  { n: 'Integrity', v: { N: 'None', L: 'Low', H: 'High' } },
+                'A':  { n: 'Avail.', v: { N: 'None', L: 'Low', H: 'High' } }
+            };
+
+            if (vectorStr && vectorStr.includes('/')) {
+                const parts = vectorStr.split('/');
+                const v = {};
+                vectorContainer.innerHTML = '';
+                
+                parts.forEach(part => {
+                    const [key, val] = part.split(':');
+                    v[key] = val;
+                    if (metricMap[key]) {
+                        const metric = metricMap[key];
+                        const valName = metric.v[val] || val;
+                        const pill = document.createElement('div');
+                        pill.className = 'tooltip-trigger text-[9px] font-mono text-gray-400 bg-white/5 px-2 py-0.5 rounded-md border border-white/5 hover:bg-white/10 hover:text-white transition-all';
+                        pill.innerHTML = `
+                            <span class="text-gray-600 mr-1">${key}:</span>${val}
+                            <div class="tooltip">${metric.n}: ${valName}</div>
+                        `;
+                        vectorContainer.appendChild(pill);
+                    }
+                });
+
+                // Tactical Path Visualization
+                const tacticalPath = document.getElementById('tactical-path');
+                if (tacticalPath) {
+                    const steps = [];
+                    if (v.AV) steps.push({ icon: 'lan', label: metricMap.AV.v[v.AV] });
+                    if (v.AC) steps.push({ icon: 'settings_input_component', label: v.AC === 'L' ? 'Low Complexity' : 'High Complexity' });
+                    if (v.PR) steps.push({ icon: 'person_shield', label: v.PR === 'N' ? 'No Auth' : 'Auth Required' });
+                    if (v.UI) steps.push({ icon: 'mouse', label: v.UI === 'N' ? 'No Interaction' : 'Interaction' });
+
+                    tacticalPath.innerHTML = steps.map((s, i) => `
+                        <div class="flex items-center gap-1">
+                            <div class="flex flex-col items-center group">
+                                <span class="material-symbols-outlined text-[14px] text-primary mb-0.5 group-hover:scale-110 transition-transform">${s.icon}</span>
+                                <span class="text-[7px] font-black uppercase tracking-widest text-gray-500">${s.label}</span>
+                            </div>
+                            ${i < steps.length - 1 ? '<span class="material-symbols-outlined text-[10px] text-gray-800 mx-0.5 opacity-30">chevron_right</span>' : ''}
+                        </div>
+                    `).join('');
+                    setTimeout(() => tacticalPath.classList.remove('opacity-0'), 100);
+                }
+
+            } else {
+                clearLoader('<span class="text-[9px] font-mono text-gray-600 italic">No vector string available</span>');
+            }
+        } catch (e) {
+            console.error('Vector parse error:', e);
+            clearLoader('<span class="text-[9px] font-mono text-gray-600 italic">Error parsing vector</span>');
+        }
+
+        // 2. Extract Vendors from CPEs and Detected Section
+        const vendorList = document.getElementById('vendor-list');
+        if (vendorList) {
+            vendorList.innerHTML = '';
+            const vendors = new Set();
+            
+            document.querySelectorAll('.cpe-string').forEach(el => {
+                const cpe = el.dataset.cpe;
+                if (cpe && cpe.startsWith('cpe:2.3:')) {
+                    const parts = cpe.split(':');
+                    if (parts.length > 4) vendors.add(parts[3].replace(/_/g, ' '));
+                }
+            });
+
+            document.querySelectorAll('.product-detected').forEach(el => {
+                const vendor = el.dataset.vendor;
+                if (vendor) vendors.add(vendor.replace(/_/g, ' '));
+            });
+
+            vendors.forEach(vendor => {
+                const badge = document.createElement('span');
+                badge.className = 'px-3 py-1 bg-tertiary/10 text-tertiary border border-tertiary/20 rounded-full text-[10px] font-black uppercase tracking-widest';
+                badge.textContent = vendor;
+                vendorList.appendChild(badge);
+            });
+        }
+
+        // 3. Enhanced References
+        const sourceIcons = {
+            'github.com': { icon: 'code', label: 'Exploit / Source', color: 'text-purple-400', bgClass: 'bg-purple-500/10' },
+            'nvd.nist.gov': { icon: 'verified_user', label: 'Official NVD', color: 'text-blue-400', bgClass: 'bg-blue-500/10' },
+            'cisa.gov': { icon: 'policy', label: 'CISA Advisory', color: 'text-orange-400', bgClass: 'bg-orange-500/10' },
+            'exploit-db.com': { icon: 'bug_report', label: 'Exploit Database', color: 'text-red-400', bgClass: 'bg-red-500/10' },
+            'mitre.org': { icon: 'security', label: 'MITRE CVE', color: 'text-primary', bgClass: 'bg-primary/10' },
+            'twitter.com': { icon: 'chat', label: 'Social Intel', color: 'text-sky-400', bgClass: 'bg-sky-500/10' },
+            'x.com': { icon: 'chat', label: 'Social Intel', color: 'text-sky-400', bgClass: 'bg-sky-500/10' }
+        };
+
+        document.querySelectorAll('.reference-card').forEach(card => {
+            const url = card.dataset.url;
+            const iconContainer = card.querySelector('.source-icon');
+            const labelContainer = card.querySelector('.source-label');
+            if (!iconContainer || !labelContainer) return;
+            
+            for (const [domain, config] of Object.entries(sourceIcons)) {
+                if (url.includes(domain)) {
+                    iconContainer.innerHTML = `<span class="material-symbols-outlined text-[18px] ${config.color}">${config.icon}</span>`;
+                    iconContainer.classList.add(config.bgClass);
+                    labelContainer.textContent = config.label;
+                    labelContainer.classList.replace('text-gray-600', config.color);
+                    break;
+                }
             }
         });
-    }
-
-    // 2. Extract Vendors from CPEs
-    const cpeElements = document.querySelectorAll('.cpe-string');
-    const vendors = new Set();
-    cpeElements.forEach(el => {
-        const cpe = el.dataset.cpe;
-        if (cpe && cpe.startsWith('cpe:2.3:')) {
-            const parts = cpe.split(':');
-            if (parts.length > 4) {
-                const vendor = parts[3].replace(/_/g, ' ');
-                vendors.add(vendor);
-            }
-        }
-    });
-
-    const vendorContainer = document.getElementById('vendor-list');
-    if (vendorContainer) {
-        vendors.forEach(vendor => {
-            const badge = document.createElement('span');
-            badge.className = 'px-3 py-1 bg-tertiary/10 text-tertiary border border-tertiary/20 rounded-full text-[10px] font-black uppercase tracking-widest';
-            badge.textContent = vendor;
-            vendorContainer.appendChild(badge);
-        });
-    }
-
-    // 3. Enhanced References
-    const refCards = document.querySelectorAll('.reference-card');
-    const sourceIcons = {
-        'github.com': { icon: 'code', label: 'Exploit / Source', color: 'text-purple-400' },
-        'nvd.nist.gov': { icon: 'verified_user', label: 'Official NVD', color: 'text-blue-400' },
-        'cisa.gov': { icon: 'policy', label: 'CISA Advisory', color: 'text-orange-400' },
-        'exploit-db.com': { icon: 'bug_report', label: 'Exploit Database', color: 'text-red-400' },
-        'mitre.org': { icon: 'security', label: 'MITRE CVE', color: 'text-primary' },
-        'twitter.com': { icon: 'chat', label: 'Social Intel', color: 'text-sky-400' },
-        'x.com': { icon: 'chat', label: 'Social Intel', color: 'text-sky-400' }
     };
 
-    refCards.forEach(card => {
-        const url = card.dataset.url;
-        const iconContainer = card.querySelector('.source-icon');
-        const labelContainer = card.querySelector('.source-label');
-        
-        for (const [domain, config] of Object.entries(sourceIcons)) {
-            if (url.includes(domain)) {
-                iconContainer.innerHTML = `<span class="material-symbols-outlined text-[18px] ${config.color}">${config.icon}</span>`;
-                iconContainer.classList.add('bg-' + config.color.split('-')[1] + '-500/10');
-                labelContainer.textContent = config.label;
-                labelContainer.classList.replace('text-gray-600', config.color);
-                break;
-            }
-        }
-    });
-});
+    // Run immediately since SPA framework injects scripts after DOM update
+    initCVEDetail();
+})();
 </script>
 
 <!-- Structured Data (JSON-LD) for SEO -->

@@ -179,6 +179,7 @@
 </div>
 
 <script nonce="{{.Nonce}}">
+(function() {
     function explainVector(vector) {
         if (!vector || typeof vector !== 'string') {
             vulfixx.toast('CVSS vector data unavailable for this CVE', 'info');
@@ -294,10 +295,13 @@
         if (data) setTimeout(() => window.location.reload(), 1000);
     }
 
-const initDashboard = () => {
-    document.getElementById('team-selector')?.addEventListener('change', (e) => {
-            e.target.form.submit();
-        });
+    function initDashboard() {
+        const teamSelector = document.getElementById('team-selector');
+        if (teamSelector) {
+            teamSelector.addEventListener('change', (e) => {
+                e.target.form.submit();
+            });
+        }
 
         document.querySelectorAll('.vector-trigger').forEach(el => {
             el.addEventListener('click', () => explainVector(el.dataset.vector));
@@ -436,12 +440,23 @@ const initDashboard = () => {
                 if (url) vulfixx.navigate(url);
             });
         });
-    };
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initDashboard);
-    } else {
-        initDashboard();
     }
+
+    (function() {
+        const runInit = () => {
+            if (typeof window.requestAnimationFrame !== 'undefined') {
+                window.requestAnimationFrame(initDashboard);
+            } else {
+                setTimeout(initDashboard, 0);
+            }
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', runInit);
+        } else {
+            runInit();
+        }
+    })();
+})();
 </script>
 {{end}}

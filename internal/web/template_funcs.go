@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"cve-tracker/internal/models"
 )
 
 func (a *App) InitTemplatesWithFuncs() error {
@@ -151,6 +153,19 @@ func (a *App) InitTemplatesWithFuncs() error {
 			}
 
 			return links
+		},
+		"detectProduct": func(c models.CVE) map[string]string {
+			v, p := c.GetDetectedProduct()
+			if v == "" {
+				return nil
+			}
+			return map[string]string{"vendor": v, "product": p}
+		},
+		"getLineage": func(c models.CVE) []string {
+			return c.GetLineage()
+		},
+		"lower": func(s string) string {
+			return strings.ToLower(s)
 		},
 	}
 

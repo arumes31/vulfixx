@@ -349,423 +349,434 @@ input[type=number] {
 
 <script nonce="{{.Nonce}}">
     function initPublicDashboard() {
-    const rawData = document.getElementById('dashboard-data').textContent;
-    const dashboardData = JSON.parse(rawData);
+        const rawData = document.getElementById('dashboard-data').textContent;
+        const dashboardData = JSON.parse(rawData);
 
-    let currentPage = Number(dashboardData.page) || 1;
-    let totalPages = Number(dashboardData.totalPages) || 1;
-    let isLoading = false;
-    const tbody = document.getElementById('cve-tbody');
-    const loadingIndicator = document.getElementById('loading-indicator');
-    
-    let sevChart, cweChart, epssChart;
+        let currentPage = Number(dashboardData.page) || 1;
+        let totalPages = Number(dashboardData.totalPages) || 1;
+        let isLoading = false;
+        const tbody = document.getElementById('cve-tbody');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        
+        let sevChart, cweChart, epssChart;
 
-    window.toggleSort = (col) => {
-        const sortInput = document.getElementById('sort-field');
-        const orderInput = document.getElementById('order-field');
-        
-        if (sortInput.value === col) {
-            orderInput.value = orderInput.value === 'desc' ? 'asc' : 'desc';
-        } else {
-            sortInput.value = col;
-            orderInput.value = 'desc';
-        }
-        
-        applyFilters();
-        
-        // Update header icons and ARIA instantly
-        document.querySelectorAll('th[data-col]').forEach(th => {
-            const thCol = th.getAttribute('data-col');
-            const span = th.querySelector('span');
-            if (thCol === col) {
-                if (span) {
-                    span.textContent = orderInput.value === 'asc' ? 'arrow_upward' : 'arrow_downward';
-                    span.classList.remove('opacity-0', 'group-hover:opacity-40');
-                }
-                th.setAttribute('aria-sort', orderInput.value === 'asc' ? 'ascending' : 'descending');
+        window.toggleSort = (col) => {
+            const sortInput = document.getElementById('sort-field');
+            const orderInput = document.getElementById('order-field');
+            
+            if (sortInput.value === col) {
+                orderInput.value = orderInput.value === 'desc' ? 'asc' : 'desc';
             } else {
-                if (span) {
-                    span.textContent = 'arrow_downward';
-                    span.classList.add('opacity-0', 'group-hover:opacity-40');
-                }
-                th.setAttribute('aria-sort', 'none');
+                sortInput.value = col;
+                orderInput.value = 'desc';
             }
-        });
-    };
-
-    document.querySelectorAll('button[data-sort-col]').forEach(btn => {
-        btn.addEventListener('click', () => toggleSort(btn.getAttribute('data-sort-col')));
-    });
-
-    function loadMore() {
-        if (isLoading || currentPage >= totalPages) return;
-        
-        isLoading = true;
-        loadingIndicator.classList.remove('hidden');
-
-        const url = new URL(window.location.href);
-        const nextPage = currentPage + 1;
-        url.searchParams.set('page', nextPage);
-        url.searchParams.set('ajax', 'true');
-
-        fetch(url)
-            .then(response => {
-                if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-                return response.json();
-            })
-            .then(data => {
-                const html = data.html || "";
-                const meta = data.meta || {};
-                
-                if (html.trim() === '') {
-                    currentPage = totalPages;
+            
+            applyFilters();
+            
+            // Update header icons and ARIA instantly
+            document.querySelectorAll('th[data-col]').forEach(th => {
+                const thCol = th.getAttribute('data-col');
+                const span = th.querySelector('span');
+                if (thCol === col) {
+                    if (span) {
+                        span.textContent = orderInput.value === 'asc' ? 'arrow_upward' : 'arrow_downward';
+                        span.classList.remove('opacity-0', 'group-hover:opacity-40');
+                    }
+                    th.setAttribute('aria-sort', orderInput.value === 'asc' ? 'ascending' : 'descending');
                 } else {
-                    currentPage = Number(meta.Page || meta.page) || (currentPage + 1);
-                    totalPages = Number(meta.TotalPages || meta.totalPages) || totalPages;
+                    if (span) {
+                        span.textContent = 'arrow_downward';
+                        span.classList.add('opacity-0', 'group-hover:opacity-40');
+                    }
+                    th.setAttribute('aria-sort', 'none');
+                }
+            });
+        };
+
+        document.querySelectorAll('button[data-sort-col]').forEach(btn => {
+            btn.addEventListener('click', () => toggleSort(btn.getAttribute('data-sort-col')));
+        });
+
+        function loadMore() {
+            if (isLoading || currentPage >= totalPages) return;
+            
+            isLoading = true;
+            loadingIndicator.classList.remove('hidden');
+
+            const url = new URL(window.location.href);
+            const nextPage = currentPage + 1;
+            url.searchParams.set('page', nextPage);
+            url.searchParams.set('ajax', 'true');
+
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+                    return response.json();
+                })
+                .then(data => {
+                    const html = data.html || "";
+                    const meta = data.meta || {};
                     
-                    const temp = document.createElement('tbody');
-                    temp.innerHTML = html;
+                    if (html.trim() === '') {
+                        currentPage = totalPages;
+                    } else {
+                        currentPage = Number(meta.Page || meta.page) || (currentPage + 1);
+                        totalPages = Number(meta.TotalPages || meta.totalPages) || totalPages;
+                        
+                        const temp = document.createElement('tbody');
+                        temp.innerHTML = html;
+                        
+                        temp.querySelectorAll('tr').forEach(row => {
+                            row.addEventListener('click', function(e) {
+                                if (e.target.closest('a, button, select, input, textarea, label')) return;
+                                const url = row.getAttribute('data-cve-url');
+                                if (url) vulfixx.navigate(url);
+                            });
+                            tbody.appendChild(row);
+                        });
+                    }
+                    isLoading = false;
+                    loadingIndicator.classList.add('hidden');
+                })
+                .catch(err => {
+                    console.error('Error loading more CVEs:', err);
+                    vulfixx.toast('Failed to load more CVEs', 'error');
+                    isLoading = false;
+                    loadingIndicator.classList.add('hidden');
+                });
+        }
+
+        const filterForm = document.getElementById('filter-form');
+        let debounceTimer;
+
+        function applyFilters() {
+            const url = new URL(window.location.href);
+            url.search = new URLSearchParams(new FormData(filterForm)).toString();
+            url.searchParams.set('ajax', 'true');
+            isLoading = true;
+            currentPage = 1;
+
+            tbody.innerHTML = '<tr><td colspan="5" class="p-12 text-center text-gray-500"><span class="material-symbols-outlined animate-spin text-4xl text-primary">autorenew</span></td></tr>';
+            
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+                    return response.json();
+                })
+                .then(data => {
+                    tbody.innerHTML = data.html || "";
+                    const meta = data.meta || {};
                     
-                    temp.querySelectorAll('tr').forEach(row => {
+                    currentPage = Number(meta.Page || meta.page) || 1;
+                    totalPages = Number(meta.TotalPages || meta.totalPages) || 1;
+                    
+                    // Update persistent data script
+                    document.getElementById('dashboard-data').textContent = JSON.stringify(meta);
+                    
+                    // Update Summary Cards and Label
+                    const isFiltered = (new FormData(filterForm)).values().next().value !== ""; 
+                    document.querySelectorAll('[data-summary-label]').forEach(el => el.textContent = isFiltered ? "Matching CVE Vault" : "Global CVE Vault");
+                    
+                    document.querySelectorAll('[data-summary-total]').forEach(el => el.textContent = Number(meta.Total || 0).toLocaleString());
+                    document.querySelectorAll('[data-summary-kev]').forEach(el => el.textContent = Number(meta.KevCount || 0).toLocaleString());
+                    document.querySelectorAll('[data-summary-crit]').forEach(el => el.textContent = Number(meta.CritCount || 0).toLocaleString());
+                    
+                    const newUrl = new URL(window.location.href);
+                    newUrl.search = new URLSearchParams(new FormData(filterForm)).toString();
+                    window.history.pushState({}, '', newUrl);
+                    
+                    tbody.querySelectorAll('tr').forEach(row => {
                         row.addEventListener('click', function(e) {
                             if (e.target.closest('a, button, select, input, textarea, label')) return;
                             const url = row.getAttribute('data-cve-url');
                             if (url) vulfixx.navigate(url);
                         });
-                        tbody.appendChild(row);
                     });
-                }
-                isLoading = false;
-                loadingIndicator.classList.add('hidden');
-            })
-            .catch(err => {
-                console.error('Error loading more CVEs:', err);
-                vulfixx.toast('Failed to load more CVEs', 'error');
-                isLoading = false;
-                loadingIndicator.classList.add('hidden');
-            });
-    }
 
-    const filterForm = document.getElementById('filter-form');
-    let debounceTimer;
-
-    function applyFilters() {
-        const url = new URL(window.location.href);
-        url.search = new URLSearchParams(new FormData(filterForm)).toString();
-        url.searchParams.set('ajax', 'true');
-        isLoading = true;
-        currentPage = 1;
-
-        tbody.innerHTML = '<tr><td colspan="5" class="p-12 text-center text-gray-500"><span class="material-symbols-outlined animate-spin text-4xl text-primary">autorenew</span></td></tr>';
-        
-        fetch(url)
-            .then(response => {
-                if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-                return response.json();
-            })
-            .then(data => {
-                tbody.innerHTML = data.html || "";
-                const meta = data.meta || {};
-                
-                currentPage = Number(meta.Page || meta.page) || 1;
-                totalPages = Number(meta.TotalPages || meta.totalPages) || 1;
-                
-                // Update persistent data script
-                document.getElementById('dashboard-data').textContent = JSON.stringify(meta);
-                
-                // Update Summary Cards and Label
-                const isFiltered = (new FormData(filterForm)).values().next().value !== ""; 
-                document.querySelectorAll('[data-summary-label]').forEach(el => el.textContent = isFiltered ? "Matching CVE Vault" : "Global CVE Vault");
-                
-                document.querySelectorAll('[data-summary-total]').forEach(el => el.textContent = Number(meta.Total || 0).toLocaleString());
-                document.querySelectorAll('[data-summary-kev]').forEach(el => el.textContent = Number(meta.KevCount || 0).toLocaleString());
-                document.querySelectorAll('[data-summary-crit]').forEach(el => el.textContent = Number(meta.CritCount || 0).toLocaleString());
-                
-                const newUrl = new URL(window.location.href);
-                newUrl.search = new URLSearchParams(new FormData(filterForm)).toString();
-                window.history.pushState({}, '', newUrl);
-                
-                tbody.querySelectorAll('tr').forEach(row => {
-                    row.addEventListener('click', function(e) {
-                        if (e.target.closest('a, button, select, input, textarea, label')) return;
-                        const url = row.getAttribute('data-cve-url');
-                        if (url) vulfixx.navigate(url);
-                    });
+                    // Update charts and UI state
+                    updateCharts(meta);
+                    isLoading = false;
+                })
+                .catch(err => {
+                    console.error('Error applying filters:', err);
+                    vulfixx.toast('Failed to update search results', 'error');
+                    isLoading = false;
                 });
+        }
 
-                // Update charts and UI state
-                updateCharts(meta);
-                isLoading = false;
-            })
-            .catch(err => {
-                console.error('Error applying filters:', err);
-                vulfixx.toast('Failed to update search results', 'error');
-                isLoading = false;
+        filterForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            applyFilters();
+        });
+
+        filterForm.querySelectorAll('input:not([type="checkbox"]), select').forEach(input => {
+            input.addEventListener('input', function() {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(applyFilters, 400);
             });
-    }
-
-    filterForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        applyFilters();
-    });
-
-    filterForm.querySelectorAll('input:not([type="checkbox"]), select').forEach(input => {
-        input.addEventListener('input', function() {
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(applyFilters, 400);
         });
-    });
 
-    filterForm.querySelectorAll('input[type="checkbox"]').forEach(input => {
-        input.addEventListener('change', applyFilters);
-    });
+        filterForm.querySelectorAll('input[type="checkbox"]').forEach(input => {
+            input.addEventListener('change', applyFilters);
+        });
 
-    document.getElementById('clear-filters').addEventListener('click', function() {
-        filterForm.reset();
-        filterForm.querySelectorAll('input[type="text"], input[type="number"], input[type="date"]').forEach(input => input.value = '');
-        filterForm.querySelectorAll('input[type="checkbox"]').forEach(input => input.checked = false);
-        applyFilters();
-    });
+        document.getElementById('clear-filters').addEventListener('click', function() {
+            filterForm.reset();
+            filterForm.querySelectorAll('input[type="text"], input[type="number"], input[type="date"]').forEach(input => input.value = '');
+            filterForm.querySelectorAll('input[type="checkbox"]').forEach(input => input.checked = false);
+            applyFilters();
+        });
 
-    // IntersectionObserver for Infinite Scroll
-    const sentinel = document.getElementById('sentinel');
-    const observer = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting && !isLoading && currentPage < totalPages) {
-            loadMore();
-        }
-    }, {
-        rootMargin: '200px'
-    });
-    
-    if (sentinel) {
-        observer.observe(sentinel);
-    }
-
-    const chartOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: { display: false },
-            tooltip: {
-                backgroundColor: '#1a1f26',
-                titleColor: '#ffb311',
-                bodyColor: '#fff',
-                borderColor: 'rgba(255,255,255,0.1)',
-                borderWidth: 1,
-                padding: 12,
-                cornerRadius: 12,
-                displayColors: false
+        // IntersectionObserver for Infinite Scroll
+        const sentinel = document.getElementById('sentinel');
+        const observer = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting && !isLoading && currentPage < totalPages) {
+                loadMore();
             }
-        },
-        onClick: (evt, activeElements, chart) => {
-            if (activeElements.length > 0) {
-                const index = activeElements[activeElements.length - 1].index;
-                const label = chart.data.labels[index];
-                const form = document.getElementById('search-form');
-                
-                if (chart.canvas.id === 'severityChart') {
-                    const ranges = { 'Critical': [9, 10], 'High': [7, 8.9], 'Medium': [4, 6.9], 'Low': [0, 3.9] };
-                    if (ranges[label]) {
-                        document.getElementById('filter-min-cvss').value = ranges[label][0];
-                        document.getElementById('filter-max-cvss').value = ranges[label][1];
-                        applyFilters();
-                    }
-                } else if (chart.canvas.id === 'cweChart') {
-                    document.getElementById('filter-cwe').value = label;
-                    applyFilters();
-                } else if (chart.canvas.id === 'epssChart') {
-                    const epssRanges = { '<1%': [0, 0.01], '1-10%': [0.01, 0.1], '10-50%': [0.1, 0.5], '>50%': [0.5, 1.0] };
-                    if (epssRanges[label]) {
-                        document.getElementById('filter-min-epss').value = epssRanges[label][0];
-                        document.getElementById('filter-max-epss').value = epssRanges[label][1];
-                        applyFilters();
-                    }
-                }
-            }
-        }
-    };
-
-    const updateCharts = (data) => {
-        if (!data) return;
-        
-        // Helper for gradients
-        const getGradient = (ctx, colorStart, colorEnd) => {
-            const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-            gradient.addColorStop(0, colorStart);
-            gradient.addColorStop(1, colorEnd);
-            return gradient;
-        };
-
-        const getHorizontalGradient = (ctx, colorStart, colorEnd) => {
-            const gradient = ctx.createLinearGradient(0, 0, 400, 0);
-            gradient.addColorStop(0, colorStart);
-            gradient.addColorStop(1, colorEnd);
-            return gradient;
-        };
-
-        // 1. Severity Distribution (Doughnut with Center Text)
-        const existingSev = Chart.getChart('severityChart');
-        if (existingSev) existingSev.destroy();
-        const ctxSev = document.getElementById('severityChart').getContext('2d');
-        const sevData = [
-            (data.SeverityCounts || data.severityCounts).critical, 
-            (data.SeverityCounts || data.severityCounts).high, 
-            (data.SeverityCounts || data.severityCounts).medium, 
-            (data.SeverityCounts || data.severityCounts).low
-        ];
-        const totalSev = sevData.reduce((a, b) => a + b, 0);
-
-        sevChart = new Chart(ctxSev, {
-            type: 'doughnut',
-            data: {
-                labels: ['Critical', 'High', 'Medium', 'Low'],
-                datasets: [{
-                    data: sevData,
-                    backgroundColor: ['#ef4444', '#f97316', '#eab308', '#3b82f6'],
-                    borderWidth: 0,
-                    hoverOffset: 15,
-                    borderRadius: 4,
-                    spacing: 4
-                }]
-            },
-            options: {
-                ...chartOptions,
-                cutout: '75%',
-                plugins: {
-                    ...chartOptions.plugins,
-                    legend: { display: false }
-                }
-            },
-            plugins: [{
-                id: 'centerText',
-                beforeDraw: (chart) => {
-                    const { width, height, ctx } = chart;
-                    ctx.restore();
-                    const fontSize = (height / 120).toFixed(2);
-                    ctx.font = `black ${fontSize}em "Space Grotesk"`;
-                    ctx.textBaseline = "middle";
-                    ctx.fillStyle = "white";
-
-                    const text = totalSev.toLocaleString();
-                    const textX = Math.round((width - ctx.measureText(text).width) / 2);
-                    const textY = height / 2 - 5;
-                    ctx.fillText(text, textX, textY);
-
-                    ctx.font = `bold 0.6em "Inter"`;
-                    ctx.fillStyle = "#6b7280";
-                    const label = "TOTAL CVES";
-                    const labelX = Math.round((width - ctx.measureText(label).width) / 2);
-                    const labelY = height / 2 + 15;
-                    ctx.fillText(label, labelX, labelY);
-                    ctx.save();
-                }
-            }]
+        }, {
+            rootMargin: '200px'
         });
         
-        // 2. Top Vulnerability Types (Horizontal Bar Chart for better label readability)
-        const existingCwe = Chart.getChart('cweChart');
-        if (existingCwe) existingCwe.destroy();
-        const ctxCwe = document.getElementById('cweChart').getContext('2d');
-        const cweGradient = getHorizontalGradient(ctxCwe, 'rgba(168, 85, 247, 0.8)', 'rgba(168, 85, 247, 0.2)');
-        
-        const topCWEData = (data.TopCWEs || data.topCWEs || []);
-        cweChart = new Chart(ctxCwe, {
-            type: 'bar',
-            data: {
-                labels: topCWEData.map(x => x.id),
-                datasets: [{
-                    label: 'Count',
-                    data: topCWEData.map(x => x.count),
-                    fullNames: topCWEData.map(x => x.name),
-                    backgroundColor: cweGradient,
-                    borderRadius: 4,
-                    borderWidth: 0,
-                    barThickness: 10
-                }]
+        if (sentinel) {
+            observer.observe(sentinel);
+        }
+
+        const chartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#1a1f26',
+                    titleColor: '#ffb311',
+                    bodyColor: '#fff',
+                    borderColor: 'rgba(255,255,255,0.1)',
+                    borderWidth: 1,
+                    padding: 12,
+                    cornerRadius: 12,
+                    displayColors: false
+                }
             },
-            options: {
-                ...chartOptions,
-                indexAxis: 'y',
-                plugins: {
-                    ...chartOptions.plugins,
-                    tooltip: {
-                        ...chartOptions.plugins.tooltip,
-                        callbacks: {
-                            title: (items) => items[0].label,
-                            label: (item) => {
-                                const fullName = item.dataset.fullNames[item.dataIndex];
-                                return [`${fullName}`, `Occurrences: ${item.formattedValue}`];
-                            }
+            onClick: (evt, activeElements, chart) => {
+                if (activeElements.length > 0) {
+                    const index = activeElements[activeElements.length - 1].index;
+                    const label = chart.data.labels[index];
+                    const form = document.getElementById('search-form');
+                    
+                    if (chart.canvas.id === 'severityChart') {
+                        const ranges = { 'Critical': [9, 10], 'High': [7, 8.9], 'Medium': [4, 6.9], 'Low': [0, 3.9] };
+                        if (ranges[label]) {
+                            document.getElementById('filter-min-cvss').value = ranges[label][0];
+                            document.getElementById('filter-max-cvss').value = ranges[label][1];
+                            applyFilters();
+                        }
+                    } else if (chart.canvas.id === 'cweChart') {
+                        document.getElementById('filter-cwe').value = label;
+                        applyFilters();
+                    } else if (chart.canvas.id === 'epssChart') {
+                        const epssRanges = { '<1%': [0, 0.01], '1-10%': [0.01, 0.1], '10-50%': [0.1, 0.5], '>50%': [0.5, 1.0] };
+                        if (epssRanges[label]) {
+                            document.getElementById('filter-min-epss').value = epssRanges[label][0];
+                            document.getElementById('filter-max-epss').value = epssRanges[label][1];
+                            applyFilters();
                         }
                     }
+                }
+            }
+        };
+
+        const updateCharts = (data) => {
+            if (!data) return;
+            
+            // Helper for gradients
+            const getGradient = (ctx, colorStart, colorEnd) => {
+                const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+                gradient.addColorStop(0, colorStart);
+                gradient.addColorStop(1, colorEnd);
+                return gradient;
+            };
+
+            const getHorizontalGradient = (ctx, colorStart, colorEnd) => {
+                const gradient = ctx.createLinearGradient(0, 0, 400, 0);
+                gradient.addColorStop(0, colorStart);
+                gradient.addColorStop(1, colorEnd);
+                return gradient;
+            };
+
+            // 1. Severity Distribution (Doughnut with Center Text)
+            const existingSev = Chart.getChart('severityChart');
+            if (existingSev) existingSev.destroy();
+            const ctxSev = document.getElementById('severityChart').getContext('2d');
+            const sevData = [
+                (data.SeverityCounts || data.severityCounts).critical, 
+                (data.SeverityCounts || data.severityCounts).high, 
+                (data.SeverityCounts || data.severityCounts).medium, 
+                (data.SeverityCounts || data.severityCounts).low
+            ];
+            const totalSev = sevData.reduce((a, b) => a + b, 0);
+
+            sevChart = new Chart(ctxSev, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Critical', 'High', 'Medium', 'Low'],
+                    datasets: [{
+                        data: sevData,
+                        backgroundColor: ['#ef4444', '#f97316', '#eab308', '#3b82f6'],
+                        borderWidth: 0,
+                        hoverOffset: 15,
+                        borderRadius: 4,
+                        spacing: 4
+                    }]
                 },
-                scales: {
-                    x: { display: false, grid: { display: false } },
-                    y: { 
-                        grid: { display: false }, 
-                        ticks: { 
-                            color: '#9ca3af', 
-                            font: { family: 'Space Grotesk', size: 8, weight: 'bold' },
-                            padding: 10
-                        } 
+                options: {
+                    ...chartOptions,
+                    cutout: '75%',
+                    plugins: {
+                        ...chartOptions.plugins,
+                        legend: { display: false }
                     }
-                }
-            }
-        });
-        
-        // 3. EPSS Probability (Styled Bar Chart with Gradients)
-        const existingEpss = Chart.getChart('epssChart');
-        if (existingEpss) existingEpss.destroy();
-        const ctxEpss = document.getElementById('epssChart').getContext('2d');
-        const epssGradient = getGradient(ctxEpss, 'rgba(0, 218, 243, 0.8)', 'rgba(0, 218, 243, 0.1)');
+                },
+                plugins: [{
+                    id: 'centerText',
+                    beforeDraw: (chart) => {
+                        const { width, height, ctx } = chart;
+                        ctx.restore();
+                        const fontSize = (height / 120).toFixed(2);
+                        ctx.font = `black ${fontSize}em "Space Grotesk"`;
+                        ctx.textBaseline = "middle";
+                        ctx.fillStyle = "white";
 
-        epssChart = new Chart(ctxEpss, {
-            type: 'bar',
-            data: {
-                labels: ['<1%', '1-10%', '10-50%', '>50%'],
-                datasets: [{
-                    label: 'CVE Count',
-                    data: data.EPSSDist || data.epssDist,
-                    backgroundColor: epssGradient,
-                    borderRadius: 8,
-                    borderWidth: 0,
-                    barThickness: 32
+                        const text = totalSev.toLocaleString();
+                        const textX = Math.round((width - ctx.measureText(text).width) / 2);
+                        const textY = height / 2 - 5;
+                        ctx.fillText(text, textX, textY);
+
+                        ctx.font = `bold 0.6em "Inter"`;
+                        ctx.fillStyle = "#6b7280";
+                        const label = "TOTAL CVES";
+                        const labelX = Math.round((width - ctx.measureText(label).width) / 2);
+                        const labelY = height / 2 + 15;
+                        ctx.fillText(label, labelX, labelY);
+                        ctx.save();
+                    }
                 }]
-            },
-            options: {
-                ...chartOptions,
-                scales: {
-                    y: { 
-                        beginAtZero: true, 
-                        grid: { color: 'rgba(255,255,255,0.03)' }, 
-                        ticks: { color: '#6b7280', font: { size: 9 } } 
+            });
+            
+            // 2. Top Vulnerability Types (Horizontal Bar Chart for better label readability)
+            const existingCwe = Chart.getChart('cweChart');
+            if (existingCwe) existingCwe.destroy();
+            const ctxCwe = document.getElementById('cweChart').getContext('2d');
+            const cweGradient = getHorizontalGradient(ctxCwe, 'rgba(168, 85, 247, 0.8)', 'rgba(168, 85, 247, 0.2)');
+            
+            const topCWEData = (data.TopCWEs || data.topCWEs || []);
+            cweChart = new Chart(ctxCwe, {
+                type: 'bar',
+                data: {
+                    labels: topCWEData.map(x => x.id),
+                    datasets: [{
+                        label: 'Count',
+                        data: topCWEData.map(x => x.count),
+                        fullNames: topCWEData.map(x => x.name),
+                        backgroundColor: cweGradient,
+                        borderRadius: 4,
+                        borderWidth: 0,
+                        barThickness: 10
+                    }]
+                },
+                options: {
+                    ...chartOptions,
+                    indexAxis: 'y',
+                    plugins: {
+                        ...chartOptions.plugins,
+                        tooltip: {
+                            ...chartOptions.plugins.tooltip,
+                            callbacks: {
+                                title: (items) => items[0].label,
+                                label: (item) => {
+                                    const fullName = item.dataset.fullNames[item.dataIndex];
+                                    return [`${fullName}`, `Occurrences: ${item.formattedValue}`];
+                                }
+                            }
+                        }
                     },
-                    x: { 
-                        grid: { display: false }, 
-                        ticks: { color: '#9ca3af', font: { family: 'Space Grotesk', size: 10, weight: 'bold' } } 
+                    scales: {
+                        x: { display: false, grid: { display: false } },
+                        y: { 
+                            grid: { display: false }, 
+                            ticks: { 
+                                color: '#9ca3af', 
+                                font: { family: 'Space Grotesk', size: 8, weight: 'bold' },
+                                padding: 10
+                            } 
+                        }
                     }
                 }
+            });
+            
+            // 3. EPSS Probability (Styled Bar Chart with Gradients)
+            const existingEpss = Chart.getChart('epssChart');
+            if (existingEpss) existingEpss.destroy();
+            const ctxEpss = document.getElementById('epssChart').getContext('2d');
+            const epssGradient = getGradient(ctxEpss, 'rgba(0, 218, 243, 0.8)', 'rgba(0, 218, 243, 0.1)');
+
+            epssChart = new Chart(ctxEpss, {
+                type: 'bar',
+                data: {
+                    labels: ['<1%', '1-10%', '10-50%', '>50%'],
+                    datasets: [{
+                        label: 'CVE Count',
+                        data: data.EPSSDist || data.epssDist || [0, 0, 0, 0],
+                        backgroundColor: epssGradient,
+                        borderRadius: 8,
+                        borderWidth: 0,
+                        barThickness: 32
+                    }]
+                },
+                options: {
+                    ...chartOptions,
+                    scales: {
+                        y: { 
+                            beginAtZero: true, 
+                            grid: { color: 'rgba(255,255,255,0.03)' }, 
+                            ticks: { color: '#6b7280', font: { size: 9 } } 
+                        },
+                        x: { 
+                            grid: { display: false }, 
+                            ticks: { color: '#9ca3af', font: { family: 'Space Grotesk', size: 10, weight: 'bold' } } 
+                        }
+                    }
+                }
+            });
+        };
+
+        updateCharts(dashboardData);
+
+        // Navigate rows safely
+        document.querySelectorAll('tr[data-cve-url]').forEach(function(row) {
+            row.addEventListener('click', function(e) {
+                if (e.target.closest('a, button, select, input, textarea, label')) return;
+                const url = row.getAttribute('data-cve-url');
+                if (url) vulfixx.navigate(url);
+            });
+        });
+    }
+
+    (function() {
+        const runInit = () => {
+            if (typeof window.requestAnimationFrame !== 'undefined') {
+                window.requestAnimationFrame(initPublicDashboard);
+            } else {
+                setTimeout(initPublicDashboard, 0);
             }
-        });
-    };
+        };
 
-    updateCharts(dashboardData);
-
-    // Navigate rows safely
-    document.querySelectorAll('tr[data-cve-url]').forEach(function(row) {
-        row.addEventListener('click', function(e) {
-            if (e.target.closest('a, button, select, input, textarea, label')) return;
-            const url = row.getAttribute('data-cve-url');
-            if (url) vulfixx.navigate(url);
-        });
-    });
-};
-
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initPublicDashboard);
-} else {
-    initPublicDashboard();
-}
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', runInit);
+        } else {
+            runInit();
+        }
+    })();
+})();
 </script>
 
 <!-- Marquee Styles & Logic -->

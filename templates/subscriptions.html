@@ -82,9 +82,13 @@
                                     <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">CVSS &ge; {{.MinSeverity}}</span>
                                 </div>
                             </div>
-                            <button data-id="{{.ID}}" aria-label="Delete monitor" class="delete-monitor-btn w-8 h-8 rounded-full flex items-center justify-center text-red-400/50 hover:bg-red-400/10 hover:text-red-400 transition-all">
-                                <span class="material-symbols-outlined text-xl">delete</span>
-                            </button>
+                            <form action="/subscriptions/delete" method="POST" onsubmit="return confirm('Are you sure you want to delete this monitor?');" class="inline">
+                                {{$.CSRFField}}
+                                <input type="hidden" name="id" value="{{.ID}}">
+                                <button type="submit" aria-label="Delete monitor" class="w-8 h-8 rounded-full flex items-center justify-center text-red-400/50 hover:bg-red-400/10 hover:text-red-400 transition-all">
+                                    <span class="material-symbols-outlined text-xl">delete</span>
+                                </button>
+                            </form>
                         </div>
 
                         <div class="flex items-center gap-3">
@@ -111,7 +115,7 @@
 </div>
 
 <script nonce="{{.Nonce}}">
-const initSubscriptions = () => {
+function initSubscriptions() {
     document.getElementById('subscription-form')?.addEventListener('submit', (e) => {
         e.preventDefault();
         submitSubscription(e, e.target);
@@ -132,75 +136,22 @@ const initSubscriptions = () => {
     document.querySelectorAll('.delete-monitor-btn').forEach(btn => {
         btn.addEventListener('click', () => deleteMonitor(btn.dataset.id));
     });
-};
+}
 
-async function submitSubscription(event, form) {
-    if (event) event.preventDefault();
-    
-    const webhookToggle = document.querySelector('input[name="enable_webhook"]');
-    const webhookURLInput = document.querySelector('input[name="webhook_url"]');
-
-    if (webhookToggle?.checked && !webhookURLInput?.value) {
-        vulfixx.toast('Webhook URL is required when sync is enabled', 'error');
-        return false;
-    }
-    try {
-        const formData = new FormData(form);
-        const data = await vulfixx.fetch('/subscriptions', {
-            method: 'POST',
-            headers: { 
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-Token': form.querySelector('input[name="gorilla.csrf.Token"]')?.value
-            },
-            body: new URLSearchParams(formData)
-        });
-        if (data && data.success === true) {
-            vulfixx.navigate('/subscriptions');
+(function() {
+    const runInit = () => {
+        if (typeof window.requestAnimationFrame !== 'undefined') {
+            window.requestAnimationFrame(initSubscriptions);
         } else {
-            vulfixx.toast((data && data.message) || 'Failed to save monitor', 'error');
+            setTimeout(initSubscriptions, 0);
         }
-    } catch (err) {
-        vulfixx.toast('Network error: ' + err.message, 'error');
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', runInit);
+    } else {
+        runInit();
     }
-    return false;
-}
-
-async function deleteMonitor(id) {
-    vulfixx.modal('Remove Monitor', 'Are you sure you want to disable this telemetry pipeline? This action will stop all automated alerts for this keyword.', [
-        { label: 'Cancel', onClick: () => vulfixx.closeModal() },
-        { label: 'Confirm Removal', primary: true, onClick: () => confirmDelete(id) }
-    ]);
-}
-
-async function confirmDelete(id) {
-    const csrfToken = document.querySelector('input[name="gorilla.csrf.Token"]')?.value;
-    try {
-        const data = await vulfixx.fetch('/subscriptions/delete', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-Token': csrfToken
-            },
-            body: new URLSearchParams({ id: id })
-        });
-        if (data && data.success === true) {
-            vulfixx.closeModal();
-            vulfixx.navigate('/subscriptions');
-        } else {
-            vulfixx.closeModal();
-            vulfixx.toast((data && data.message) || 'Failed to remove monitor', 'error');
-        }
-    } catch (err) {
-        vulfixx.closeModal();
-        vulfixx.toast('Network error: ' + err.message, 'error');
-    }
-}
-
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initSubscriptions);
-} else {
-    initSubscriptions();
-}
+})();
 </script>
 {{end}}

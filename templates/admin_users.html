@@ -75,7 +75,7 @@
 </div>
 
 <script nonce="{{.Nonce}}">
-    const initAdminUsers = () => {
+    function initAdminUsers() {
         document.querySelectorAll('.delete-user-form').forEach(form => {
             form.addEventListener('submit', (e) => {
                 const btn = form.querySelector('button');
@@ -85,12 +85,22 @@
                 }
             });
         });
-    };
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initAdminUsers);
-    } else {
-        initAdminUsers();
     }
+
+    (function() {
+        const runInit = () => {
+            if (typeof window.requestAnimationFrame !== 'undefined') {
+                window.requestAnimationFrame(initAdminUsers);
+            } else {
+                setTimeout(initAdminUsers, 0);
+            }
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', runInit);
+        } else {
+            runInit();
+        }
+    })();
 </script>
 {{end}}

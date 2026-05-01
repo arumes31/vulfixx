@@ -97,7 +97,7 @@
 </div>
 
 <script nonce="{{.Nonce}}">
-const initAssets = () => {
+function initAssets() {
     document.querySelectorAll('.delete-asset-form').forEach(form => {
         form.addEventListener('submit', (e) => {
             e.preventDefault();
@@ -111,12 +111,22 @@ const initAssets = () => {
             );
         });
     });
-};
-
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initAssets);
-} else {
-    initAssets();
 }
+
+(function() {
+    const runInit = () => {
+        if (typeof window.requestAnimationFrame !== 'undefined') {
+            window.requestAnimationFrame(initAssets);
+        } else {
+            setTimeout(initAssets, 0);
+        }
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', runInit);
+    } else {
+        runInit();
+    }
+})();
 </script>
 {{end}}
