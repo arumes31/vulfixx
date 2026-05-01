@@ -12,30 +12,36 @@
         </div>
     </header>
 
-    <!-- Trending Threats Section -->
-    <section class="space-y-4">
-        <div class="flex items-center justify-between">
+    <section class="space-y-4 overflow-hidden relative">
+        <div class="flex items-center justify-between mb-2">
             <h2 class="text-[9px] font-black uppercase tracking-[0.3em] text-gray-500 flex items-center gap-2">
                 <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
                 Active Escalations
             </h2>
             <span class="text-[9px] font-bold text-primary uppercase tracking-widest">Trending Now</span>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {{range .Trending}}
-            <a href="/cve/{{.CVEID}}" class="glass p-4 rounded-2xl border border-white/5 hover:border-primary/20 hover:bg-white/[0.02] transition-all group">
-                <div class="flex justify-between items-start mb-4">
-                    <span class="text-xs font-black text-white group-hover:text-primary transition-colors">{{.CVEID}}</span>
-                    <span class="text-xs font-bold {{severityColor .CVSSScore}}">{{printf "%.1f" .CVSSScore}}</span>
-                </div>
-                <p class="text-[10px] text-gray-500 line-clamp-3 leading-relaxed mb-4">{{.Description}}</p>
-                <div class="flex items-center gap-2">
-                    {{if .CISAKEV}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-orange-500/20 text-orange-400 border border-orange-500/20">KEV</span>{{end}}
-                    {{if gt .GitHubPoCCount 0}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-purple-500/20 text-purple-400 border border-purple-500/20">PoC</span>{{end}}
-                    {{if gt .EPSSScore 0.5}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-red-500/20 text-red-400 border border-red-500/20">High EPSS</span>{{end}}
-                </div>
-            </a>
-            {{end}}
+        
+        <div class="marquee-container relative group">
+            <!-- Left/Right Fading Masks -->
+            <div class="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-[#0a0e14] to-transparent z-10 pointer-events-none"></div>
+            <div class="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-[#0a0e14] to-transparent z-10 pointer-events-none"></div>
+            
+            <div class="marquee-track flex gap-4 py-2" id="trending-track">
+                {{range .Trending}}
+                <a href="/cve/{{.CVEID}}" class="trending-item glass p-4 rounded-2xl border border-white/5 hover:border-primary/20 hover:bg-white/[0.02] transition-all flex-shrink-0 w-80 group/card">
+                    <div class="flex justify-between items-start mb-4">
+                        <span class="text-xs font-black text-white group-hover/card:text-primary transition-colors">{{.CVEID}}</span>
+                        <span class="text-xs font-bold {{severityColor .CVSSScore}}">{{printf "%.1f" .CVSSScore}}</span>
+                    </div>
+                    <p class="text-[10px] text-gray-500 line-clamp-3 leading-relaxed mb-4 h-[42px]">{{.Description}}</p>
+                    <div class="flex items-center gap-2">
+                        {{if .CISAKEV}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-orange-500/20 text-orange-400 border border-orange-500/20">KEV</span>{{end}}
+                        {{if gt .GitHubPoCCount 0}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-purple-500/20 text-purple-400 border border-purple-500/20">PoC</span>{{end}}
+                        {{if gt .EPSSScore 0.5}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-red-500/20 text-red-400 border border-red-500/20">High EPSS</span>{{end}}
+                    </div>
+                </a>
+                {{end}}
+            </div>
         </div>
     </section>
 
@@ -612,6 +618,58 @@ if (document.readyState === 'loading') {
     initPublicDashboard();
 }
 </script>
+
+<!-- Marquee Styles & Logic -->
+<style>
+    .marquee-container {
+        width: 100%;
+        overflow: hidden;
+    }
+    .marquee-track {
+        width: max-content;
+        animation: marquee 60s linear infinite;
+    }
+    .marquee-track:hover {
+        animation-play-state: paused;
+    }
+    @keyframes marquee {
+        0% { transform: translateX(0); }
+        100% { transform: translateX(-50%); }
+    }
+    .trending-item {
+        width: 320px;
+    }
+</style>
+
+<script>
+(function() {
+    function initMarquee() {
+        const track = document.getElementById('trending-track');
+        if (!track || track.dataset.cloned) return;
+        
+        // Clone items for infinite loop
+        const items = Array.from(track.children);
+        items.forEach(item => {
+            const clone = item.cloneNode(true);
+            track.appendChild(clone);
+        });
+        
+        track.dataset.cloned = "true";
+        
+        // Adjust speed based on item count
+        const totalItems = track.children.length;
+        const duration = totalItems * 5; // 5 seconds per item
+        track.style.animationDuration = `${duration}s`;
+    }
+
+    // Run on load and after AJAX
+    initMarquee();
+    
+    // Hook into AJAX updates if needed (though trending is usually static on filter)
+    document.addEventListener('vulfixx:ajaxComplete', initMarquee);
+})();
+</script>
+
 {{end}}
 
 {{define "cve_rows"}}
@@ -633,14 +691,11 @@ if (document.readyState === 'loading') {
             </div>
         </td>
         <td class="p-6">
-            <div class="flex flex-wrap gap-2">
-                {{if .CISAKEV}}
-                <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-orange-500/20 text-orange-400 border border-orange-500/20">KEV</span>
-                {{end}}
-                {{if gt .GitHubPoCCount 0}}
-                <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-purple-500/20 text-purple-400 border border-purple-500/20">PoC</span>
-                {{end}}
-                <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-white/5 text-gray-400 border border-white/10">EPSS: {{printf "%.4f" .EPSSScore}}</span>
+            <div class="flex flex-wrap gap-1.5">
+                {{if .CISAKEV}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-orange-500/20 text-orange-400 border border-orange-500/10">KEV</span>{{end}}
+                {{if gt .GitHubPoCCount 0}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-purple-500/20 text-purple-400 border border-purple-500/10">PoC</span>{{end}}
+                {{if gt .EPSSScore 0.5}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-red-500/20 text-red-400 border border-red-500/10">High EPSS</span>{{end}}
+                {{if gt .EPSSScore 0}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-white/5 text-gray-500 border border-white/5">EPSS: {{printf "%.4f" .EPSSScore}}</span>{{end}}
             </div>
         </td>
         <td class="p-6">

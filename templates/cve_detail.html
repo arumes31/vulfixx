@@ -27,7 +27,10 @@
             <div class="text-6xl font-black {{severityColor .CVE.CVSSScore}} tracking-tighter">
                 {{printf "%.1f" .CVE.CVSSScore}}
             </div>
-            <div class="text-[10px] font-mono text-gray-500 bg-white/5 px-3 py-1 rounded-full">{{.CVE.VectorString}}</div>
+            <div id="cvss-vector" class="flex flex-wrap justify-center gap-1.5 mt-2" data-vector="{{.CVE.VectorString}}">
+                <!-- Populated by JS -->
+                <div class="text-[9px] font-mono text-gray-500 bg-white/5 px-3 py-1 rounded-full animate-pulse">Parsing Vector...</div>
+            </div>
         </div>
     </header>
 
@@ -81,8 +84,16 @@
         </h2>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             {{range .CVE.References}}
-            <a href="{{. | safeURL}}" target="_blank" rel="noopener noreferrer" class="glass p-4 rounded-xl border border-white/5 hover:border-primary/30 hover:bg-white/[0.02] transition-all flex items-center justify-between group">
-                <span class="text-xs text-gray-400 truncate max-w-[80%] font-mono">{{.}}</span>
+            <a href="{{. | safeURL}}" target="_blank" rel="noopener noreferrer" class="reference-card glass p-4 rounded-xl border border-white/5 hover:border-primary/30 hover:bg-white/[0.02] transition-all flex items-center justify-between group" data-url="{{.}}">
+                <div class="flex items-center gap-3 overflow-hidden">
+                    <div class="source-icon w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-500 group-hover:text-primary transition-colors">
+                        <span class="material-symbols-outlined text-[18px]">link</span>
+                    </div>
+                    <div class="flex flex-col overflow-hidden">
+                        <span class="source-label text-[8px] font-black uppercase tracking-widest text-gray-600">External Source</span>
+                        <span class="text-xs text-gray-400 truncate font-mono">{{.}}</span>
+                    </div>
+                </div>
                 <span class="material-symbols-outlined text-[16px] text-gray-600 group-hover:text-primary" aria-hidden="true">open_in_new</span>
             </a>
             {{end}}
@@ -126,6 +137,96 @@
         {{end}}
     </div>
 </div>
+
+<style>
+    .tooltip-trigger { position: relative; cursor: help; }
+    .tooltip {
+        position: absolute;
+        bottom: 125%;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 8px 12px;
+        background: #1a1a1a;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 8px;
+        color: white;
+        font-size: 10px;
+        font-weight: bold;
+        white-space: nowrap;
+        pointer-events: none;
+        opacity: 0;
+        transition: all 0.2s;
+        z-index: 50;
+        box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);
+    }
+    .tooltip-trigger:hover .tooltip { opacity: 1; transform: translateX(-50%) translateY(-5px); }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 1. Interactive CVSS Vector
+    const vectorContainer = document.getElementById('cvss-vector');
+    const vectorStr = vectorContainer.dataset.vector;
+    
+    const metricMap = {
+        'AV': { n: 'Attack Vector', v: { N: 'Network', A: 'Adjacent', L: 'Local', P: 'Physical' } },
+        'AC': { n: 'Complexity', v: { L: 'Low', H: 'High' } },
+        'PR': { n: 'Privileges', v: { N: 'None', L: 'Low', H: 'High' } },
+        'UI': { n: 'Interaction', v: { N: 'None', R: 'Required' } },
+        'S':  { n: 'Scope', v: { U: 'Unchanged', C: 'Changed' } },
+        'C':  { n: 'Confid.', v: { N: 'None', L: 'Low', H: 'High' } },
+        'I':  { n: 'Integrity', v: { N: 'None', L: 'Low', H: 'High' } },
+        'A':  { n: 'Avail.', v: { N: 'None', L: 'Low', H: 'High' } }
+    };
+
+    if (vectorStr && vectorStr.includes('/')) {
+        const parts = vectorStr.split('/');
+        vectorContainer.innerHTML = '';
+        parts.forEach(part => {
+            const [key, val] = part.split(':');
+            if (metricMap[key]) {
+                const metric = metricMap[key];
+                const valName = metric.v[val] || val;
+                const pill = document.createElement('div');
+                pill.className = 'tooltip-trigger text-[9px] font-mono text-gray-400 bg-white/5 px-2 py-0.5 rounded-md border border-white/5 hover:bg-white/10 hover:text-white transition-all';
+                pill.innerHTML = `
+                    <span class="text-gray-600 mr-1">${key}:</span>${val}
+                    <div class="tooltip">${metric.n}: ${valName}</div>
+                `;
+                vectorContainer.appendChild(pill);
+            }
+        });
+    }
+
+    // 2. Enhanced References
+    const refCards = document.querySelectorAll('.reference-card');
+    const sourceIcons = {
+        'github.com': { icon: 'code', label: 'Exploit / Source', color: 'text-purple-400' },
+        'nvd.nist.gov': { icon: 'verified_user', label: 'Official NVD', color: 'text-blue-400' },
+        'cisa.gov': { icon: 'policy', label: 'CISA Advisory', color: 'text-orange-400' },
+        'exploit-db.com': { icon: 'bug_report', label: 'Exploit Database', color: 'text-red-400' },
+        'mitre.org': { icon: 'security', label: 'MITRE CVE', color: 'text-primary' },
+        'twitter.com': { icon: 'chat', label: 'Social Intel', color: 'text-sky-400' },
+        'x.com': { icon: 'chat', label: 'Social Intel', color: 'text-sky-400' }
+    };
+
+    refCards.forEach(card => {
+        const url = card.dataset.url;
+        const iconContainer = card.querySelector('.source-icon');
+        const labelContainer = card.querySelector('.source-label');
+        
+        for (const [domain, config] of Object.entries(sourceIcons)) {
+            if (url.includes(domain)) {
+                iconContainer.innerHTML = `<span class="material-symbols-outlined text-[18px] ${config.color}">${config.icon}</span>`;
+                iconContainer.classList.add('bg-' + config.color.split('-')[1] + '-500/10');
+                labelContainer.textContent = config.label;
+                labelContainer.classList.replace('text-gray-600', config.color);
+                break;
+            }
+        }
+    });
+});
+</script>
 
 <!-- Structured Data (JSON-LD) for SEO -->
 <script type="application/ld+json" nonce="{{.Nonce}}">
