@@ -44,10 +44,10 @@
         <div class="glass p-4 rounded-2xl border border-white/10 relative overflow-hidden group">
             <div class="absolute -right-4 -top-4 w-16 h-16 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-all"></div>
             <div class="flex justify-between items-start mb-2">
-                <span class="text-[9px] font-black tracking-widest uppercase text-gray-500">Global CVE Vault</span>
+                <span data-summary-label class="text-[9px] font-black tracking-widest uppercase text-gray-500">Global CVE Vault</span>
                 <span class="material-symbols-outlined text-primary text-lg">database</span>
             </div>
-            <h2 class="text-2xl font-black text-white tracking-tighter">{{.Total}}</h2>
+            <h2 data-summary-total class="text-2xl font-black text-white tracking-tighter">{{.Total}}</h2>
         </div>
         <div class="glass p-4 rounded-2xl border border-white/10 relative overflow-hidden group">
             <div class="absolute -right-4 -top-4 w-16 h-16 bg-orange-500/5 rounded-full blur-2xl group-hover:bg-orange-500/10 transition-all"></div>
@@ -55,7 +55,7 @@
                 <span class="text-[9px] font-black tracking-widest uppercase text-gray-500">Exploited</span>
                 <span class="material-symbols-outlined text-orange-400 text-lg">warning</span>
             </div>
-            <h2 class="text-2xl font-black text-white tracking-tighter">{{.KevCount}}</h2>
+            <h2 data-summary-kev class="text-2xl font-black text-white tracking-tighter">{{.KevCount}}</h2>
         </div>
         <div class="glass p-4 rounded-2xl border border-white/10 relative overflow-hidden group">
             <div class="absolute -right-4 -top-4 w-16 h-16 bg-red-500/5 rounded-full blur-2xl group-hover:bg-red-500/10 transition-all"></div>
@@ -63,7 +63,7 @@
                 <span class="text-[9px] font-black tracking-widest uppercase text-gray-500">Critical</span>
                 <span class="material-symbols-outlined text-red-500 text-lg">dangerous</span>
             </div>
-            <h2 class="text-2xl font-black text-red-500 tracking-tighter">{{.CritCount}}</h2>
+            <h2 data-summary-crit class="text-2xl font-black text-red-500 tracking-tighter">{{.CritCount}}</h2>
         </div>
     </div>
 
@@ -414,6 +414,14 @@ var initPublicDashboard = () => {
                 // Update persistent data script
                 document.getElementById('dashboard-data').textContent = JSON.stringify(meta);
                 
+                // Update Summary Cards and Label
+                const isFiltered = (new FormData(filterForm)).values().next().value !== ""; 
+                document.querySelectorAll('[data-summary-label]').forEach(el => el.textContent = isFiltered ? "Matching CVE Vault" : "Global CVE Vault");
+                
+                document.querySelectorAll('[data-summary-total]').forEach(el => el.textContent = Number(meta.Total || 0).toLocaleString());
+                document.querySelectorAll('[data-summary-kev]').forEach(el => el.textContent = Number(meta.KevCount || 0).toLocaleString());
+                document.querySelectorAll('[data-summary-crit]').forEach(el => el.textContent = Number(meta.CritCount || 0).toLocaleString());
+                
                 const newUrl = new URL(window.location.href);
                 newUrl.search = new URLSearchParams(new FormData(filterForm)).toString();
                 window.history.pushState({}, '', newUrl);
@@ -521,7 +529,8 @@ var initPublicDashboard = () => {
     const updateCharts = (data) => {
         if (!data) return;
         
-        if (sevChart) sevChart.destroy();
+        const existingSev = Chart.getChart('severityChart');
+        if (existingSev) existingSev.destroy();
         const ctxSev = document.getElementById('severityChart').getContext('2d');
         sevChart = new Chart(ctxSev, {
             type: 'doughnut',
@@ -544,8 +553,9 @@ var initPublicDashboard = () => {
                 cutout: '70%'
             }
         });
-
-        if (cweChart) cweChart.destroy();
+        
+        const existingCwe = Chart.getChart('cweChart');
+        if (existingCwe) existingCwe.destroy();
         const ctxCwe = document.getElementById('cweChart').getContext('2d');
         cweChart = new Chart(ctxCwe, {
             type: 'pie',
@@ -559,8 +569,9 @@ var initPublicDashboard = () => {
             },
             options: chartOptions
         });
-
-        if (epssChart) epssChart.destroy();
+        
+        const existingEpss = Chart.getChart('epssChart');
+        if (existingEpss) existingEpss.destroy();
         const ctxEpss = document.getElementById('epssChart').getContext('2d');
         epssChart = new Chart(ctxEpss, {
             type: 'bar',

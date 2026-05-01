@@ -543,14 +543,14 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	pageSize := 20
 	offset := (page - 1) * pageSize
 
-	searchQuery := r.URL.Query().Get("q")
-	vendorQuery := r.URL.Query().Get("vendor")
-	productQuery := r.URL.Query().Get("product")
-	cveIDQuery := r.URL.Query().Get("cve")
-	cweQuery := r.URL.Query().Get("cwe")
+	searchQuery := strings.TrimSpace(r.URL.Query().Get("q"))
+	vendorQuery := strings.TrimSpace(r.URL.Query().Get("vendor"))
+	productQuery := strings.TrimSpace(r.URL.Query().Get("product"))
+	cveIDQuery := strings.TrimSpace(r.URL.Query().Get("cve"))
+	cweQuery := strings.TrimSpace(r.URL.Query().Get("cwe"))
 
-	startDate := r.URL.Query().Get("start_date")
-	endDate := r.URL.Query().Get("end_date")
+	startDate := strings.TrimSpace(r.URL.Query().Get("start_date"))
+	endDate := strings.TrimSpace(r.URL.Query().Get("end_date"))
 	kevOnly := r.URL.Query().Get("kev") == "true"
 	hasPoC := r.URL.Query().Get("has_poc") == "true"
 	minCvssStr := r.URL.Query().Get("min_cvss")
