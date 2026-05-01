@@ -294,7 +294,7 @@
         if (data) setTimeout(() => window.location.reload(), 1000);
     }
 
-const initDashboard = () => {
+    function initDashboard() {
     document.getElementById('team-selector')?.addEventListener('change', (e) => {
             e.target.form.submit();
         });

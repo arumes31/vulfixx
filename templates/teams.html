@@ -252,7 +252,7 @@
         if (data) setTimeout(() => window.location.reload(), 1000);
     }
 
-    const initTeams = () => {
+    function initTeams() {
         document.getElementById('btn-join-workspace')?.addEventListener('click', showJoinModal);
         document.getElementById('empty-join-btn')?.addEventListener('click', showJoinModal);
         document.getElementById('btn-create-team')?.addEventListener('click', showCreateModal);
