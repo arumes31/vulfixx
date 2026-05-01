@@ -131,8 +131,8 @@ func TestLoadConfig(t *testing.T) {
 			envs: map[string]string{
 				"APP_ENV":           "production",
 				"DB_PASSWORD":       "p",
-				"SESSION_KEY":       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-				"CSRF_KEY":          "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+				"SESSION_KEY":       "THIS_IS_A_MOCK_SESSION_KEY_32_BY",
+				"CSRF_KEY":          "MOCK_CSRF_KEY_32_BYTES_FOR_TEST!!",
 				"SMTP_PASS":         "sm",
 				"ADMIN_EMAIL":       "admin@example.com",
 				"ADMIN_PASSWORD":    "ap",

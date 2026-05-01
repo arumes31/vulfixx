@@ -5,7 +5,7 @@ import (
 )
 
 func TestInitSession(t *testing.T) {
-	key := []byte("01234567890123456789012345678901")
+	key := []byte("THIS_IS_A_MOCK_SESSION_KEY_32_BY")
 	secure := true
 
 	store := InitSession(key, secure)
