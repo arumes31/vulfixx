@@ -57,6 +57,7 @@ type NVDCVE struct {
 			Value string `json:"value"`
 		} `json:"description"`
 	} `json:"weaknesses"`
+	Configurations []models.CVEConfiguration `json:"configurations"`
 }
 
 type NVDCVEEntry struct {
@@ -324,22 +325,24 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			References:    references,
 			PublishedDate: pubDate,
 			UpdatedDate:   modDate,
+			Configurations: cve.Configurations,
 		}
 
 
 		query := `
-			INSERT INTO cves (cve_id, description, cvss_score, vector_string, cwe_id, "references", published_date, updated_date)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			INSERT INTO cves (cve_id, description, cvss_score, vector_string, cwe_id, "references", configurations, published_date, updated_date)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 			ON CONFLICT (cve_id) DO UPDATE SET
 				description = EXCLUDED.description,
 				cvss_score = EXCLUDED.cvss_score,
 				vector_string = EXCLUDED.vector_string,
 				cwe_id = EXCLUDED.cwe_id,
 				"references" = EXCLUDED."references",
+				configurations = EXCLUDED.configurations,
 				updated_date = EXCLUDED.updated_date,
 				updated_at = CURRENT_TIMESTAMP
 		`
-		_, err = w.Pool.Exec(ctx, query, model.CVEID, model.Description, model.CVSSScore, model.VectorString, model.CWEID, model.References, model.PublishedDate, model.UpdatedDate)
+		_, err = w.Pool.Exec(ctx, query, model.CVEID, model.Description, model.CVSSScore, model.VectorString, model.CWEID, model.References, model.Configurations, model.PublishedDate, model.UpdatedDate)
 		if err != nil {
 			log.Printf("Worker: Error upserting CVE %s: %v", cve.ID, err)
 			continue

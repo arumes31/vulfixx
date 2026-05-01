@@ -938,10 +938,11 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 		SELECT 
 			id, cve_id, description, COALESCE(cvss_score, 0), vector_string, cisa_kev, 
 			published_date, updated_date, 'active' as status, "references", 
-			COALESCE(epss_score, 0), COALESCE(cwe_id, ''), COALESCE(cwe_name, ''), COALESCE(github_poc_count, 0)
+			COALESCE(epss_score, 0), COALESCE(cwe_id, ''), COALESCE(cwe_name, ''), COALESCE(github_poc_count, 0),
+			configurations
 		FROM cves
 		WHERE cve_id = $1
-	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount)
+	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.Configurations)
 
 	c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
 

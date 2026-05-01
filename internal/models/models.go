@@ -29,9 +29,30 @@ type CVE struct {
 	Status         string                 `json:"status"`
 	Notes          string                 `json:"notes"`
 	References     []string               `json:"references"`
+	Configurations []CVEConfiguration     `json:"configurations"`
 	PublishedDate  time.Time              `json:"published_date"`
 	UpdatedDate    time.Time              `json:"updated_date"`
 	CreatedAt      time.Time              `json:"created_at"`
+}
+
+type CVEConfiguration struct {
+	Nodes []ConfigNode `json:"nodes"`
+}
+
+type ConfigNode struct {
+	Operator string     `json:"operator"`
+	Negate   bool       `json:"negate"`
+	CPEMatch []CPEMatch `json:"cpeMatch"`
+}
+
+type CPEMatch struct {
+	Vulnerable            bool   `json:"vulnerable"`
+	Criteria              string `json:"criteria"`
+	MatchCriteriaID       string `json:"matchCriteriaId"`
+	VersionStartIncluding string `json:"versionStartIncluding"`
+	VersionStartExcluding string `json:"versionStartExcluding"`
+	VersionEndIncluding   string `json:"versionEndIncluding"`
+	VersionEndExcluding   string `json:"versionEndExcluding"`
 }
 
 type Team struct {

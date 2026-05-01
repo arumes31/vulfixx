@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS cves (
     published_date TIMESTAMP WITH TIME ZONE,
     updated_date TIMESTAMP WITH TIME ZONE,
     "references" TEXT[],
+    configurations JSONB DEFAULT '[]',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -221,6 +222,9 @@ BEGIN
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'references') THEN
             ALTER TABLE cves ADD COLUMN "references" TEXT[];
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'configurations') THEN
+            ALTER TABLE cves ADD COLUMN configurations JSONB DEFAULT '[]';
         END IF;
     END IF;
 END $$;

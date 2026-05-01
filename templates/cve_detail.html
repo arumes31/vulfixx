@@ -100,6 +100,67 @@
         </div>
     </section>
 
+    <!-- Affected Software Section -->
+    {{if .CVE.Configurations}}
+    <section class="space-y-6">
+        <h2 class="text-2xl font-black text-white flex items-center gap-3">
+            <span class="material-symbols-outlined text-tertiary">inventory_2</span>
+            Known Affected Software Configurations
+        </h2>
+        <div class="glass rounded-3xl border border-white/10 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-white/5 border-b border-white/10">
+                            <th class="p-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Vulnerable</th>
+                            <th class="p-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Platform / Software (CPE)</th>
+                            <th class="p-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Version Range</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-white/5">
+                        {{range .CVE.Configurations}}
+                            {{range .Nodes}}
+                                {{range .CPEMatch}}
+                                <tr class="hover:bg-white/[0.02] transition-colors">
+                                    <td class="p-4">
+                                        {{if .Vulnerable}}
+                                        <span class="flex items-center gap-1.5 text-red-400 font-bold text-[10px] uppercase">
+                                            <span class="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></span>
+                                            Yes
+                                        </span>
+                                        {{else}}
+                                        <span class="text-gray-600 font-bold text-[10px] uppercase">No</span>
+                                        {{end}}
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="flex flex-col gap-1">
+                                            <span class="text-xs font-mono text-gray-300 cpe-string" data-cpe="{{.Criteria}}">{{.Criteria}}</span>
+                                        </div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="flex items-center gap-2 text-[10px] font-mono text-gray-500">
+                                            {{if or .VersionStartIncluding .VersionStartExcluding .VersionEndIncluding .VersionEndExcluding}}
+                                                {{if .VersionStartIncluding}}<span class="bg-white/5 px-2 py-0.5 rounded">≥ {{.VersionStartIncluding}}</span>{{end}}
+                                                {{if .VersionStartExcluding}}<span class="bg-white/5 px-2 py-0.5 rounded">> {{.VersionStartExcluding}}</span>{{end}}
+                                                {{if and (or .VersionStartIncluding .VersionStartExcluding) (or .VersionEndIncluding .VersionEndExcluding)}}<span class="text-gray-700">|</span>{{end}}
+                                                {{if .VersionEndIncluding}}<span class="bg-white/5 px-2 py-0.5 rounded">≤ {{.VersionEndIncluding}}</span>{{end}}
+                                                {{if .VersionEndExcluding}}<span class="bg-white/5 px-2 py-0.5 rounded">< {{.VersionEndExcluding}}</span>{{end}}
+                                            {{else}}
+                                                <span class="italic opacity-50">Direct Match</span>
+                                            {{end}}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {{end}}
+                            {{end}}
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+    {{end}}
+
     <!-- Call to Action -->
     <div class="glass p-12 rounded-[3rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-transparent text-center space-y-6">
         <h2 class="text-3xl font-black text-white">Protect your infrastructure from this threat.</h2>
@@ -118,8 +179,8 @@
 
     <!-- Pagination -->
     <div class="flex items-center justify-between mt-12 mb-8">
-        {{if .NextCVEID}}
-        <a href="/cve/{{.NextCVEID}}" class="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 rounded-2xl font-black text-white hover:bg-white/10 transition-all text-xs uppercase tracking-widest group">
+        {{if .nextID}}
+        <a href="/cve/{{.nextID}}" class="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 rounded-2xl font-black text-white hover:bg-white/10 transition-all text-xs uppercase tracking-widest group">
             <span class="material-symbols-outlined text-sm group-hover:-translate-x-1 transition-transform">arrow_back</span>
             Older CVE
         </a>
@@ -127,8 +188,8 @@
         <div></div>
         {{end}}
 
-        {{if .PrevCVEID}}
-        <a href="/cve/{{.PrevCVEID}}" class="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 rounded-2xl font-black text-white hover:bg-white/10 transition-all text-xs uppercase tracking-widest group">
+        {{if .prevID}}
+        <a href="/cve/{{.prevID}}" class="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 rounded-2xl font-black text-white hover:bg-white/10 transition-all text-xs uppercase tracking-widest group">
             Newer CVE
             <span class="material-symbols-outlined text-sm group-hover:translate-x-1 transition-transform">arrow_forward</span>
         </a>
