@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"regexp"
+	"strings"
+	"time"
+)
 
 type User struct {
 	ID                  int       `json:"id"`
@@ -34,6 +38,23 @@ type CVE struct {
 	PublishedDate  time.Time              `json:"published_date"`
 	UpdatedDate    time.Time              `json:"updated_date"`
 	CreatedAt      time.Time              `json:"created_at"`
+}
+
+func (c *CVE) GetDetectedProduct() (vendor, product string) {
+	// Pattern: detected in [vendor] [product]
+	// Using a more robust regex for product extraction
+	re := regexp.MustCompile(`(?i)(?:detected in|affects|found in|vulnerability in) (?:the )?([a-zA-Z0-9_\-\.]{2,}) ([a-zA-Z0-9_\-\.]{2,})`)
+	matches := re.FindStringSubmatch(c.Description)
+	if len(matches) >= 3 {
+		v := matches[1]
+		p := matches[2]
+		// Avoid noise words
+		noise := map[string]bool{"the": true, "this": true, "that": true, "and": true, "with": true, "from": true}
+		if !noise[strings.ToLower(v)] && !noise[strings.ToLower(p)] {
+			return v, p
+		}
+	}
+	return "", ""
 }
 
 type CVEConfiguration struct {

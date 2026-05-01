@@ -124,12 +124,11 @@
     </section>
 
     <!-- Affected Software Section -->
-    {{if .CVE.Configurations}}
     <section class="space-y-6">
         <div class="flex items-center justify-between">
             <h2 class="text-2xl font-black text-white flex items-center gap-3">
                 <span class="material-symbols-outlined text-tertiary">inventory_2</span>
-                Known Affected Software Configurations
+                {{if .CVE.Configurations}}Known Affected Software Configurations{{else}}Affected Product Details{{end}}
             </h2>
             
             <!-- Dynamic Vendors Badge List -->
@@ -138,6 +137,7 @@
             </div>
         </div>
 
+        {{if .CVE.Configurations}}
         <div class="glass rounded-3xl border border-white/10 overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
@@ -189,8 +189,29 @@
                 </table>
             </div>
         </div>
+        {{else}}
+            {{$detected := detectProduct .CVE}}
+            {{if $detected}}
+            <div class="glass p-8 rounded-3xl border border-white/10 flex items-center gap-6">
+                <div class="w-16 h-16 rounded-2xl bg-tertiary/10 flex items-center justify-center text-tertiary">
+                    <span class="material-symbols-outlined text-3xl">inventory_2</span>
+                </div>
+                <div>
+                    <div class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Detected Software</div>
+                    <div class="text-2xl font-black text-white product-detected" data-vendor="{{index $detected "vendor"}}">
+                        {{index $detected "vendor"}} <span class="text-tertiary">{{index $detected "product"}}</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">Information automatically identified from vulnerability description.</p>
+                </div>
+            </div>
+            {{else}}
+            <div class="glass p-12 rounded-3xl border border-white/5 bg-white/[0.01] text-center">
+                <span class="material-symbols-outlined text-gray-700 text-4xl mb-4">search_off</span>
+                <p class="text-gray-500 text-sm italic">No structured software configurations or products were explicitly identified for this vulnerability.</p>
+            </div>
+            {{end}}
+        {{end}}
     </section>
-    {{end}}
 
     <!-- Call to Action -->
     <div class="glass p-12 rounded-[3rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-transparent text-center space-y-6">
@@ -298,23 +319,34 @@ function initCVEDetail() {
         clearLoader('<span class="text-[9px] font-mono text-gray-600 italic">No vector string available</span>');
     }
 
-    // 2. Extract Vendors from CPEs
-    const cpeElements = document.querySelectorAll('.cpe-string');
-    const vendors = new Set();
-    cpeElements.forEach(el => {
-        const cpe = el.dataset.cpe;
-        if (cpe && cpe.startsWith('cpe:2.3:')) {
-            const parts = cpe.split(':');
-            if (parts.length > 4) {
-                const vendor = parts[3].replace(/_/g, ' ');
-                vendors.add(vendor);
-            }
-        }
-    });
-
+    // 2. Extract Vendors from CPEs and Detected Section
     const vendorList = document.getElementById('vendor-list');
     if (vendorList) {
         vendorList.innerHTML = '';
+        const vendors = new Set();
+        
+        // From CPEs
+        const cpeElements = document.querySelectorAll('.cpe-string');
+        cpeElements.forEach(el => {
+            const cpe = el.dataset.cpe;
+            if (cpe && cpe.startsWith('cpe:2.3:')) {
+                const parts = cpe.split(':');
+                if (parts.length > 4) {
+                    const vendor = parts[3].replace(/_/g, ' ');
+                    vendors.add(vendor);
+                }
+            }
+        });
+
+        // From Detected Section (Fallback)
+        const detectedElements = document.querySelectorAll('.product-detected');
+        detectedElements.forEach(el => {
+            const vendor = el.dataset.vendor;
+            if (vendor) {
+                vendors.add(vendor.replace(/_/g, ' '));
+            }
+        });
+
         vendors.forEach(vendor => {
             const badge = document.createElement('span');
             badge.className = 'px-3 py-1 bg-tertiary/10 text-tertiary border border-tertiary/20 rounded-full text-[10px] font-black uppercase tracking-widest';

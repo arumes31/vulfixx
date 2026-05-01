@@ -46,6 +46,7 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 - **High-Density CWE Visualization**: Ultra-compact dashboard grid displaying the top 15 vulnerability types with localized amber theme styling and ultra-compact 10px bars.
 - **Intelligent CWE Name Mapping**: Robust server-side resolution of human-readable CWE titles (e.g., 'SQL Injection') for data points missing NVD metadata.
 - **Dynamic Vendor Extraction**: Robust client-side parsing of CPE configurations to extract and display interactive vendor intelligence badges on threat detail pages.
+- **Intelligent Product Identification**: Robust regex-based extraction of vendors and products from unstructured vulnerability descriptions, ensuring visibility even when official NVD/CPE data is delayed or missing.
 
 ## 🏗️ Architecture
 The application follows a modular architecture designed to prevent monolithic files and improve domain separation.
