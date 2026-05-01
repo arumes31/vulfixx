@@ -276,129 +276,111 @@
 </style>
 
 <script nonce="{{.Nonce}}">
-function initCVEDetail() {
-    const vectorContainer = document.getElementById('cvss-vector');
-    if (!vectorContainer) return;
-    
-    // Always clear the loading state eventually
-    const clearLoader = (msg) => {
-        vectorContainer.innerHTML = msg || '';
-    };
+(function() {
+    const initCVEDetail = () => {
+        const vectorContainer = document.getElementById('cvss-vector');
+        if (!vectorContainer) return;
 
-    const vectorStr = vectorContainer.dataset.vector;
-    
-    const metricMap = {
-        'AV': { n: 'Attack Vector', v: { N: 'Network', A: 'Adjacent', L: 'Local', P: 'Physical' } },
-        'AC': { n: 'Complexity', v: { L: 'Low', H: 'High' } },
-        'PR': { n: 'Privileges', v: { N: 'None', L: 'Low', H: 'High' } },
-        'UI': { n: 'Interaction', v: { N: 'None', R: 'Required' } },
-        'S':  { n: 'Scope', v: { U: 'Unchanged', C: 'Changed' } },
-        'C':  { n: 'Confid.', v: { N: 'None', L: 'Low', H: 'High' } },
-        'I':  { n: 'Integrity', v: { N: 'None', L: 'Low', H: 'High' } },
-        'A':  { n: 'Avail.', v: { N: 'None', L: 'Low', H: 'High' } }
-    };
+        const clearLoader = (msg) => {
+            vectorContainer.innerHTML = msg || '';
+        };
 
-    if (vectorStr && vectorStr.includes('/')) {
-        const parts = vectorStr.split('/');
-        vectorContainer.innerHTML = '';
-        parts.forEach(part => {
-            const [key, val] = part.split(':');
-            if (metricMap[key]) {
-                const metric = metricMap[key];
-                const valName = metric.v[val] || val;
-                const pill = document.createElement('div');
-                pill.className = 'tooltip-trigger text-[9px] font-mono text-gray-400 bg-white/5 px-2 py-0.5 rounded-md border border-white/5 hover:bg-white/10 hover:text-white transition-all';
-                pill.innerHTML = `
-                    <span class="text-gray-600 mr-1">${key}:</span>${val}
-                    <div class="tooltip">${metric.n}: ${valName}</div>
-                `;
-                vectorContainer.appendChild(pill);
+        try {
+            const vectorStr = vectorContainer.dataset.vector;
+            const metricMap = {
+                'AV': { n: 'Attack Vector', v: { N: 'Network', A: 'Adjacent', L: 'Local', P: 'Physical' } },
+                'AC': { n: 'Complexity', v: { L: 'Low', H: 'High' } },
+                'PR': { n: 'Privileges', v: { N: 'None', L: 'Low', H: 'High' } },
+                'UI': { n: 'Interaction', v: { N: 'None', R: 'Required' } },
+                'S':  { n: 'Scope', v: { U: 'Unchanged', C: 'Changed' } },
+                'C':  { n: 'Confid.', v: { N: 'None', L: 'Low', H: 'High' } },
+                'I':  { n: 'Integrity', v: { N: 'None', L: 'Low', H: 'High' } },
+                'A':  { n: 'Avail.', v: { N: 'None', L: 'Low', H: 'High' } }
+            };
+
+            if (vectorStr && vectorStr.includes('/')) {
+                const parts = vectorStr.split('/');
+                vectorContainer.innerHTML = '';
+                parts.forEach(part => {
+                    const [key, val] = part.split(':');
+                    if (metricMap[key]) {
+                        const metric = metricMap[key];
+                        const valName = metric.v[val] || val;
+                        const pill = document.createElement('div');
+                        pill.className = 'tooltip-trigger text-[9px] font-mono text-gray-400 bg-white/5 px-2 py-0.5 rounded-md border border-white/5 hover:bg-white/10 hover:text-white transition-all';
+                        pill.innerHTML = `
+                            <span class="text-gray-600 mr-1">${key}:</span>${val}
+                            <div class="tooltip">${metric.n}: ${valName}</div>
+                        `;
+                        vectorContainer.appendChild(pill);
+                    }
+                });
+            } else {
+                clearLoader('<span class="text-[9px] font-mono text-gray-600 italic">No vector string available</span>');
             }
-        });
-    } else {
-        clearLoader('<span class="text-[9px] font-mono text-gray-600 italic">No vector string available</span>');
-    }
+        } catch (e) {
+            console.error('Vector parse error:', e);
+            clearLoader('<span class="text-[9px] font-mono text-gray-600 italic">Error parsing vector</span>');
+        }
 
-    // 2. Extract Vendors from CPEs and Detected Section
-    const vendorList = document.getElementById('vendor-list');
-    if (vendorList) {
-        vendorList.innerHTML = '';
-        const vendors = new Set();
-        
-        // From CPEs
-        const cpeElements = document.querySelectorAll('.cpe-string');
-        cpeElements.forEach(el => {
-            const cpe = el.dataset.cpe;
-            if (cpe && cpe.startsWith('cpe:2.3:')) {
-                const parts = cpe.split(':');
-                if (parts.length > 4) {
-                    const vendor = parts[3].replace(/_/g, ' ');
-                    vendors.add(vendor);
+        // 2. Extract Vendors from CPEs and Detected Section
+        const vendorList = document.getElementById('vendor-list');
+        if (vendorList) {
+            vendorList.innerHTML = '';
+            const vendors = new Set();
+            
+            document.querySelectorAll('.cpe-string').forEach(el => {
+                const cpe = el.dataset.cpe;
+                if (cpe && cpe.startsWith('cpe:2.3:')) {
+                    const parts = cpe.split(':');
+                    if (parts.length > 4) vendors.add(parts[3].replace(/_/g, ' '));
+                }
+            });
+
+            document.querySelectorAll('.product-detected').forEach(el => {
+                const vendor = el.dataset.vendor;
+                if (vendor) vendors.add(vendor.replace(/_/g, ' '));
+            });
+
+            vendors.forEach(vendor => {
+                const badge = document.createElement('span');
+                badge.className = 'px-3 py-1 bg-tertiary/10 text-tertiary border border-tertiary/20 rounded-full text-[10px] font-black uppercase tracking-widest';
+                badge.textContent = vendor;
+                vendorList.appendChild(badge);
+            });
+        }
+
+        // 3. Enhanced References
+        const sourceIcons = {
+            'github.com': { icon: 'code', label: 'Exploit / Source', color: 'text-purple-400' },
+            'nvd.nist.gov': { icon: 'verified_user', label: 'Official NVD', color: 'text-blue-400' },
+            'cisa.gov': { icon: 'policy', label: 'CISA Advisory', color: 'text-orange-400' },
+            'exploit-db.com': { icon: 'bug_report', label: 'Exploit Database', color: 'text-red-400' },
+            'mitre.org': { icon: 'security', label: 'MITRE CVE', color: 'text-primary' },
+            'twitter.com': { icon: 'chat', label: 'Social Intel', color: 'text-sky-400' },
+            'x.com': { icon: 'chat', label: 'Social Intel', color: 'text-sky-400' }
+        };
+
+        document.querySelectorAll('.reference-card').forEach(card => {
+            const url = card.dataset.url;
+            const iconContainer = card.querySelector('.source-icon');
+            const labelContainer = card.querySelector('.source-label');
+            if (!iconContainer || !labelContainer) return;
+            
+            for (const [domain, config] of Object.entries(sourceIcons)) {
+                if (url.includes(domain)) {
+                    iconContainer.innerHTML = `<span class="material-symbols-outlined text-[18px] ${config.color}">${config.icon}</span>`;
+                    iconContainer.classList.add('bg-' + config.color.split('-')[1] + '-500/10');
+                    labelContainer.textContent = config.label;
+                    labelContainer.classList.replace('text-gray-600', config.color);
+                    break;
                 }
             }
         });
-
-        // From Detected Section (Fallback)
-        const detectedElements = document.querySelectorAll('.product-detected');
-        detectedElements.forEach(el => {
-            const vendor = el.dataset.vendor;
-            if (vendor) {
-                vendors.add(vendor.replace(/_/g, ' '));
-            }
-        });
-
-        vendors.forEach(vendor => {
-            const badge = document.createElement('span');
-            badge.className = 'px-3 py-1 bg-tertiary/10 text-tertiary border border-tertiary/20 rounded-full text-[10px] font-black uppercase tracking-widest';
-            badge.textContent = vendor;
-            vendorList.appendChild(badge);
-        });
-    }
-
-    // 3. Enhanced References
-    const refCards = document.querySelectorAll('.reference-card');
-    const sourceIcons = {
-        'github.com': { icon: 'code', label: 'Exploit / Source', color: 'text-purple-400' },
-        'nvd.nist.gov': { icon: 'verified_user', label: 'Official NVD', color: 'text-blue-400' },
-        'cisa.gov': { icon: 'policy', label: 'CISA Advisory', color: 'text-orange-400' },
-        'exploit-db.com': { icon: 'bug_report', label: 'Exploit Database', color: 'text-red-400' },
-        'mitre.org': { icon: 'security', label: 'MITRE CVE', color: 'text-primary' },
-        'twitter.com': { icon: 'chat', label: 'Social Intel', color: 'text-sky-400' },
-        'x.com': { icon: 'chat', label: 'Social Intel', color: 'text-sky-400' }
     };
 
-    refCards.forEach(card => {
-        const url = card.dataset.url;
-        const iconContainer = card.querySelector('.source-icon');
-        const labelContainer = card.querySelector('.source-label');
-        if (!iconContainer || !labelContainer) return;
-        
-        for (const [domain, config] of Object.entries(sourceIcons)) {
-            if (url.includes(domain)) {
-                iconContainer.innerHTML = `<span class="material-symbols-outlined text-[18px] ${config.color}">${config.icon}</span>`;
-                iconContainer.classList.add('bg-' + config.color.split('-')[1] + '-500/10');
-                labelContainer.textContent = config.label;
-                labelContainer.classList.replace('text-gray-600', config.color);
-                break;
-            }
-        }
-    });
-}
-
-(function() {
-    const runInit = () => {
-        if (typeof window.requestAnimationFrame !== 'undefined') {
-            window.requestAnimationFrame(initCVEDetail);
-        } else {
-            setTimeout(initCVEDetail, 0);
-        }
-    };
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', runInit);
-    } else {
-        runInit();
-    }
+    // Run immediately since SPA framework injects scripts after DOM update
+    initCVEDetail();
 })();
 </script>
 
