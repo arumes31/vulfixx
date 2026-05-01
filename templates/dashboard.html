@@ -72,11 +72,11 @@
     </div>
 
     <!-- Charts Section -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         <div class="glass p-8 rounded-[2rem] border border-white/10">
             <h3 class="text-xs font-black uppercase tracking-[0.2em] text-gray-500 mb-6 flex items-center gap-2">
                 <span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                Global Severity Distribution
+                Global Severity
             </h3>
             <div class="h-64">
                 <canvas id="severityChart"></canvas>
@@ -89,6 +89,15 @@
             </h3>
             <div class="h-64">
                 <canvas id="statusChart"></canvas>
+            </div>
+        </div>
+        <div class="glass p-8 rounded-[2rem] border border-white/10">
+            <h3 class="text-xs font-black uppercase tracking-[0.2em] text-gray-500 mb-6 flex items-center gap-2">
+                <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+                Top Vulnerability Types
+            </h3>
+            <div class="h-64">
+                <canvas id="cweChart"></canvas>
             </div>
         </div>
     </div>
@@ -347,6 +356,69 @@ const initDashboard = () => {
                             }]
                         },
                         options: commonOptions
+                    });
+                }
+
+                const cweEl = document.getElementById('cweChart');
+                if (cweEl) {
+                    const ctxCwe = cweEl.getContext('2d');
+                    const cweGradient = ctxCwe.createLinearGradient(0, 0, 400, 0);
+                    cweGradient.addColorStop(0, 'rgba(168, 85, 247, 0.8)');
+                    cweGradient.addColorStop(1, 'rgba(168, 85, 247, 0.2)');
+
+                    const topCWEData = {{.TopCWEs | marshal}};
+                    new Chart(ctxCwe, {
+                        type: 'bar',
+                        data: {
+                            labels: topCWEData.map(x => x.id),
+                            datasets: [{
+                                label: 'Count',
+                                data: topCWEData.map(x => x.count),
+                                fullNames: topCWEData.map(x => x.name),
+                                backgroundColor: cweGradient,
+                                borderRadius: 4,
+                                borderWidth: 0,
+                                barThickness: 10
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            indexAxis: 'y',
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                                    titleColor: '#f8fafc',
+                                    bodyColor: '#94a3b8',
+                                    borderColor: 'rgba(255, 255, 255, 0.1)',
+                                    borderWidth: 1,
+                                    padding: 12,
+                                    cornerRadius: 8,
+                                    titleFont: { family: 'Space Grotesk', size: 12, weight: 'bold' },
+                                    bodyFont: { family: 'Space Grotesk', size: 11 },
+                                    displayColors: false,
+                                    callbacks: {
+                                        title: (items) => items[0].label,
+                                        label: (item) => {
+                                            const fullName = item.dataset.fullNames[item.dataIndex];
+                                            return [`${fullName}`, `Occurrences: ${item.formattedValue}`];
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: { display: false, grid: { display: false } },
+                                y: { 
+                                    grid: { display: false }, 
+                                    ticks: { 
+                                        color: '#9ca3af', 
+                                        font: { family: 'Space Grotesk', size: 8, weight: 'bold' },
+                                        padding: 10
+                                    } 
+                                }
+                            }
+                        }
                     });
                 }
             }

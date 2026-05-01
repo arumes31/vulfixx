@@ -216,6 +216,19 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		baseFromJoin + whereClause
 
 	_ = a.Pool.QueryRow(r.Context(), statusQuery, args...).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
+	
+	var topCWEs []CWEStat
+	cweQueryRows, _ := a.Pool.Query(r.Context(), "SELECT cwe_id, COALESCE(cwe_name, 'Unknown'), COUNT(*) as cnt FROM cves c "+whereClause+" AND cwe_id IS NOT NULL AND cwe_id != '' GROUP BY cwe_id, cwe_name ORDER BY cnt DESC LIMIT 15", args...)
+	if cweQueryRows != nil {
+		for cweQueryRows.Next() {
+			var s CWEStat
+			if err := cweQueryRows.Scan(&s.ID, &s.Name, &s.Count); err == nil {
+				topCWEs = append(topCWEs, s)
+			}
+		}
+		cweQueryRows.Close()
+	}
+
 	a.RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
 		"CVEs":           cves,
 		"Total":          totalItems,
@@ -234,6 +247,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"ActiveTeamID":   activeTeamID,
 		"SeverityCounts": severityCounts,
 		"StatusCounts":   statusCounts,
+		"TopCWEs":        topCWEs,
 	})
 }
 
@@ -798,7 +812,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 			"FROM cves c " + whereClause
 		_ = a.Pool.QueryRow(r.Context(), severityQuery, args...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
 
-		cweQueryRows, _ := a.Pool.Query(r.Context(), "SELECT cwe_id, COALESCE(cwe_name, 'Unknown'), COUNT(*) as cnt FROM cves c "+whereClause+" AND cwe_id IS NOT NULL AND cwe_id != '' GROUP BY cwe_id, cwe_name ORDER BY cnt DESC LIMIT 10", args...)
+		cweQueryRows, _ := a.Pool.Query(r.Context(), "SELECT cwe_id, COALESCE(cwe_name, 'Unknown'), COUNT(*) as cnt FROM cves c "+whereClause+" AND cwe_id IS NOT NULL AND cwe_id != '' GROUP BY cwe_id, cwe_name ORDER BY cnt DESC LIMIT 15", args...)
 		if cweQueryRows != nil {
 			for cweQueryRows.Next() {
 				var s CWEStat
