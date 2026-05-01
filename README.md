@@ -43,6 +43,8 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 - **Secure Integration**: Filtered, token-authenticated RSS feeds for personalized technical intel.
 - **Rich Email Alerts**: Premium HTML notifications with OSINT links, Vendor advisories, and Risk gauges.
 - **Modern UI**: High-density dashboard with a premium glassmorphic Amber theme, built on a custom SPA navigation framework for high-performance, seamless transitions. Features **interactive column sorting**, dynamic multi-variable filtering, and synchronized risk distribution charts.
+- **High-Density CWE Visualization**: Ultra-compact dashboard grid displaying the top 15 vulnerability types with localized amber theme styling and ultra-compact 10px bars.
+- **Intelligent CWE Name Mapping**: Robust server-side resolution of human-readable CWE titles (e.g., 'SQL Injection') for data points missing NVD metadata.
 - **Dynamic Vendor Extraction**: Robust client-side parsing of CPE configurations to extract and display interactive vendor intelligence badges on threat detail pages.
 
 ## 🏗️ Architecture
