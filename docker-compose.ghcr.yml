@@ -18,7 +18,7 @@ services:
       - SMTP_USER=${SMTP_USER:-user@example.com}
       - SMTP_PASS=${SMTP_PASS:-password}
       - BASE_URL=${BASE_URL:-http://localhost:8080}
-      - CSRF_KEY=${CSRF_KEY:-0123456789abcdef0123456789abcdef}
+      - CSRF_KEY=${CSRF_KEY:-MOCK_CSRF_KEY_32_BYTES_FOR_TEST!}
       - ADMIN_EMAIL=${ADMIN_EMAIL}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - ADMIN_TOTP_SECRET=${ADMIN_TOTP_SECRET}

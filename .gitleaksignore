@@ -1,0 +1,3 @@
+# Gitleaks ignore file
+# Ignore old leaks in history that have already been remediated in newer commits.
+8bc5f1fa3222b83757a333689c614f496256616b:cmd/cve-tracker/main_test.go:generic-api-key:23
