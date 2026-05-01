@@ -75,7 +75,7 @@
 </div>
 
 <script nonce="{{.Nonce}}">
-    const initAdminUsers = () => {
+    function initAdminUsers() {
         document.querySelectorAll('.delete-user-form').forEach(form => {
             form.addEventListener('submit', (e) => {
                 const btn = form.querySelector('button');

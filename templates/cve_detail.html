@@ -255,9 +255,10 @@
 </style>
 
 <script nonce="{{.Nonce}}">
-document.addEventListener('DOMContentLoaded', function() {
+function initCVEDetail() {
     // 1. Interactive CVSS Vector
     const vectorContainer = document.getElementById('cvss-vector');
+    if (!vectorContainer) return;
     const vectorStr = vectorContainer.dataset.vector;
     
     const metricMap = {
@@ -304,13 +305,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    const vendorContainer = document.getElementById('vendor-list');
-    if (vendorContainer) {
+    const vendorList = document.getElementById('vendor-list');
+    if (vendorList) {
+        vendorList.innerHTML = '';
         vendors.forEach(vendor => {
             const badge = document.createElement('span');
             badge.className = 'px-3 py-1 bg-tertiary/10 text-tertiary border border-tertiary/20 rounded-full text-[10px] font-black uppercase tracking-widest';
             badge.textContent = vendor;
-            vendorContainer.appendChild(badge);
+            vendorList.appendChild(badge);
         });
     }
 
@@ -330,6 +332,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const url = card.dataset.url;
         const iconContainer = card.querySelector('.source-icon');
         const labelContainer = card.querySelector('.source-label');
+        if (!iconContainer || !labelContainer) return;
         
         for (const [domain, config] of Object.entries(sourceIcons)) {
             if (url.includes(domain)) {
@@ -341,7 +344,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initCVEDetail);
+} else {
+    initCVEDetail();
+}
 </script>
 
 <!-- Structured Data (JSON-LD) for SEO -->

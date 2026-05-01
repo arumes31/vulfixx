@@ -111,7 +111,7 @@
 </div>
 
 <script nonce="{{.Nonce}}">
-const initSubscriptions = () => {
+function initSubscriptions() {
     document.getElementById('subscription-form')?.addEventListener('submit', (e) => {
         e.preventDefault();
         submitSubscription(e, e.target);

@@ -97,7 +97,7 @@
 </div>
 
 <script nonce="{{.Nonce}}">
-const initAssets = () => {
+function initAssets() {
     document.querySelectorAll('.delete-asset-form').forEach(form => {
         form.addEventListener('submit', (e) => {
             e.preventDefault();
