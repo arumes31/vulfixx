@@ -28,7 +28,7 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 	for _, task := range tasks {
 		var lastRun time.Time
 		err := w.Pool.QueryRow(ctx, "SELECT last_run FROM worker_sync_stats WHERE task_name = $1", task).Scan(&lastRun)
-		
+
 		if err != nil {
 			log.Printf("Worker Health ALERT: Task '%s' has never run or status missing!", task)
 			continue
@@ -42,7 +42,7 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 		if time.Since(lastRun) > threshold {
 			msg := fmt.Sprintf("CRITICAL: Worker task '%s' has not run since %v (more than %v ago)!", task, lastRun.Format(time.RFC822), threshold)
 			log.Println(msg)
-			
+
 			// Send alert to admin if configured
 			_ = w.Mailer.SendEmail("admin@example.com", "Vulfixx Health Alert", msg)
 		}

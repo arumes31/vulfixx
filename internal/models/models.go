@@ -3,16 +3,16 @@ package models
 import "time"
 
 type User struct {
-	ID               int       `json:"id"`
-	Email            string    `json:"email"`
-	PasswordHash     string    `json:"-"`
-	IsEmailVerified  bool      `json:"is_email_verified"`
-	EmailVerifyToken string    `json:"-"`
-	TOTPSecret       string    `json:"-"`
-	IsTOTPEnabled    bool      `json:"is_totp_enabled"`
-	IsAdmin          bool      `json:"is_admin"`
-	OnboardingCompleted bool   `json:"onboarding_completed"`
-	CreatedAt        time.Time `json:"created_at"`
+	ID                  int       `json:"id"`
+	Email               string    `json:"email"`
+	PasswordHash        string    `json:"-"`
+	IsEmailVerified     bool      `json:"is_email_verified"`
+	EmailVerifyToken    string    `json:"-"`
+	TOTPSecret          string    `json:"-"`
+	IsTOTPEnabled       bool      `json:"is_totp_enabled"`
+	IsAdmin             bool      `json:"is_admin"`
+	OnboardingCompleted bool      `json:"onboarding_completed"`
+	CreatedAt           time.Time `json:"created_at"`
 }
 
 type CVE struct {

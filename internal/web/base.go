@@ -3,8 +3,8 @@ package web
 import (
 	"bytes"
 	"context"
-	"cve-tracker/internal/config"
 	"crypto/subtle"
+	"cve-tracker/internal/config"
 
 	"encoding/json"
 	"errors"

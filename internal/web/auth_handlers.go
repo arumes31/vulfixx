@@ -1,8 +1,8 @@
 package web
 
 import (
-	"cve-tracker/internal/auth"
 	"crypto/rand"
+	"cve-tracker/internal/auth"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -310,12 +310,12 @@ func (a *App) CaptchaHandler(w http.ResponseWriter, r *http.Request) {
 	n2, _ := rand.Int(rand.Reader, big.NewInt(9))
 	v1 := int(n1.Int64()) + 1
 	v2 := int(n2.Int64()) + 1
-	
+
 	if os.Getenv("GO_ENV") == "test" {
 		v1 = 5
 		v2 = 5
 	}
-	
+
 	sum := v1 + v2
 
 	session, _ := a.SessionStore.Get(r, "vulfixx-session")

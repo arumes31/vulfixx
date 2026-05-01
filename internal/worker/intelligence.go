@@ -66,7 +66,7 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		if err != nil {
 			log.Printf("Worker: Failed to update OSINT data for %s: %v", c.CVEID, err)
 		}
-		
+
 		// Throttle to avoid rate limits
 		time.Sleep(500 * time.Millisecond)
 	}
@@ -88,7 +88,7 @@ func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
 	redditURL := fmt.Sprintf("https://www.reddit.com/search.json?q=%s&sort=new&limit=10", c.CVEID)
 	req, _ := http.NewRequestWithContext(ctx, "GET", redditURL, nil)
 	req.Header.Set("User-Agent", "Vulfixx/2.0 (Threat Intelligence Bot)")
-	
+
 	resp, err := http.DefaultClient.Do(req)
 	if err == nil {
 		defer resp.Body.Close()
@@ -106,7 +106,7 @@ func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
 	hnCount, _ := c.OSINTData["hn_mentions"].(int)
 	redditCount, _ := c.OSINTData["reddit_mentions"].(int)
 	githubCount := c.GitHubPoCCount
-	
+
 	heatScore := (float64(hnCount) * 2.0) + (float64(redditCount) * 1.5) + (float64(githubCount) * 5.0)
 	c.OSINTData["heat_score"] = heatScore
 }
@@ -114,8 +114,8 @@ func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
 func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
 	// Simple duplicate detection: Look for CVEs with similar descriptions published around the same time
 	// or mentions of the same base vulnerability ID in description.
-	
-	// This is a placeholder for more complex logic. 
+
+	// This is a placeholder for more complex logic.
 	// For now, we'll look for other CVEs with the same CWE and similar CVSS.
 	if c.CWEID == "" || c.CWEID == "NVD-CWE-noinfo" {
 		return
@@ -127,7 +127,7 @@ func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
 		WHERE cwe_id = $1 AND id != $2 AND cvss_score = $3 AND published_date > $4
 		LIMIT 5
 	`, c.CWEID, c.ID, c.CVSSScore, c.PublishedDate.AddDate(0, 0, -7))
-	
+
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -137,7 +137,7 @@ func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
 			}
 		}
 	}
-	
+
 	if len(duplicateIDs) > 0 {
 		c.OSINTData["similar_threats"] = duplicateIDs
 	}
