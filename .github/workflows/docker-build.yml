@@ -52,7 +52,7 @@ jobs:
       DB_NAME: cvetracker
       REDIS_URL: redis:6379
     steps:
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Install dependencies (Git and build-base for CGO)
         run: apk add --no-cache git build-base
       - name: Run tests
@@ -65,7 +65,7 @@ jobs:
       contents: read
     container: golang:1.26
     steps:
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Run golangci-lint
         run: |
           go install -v github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
@@ -78,7 +78,7 @@ jobs:
       contents: read
     container: golang:1.26-alpine
     steps:
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Install Gosec
         run: apk add --no-cache git && go install github.com/securego/gosec/v2/cmd/gosec@v2.25.0
       - name: Run Gosec Security Scanner
