@@ -282,7 +282,7 @@ func (a *App) SwitchTeamHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		redirect = "/dashboard"
 	}
-	
+
 	// Final safety check: if it still looks like an absolute URL to another domain, force dashboard
 	if strings.HasPrefix(redirect, "http") {
 		if ref, err := url.Parse(redirect); err == nil {

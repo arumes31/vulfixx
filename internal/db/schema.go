@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS teams (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     invite_code VARCHAR(50) UNIQUE NOT NULL,
+    max_subscriptions INTEGER DEFAULT 10,
+    max_assets INTEGER DEFAULT 20,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -19,6 +21,9 @@ CREATE TABLE IF NOT EXISTS users (
     is_totp_enabled BOOLEAN DEFAULT FALSE,
     is_admin BOOLEAN DEFAULT FALSE,
     rss_feed_token VARCHAR(255) UNIQUE,
+    onboarding_completed BOOLEAN DEFAULT FALSE,
+    max_subscriptions INTEGER DEFAULT 5,
+    max_assets INTEGER DEFAULT 10,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -186,6 +191,23 @@ BEGIN
             ALTER TABLE cve_notes DROP CONSTRAINT IF EXISTS user_cve_notes_pkey;
             ALTER TABLE cve_notes ADD COLUMN id SERIAL PRIMARY KEY;
         END IF;
+    END IF;
+
+    -- Add Quota Columns
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'max_subscriptions') THEN
+        ALTER TABLE users ADD COLUMN max_subscriptions INTEGER DEFAULT 5;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'max_assets') THEN
+        ALTER TABLE users ADD COLUMN max_assets INTEGER DEFAULT 10;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'onboarding_completed') THEN
+        ALTER TABLE users ADD COLUMN onboarding_completed BOOLEAN DEFAULT FALSE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'teams' AND column_name = 'max_subscriptions') THEN
+        ALTER TABLE teams ADD COLUMN max_subscriptions INTEGER DEFAULT 10;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'teams' AND column_name = 'max_assets') THEN
+        ALTER TABLE teams ADD COLUMN max_assets INTEGER DEFAULT 20;
     END IF;
 END $$;
 

@@ -34,6 +34,29 @@
         </div>
     </header>
 
+    <!-- Vendor Advisories -->
+    {{$vlinks := vendorLinks .CVE.CVEID .CVE.Description}}
+    {{if $vlinks}}
+    <section class="space-y-6">
+        <h2 class="text-2xl font-black text-white flex items-center gap-3">
+            <span class="material-symbols-outlined text-primary">verified</span>
+            Official Vendor Advisories
+        </h2>
+        <div class="flex flex-wrap gap-4">
+            {{range $vlinks}}
+            <a href="{{.url}}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-3 px-6 py-4 glass border border-white/5 rounded-2xl hover:border-primary/50 hover:bg-white/[0.02] transition-all group">
+                <span class="material-symbols-outlined text-primary group-hover:scale-110 transition-transform">{{.icon}}</span>
+                <div class="flex flex-col">
+                    <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Official Resource</span>
+                    <span class="text-sm font-bold text-white">{{.name}}</span>
+                </div>
+                <span class="material-symbols-outlined text-xs text-gray-600 ml-4">open_in_new</span>
+            </a>
+            {{end}}
+        </div>
+    </section>
+    {{end}}
+
     <!-- Technical Specs -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div class="glass p-8 rounded-3xl border border-white/10 space-y-4">
@@ -103,10 +126,18 @@
     <!-- Affected Software Section -->
     {{if .CVE.Configurations}}
     <section class="space-y-6">
-        <h2 class="text-2xl font-black text-white flex items-center gap-3">
-            <span class="material-symbols-outlined text-tertiary">inventory_2</span>
-            Known Affected Software Configurations
-        </h2>
+        <div class="flex items-center justify-between">
+            <h2 class="text-2xl font-black text-white flex items-center gap-3">
+                <span class="material-symbols-outlined text-tertiary">inventory_2</span>
+                Known Affected Software Configurations
+            </h2>
+            
+            <!-- Dynamic Vendors Badge List -->
+            <div id="vendor-list" class="flex flex-wrap gap-2 justify-end">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+
         <div class="glass rounded-3xl border border-white/10 overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
@@ -223,7 +254,7 @@
     .tooltip-trigger:hover .tooltip { opacity: 1; transform: translateX(-50%) translateY(-5px); }
 </style>
 
-<script>
+<script nonce="{{.Nonce}}">
 document.addEventListener('DOMContentLoaded', function() {
     // 1. Interactive CVSS Vector
     const vectorContainer = document.getElementById('cvss-vector');
@@ -259,7 +290,31 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // 2. Enhanced References
+    // 2. Extract Vendors from CPEs
+    const cpeElements = document.querySelectorAll('.cpe-string');
+    const vendors = new Set();
+    cpeElements.forEach(el => {
+        const cpe = el.dataset.cpe;
+        if (cpe && cpe.startsWith('cpe:2.3:')) {
+            const parts = cpe.split(':');
+            if (parts.length > 4) {
+                const vendor = parts[3].replace(/_/g, ' ');
+                vendors.add(vendor);
+            }
+        }
+    });
+
+    const vendorContainer = document.getElementById('vendor-list');
+    if (vendorContainer) {
+        vendors.forEach(vendor => {
+            const badge = document.createElement('span');
+            badge.className = 'px-3 py-1 bg-tertiary/10 text-tertiary border border-tertiary/20 rounded-full text-[10px] font-black uppercase tracking-widest';
+            badge.textContent = vendor;
+            vendorContainer.appendChild(badge);
+        });
+    }
+
+    // 3. Enhanced References
     const refCards = document.querySelectorAll('.reference-card');
     const sourceIcons = {
         'github.com': { icon: 'code', label: 'Exploit / Source', color: 'text-purple-400' },

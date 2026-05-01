@@ -49,6 +49,11 @@ func TestAssetsHandler(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"id", "name", "type", "created_at", "keywords", "team_name"}).
 				AddRow(1, "Asset 1", "server", time.Now(), []string{"test"}, "Team A"))
 
+		// RenderTemplate expectations
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT onboarding_completed FROM users WHERE id = $1")).
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed"}).AddRow(true))
+
 		// Teams query from RenderTemplate (called because user is logged in)
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT t.id, t.name FROM teams t JOIN team_members tm")).
 			WithArgs(1).
@@ -81,6 +86,12 @@ func TestAssetsHandler(t *testing.T) {
 				},
 				mockExpect: func(mock pgxmock.PgxPoolIface) {
 					mock.ExpectBegin()
+					mock.ExpectQuery("SELECT max_assets FROM users WHERE id = \\$1 FOR UPDATE").
+						WithArgs(1).
+						WillReturnRows(pgxmock.NewRows([]string{"max_assets"}).AddRow(10))
+					mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM assets WHERE user_id = \\$1 AND team_id IS NULL").
+						WithArgs(1).
+						WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 					mock.ExpectQuery("INSERT INTO assets").
 						WithArgs(1, pgxmock.AnyArg(), "My Asset", "Server").
 						WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(101))
@@ -108,6 +119,15 @@ func TestAssetsHandler(t *testing.T) {
 				mockExpect: func(mock pgxmock.PgxPoolIface) {
 					mock.ExpectQuery("SELECT EXISTS").WithArgs(10, 1).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
 					mock.ExpectBegin()
+					mock.ExpectQuery("SELECT EXISTS\\(SELECT 1 FROM team_members WHERE team_id = \\$1 AND user_id = \\$2\\)").
+						WithArgs(10, 1).
+						WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
+					mock.ExpectQuery("SELECT max_assets FROM teams WHERE id = \\$1 FOR UPDATE").
+						WithArgs(10).
+						WillReturnRows(pgxmock.NewRows([]string{"max_assets"}).AddRow(20))
+					mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM assets WHERE team_id = \\$1").
+						WithArgs(10).
+						WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 					mock.ExpectQuery("INSERT INTO assets").
 						WithArgs(1, pgxmock.AnyArg(), "Team Asset", "Cloud").
 						WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(102))

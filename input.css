@@ -77,3 +77,34 @@
     transition: color 0.2s ease-in-out;
   }
 }
+
+@layer components {
+  /* Skeleton Loading */
+  @keyframes shimmer {
+    0% { background-position: -1000px 0; }
+    100% { background-position: 1000px 0; }
+  }
+
+  .skeleton {
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.03) 75%);
+    background-size: 1000px 100%;
+    animation: shimmer 2s infinite linear;
+    border-radius: 0.5rem;
+  }
+
+  /* Compact Mode */
+  .compact-mode table td {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+  }
+  .compact-mode table th {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+  }
+  .compact-mode .glass {
+    padding: 1rem !important;
+  }
+  .compact-mode h1 { font-size: 2rem !important; }
+  .compact-mode h2 { font-size: 1.5rem !important; }
+  .compact-mode .grid { gap: 1rem !important; }
+}

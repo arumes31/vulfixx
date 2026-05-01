@@ -1,8 +1,8 @@
 package web
 
 import (
-	"cve-tracker/internal/auth"
 	"crypto/rand"
+	"cve-tracker/internal/auth"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/pquerna/otp/totp"
 )
 
@@ -309,12 +310,12 @@ func (a *App) CaptchaHandler(w http.ResponseWriter, r *http.Request) {
 	n2, _ := rand.Int(rand.Reader, big.NewInt(9))
 	v1 := int(n1.Int64()) + 1
 	v2 := int(n2.Int64()) + 1
-	
+
 	if os.Getenv("GO_ENV") == "test" {
 		v1 = 5
 		v2 = 5
 	}
-	
+
 	sum := v1 + v2
 
 	session, _ := a.SessionStore.Get(r, "vulfixx-session")
@@ -341,6 +342,64 @@ func (a *App) CaptchaHandler(w http.ResponseWriter, r *http.Request) {
 	`, v1, v2)
 
 	_, _ = w.Write([]byte(strings.TrimSpace(svg)))
+}
+
+func (a *App) CompleteOnboardingHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := a.GetUserID(r)
+	if !ok {
+		a.SendResponse(w, r, false, "", "", "Unauthorized")
+		return
+	}
+	if r.Method != http.MethodPost {
+		a.SendResponse(w, r, false, "", "", "Method not allowed")
+		return
+	}
+
+	_, err := a.Pool.Exec(r.Context(), "UPDATE users SET onboarding_completed = TRUE WHERE id = $1", userID)
+	if err != nil {
+		log.Printf("Error completing onboarding: %v", err)
+		a.SendResponse(w, r, false, "", "", "Internal server error")
+		return
+	}
+
+	a.SendResponse(w, r, true, "Welcome to Vulfixx!", "", "")
+}
+
+func (a *App) ErrorReportHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		return
+	}
+
+	// Limit request body to 8KB
+	r.Body = http.MaxBytesReader(w, r.Body, 8192)
+
+	type FrontendError struct {
+		Message   string `json:"message"`
+		Type      string `json:"type"`
+		URL       string `json:"url"`
+		Stack     string `json:"stack"`
+		UserAgent string `json:"userAgent"`
+	}
+
+	var req FrontendError
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return
+	}
+
+	// Truncate fields to safe lengths
+	truncate := func(s string, limit int) string {
+		if len(s) > limit {
+			return s[:limit] + "..."
+		}
+		return s
+	}
+
+	msg := truncate(sanitizeForLog(req.Message), 1000)
+	errType := truncate(sanitizeForLog(req.Type), 100)
+	url := truncate(sanitizeForLog(req.URL), 500)
+
+	log.Printf("FRONTEND ERROR: [%s] %s at %s", errType, msg, url)
+	sentry.CaptureMessage(fmt.Sprintf("Frontend Error: %s", msg))
 }
 
 func redactEmail(email string) string {

@@ -41,7 +41,7 @@
             <div class="space-y-2">
                 <label for="captcha" class="text-xs font-label font-bold tracking-widest uppercase text-gray-500 block">Verify Human Presence</label>
                 <div class="flex gap-2">
-                    <div class="relative group cursor-pointer" onclick="document.getElementById('captcha-img').src='/captcha?t=' + Date.now()">
+                    <div id="captcha-container" class="relative group cursor-pointer">
                         <img id="captcha-img" src="/captcha" alt="Captcha Challenge" class="rounded-xl border border-white/10 h-[58px] min-w-[120px] bg-white/5">
                         <div class="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center">
                             <span class="material-symbols-outlined text-white text-sm">refresh</span>
@@ -63,4 +63,11 @@
         </div>
     </div>
 </div>
+
+<script nonce="{{.Nonce}}">
+    document.getElementById('captcha-container')?.addEventListener('click', () => {
+        const img = document.getElementById('captcha-img');
+        if (img) img.src = '/captcha?t=' + Date.now();
+    });
+</script>
 {{end}}

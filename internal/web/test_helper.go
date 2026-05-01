@@ -74,13 +74,15 @@ func expectBaseQueries(mock pgxmock.PgxPoolIface, userID int) {
 	if userID <= 0 {
 		return
 	}
+	// Onboarding status query in RenderTemplate
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT onboarding_completed FROM users WHERE id = $1")).
+		WithArgs(userID).
+		WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed"}).AddRow(true))
+
 	// Team list query in RenderTemplate
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT t.id, t.name FROM teams t JOIN team_members tm ON t.id = tm.team_id WHERE tm.user_id = $1")).
 		WithArgs(userID).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "name"}))
-
-	// Note: ActiveTeamName query only happens if team_id is in session and != 0.
-	// Most tests don't set team_id, so we don't expect it by default.
 }
 
 func setupTestServer(t *testing.T, mock pgxmock.PgxPoolIface) (*httptest.Server, *App, *http.Client) {

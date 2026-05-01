@@ -101,6 +101,57 @@ func (a *App) InitTemplatesWithFuncs() error {
 			a, _ := json.Marshal(v)
 			return template.JS(a) // #nosec G203
 		},
+		"vendorLinks": func(cveID string, description string) []map[string]string {
+			links := []map[string]string{}
+			desc := strings.ToLower(description)
+
+			// Microsoft
+			if strings.Contains(desc, "microsoft") || strings.Contains(desc, "windows") || strings.Contains(desc, "office") {
+				links = append(links, map[string]string{
+					"name": "Microsoft Security",
+					"url":  fmt.Sprintf("https://msrc.microsoft.com/update-guide/vulnerability/%s", cveID),
+					"icon": "lan",
+				})
+			}
+
+			// RedHat
+			if strings.Contains(desc, "red hat") || strings.Contains(desc, "redhat") || strings.Contains(desc, "fedora") || strings.Contains(desc, "rhel") {
+				links = append(links, map[string]string{
+					"name": "RedHat Advisory",
+					"url":  fmt.Sprintf("https://access.redhat.com/security/cve/%s", cveID),
+					"icon": "security",
+				})
+			}
+
+			// Cisco
+			if strings.Contains(desc, "cisco") {
+				links = append(links, map[string]string{
+					"name": "Cisco Advisory",
+					"url":  fmt.Sprintf("https://tools.cisco.com/security/center/content/CiscoSecurityAdvisory/%s", cveID),
+					"icon": "router",
+				})
+			}
+
+			// Ubuntu
+			if strings.Contains(desc, "ubuntu") || strings.Contains(desc, "canonical") {
+				links = append(links, map[string]string{
+					"name": "Ubuntu Security",
+					"url":  fmt.Sprintf("https://ubuntu.com/security/%s", cveID),
+					"icon": "terminal",
+				})
+			}
+
+			// VMware / Broadcom
+			if strings.Contains(desc, "vmware") || strings.Contains(desc, "vcenter") || strings.Contains(desc, "esxi") {
+				links = append(links, map[string]string{
+					"name": "VMware Advisory",
+					"url":  fmt.Sprintf("https://www.vmware.com/security/advisories/%s.html", cveID),
+					"icon": "layers",
+				})
+			}
+
+			return links
+		},
 	}
 
 	a.TemplateMu.Lock()

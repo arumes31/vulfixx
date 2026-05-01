@@ -12,18 +12,24 @@ import (
 )
 
 type Worker struct {
-	Pool   db.DBPool
-	Redis  db.RedisProvider
-	Mailer EmailSender
-	HTTP   HTTPClient
+	Pool               db.DBPool
+	Redis              db.RedisProvider
+	Mailer             EmailSender
+	HTTP               HTTPClient
+	AdminEmail         string
+	alertTimestamps    map[string]time.Time
+	alertMu            sync.Mutex
+	alertResendBackoff time.Duration
 }
 
 func NewWorker(pool db.DBPool, redis db.RedisProvider, mailer EmailSender, http HTTPClient) *Worker {
 	return &Worker{
-		Pool:   pool,
-		Redis:  redis,
-		Mailer: mailer,
-		HTTP:   http,
+		Pool:               pool,
+		Redis:              redis,
+		Mailer:             mailer,
+		HTTP:               http,
+		alertTimestamps:    make(map[string]time.Time),
+		alertResendBackoff: 4 * time.Hour,
 	}
 }
 
@@ -44,6 +50,8 @@ func (w *Worker) Start(ctx context.Context) {
 	runTask(w.fetchCISAKEVPeriodically)
 	runTask(w.syncEPSSPeriodically)
 	runTask(w.syncGitHubBuzzPeriodically)
+	runTask(w.syncIntelligencePeriodically)
+	runTask(w.startHealthCheckPeriodically)
 
 	// Notification & Alert Processing
 	runTask(w.processAlerts)

@@ -44,7 +44,10 @@ func TestSubscriptionHandlers(t *testing.T) {
 		setSessionUser(t, app, req, userID, false)
 
 		mock.ExpectBegin()
-		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM user_subscriptions WHERE user_id = \\$1 FOR UPDATE").
+		mock.ExpectQuery("SELECT max_subscriptions FROM users WHERE id = \\$1 FOR UPDATE").
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"max_subscriptions"}).AddRow(5))
+		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM user_subscriptions WHERE user_id = \\$1").
 			WithArgs(userID).
 			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 

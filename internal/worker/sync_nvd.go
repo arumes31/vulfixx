@@ -317,17 +317,16 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 		}
 
 		model := models.CVE{
-			CVEID:         cve.ID,
-			Description:   description,
-			CVSSScore:     score,
-			VectorString:  vector,
-			CWEID:         cweID,
-			References:    references,
-			PublishedDate: pubDate,
-			UpdatedDate:   modDate,
+			CVEID:          cve.ID,
+			Description:    description,
+			CVSSScore:      score,
+			VectorString:   vector,
+			CWEID:          cweID,
+			References:     references,
+			PublishedDate:  pubDate,
+			UpdatedDate:    modDate,
 			Configurations: cve.Configurations,
 		}
-
 
 		query := `
 			INSERT INTO cves (cve_id, description, cvss_score, vector_string, cwe_id, "references", configurations, published_date, updated_date)

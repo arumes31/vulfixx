@@ -129,15 +129,24 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Enforce limit atomically
 		var count int
-		// Lock the user row to prevent concurrent subscription additions
-		err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1 FOR UPDATE", userID).Scan(&count)
+		var maxSubs int
+		// Lock the user row to prevent concurrent subscription additions and fetch their quota
+		err = tx.QueryRow(ctx, "SELECT max_subscriptions FROM users WHERE id = $1 FOR UPDATE", userID).Scan(&maxSubs)
+		if err != nil {
+			log.Printf("Error fetching user quota: %v", err)
+			a.SendResponse(w, r, false, "", "", "Internal server error")
+			return
+		}
+
+		err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1", userID).Scan(&count)
 		if err != nil {
 			log.Printf("Error counting subscriptions: %v", err)
 			a.SendResponse(w, r, false, "", "", "Internal server error")
 			return
 		}
-		if count >= 20 {
-			a.SendResponse(w, r, false, "", "", "Maximum of 20 subscriptions allowed")
+
+		if count >= maxSubs {
+			a.SendResponse(w, r, false, "", "", fmt.Sprintf("Maximum of %d subscriptions allowed for your account level", maxSubs))
 			return
 		}
 
