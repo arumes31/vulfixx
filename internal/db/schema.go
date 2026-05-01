@@ -249,6 +249,12 @@ BEGIN
             ALTER TABLE cves ADD COLUMN configurations JSONB DEFAULT '[]';
         END IF;
     END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_activity_logs') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_activity_logs' AND column_name = 'retention_expires_at') THEN
+            ALTER TABLE user_activity_logs ADD COLUMN retention_expires_at TIMESTAMP WITH TIME ZONE;
+        END IF;
+    END IF;
 END $$;
 
 -- 5. Indexes
