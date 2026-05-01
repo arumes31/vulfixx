@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"regexp"
 	"testing"
@@ -92,6 +93,7 @@ func setupTestServer(t *testing.T, mock pgxmock.PgxPoolIface) (*httptest.Server,
 	r.HandleFunc("/", app.IndexHandler)
 	r.HandleFunc("/login", app.LoginHandler)
 	r.HandleFunc("/register", app.RegisterHandler)
+	r.HandleFunc("/captcha", app.CaptchaHandler)
 	r.Handle("/dashboard", app.AuthMiddleware(http.HandlerFunc(app.DashboardHandler)))
 	r.Handle("/subscriptions", app.AuthMiddleware(http.HandlerFunc(app.SubscriptionsHandler)))
 	r.Handle("/settings", app.AuthMiddleware(http.HandlerFunc(app.SettingsHandler)))
@@ -101,7 +103,9 @@ func setupTestServer(t *testing.T, mock pgxmock.PgxPoolIface) (*httptest.Server,
 	ts := httptest.NewServer(r)
 	t.Cleanup(ts.Close)
 
+	jar, _ := cookiejar.New(nil)
 	client := &http.Client{
+		Jar: jar,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},

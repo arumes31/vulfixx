@@ -1,0 +1,5 @@
+﻿=== RUN   TestWebEndpointsCoverage
+2026/05/01 08:21:29 Verification queued for "we****@example.com"
+--- PASS: TestWebEndpointsCoverage (0.37s)
+PASS
+ok  	cve-tracker/internal/web	1.420s
