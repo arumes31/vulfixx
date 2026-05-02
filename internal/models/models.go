@@ -38,9 +38,41 @@ type CVE struct {
 	Notes          string                 `json:"notes"`
 	References     []string               `json:"references"`
 	Configurations CVEConfigurations      `json:"configurations"`
+	Vendor         string                 `json:"vendor"`
+	Product        string                 `json:"product"`
+	AffectedProducts AffectedProducts     `json:"affected_products"`
 	PublishedDate  time.Time              `json:"published_date"`
 	UpdatedDate    time.Time              `json:"updated_date"`
 	CreatedAt      time.Time              `json:"created_at"`
+}
+
+type AffectedProducts []string
+
+// Scan implements the sql.Scanner interface for AffectedProducts.
+func (a *AffectedProducts) Scan(value interface{}) error {
+	if value == nil {
+		*a = nil
+		return nil
+	}
+	b, ok := value.([]byte)
+	if !ok {
+		return fmt.Errorf("type assertion to []byte failed")
+	}
+	return json.Unmarshal(b, &a)
+}
+
+// Value implements the driver.Valuer interface for AffectedProducts.
+func (a AffectedProducts) Value() (driver.Value, error) {
+	if a == nil {
+		return nil, nil
+	}
+	return json.Marshal(a)
+}
+
+func (c *CVE) GetAffectedProducts() AffectedProducts {
+	// Simple heuristic to extract affected products from description if possible
+	// This is a placeholder for more complex logic
+	return []string{}
 }
 
 type CVEConfigurations []CVEConfiguration
