@@ -329,9 +329,12 @@ func TestWorkerSync_OSV(t *testing.T) {
 
 	httpClient := &MockHTTPClient{
 		DoFunc: func(req *http.Request) (*http.Response, error) {
+			if req.Method != "GET" {
+				return &http.Response{StatusCode: http.StatusMethodNotAllowed, Body: io.NopCloser(strings.NewReader(""))}, nil
+			}
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Body:       io.NopCloser(strings.NewReader(`{"vulns":[{"id":"GHSA-xxxx","summary":"Test OSV"}]}`)),
+				Body:       io.NopCloser(strings.NewReader(`{"id":"GHSA-xxxx","summary":"Test OSV"}`)),
 			}, nil
 		},
 	}
@@ -366,8 +369,8 @@ func TestWorkerSync_OSV(t *testing.T) {
 		httpClient := &MockHTTPClient{
 			DoFunc: func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(strings.NewReader(`{"vulns":[]}`)),
+					StatusCode: http.StatusNotFound,
+					Body:       io.NopCloser(strings.NewReader(`{}`)),
 				}, nil
 			},
 		}

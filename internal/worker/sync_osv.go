@@ -1,7 +1,6 @@
 package worker
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -86,14 +85,11 @@ func (w *Worker) syncOSV(ctx context.Context) {
 }
 
 func (w *Worker) fetchOSVData(ctx context.Context, cveID string) (map[string]interface{}, error) {
-	query := map[string]string{"cve_id": cveID}
-	body, _ := json.Marshal(query)
-	
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.osv.dev/v1/query", bytes.NewBuffer(body))
+	url := fmt.Sprintf("https://api.osv.dev/v1/vulns/%s", cveID)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "Vulfixx-Threat-Intel/2.0")
 
 	resp, err := w.HTTP.Do(req)
@@ -102,20 +98,18 @@ func (w *Worker) fetchOSVData(ctx context.Context, cveID string) (map[string]int
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("OSV API returned status %d", resp.StatusCode)
 	}
 
-	var result struct {
-		Vulns []map[string]interface{} `json:"vulns"`
-	}
+	var result map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, err
 	}
 
-	if len(result.Vulns) > 0 {
-		return result.Vulns[0], nil
-	}
-
-	return nil, nil
+	return result, nil
 }
