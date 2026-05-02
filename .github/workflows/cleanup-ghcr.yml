@@ -12,14 +12,16 @@ jobs:
 
     steps:
       - name: Delete old GHCR images
-        uses: snok/container-retention-policy@v3
+        uses: snok/container-retention-policy@v3.0.1
         with:
-          account: ${{ github.repository_owner }}
+          # For personal accounts, 'account' must be set to 'user'
+          account: user
           token: ${{ secrets.GITHUB_TOKEN }}
           image-names: ${{ github.event.repository.name }}
           # Keep at least 10 versions of the image
-          keep-at-least: 10
+          keep-n-most-recent: 10
           # Exclude images tagged 'latest' and 'main'
-          exclude-tags: latest,main
+          # Syntax: "* !latest !main" means all tags except latest and main
+          image-tags: "* !latest !main"
           # Dry run mode - set to false to actually delete
           dry-run: true
