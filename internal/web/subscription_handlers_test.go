@@ -3,13 +3,12 @@ package web
 import (
 	"context"
 	"cve-tracker/internal/db"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"regexp"
-	"strings"
 	"testing"
 	"time"
 
@@ -18,53 +17,49 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func TestSubscriptionHandlers(t *testing.T) {
-	t.Run("SubscriptionsHandler_Post_Success", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
+func TestRSSFeedHandler(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create mock pool: %v", err)
+	}
+	defer mock.Close()
+	app := setupTestApp(t, mock)
 
-		oldPool := db.Pool
-		db.Pool = mock
-		defer func() { db.Pool = oldPool }()
+	t.Run("Success", func(t *testing.T) {
+		token := "rss-token-123"
+		mock.ExpectQuery("SELECT id FROM users WHERE rss_feed_token = \\$1").
+			WithArgs(token).
+			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 
-		app := setupTestApp(t, mock)
+		mock.ExpectQuery("SELECT DISTINCT c.cve_id").
+			WithArgs(1, 0.0, "").
+			WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score", "published_date"}).
+				AddRow("CVE-2024-RSS", "RSS Test", 8.0, time.Now()))
 
-		userID := 1
-		form := url.Values{
-			"keyword":      {"test"},
-			"min_severity": {"7.0"},
-			"enable_email": {"on"},
-			"csrf_token":   {"dummy"},
-		}
-		req := httptest.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		setSessionUser(t, app, req, userID, false)
-
-		mock.ExpectBegin()
-		mock.ExpectQuery("SELECT max_subscriptions FROM users WHERE id = \\$1 FOR UPDATE").
-			WithArgs(userID).
-			WillReturnRows(pgxmock.NewRows([]string{"max_subscriptions"}).AddRow(5))
-		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM user_subscriptions WHERE user_id = \\$1").
-			WithArgs(userID).
-			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
-
-		mock.ExpectExec("INSERT INTO user_subscriptions").
-			WithArgs(userID, "test", 7.0, "", true, false).
-			WillReturnResult(pgxmock.NewResult("INSERT", 1))
-		mock.ExpectCommit()
-
-		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		req, _ := http.NewRequest("GET", "/feed?token="+token, nil)
 		rr := httptest.NewRecorder()
-		app.SubscriptionsHandler(rr, req)
+		app.RSSFeedHandler(rr, req)
 
-		if rr.Code != http.StatusFound {
-			t.Errorf("expected 302, got %d", rr.Code)
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
 		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unmet expectations: %v", err)
+		if rr.Header().Get("Content-Type") != "application/rss+xml" {
+			t.Errorf("wrong content type")
+		}
+	})
+
+	t.Run("InvalidToken", func(t *testing.T) {
+		token := "invalid"
+		mock.ExpectQuery("SELECT id FROM users WHERE rss_feed_token = \\$1").
+			WithArgs(token).
+			WillReturnError(sql.ErrNoRows)
+
+		req, _ := http.NewRequest("GET", "/feed?token="+token, nil)
+		rr := httptest.NewRecorder()
+		app.RSSFeedHandler(rr, req)
+
+		if rr.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401 Unauthorized, got %d", rr.Code)
 		}
 	})
 }

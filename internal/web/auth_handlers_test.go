@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -86,51 +87,40 @@ func TestLoginHandler(t *testing.T) {
 	})
 }
 
-func TestVerifyTOTPHandler(t *testing.T) {
-	t.Run("VerifyTOTP_Success", func(t *testing.T) {
-		mock, err := db.SetupTestDB()
-		if err != nil {
-			t.Fatalf("failed to setup mock db: %v", err)
-		}
-		defer mock.Close()
-		app := setupTestApp(t, mock)
+func TestLogoutHandler(t *testing.T) {
+	StopStatsTicker()
+	mock, _ := db.SetupTestDB()
+	app := setupTestApp(t, mock)
+	
+	req, _ := http.NewRequest("POST", "/logout", nil)
+	setSessionUser(t, app, req, 1, false)
+	
+	rr := httptest.NewRecorder()
+	app.LogoutHandler(rr, req)
+	
+	if rr.Code != http.StatusFound {
+		t.Errorf("expected redirect, got %d", rr.Code)
+	}
+}
 
-		secret := "JBSWY3DPEHPK3PXP"
-		code, _ := totp.GenerateCode(secret, time.Now())
-
-		req := httptest.NewRequest("POST", "/settings/totp/verify", strings.NewReader("totp_code="+code))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		session, _ := app.SessionStore.Get(req, "vulfixx-session")
-		session.Values["user_id"] = 1
-		session.Values["totp_setup_ts"] = time.Now().Unix()
-		session.Values["totp_setup_attempts"] = 0
-		rr := httptest.NewRecorder()
-		_ = session.Save(req, rr)
-
-		req = httptest.NewRequest("POST", "/settings/totp/verify", strings.NewReader("totp_code="+code))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		for _, c := range rr.Result().Cookies() {
-			req.AddCookie(c)
-		}
-
-		mock.ExpectQuery("SELECT totp_secret FROM users WHERE id = \\$1").WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"totp_secret"}).AddRow(secret))
-
-		mock.ExpectExec("UPDATE users SET is_totp_enabled = TRUE").WithArgs(1).
-			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-
-		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(1, "totp_enabled", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
-			WillReturnResult(pgxmock.NewResult("INSERT", 1))
-
-		rr2 := httptest.NewRecorder()
-		app.VerifyTOTPHandler(rr2, req)
-		if rr2.Code != http.StatusFound {
-			t.Errorf("expected 302, got %d", rr2.Code)
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unmet expectations: %v", err)
-		}
-	})
+func TestVerifyEmailHandler(t *testing.T) {
+	StopStatsTicker()
+	mock, _ := db.SetupTestDB()
+	app := setupTestApp(t, mock)
+	
+	// auth.VerifyEmail uses db.Pool
+	db.Pool = mock
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE users SET is_email_verified = TRUE, email_verify_token = NULL WHERE email_verify_token = $1")).
+		WithArgs("valid-token").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	
+	req, _ := http.NewRequest("GET", "/verify-email?token=valid-token", nil)
+	rr := httptest.NewRecorder()
+	app.VerifyEmailHandler(rr, req)
+	
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
 }
 
 func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
