@@ -14,6 +14,9 @@
         <div class="space-y-4 flex-1">
             <div class="flex items-center gap-4">
                 <h1 class="text-6xl font-black text-white tracking-tighter">{{.CVE.CVEID}}</h1>
+                {{if .CVE.Vendor}}
+                <span class="px-3 py-1 rounded-full bg-tertiary/20 text-tertiary border border-tertiary/20 text-[10px] font-black uppercase tracking-widest">{{.CVE.Vendor}}</span>
+                {{end}}
                 {{if .CVE.CISAKEV}}
                 <span class="px-3 py-1 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/20 text-[10px] font-black uppercase tracking-widest animate-pulse">CISA KEV</span>
                 {{end}}

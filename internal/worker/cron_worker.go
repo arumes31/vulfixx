@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"cve-tracker/internal/models"
 	"database/sql"
 	"errors"
 	"log"
@@ -59,6 +60,57 @@ func (w *Worker) runWeeklySummaryWithLock(ctx context.Context) {
 			log.Printf("Worker: [CRON] sendWeeklySummaries failed: %v", err)
 		}
 	}
+}
+
+func (w *Worker) startIntelligenceEnrichmentTask(ctx context.Context) {
+	log.Println("Worker: [CRON] Intelligence enrichment task started")
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	// Initial run
+	w.enrichMissingIntelligence(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("Worker: [CRON] Intelligence enrichment task shutting down")
+			return
+		case <-ticker.C:
+			w.enrichMissingIntelligence(ctx)
+		}
+	}
+}
+
+func (w *Worker) enrichMissingIntelligence(ctx context.Context) {
+	log.Println("Worker: [CRON] Starting intelligence enrichment for missing vendor data...")
+	start := time.Now()
+
+	rows, err := w.Pool.Query(ctx, "SELECT id, cve_id, description, configurations FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' LIMIT 1000")
+	if err != nil {
+		log.Printf("Worker: [CRON] Error querying CVEs for enrichment: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var count int
+	for rows.Next() {
+		var c models.CVE
+		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.Configurations); err != nil {
+			continue
+		}
+
+		vendor, product := c.GetDetectedProduct()
+		affected := c.GetAffectedProducts()
+
+		if vendor != "" || product != "" || len(affected) > 0 {
+			_, err := w.Pool.Exec(ctx, "UPDATE cves SET vendor = $1, product = $2, affected_products = $3, updated_at = NOW() WHERE id = $4", vendor, product, affected, c.ID)
+			if err == nil {
+				count++
+			}
+		}
+	}
+
+	log.Printf("Worker: [CRON] Intelligence enrichment complete. Enriched %d records. Duration: %v", count, time.Since(start))
 }
 
 func (w *Worker) startWeeklySummaryTask(ctx context.Context) {

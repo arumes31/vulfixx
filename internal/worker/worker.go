@@ -59,6 +59,7 @@ func (w *Worker) Start(ctx context.Context) {
 	runTask(w.processEmailChange)
 	runTask(w.startEmailRetryPoller)
 	runTask(w.startWeeklySummaryTask)
+	runTask(w.startIntelligenceEnrichmentTask)
 
 	log.Println("Worker: All background goroutines started.")
 	<-ctx.Done()
