@@ -37,6 +37,8 @@ type CVE struct {
 	GreyNoiseClass string                 `json:"greynoise_classification"`
 	OSVData        JSONBMap               `json:"osv_data"`
 	OSINTData      JSONBMap               `json:"osint_data"`
+	OSVLastUpdated *time.Time             `json:"osv_last_updated,omitempty"`
+	GreyNoiseLastUpdated *time.Time       `json:"greynoise_last_updated,omitempty"`
 	Status         string                 `json:"status"`
 	Notes          string                 `json:"notes"`
 	References     []string               `json:"references"`
