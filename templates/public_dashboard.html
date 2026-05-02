@@ -1,7 +1,7 @@
 {{template "base" .}}
 
 {{define "content"}}
-<div class="space-y-6">
+<div class="space-y-12">
     <header class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-6">
         <div class="flex items-center gap-4">
             <h1 class="text-2xl font-bold text-white tracking-tight">CVE Tracker</h1>
@@ -73,7 +73,7 @@
         </div>
     </div>
 
-    <div class="glass p-6 rounded-[2.5rem] border border-white/10 relative z-10 -mt-12 mb-2 shadow-2xl shadow-black/60">
+    <div class="glass p-6 rounded-[2.5rem] border border-white/10 relative z-10 mb-10 shadow-2xl shadow-black/60">
         <form id="filter-form" method="GET" action="/" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-12 gap-6">
             <input type="hidden" name="sort" id="sort-field" value="{{.Sort}}">
             <input type="hidden" name="order" id="order-field" value="{{.Order}}">
@@ -150,7 +150,7 @@
                 <button type="submit" class="flex-grow py-4 bg-primary text-on-primary rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-primary/20 whitespace-nowrap">
                     Apply Filter
                 </button>
-                <button type="button" id="clear-filters" class="p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-500 hover:text-white hover:bg-red-500/10 hover:border-red-500/20 transition-all" title="Reset All Filters">
+                <button type="button" id="clear-filters" class="aspect-square p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-500 hover:text-white hover:bg-red-500/10 hover:border-red-500/20 transition-all flex items-center justify-center" title="Reset All Filters">
                     <span class="material-symbols-outlined text-lg">filter_alt_off</span>
                 </button>
             </div>
@@ -158,7 +158,7 @@
     </div>
 
     <!-- Charts Section -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-12">
         <div class="glass p-6 rounded-[2rem] border border-white/10 hover:border-primary/20 transition-all group">
             <div class="flex items-center justify-between mb-6">
                 <div class="flex items-center gap-3">
@@ -563,7 +563,7 @@ input[type=number] {
                 if (activeElements.length > 0) {
                     const index = activeElements[activeElements.length - 1].index;
                     const label = chart.data.labels[index];
-                    const form = document.getElementById('search-form');
+                    const form = document.getElementById('filter-form');
                     
                     if (chart.canvas.id === 'severityChart') {
                         const ranges = { 'Critical': [9, 10], 'High': [7, 8.9], 'Medium': [4, 6.9], 'Low': [0, 3.9] };
@@ -763,22 +763,22 @@ input[type=number] {
         });
     }
 
-    (function() {
-        const runInit = () => {
-            if (typeof window.requestAnimationFrame !== 'undefined') {
-                window.requestAnimationFrame(initPublicDashboard);
-            } else {
-                setTimeout(initPublicDashboard, 0);
-            }
-        };
+        (function() {
+            const runInit = () => {
+                if (typeof window.requestAnimationFrame !== 'undefined') {
+                    window.requestAnimationFrame(initPublicDashboard);
+                } else {
+                    setTimeout(initPublicDashboard, 0);
+                }
+            };
 
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', runInit);
-        } else {
-            runInit();
-        }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', runInit);
+            } else {
+                runInit();
+            }
+        })();
     })();
-})();
 </script>
 
 <!-- Marquee Styles & Logic -->
@@ -874,5 +874,5 @@ input[type=number] {
             <p class="text-gray-500 font-bold uppercase tracking-widest text-xs">No vulnerabilities found matching your filters</p>
         </td>
     </tr>
-    {{end}}
+{{end}}
 {{end}}
