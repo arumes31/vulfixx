@@ -39,14 +39,16 @@
 </head>
 <body class="bg-[#0a0e14] text-on-surface font-sans selection:bg-primary selection:text-on-primary" 
       data-flash-message="{{.FlashMessage}}" 
-      data-flash-type="{{.FlashType}}">
+      data-flash-type="{{.FlashType}}"
+      data-user-logged-in="{{.UserLoggedIn}}"
+      data-onboarding-completed="{{.OnboardingCompleted}}">
 
 {{if not .UserLoggedIn}}
 <header class="fixed top-0 left-0 right-0 h-20 bg-[#0a0e14]/80 backdrop-blur-xl border-b border-white/5 z-[100]">
     <div class="max-w-7xl mx-auto h-full px-6 flex items-center justify-between">
-        <a href="/" class="flex items-center gap-3">
-            <img src="/static/img/logo.png" alt="Vulfixx Logo" class="h-8 w-auto">
-            <span class="text-lg font-black text-white font-['Space_Grotesk'] tracking-widest uppercase">Vulfixx</span>
+        <a href="/" class="flex items-center gap-3 group">
+            <img src="/static/img/logo.png" alt="Vulfixx Logo" class="h-8 w-auto brand-glow">
+            <span class="text-lg font-black text-white font-['Space_Grotesk'] tracking-widest uppercase brand-glow">Vulfixx</span>
         </a>
         <nav class="flex items-center gap-6">
             <a href="/login" class="text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-white transition-colors">Login</a>
@@ -563,9 +565,11 @@
                 document.getElementById('mobile-logout-form').submit();
             });
 
-            {{if and .UserLoggedIn (not .OnboardingCompleted)}}
+            const userLoggedIn = document.body.dataset.userLoggedIn === 'true';
+            const onboardingCompleted = document.body.dataset.onboardingCompleted === 'true';
+            if (userLoggedIn && !onboardingCompleted) {
                 vulfixx.startOnboarding();
-            {{end}}
+            }
 
             const flashMessage = document.body.dataset.flashMessage;
             const flashType = document.body.dataset.flashType;

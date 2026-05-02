@@ -4,16 +4,14 @@
 <div class="space-y-4">
     <header class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-3">
         <div class="flex items-center gap-4">
+            <span class="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
             <h1 class="text-2xl font-bold text-white tracking-tight">CVE Tracker</h1>
         </div>
     </header>
 
     <section class="space-y-2 overflow-hidden relative">
         <div class="flex items-center justify-between mb-1">
-            <h2 class="text-[9px] font-black uppercase tracking-[0.3em] text-gray-500 flex items-center gap-2">
-                <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
-                Active Escalations
-            </h2>
+            <div></div>
             <span class="text-[9px] font-bold text-primary uppercase tracking-widest">Trending Now</span>
         </div>
         
@@ -70,84 +68,91 @@
         </div>
     </div>
 
-    <div class="glass p-4 rounded-[2.5rem] border border-white/10 relative z-10 shadow-2xl shadow-black/60">
-        <form id="filter-form" method="GET" action="/" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-12 gap-3">
+    <div class="glass p-5 rounded-[2.5rem] border border-white/10 relative z-10 shadow-2xl shadow-black/60">
+        <form id="filter-form" method="GET" action="/" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-12 gap-4">
             <input type="hidden" name="sort" id="sort-field" value="{{.Sort}}">
             <input type="hidden" name="order" id="order-field" value="{{.Order}}">
             
             <!-- Row 1 -->
-            <div class="space-y-1 xl:col-span-4">
-                <label class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 ml-1">Search Keywords</label>
-                <div class="relative group">
+            <div class="flex flex-col justify-end xl:col-span-4">
+                <label class="hud-label ml-1">Search Keywords</label>
+                <div class="tactical-input-container group">
                     <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg group-focus-within:text-primary transition-colors">search</span>
-                    <input type="text" name="q" value="{{.Query}}" placeholder="Search in description..." class="w-full bg-white/5 border border-white/10 rounded-2xl pl-12 pr-4 py-3.5 text-sm text-white focus:border-primary/50 focus:bg-white/[0.08] focus:outline-none transition-all placeholder:text-gray-600">
+                    <input type="text" name="q" value="{{.Query}}" placeholder="Search in description..." class="w-full bg-transparent border-none pl-12 pr-4 py-3.5 text-sm text-white focus:outline-none transition-all placeholder:text-gray-700">
                 </div>
             </div>
             
-            <div class="space-y-1 xl:col-span-4">
-                <label class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 ml-1">Vendor & Product</label>
-                <div class="flex gap-3">
-                    <input type="text" name="vendor" value="{{.Vendor}}" placeholder="Vendor..." class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-sm text-white focus:border-primary/50 focus:bg-white/[0.08] focus:outline-none transition-all placeholder:text-gray-600">
-                    <input type="text" name="product" value="{{.Product}}" placeholder="Product..." class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-sm text-white focus:border-primary/50 focus:bg-white/[0.08] focus:outline-none transition-all placeholder:text-gray-600">
+            <div class="flex flex-col justify-end xl:col-span-4">
+                <label class="hud-label ml-1">Vendor & Product</label>
+                <div class="flex gap-2">
+                    <div class="tactical-input-container flex-1">
+                        <input type="text" name="vendor" value="{{.Vendor}}" placeholder="Vendor..." class="w-full bg-transparent border-none px-4 py-3.5 text-sm text-white focus:outline-none transition-all placeholder:text-gray-700">
+                    </div>
+                    <div class="tactical-input-container flex-1">
+                        <input type="text" name="product" value="{{.Product}}" placeholder="Product..." class="w-full bg-transparent border-none px-4 py-3.5 text-sm text-white focus:outline-none transition-all placeholder:text-gray-700">
+                    </div>
                 </div>
             </div>
             
-            <div class="space-y-1 xl:col-span-4">
-                <label class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 ml-1">Vulnerability IDs</label>
-                <div class="flex gap-3">
-                    <input id="filter-cve" type="text" name="cve" value="{{.CVE}}" placeholder="CVE-..." class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-sm text-white focus:border-primary/50 focus:bg-white/[0.08] focus:outline-none transition-all placeholder:text-gray-600">
-                    <input id="filter-cwe" type="text" name="cwe" value="{{.CWE}}" placeholder="CWE-..." class="w-1/2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-sm text-white focus:border-primary/50 focus:bg-white/[0.08] focus:outline-none transition-all placeholder:text-gray-600">
-                </div>
-            </div>
-
-            <!-- Row 2 -->
-            <div class="space-y-1 xl:col-span-2">
-                <label class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 ml-1">CVSS Range</label>
-                <div class="flex items-center gap-2 bg-white/5 border border-white/10 rounded-2xl px-2 py-1">
-                    <input id="filter-min-cvss" type="number" step="0.1" name="min_cvss" value="{{.MinCvss}}" placeholder="0.0" class="w-full bg-transparent border-none px-2 py-2.5 text-sm text-white focus:outline-none text-center placeholder:text-gray-600">
-                    <span class="text-gray-700 font-bold">-</span>
-                    <input id="filter-max-cvss" type="number" step="0.1" name="max_cvss" value="{{.MaxCvss}}" placeholder="10.0" class="w-full bg-transparent border-none px-2 py-2.5 text-sm text-white focus:outline-none text-center placeholder:text-gray-600">
-                </div>
-            </div>
-
-            <div class="space-y-1 xl:col-span-2">
-                <label class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 ml-1">EPSS Probability</label>
-                <div class="flex items-center gap-2 bg-white/5 border border-white/10 rounded-2xl px-2 py-1">
-                    <input id="filter-min-epss" type="number" step="0.01" name="min_epss" value="{{.MinEpss}}" placeholder="0.0" class="w-full bg-transparent border-none px-2 py-2.5 text-sm text-white focus:outline-none text-center placeholder:text-gray-600">
-                    <span class="text-gray-700 font-bold">-</span>
-                    <input id="filter-max-epss" type="number" step="0.01" name="max_epss" value="{{.MaxEpss}}" placeholder="1.0" class="w-full bg-transparent border-none px-2 py-2.5 text-sm text-white focus:outline-none text-center placeholder:text-gray-600">
-                </div>
-            </div>
-
-            <div class="space-y-1 xl:col-span-3">
-                <label class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 ml-1">Published Date Range</label>
-                <div class="flex items-center gap-2">
-                    <div class="relative w-1/2 group">
-                        <input type="date" name="start_date" value="{{.StartDate}}" class="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-[11px] text-white focus:border-primary/50 focus:bg-white/[0.08] focus:outline-none transition-all [color-scheme:dark]" title="Start Date">
+            <div class="flex flex-col justify-end xl:col-span-4">
+                <label class="hud-label ml-1">Vulnerability IDs</label>
+                <div class="flex gap-2">
+                    <div class="tactical-input-container flex-1">
+                        <input id="filter-cve" type="text" name="cve" value="{{.CVE}}" placeholder="CVE-..." class="w-full bg-transparent border-none px-4 py-3.5 text-sm text-white focus:outline-none transition-all placeholder:text-gray-700">
                     </div>
-                    <span class="text-gray-700 font-bold">-</span>
-                    <div class="relative w-1/2 group">
-                        <input type="date" name="end_date" value="{{.EndDate}}" class="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-[11px] text-white focus:border-primary/50 focus:bg-white/[0.08] focus:outline-none transition-all [color-scheme:dark]" title="End Date">
+                    <div class="tactical-input-container flex-1">
+                        <input id="filter-cwe" type="text" name="cwe" value="{{.CWE}}" placeholder="CWE-..." class="w-full bg-transparent border-none px-4 py-3.5 text-sm text-white focus:outline-none transition-all placeholder:text-gray-700">
                     </div>
                 </div>
             </div>
+            
+            <div class="flex flex-col justify-end xl:col-span-2">
+                <label class="hud-label ml-1">CVSS Range</label>
+                <div class="tactical-input-container flex items-center gap-2 px-2">
+                    <input id="filter-min-cvss" type="number" step="0.1" name="min_cvss" value="{{.MinCvss}}" placeholder="0.0" class="w-full bg-transparent border-none px-2 py-3 text-sm text-white focus:outline-none text-center placeholder:text-gray-700">
+                    <span class="text-gray-700 font-bold">-</span>
+                    <input id="filter-max-cvss" type="number" step="0.1" name="max_cvss" value="{{.MaxCvss}}" placeholder="10.0" class="w-full bg-transparent border-none px-2 py-3 text-sm text-white focus:outline-none text-center placeholder:text-gray-700">
+                </div>
+            </div>
 
-            <div class="flex items-end gap-3 xl:col-span-3">
-                <label class="flex items-center gap-3 cursor-pointer bg-white/5 border border-white/10 rounded-2xl px-5 py-3.5 hover:bg-white/10 transition-all flex-grow group">
-                    <input type="checkbox" name="kev" value="true" {{if .KevOnly}}checked{{end}} class="w-4 h-4 rounded border-white/20 bg-white/10 text-primary focus:ring-primary focus:ring-offset-0 transition-all cursor-pointer">
-                    <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest group-hover:text-white transition-colors">KEV</span>
+            <div class="flex flex-col justify-end xl:col-span-2">
+                <label class="hud-label ml-1">EPSS Range</label>
+                <div class="tactical-input-container flex items-center gap-2 px-2">
+                    <input id="filter-min-epss" type="number" step="0.01" name="min_epss" value="{{.MinEpss}}" placeholder="0.0" class="w-full bg-transparent border-none px-2 py-3 text-sm text-white focus:outline-none text-center placeholder:text-gray-700">
+                    <span class="text-gray-700 font-bold">-</span>
+                    <input id="filter-max-epss" type="number" step="0.01" name="max_epss" value="{{.MaxEpss}}" placeholder="1.0" class="w-full bg-transparent border-none px-2 py-3 text-sm text-white focus:outline-none text-center placeholder:text-gray-700">
+                </div>
+            </div>
+
+            <div class="flex flex-col justify-end xl:col-span-4">
+                <label class="hud-label ml-1">Published Date Range</label>
+                <div class="flex items-center gap-2 h-[50px]">
+                    <div class="tactical-input-container flex-1 h-full flex items-center">
+                        <input type="date" name="start_date" value="{{.StartDate}}" class="w-full bg-transparent border-none px-4 py-2 text-[11px] text-white focus:outline-none [color-scheme:dark]" title="Start Date">
+                    </div>
+                    <span class="text-gray-700 font-bold">-</span>
+                    <div class="tactical-input-container flex-1 h-full flex items-center">
+                        <input type="date" name="end_date" value="{{.EndDate}}" class="w-full bg-transparent border-none px-4 py-2 text-[11px] text-white focus:outline-none [color-scheme:dark]" title="End Date">
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-end gap-2 xl:col-span-2">
+                <label class="flex items-center gap-2 cursor-pointer tactical-input-container px-4 py-[13.5px] hover:bg-white/5 transition-all flex-1 group">
+                    <input type="checkbox" name="kev" value="true" {{if .KevOnly}}checked{{end}} class="w-3.5 h-3.5 rounded border-white/20 bg-white/10 text-primary focus:ring-primary transition-all cursor-pointer">
+                    <span class="text-[9px] font-black text-gray-500 uppercase tracking-widest group-hover:text-white transition-colors">KEV</span>
                 </label>
-                <label class="flex items-center gap-3 cursor-pointer bg-white/5 border border-white/10 rounded-2xl px-5 py-3.5 hover:bg-white/10 transition-all flex-grow group">
-                    <input type="checkbox" name="has_poc" value="true" {{if .HasPoC}}checked{{end}} class="w-4 h-4 rounded border-white/20 bg-white/10 text-primary focus:ring-primary focus:ring-offset-0 transition-all cursor-pointer">
-                    <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest group-hover:text-white transition-colors">PoC</span>
+                <label class="flex items-center gap-2 cursor-pointer tactical-input-container px-4 py-[13.5px] hover:bg-white/5 transition-all flex-1 group">
+                    <input type="checkbox" name="has_poc" value="true" {{if .HasPoC}}checked{{end}} class="w-3.5 h-3.5 rounded border-white/20 bg-white/10 text-primary focus:ring-primary transition-all cursor-pointer">
+                    <span class="text-[9px] font-black text-gray-500 uppercase tracking-widest group-hover:text-white transition-colors">PoC</span>
                 </label>
             </div>
 
-            <div class="flex items-end gap-3 xl:col-span-2">
-                <button type="submit" class="flex-grow py-4 bg-primary text-on-primary rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-primary/20 whitespace-nowrap">
+            <div class="flex items-end gap-2 xl:col-span-2">
+                <button type="submit" class="flex-grow h-[50px] bg-primary text-on-primary rounded-xl font-black uppercase tracking-widest text-[10px] hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-primary/10 whitespace-nowrap">
                     Apply Filter
                 </button>
-                <button type="button" id="clear-filters" class="aspect-square p-4 bg-white/5 border border-white/10 rounded-2xl text-gray-500 hover:text-white hover:bg-red-500/10 hover:border-red-500/20 transition-all flex items-center justify-center" title="Reset All Filters">
+                <button type="button" id="clear-filters" class="h-[50px] aspect-square bg-white/5 border border-white/10 rounded-xl text-gray-500 hover:text-white hover:bg-red-500/10 hover:border-red-500/20 transition-all flex items-center justify-center" title="Reset">
                     <span class="material-symbols-outlined text-lg">filter_alt_off</span>
                 </button>
             </div>
@@ -829,63 +834,64 @@ input[type=number] {
 })();
 </script>
 
-{{end}}
 
-{{define "cve_rows"}}
-    {{range .CVEs}}
-    <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer" data-cve-url="/cve/{{.CVEID}}">
-        <td class="p-6">
-            <div class="flex items-center gap-3">
-                <a href="/cve/{{.CVEID}}" class="text-sm font-black text-white group-hover:text-primary transition-colors">{{.CVEID}}</a>
-            </div>
-        </td>
-        <td class="p-6">
-            <div class="flex items-center gap-2">
-                <span class="text-sm font-bold {{severityColor .CVSSScore}}">
-                    {{printf "%.1f" .CVSSScore}}
-                </span>
-                <div class="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
-                    <div class="h-full {{severityBg .CVSSScore}} max-w-full" style="--w: {{printf "%.0f" (multiply (min 10.0 (max 0.0 .CVSSScore)) 10.0)}}%; width: var(--w)"></div>
+    {{define "cve_rows"}}
+        {{range .CVEs}}
+        <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer" data-cve-url="/cve/{{.CVEID}}">
+            <td class="p-6">
+                <div class="flex items-center gap-3">
+                    <a href="/cve/{{.CVEID}}" class="text-sm font-black text-white group-hover:text-primary transition-colors">{{.CVEID}}</a>
                 </div>
-            </div>
-        </td>
-        <td class="p-6">
-            <div class="flex flex-wrap gap-1.5">
-                {{if .CISAKEV}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-orange-500/20 text-orange-400 border border-orange-500/10">KEV</span>{{end}}
-                {{if gt .GreyNoiseHits 0}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-red-500/20 text-red-400 border border-red-500/10 animate-pulse">Active</span>{{end}}
-                {{if gt .GitHubPoCCount 0}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-purple-500/20 text-purple-400 border border-purple-500/10">PoC</span>{{end}}
-                {{if gt .EPSSScore 0.5}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-red-500/20 text-red-400 border border-red-500/10">High EPSS</span>{{end}}
-                {{if gt .EPSSScore 0.0}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-white/5 text-gray-500 border border-white/5">EPSS: {{printf "%.4f" .EPSSScore}}</span>{{end}}
-            </div>
-        </td>
-        <td class="p-6">
-            <div class="flex flex-col gap-1">
-                {{if .AffectedProducts}}
-                <div class="flex flex-wrap items-center gap-1.5 mb-1">
-                    {{range .AffectedProducts}}
-                    <span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase border {{if eq .Type "a"}}bg-blue-500/20 text-blue-400 border-blue-500/10{{else if eq .Type "o"}}bg-green-500/20 text-green-400 border-green-500/10{{else if eq .Type "h"}}bg-orange-500/20 text-orange-400 border-orange-500/10{{else}}bg-white/5 text-gray-300 border-white/5{{end}}">
-                        {{if .Vendor}}{{.Vendor}}: {{end}}{{.Product}}
+            </td>
+            <td class="p-6">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-bold {{severityColor .CVSSScore}}">
+                        {{printf "%.1f" .CVSSScore}}
                     </span>
+                    <div class="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
+                        <div class="h-full {{severityBg .CVSSScore}} max-w-full" style="--w: {{printf "%.0f" (multiply (min 10.0 (max 0.0 .CVSSScore)) 10.0)}}%; width: var(--w)"></div>
+                    </div>
+                </div>
+            </td>
+            <td class="p-6">
+                <div class="flex flex-wrap gap-1.5">
+                    {{if .CISAKEV}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-orange-500/20 text-orange-400 border border-orange-500/10">KEV</span>{{end}}
+                    {{if gt .GreyNoiseHits 0}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-red-500/20 text-red-400 border border-red-500/10 animate-pulse">Active</span>{{end}}
+                    {{if gt .GitHubPoCCount 0}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-purple-500/20 text-purple-400 border border-purple-500/10">PoC</span>{{end}}
+                    {{if gt .EPSSScore 0.5}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-red-500/20 text-red-400 border border-red-500/10">High EPSS</span>{{end}}
+                    {{if gt .EPSSScore 0.0}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-white/5 text-gray-500 border border-white/5">EPSS: {{printf "%.4f" .EPSSScore}}</span>{{end}}
+                </div>
+            </td>
+            <td class="p-6">
+                <div class="flex flex-col gap-1">
+                    {{if .AffectedProducts}}
+                    <div class="flex flex-wrap items-center gap-1.5 mb-1">
+                        {{range .AffectedProducts}}
+                        <span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase border {{if eq .Type "a"}}bg-blue-500/20 text-blue-400 border-blue-500/10{{else if eq .Type "o"}}bg-green-500/20 text-green-400 border-green-500/10{{else if eq .Type "h"}}bg-orange-500/20 text-orange-400 border-orange-500/10{{else}}bg-white/5 text-gray-300 border-white/5{{end}}">
+                            {{if .Vendor}}{{.Vendor}}: {{end}}{{.Product}}
+                        </span>
+                        {{end}}
+                    </div>
+                    {{else if or .Vendor .Product}}
+                    <div class="flex items-center gap-1.5 mb-1">
+                        {{if .Vendor}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-blue-500/20 text-blue-400 border border-blue-500/10">{{.Vendor}}</span>{{end}}
+                        {{if .Product}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-white/5 text-gray-300 border border-white/5">{{.Product}}</span>{{end}}
+                    </div>
                     {{end}}
+                    <p class="text-xs text-gray-400 line-clamp-2 max-w-xl leading-relaxed">{{.Description}}</p>
                 </div>
-                {{else if or .Vendor .Product}}
-                <div class="flex items-center gap-1.5 mb-1">
-                    {{if .Vendor}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-blue-500/20 text-blue-400 border border-blue-500/10">{{.Vendor}}</span>{{end}}
-                    {{if .Product}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-white/5 text-gray-300 border border-white/5">{{.Product}}</span>{{end}}
-                </div>
-                {{end}}
-                <p class="text-xs text-gray-400 line-clamp-2 max-w-xl leading-relaxed">{{.Description}}</p>
-            </div>
-        </td>
-        <td class="p-6">
-            <span class="text-[10px] font-mono text-gray-500">{{if not .PublishedDate.IsZero}}{{.PublishedDate.Format "2006-01-02"}}{{end}}</span>
-        </td>
-    </tr>
-    {{else}}
-    <tr class="no-results">
-        <td colspan="5" class="p-12 text-center">
-            <span class="material-symbols-outlined text-4xl text-gray-600 mb-4">search_off</span>
-            <p class="text-gray-500 font-bold uppercase tracking-widest text-xs">No vulnerabilities found matching your filters</p>
-        </td>
-    </tr>
-{{end}}{{end}}
+            </td>
+            <td class="p-6">
+                <span class="text-[10px] font-mono text-gray-500">{{if not .PublishedDate.IsZero}}{{.PublishedDate.Format "2006-01-02"}}{{end}}</span>
+            </td>
+        </tr>
+        {{else}}
+        <tr class="no-results">
+            <td colspan="5" class="p-12 text-center">
+                <span class="material-symbols-outlined text-4xl text-gray-600 mb-4">search_off</span>
+                <p class="text-gray-500 font-bold uppercase tracking-widest text-xs">No vulnerabilities found matching your filters</p>
+            </td>
+        </tr>
+        {{end}}
+    {{end}}
+{{end}}
