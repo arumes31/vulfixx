@@ -950,7 +950,7 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	cveID := vars["id"]
 
-	var c models.CVE
+	c := &models.CVE{}
 	err := a.Pool.QueryRow(r.Context(), `
 		SELECT 
 			id, cve_id, description, COALESCE(cvss_score, 0), vector_string, cisa_kev, 
