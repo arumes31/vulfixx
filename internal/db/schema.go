@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS cves (
     cwe_id VARCHAR(50),
     cwe_name TEXT,
     github_poc_count INTEGER DEFAULT 0,
+    greynoise_hits INTEGER DEFAULT 0,
+    greynoise_classification VARCHAR(50),
     osint_data JSONB DEFAULT '{}',
     published_date TIMESTAMP WITH TIME ZONE,
     updated_date TIMESTAMP WITH TIME ZONE,
@@ -259,6 +261,12 @@ BEGIN
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'affected_products') THEN
             ALTER TABLE cves ADD COLUMN affected_products JSONB DEFAULT '[]';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'greynoise_hits') THEN
+            ALTER TABLE cves ADD COLUMN greynoise_hits INTEGER DEFAULT 0;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'greynoise_classification') THEN
+            ALTER TABLE cves ADD COLUMN greynoise_classification VARCHAR(50);
         END IF;
     END IF;
 
