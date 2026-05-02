@@ -3,8 +3,6 @@ package worker
 import (
 	"fmt"
 	"net/http"
-	"os"
-	"strconv"
 )
 
 // EmailSender defines the interface for sending emails.
@@ -18,23 +16,27 @@ type HTTPClient interface {
 }
 
 // RealEmailSender is the default implementation for EmailSender
-type RealEmailSender struct{}
+type RealEmailSender struct {
+	Host     string
+	Port     string
+	User     string
+	Password string
+	From     string
+}
 
-func NewEmailSender() EmailSender {
-	return &RealEmailSender{}
+func NewEmailSender(host, port, user, password, from string) EmailSender {
+	return &RealEmailSender{
+		Host:     host,
+		Port:     port,
+		User:     user,
+		Password: password,
+		From:     from,
+	}
 }
 
 func (s *RealEmailSender) SendEmail(toEmail, subject, body string) error {
-	host := os.Getenv("SMTP_HOST")
-	port := os.Getenv("SMTP_PORT")
-	user := os.Getenv("SMTP_USER")
-	password := os.Getenv("SMTP_PASS")
-	from := os.Getenv("SMTP_FROM")
-	if host == "" || from == "" || port == "" {
+	if s.Host == "" || s.From == "" || s.Port == "" {
 		return fmt.Errorf("SMTP configuration missing (host, port, and from are required)")
-	}
-	if _, err := strconv.Atoi(port); err != nil {
-		return fmt.Errorf("invalid SMTP_PORT %q: must be numeric", port)
 	}
 
 	// Validate subject, email, and from address to prevent header injection
@@ -43,11 +45,11 @@ func (s *RealEmailSender) SendEmail(toEmail, subject, body string) error {
 	if err != nil {
 		return fmt.Errorf("invalid recipient: %w", err)
 	}
-	cleanFrom, err := sanitizeEmail(from)
+	cleanFrom, err := sanitizeEmail(s.From)
 	if err != nil {
 		return fmt.Errorf("invalid sender (SMTP_FROM): %w", err)
 	}
 
 	msg := []byte("To: " + cleanTo + "\r\n" + "From: " + cleanFrom + "\r\n" + "Subject: " + cleanSubject + "\r\n" + "Content-Type: text/html; charset=UTF-8\r\n" + "\r\n" + body)
-	return sendMailWithTimeout(host, port, user, password, cleanFrom, []string{cleanTo}, msg)
+	return sendMailWithTimeout(s.Host, s.Port, s.User, s.Password, cleanFrom, []string{cleanTo}, msg)
 }

@@ -328,12 +328,13 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			Configurations: cve.Configurations,
 		}
 
-		// Detect vendor/product for optimized searching
-		model.Vendor, model.Product = model.GetDetectedProduct()
+		vendor, product := model.GetDetectedProduct()
+		model.Vendor = vendor
+		model.Product = product
 		model.AffectedProducts = model.GetAffectedProducts()
 
 		query := `
-			INSERT INTO cves (cve_id, description, cvss_score, vector_string, cwe_id, "references", configurations, vendor, product, affected_products, published_date, updated_date)
+			INSERT INTO cves (cve_id, description, cvss_score, vector_string, cwe_id, "references", configurations, published_date, updated_date, vendor, product, affected_products)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 			ON CONFLICT (cve_id) DO UPDATE SET
 				description = EXCLUDED.description,
@@ -342,13 +343,13 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 				cwe_id = EXCLUDED.cwe_id,
 				"references" = EXCLUDED."references",
 				configurations = EXCLUDED.configurations,
+				updated_date = EXCLUDED.updated_date,
 				vendor = EXCLUDED.vendor,
 				product = EXCLUDED.product,
 				affected_products = EXCLUDED.affected_products,
-				updated_date = EXCLUDED.updated_date,
 				updated_at = CURRENT_TIMESTAMP
 		`
-		_, err = w.Pool.Exec(ctx, query, model.CVEID, model.Description, model.CVSSScore, model.VectorString, model.CWEID, model.References, model.Configurations, model.Vendor, model.Product, model.AffectedProducts, model.PublishedDate, model.UpdatedDate)
+		_, err = w.Pool.Exec(ctx, query, model.CVEID, model.Description, model.CVSSScore, model.VectorString, model.CWEID, model.References, model.Configurations, model.PublishedDate, model.UpdatedDate, model.Vendor, model.Product, model.AffectedProducts)
 		if err != nil {
 			log.Printf("Worker: Error upserting CVE %s: %v", cve.ID, err)
 			continue

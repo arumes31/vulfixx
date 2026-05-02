@@ -131,6 +131,7 @@ The application follows a modular architecture designed to prevent monolithic fi
 | `SMTP_PORT`| SMTP server port | `587` |
 | `SMTP_USER`| SMTP username | `user@example.com` |
 | `SMTP_PASS`| SMTP password | `password` |
+| `SMTP_MAILFROM`| Sender address for emails (defaults to `SMTP_USER`) | `alerts@example.com` |
 | `SESSION_KEY`| Session signing key | `supersecretkey...` |
 | `CSRF_KEY` | CSRF protection key (32 bytes) | `0123456789...` |
 | `SECURE_COOKIE` | Enable secure cookie flag (for HTTPS) | `true` |

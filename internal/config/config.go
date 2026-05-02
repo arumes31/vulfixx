@@ -25,6 +25,7 @@ type Config struct {
 	SMTPPort        int
 	SMTPUser        string
 	SMTPPass        string
+	SMTPMailFrom    string
 	AdminEmail      string
 	AdminPassword   string
 	AdminTOTPSecret string
@@ -67,6 +68,11 @@ func LoadConfig() {
 		port = 587
 	}
 	AppConfig.SMTPPort = port
+
+	AppConfig.SMTPMailFrom = getEnv("SMTP_MAILFROM", getEnv("SMTP_FROM", ""))
+	if AppConfig.SMTPMailFrom == "" {
+		AppConfig.SMTPMailFrom = AppConfig.SMTPUser
+	}
 
 	secureCookie, err := strconv.ParseBool(getEnv("SECURE_COOKIE", "true"))
 	if err != nil {

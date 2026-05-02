@@ -133,9 +133,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	query := fmt.Sprintf(`
 		SELECT DISTINCT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, COALESCE(c."references", '{}'), ucn.notes,
-		COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0),
-		COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]')
-
+		COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0), COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]')
 		FROM cves c
 		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s
 		LEFT JOIN cve_notes ucn ON c.id = ucn.cve_id AND %s
@@ -666,8 +664,6 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		argIdx++
 	}
 
-
-
 	if cveIDQuery != "" {
 		whereClause += fmt.Sprintf(" AND c.cve_id ILIKE $%d ", argIdx)
 		args = append(args, "%"+cveIDQuery+"%")
@@ -746,8 +742,6 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 			c.published_date, c.updated_date, 'active' as status, COALESCE(c."references", '{}'),
 			COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0),
 			COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]')
-
-
 		FROM cves c
 	`
 	// Dynamic Sort
@@ -780,8 +774,6 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var c models.CVE
 			err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.Vendor, &c.Product, &c.AffectedProducts)
-
-
 			if err != nil {
 				log.Printf("Error scanning public CVE: %v", err)
 				continue
@@ -930,8 +922,6 @@ func (a *App) getTrendingCVEs(r *http.Request) []models.CVE {
 			c.published_date, c.updated_date, 'active' as status, c."references",
 			COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0),
 			COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]')
-
-
 		FROM cves c
 		WHERE c.cisa_kev = true OR c.cvss_score >= 9.5 OR c.github_poc_count > 0 OR c.epss_score >= 0.5
 		ORDER BY c.github_poc_count DESC, c.epss_score DESC, c.published_date DESC NULLS LAST, c.id DESC LIMIT 100
@@ -965,13 +955,9 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 			published_date, updated_date, 'active' as status, "references", 
 			COALESCE(epss_score, 0), COALESCE(cwe_id, ''), COALESCE(cwe_name, ''), COALESCE(github_poc_count, 0),
 			configurations, COALESCE(vendor, ''), COALESCE(product, ''), COALESCE(affected_products, '[]')
-
-
 		FROM cves
 		WHERE cve_id = $1
 	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.Configurations, &c.Vendor, &c.Product, &c.AffectedProducts)
-
-
 
 	c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
 

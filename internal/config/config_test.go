@@ -82,11 +82,15 @@ func TestLoadConfig(t *testing.T) {
 				"ADMIN_PASSWORD":    "adminpass",
 				"ADMIN_TOTP_SECRET": "secret",
 				"SECURE_COOKIE":     "false",
+				"SMTP_MAILFROM":     "alerts@test.local",
 			},
 			wantSMTPPort: 25,
 			wantSecure:   false,
 			wantFatal:    false,
 			checkConfig: func(t *testing.T, c Config) {
+				if c.SMTPMailFrom != "alerts@test.local" {
+					t.Errorf("SMTPMailFrom = %v, want alerts@test.local", c.SMTPMailFrom)
+				}
 				if c.DBHost != "localhost" {
 					t.Errorf("DBHost = %v, want localhost", c.DBHost)
 				}
@@ -139,6 +143,20 @@ func TestLoadConfig(t *testing.T) {
 				"ADMIN_TOTP_SECRET": "at",
 			},
 			wantFatal: false,
+		},
+		{
+			name: "SMTPMailFrom defaults to SMTPUser if empty",
+			envs: map[string]string{
+				"APP_ENV":       "development",
+				"SMTP_USER":      "default@example.com",
+				"SMTP_MAILFROM":  "",
+			},
+			wantFatal: false,
+			checkConfig: func(t *testing.T, c Config) {
+				if c.SMTPMailFrom != "default@example.com" {
+					t.Errorf("SMTPMailFrom = %v, want default@example.com", c.SMTPMailFrom)
+				}
+			},
 		},
 	}
 

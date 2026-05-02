@@ -38,11 +38,10 @@ type CVE struct {
 	Notes          string                 `json:"notes"`
 	References     []string               `json:"references"`
 	Configurations CVEConfigurations      `json:"configurations"`
-	Vendor           string                 `json:"vendor"`
-	Product          string                 `json:"product"`
-	AffectedProducts AffectedProducts       `json:"affected_products"`
-	PublishedDate    time.Time              `json:"published_date"`
-
+	Vendor         string                 `json:"vendor"`
+	Product        string                 `json:"product"`
+	AffectedProducts AffectedProducts     `json:"affected_products"`
+	PublishedDate  time.Time              `json:"published_date"`
 	UpdatedDate    time.Time              `json:"updated_date"`
 	CreatedAt      time.Time              `json:"created_at"`
 }
@@ -78,7 +77,6 @@ func (a AffectedProducts) Value() (driver.Value, error) {
 	return json.Marshal(a)
 }
 
-
 // Scan implements the sql.Scanner interface.
 func (c *CVEConfigurations) Scan(value interface{}) error {
 	if value == nil {
@@ -107,9 +105,6 @@ func (c *CVE) GetDetectedProduct() (vendor, product string) {
 	}
 
 	// Fallback to regex pattern on description
-
-	// Pattern: detected in [vendor] [product]
-	// Using a more robust regex for product extraction
 	re := regexp.MustCompile(`(?i)(?:detected in|affects|found in|vulnerability in) (?:the )?([a-zA-Z0-9_\-\.]{2,}) ([a-zA-Z0-9_\-\.]{2,})`)
 	matches := re.FindStringSubmatch(c.Description)
 	if len(matches) >= 3 {
@@ -202,7 +197,6 @@ func NormalizeName(name string) string {
 	return capitalize(strings.ReplaceAll(name, "_", " "))
 }
 
-
 func capitalize(s string) string {
 	if s == "" {
 		return ""
@@ -215,8 +209,6 @@ func capitalize(s string) string {
 	}
 	return strings.Join(words, " ")
 }
-
-
 
 func (c *CVE) GetLineage() []string {
 	re := regexp.MustCompile(`(?i)CVE-\d{4}-\d{4,}`)
@@ -280,14 +272,11 @@ type Team struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-// TeamWithInviteCode is used only from admin/owner endpoints to expose the invite code.
 type TeamWithInviteCode struct {
 	Team
 	InviteCode string `json:"invite_code"`
 }
 
-// NewTeamWithInviteCode constructs a TeamWithInviteCode from a Team, copying the invite code
-// so callers don't have to populate it manually.
 func NewTeamWithInviteCode(team Team) TeamWithInviteCode {
 	return TeamWithInviteCode{Team: team, InviteCode: team.InviteCode}
 }

@@ -78,7 +78,6 @@ func TestEmailWorker_Queues(t *testing.T) {
 
 func TestEmailSender_Coverage(t *testing.T) {
 	t.Run("MissingConfig", func(t *testing.T) {
-		t.Setenv("SMTP_HOST", "")
 		sender := &RealEmailSender{}
 		err := sender.SendEmail("to@example.com", "sub", "body")
 		if err == nil {
@@ -86,9 +85,11 @@ func TestEmailSender_Coverage(t *testing.T) {
 		}
 	})
 	t.Run("InvalidRecipient", func(t *testing.T) {
-		t.Setenv("SMTP_HOST", "localhost")
-		t.Setenv("SMTP_FROM", "from@example.com")
-		sender := &RealEmailSender{}
+		sender := &RealEmailSender{
+			Host: "localhost",
+			Port: "587",
+			From: "from@example.com",
+		}
 		err := sender.SendEmail("invalid\n", "sub", "body")
 		if err == nil {
 			t.Error("expected error")

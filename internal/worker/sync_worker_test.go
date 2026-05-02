@@ -102,7 +102,7 @@ func TestWorkerSync_NVD(t *testing.T) {
 			WillReturnError(pgx.ErrNoRows)
 
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO cves")).
-			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 7.5, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 7.5, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO sync_state")).
@@ -182,6 +182,7 @@ func TestWorkerSync_CISA(t *testing.T) {
 			WithArgs([]string{"CVE-2023-1111"}).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()
+		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("cisa_kev_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		w.fetchFromCISAKEV(context.Background())
 
@@ -226,6 +227,7 @@ func TestWorkerSync_EPSS(t *testing.T) {
 		mock.ExpectExec("UPDATE cves SET epss_score = u.epss_score").
 			WithArgs([]string{"CVE-EPSS-1"}, []float64{0.0123}).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("epss_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 		defer cancel()
@@ -246,6 +248,10 @@ func TestWorkerSync_GitHub(t *testing.T) {
 	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
 
 	t.Run("Success", func(t *testing.T) {
+		oldDelay := githubSyncDelay
+		githubSyncDelay = 1 * time.Millisecond
+		defer func() { githubSyncDelay = oldDelay }()
+
 		// Override any internal URL if possible, or use MockHTTPClient
 		httpClient := &MockHTTPClient{
 			DoFunc: func(req *http.Request) (*http.Response, error) {
@@ -259,6 +265,7 @@ func TestWorkerSync_GitHub(t *testing.T) {
 
 		mock.ExpectQuery("SELECT cve_id FROM cves").WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-GH-1"))
 		mock.ExpectExec("UPDATE cves SET github_poc_count = \\$1 WHERE cve_id = \\$2").WithArgs(42, "CVE-GH-1").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("github_buzz_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 		defer cancel()

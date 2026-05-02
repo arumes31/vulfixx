@@ -12,6 +12,10 @@ import (
 	"time"
 )
 
+var (
+	githubSyncDelay = 7 * time.Second
+)
+
 func (w *Worker) syncGitHubBuzzPeriodically(ctx context.Context) {
 	w.syncGitHubBuzz(ctx)
 	ticker := time.NewTicker(4 * time.Hour)
@@ -155,7 +159,7 @@ CVELoop:
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(7 * time.Second):
+		case <-time.After(githubSyncDelay):
 		}
 	}
 	w.updateTaskStats(ctx, "github_buzz_sync")
