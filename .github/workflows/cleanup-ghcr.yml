@@ -1,0 +1,25 @@
+name: Manual GHCR Cleanup
+
+on:
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    name: Cleanup GHCR Images
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+
+    steps:
+      - name: Delete old GHCR images
+        uses: snok/container-retention-policy@v3
+        with:
+          account: ${{ github.repository_owner }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          image-names: ${{ github.event.repository.name }}
+          # Keep at least 10 versions of the image
+          keep-at-least: 10
+          # Exclude images tagged 'latest' and 'main'
+          exclude-tags: latest,main
+          # Dry run mode - set to false to actually delete
+          dry-run: true
