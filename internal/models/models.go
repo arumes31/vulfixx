@@ -38,12 +38,46 @@ type CVE struct {
 	Notes          string                 `json:"notes"`
 	References     []string               `json:"references"`
 	Configurations CVEConfigurations      `json:"configurations"`
-	PublishedDate  time.Time              `json:"published_date"`
+	Vendor           string                 `json:"vendor"`
+	Product          string                 `json:"product"`
+	AffectedProducts AffectedProducts       `json:"affected_products"`
+	PublishedDate    time.Time              `json:"published_date"`
+
 	UpdatedDate    time.Time              `json:"updated_date"`
 	CreatedAt      time.Time              `json:"created_at"`
 }
 
 type CVEConfigurations []CVEConfiguration
+
+type AffectedProduct struct {
+	Vendor  string `json:"vendor"`
+	Product string `json:"product"`
+	Type    string `json:"type"` // a, o, h
+}
+
+type AffectedProducts []AffectedProduct
+
+// Scan implements the sql.Scanner interface for JSONB.
+func (a *AffectedProducts) Scan(value interface{}) error {
+	if value == nil {
+		*a = nil
+		return nil
+	}
+	b, ok := value.([]byte)
+	if !ok {
+		return fmt.Errorf("type assertion to []byte failed")
+	}
+	return json.Unmarshal(b, a)
+}
+
+// Value implements the driver.Valuer interface for JSONB.
+func (a AffectedProducts) Value() (driver.Value, error) {
+	if a == nil {
+		return nil, nil
+	}
+	return json.Marshal(a)
+}
+
 
 // Scan implements the sql.Scanner interface.
 func (c *CVEConfigurations) Scan(value interface{}) error {
@@ -67,6 +101,13 @@ func (c CVEConfigurations) Value() (driver.Value, error) {
 }
 
 func (c *CVE) GetDetectedProduct() (vendor, product string) {
+	products := c.GetAffectedProducts()
+	if len(products) > 0 {
+		return products[0].Vendor, products[0].Product
+	}
+
+	// Fallback to regex pattern on description
+
 	// Pattern: detected in [vendor] [product]
 	// Using a more robust regex for product extraction
 	re := regexp.MustCompile(`(?i)(?:detected in|affects|found in|vulnerability in) (?:the )?([a-zA-Z0-9_\-\.]{2,}) ([a-zA-Z0-9_\-\.]{2,})`)
@@ -82,6 +123,100 @@ func (c *CVE) GetDetectedProduct() (vendor, product string) {
 	}
 	return "", ""
 }
+
+func (c *CVE) GetCPEs() []string {
+	var cpes []string
+	seen := make(map[string]bool)
+	for _, config := range c.Configurations {
+		for _, node := range config.Nodes {
+			for _, match := range node.CPEMatch {
+				if match.Criteria != "" && !seen[match.Criteria] {
+					seen[match.Criteria] = true
+					cpes = append(cpes, match.Criteria)
+				}
+			}
+		}
+	}
+	return cpes
+}
+
+func (c *CVE) GetAffectedProducts() []AffectedProduct {
+	var products []AffectedProduct
+	seen := make(map[string]bool)
+	for _, config := range c.Configurations {
+		for _, node := range config.Nodes {
+			for _, match := range node.CPEMatch {
+				if match.Criteria != "" {
+					v, p, t := ParseCPE(match.Criteria)
+					if v != "" && p != "" {
+						key := fmt.Sprintf("%s:%s:%s", v, p, t)
+						if !seen[key] {
+							seen[key] = true
+							products = append(products, AffectedProduct{
+								Vendor:  v,
+								Product: p,
+								Type:    t,
+							})
+						}
+					}
+				}
+			}
+		}
+	}
+	return products
+}
+
+func ParseCPE(cpe string) (vendor, product, part string) {
+	if !strings.HasPrefix(cpe, "cpe:2.3:") {
+		return "", "", ""
+	}
+	parts := strings.Split(cpe, ":")
+	if len(parts) >= 5 {
+		// cpe:2.3:part:vendor:product:...
+		t := parts[2]
+		v := parts[3]
+		p := parts[4]
+		return NormalizeName(v), NormalizeName(p), t
+	}
+	return "", "", ""
+}
+
+var nameAliases = map[string]string{
+	"microsoft":                  "Microsoft",
+	"microsoft_corp":             "Microsoft",
+	"oracle_corp":                "Oracle",
+	"linux_kernel":               "Linux Kernel",
+	"apple_inc":                  "Apple",
+	"google_inc":                 "Google",
+	"apache_software_foundation": "Apache",
+	"redhat":                     "Red Hat",
+	"debian_linux":               "Debian",
+	"canonical":                  "Ubuntu",
+}
+
+func NormalizeName(name string) string {
+	low := strings.ToLower(name)
+	if alias, ok := nameAliases[low]; ok {
+		return alias
+	}
+	return capitalize(strings.ReplaceAll(name, "_", " "))
+}
+
+
+func capitalize(s string) string {
+	if s == "" {
+		return ""
+	}
+	words := strings.Fields(s)
+	for i, w := range words {
+		if len(w) > 0 {
+			words[i] = strings.ToUpper(w[0:1]) + strings.ToLower(w[1:])
+		}
+	}
+	return strings.Join(words, " ")
+}
+
+
 
 func (c *CVE) GetLineage() []string {
 	re := regexp.MustCompile(`(?i)CVE-\d{4}-\d{4,}`)

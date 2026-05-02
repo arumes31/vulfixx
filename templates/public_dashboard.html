@@ -861,7 +861,23 @@ input[type=number] {
             </div>
         </td>
         <td class="p-6">
-            <p class="text-xs text-gray-400 line-clamp-2 max-w-xl leading-relaxed">{{.Description}}</p>
+            <div class="flex flex-col gap-1">
+                {{if .AffectedProducts}}
+                <div class="flex flex-wrap items-center gap-1.5 mb-1">
+                    {{range .AffectedProducts}}
+                    <span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase border {{if eq .Type "a"}}bg-blue-500/20 text-blue-400 border-blue-500/10{{else if eq .Type "o"}}bg-green-500/20 text-green-400 border-green-500/10{{else if eq .Type "h"}}bg-orange-500/20 text-orange-400 border-orange-500/10{{else}}bg-white/5 text-gray-300 border-white/5{{end}}">
+                        {{if .Vendor}}{{.Vendor}}: {{end}}{{.Product}}
+                    </span>
+                    {{end}}
+                </div>
+                {{else if or .Vendor .Product}}
+                <div class="flex items-center gap-1.5 mb-1">
+                    {{if .Vendor}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-blue-500/20 text-blue-400 border border-blue-500/10">{{.Vendor}}</span>{{end}}
+                    {{if .Product}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-white/5 text-gray-300 border border-white/5">{{.Product}}</span>{{end}}
+                </div>
+                {{end}}
+                <p class="text-xs text-gray-400 line-clamp-2 max-w-xl leading-relaxed">{{.Description}}</p>
+            </div>
         </td>
         <td class="p-6">
             <span class="text-[10px] font-mono text-gray-500">{{if not .PublishedDate.IsZero}}{{.PublishedDate.Format "2006-01-02"}}{{end}}</span>
@@ -874,5 +890,4 @@ input[type=number] {
             <p class="text-gray-500 font-bold uppercase tracking-widest text-xs">No vulnerabilities found matching your filters</p>
         </td>
     </tr>
-{{end}}
-{{end}}
+{{end}}{{end}}

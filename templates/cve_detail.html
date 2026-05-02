@@ -72,7 +72,7 @@
                     <span class="text-sm font-mono text-white">{{printf "%.4f" .CVE.EPSSScore}}</span>
                 </div>
                 <div class="w-full h-1 bg-white/5 rounded-full overflow-hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{round (multiply .CVE.EPSSScore 100)}}">
-                    <div class="h-full bg-primary" style="width: {{multiply .CVE.EPSSScore 100}}%"></div>
+                    <div class="h-full bg-primary" style="--p: {{multiply .CVE.EPSSScore 100}}%; width: var(--p)"></div>
                     <span class="sr-only">EPSS score: {{round (multiply .CVE.EPSSScore 100)}}%</span>
                 </div>
             </div>
@@ -135,8 +135,17 @@
             
             <!-- Dynamic Vendors Badge List -->
             <div id="vendor-list" class="flex flex-wrap gap-2 justify-end">
-                <!-- Populated by JS -->
+                {{range .CVE.AffectedProducts}}
+                <span class="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border
+                    {{if eq .Type "a"}}bg-blue-500/10 text-blue-400 border-blue-500/20
+                    {{else if eq .Type "o"}}bg-green-500/10 text-green-400 border-green-500/20
+                    {{else if eq .Type "h"}}bg-orange-500/10 text-orange-400 border-orange-500/20
+                    {{else}}bg-tertiary/10 text-tertiary border-tertiary/20{{end}}">
+                    {{.Vendor}}
+                </span>
+                {{end}}
             </div>
+
         </div>
 
         {{if .CVE.Configurations}}
@@ -192,19 +201,25 @@
             </div>
         </div>
         {{else}}
-            {{$detected := detectProduct .CVE}}
-            {{if $detected}}
-            <div class="glass p-8 rounded-3xl border border-white/10 flex items-center gap-6">
-                <div class="w-16 h-16 rounded-2xl bg-tertiary/10 flex items-center justify-center text-tertiary">
-                    <span class="material-symbols-outlined text-3xl">inventory_2</span>
-                </div>
-                <div>
-                    <div class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Detected Software</div>
-                    <div class="text-2xl font-black text-white product-detected" data-vendor="{{index $detected "vendor"}}">
-                        {{index $detected "vendor"}} <span class="text-tertiary">{{index $detected "product"}}</span>
+            {{if .CVE.AffectedProducts}}
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {{range .CVE.AffectedProducts}}
+                <div class="glass p-6 rounded-2xl border border-white/10 flex items-center gap-4">
+                    <div class="w-12 h-12 rounded-xl flex items-center justify-center
+                        {{if eq .Type "a"}}bg-blue-500/10 text-blue-400
+                        {{else if eq .Type "o"}}bg-green-500/10 text-green-400
+                        {{else if eq .Type "h"}}bg-orange-500/10 text-orange-400
+                        {{else}}bg-tertiary/10 text-tertiary{{end}}">
+                        <span class="material-symbols-outlined">
+                            {{if eq .Type "a"}}apps{{else if eq .Type "o"}}settings_input_antenna{{else if eq .Type "h"}}memory{{else}}inventory_2{{end}}
+                        </span>
                     </div>
-                    <p class="text-xs text-gray-500 mt-2">Information automatically identified from vulnerability description.</p>
+                    <div>
+                        <div class="text-[8px] font-black uppercase tracking-widest text-gray-500">{{if eq .Type "a"}}Application{{else if eq .Type "o"}}Operating System{{else if eq .Type "h"}}Hardware / IoT{{else}}Product{{end}}</div>
+                        <div class="text-sm font-black text-white">{{.Vendor}} <span class="text-gray-400">{{.Product}}</span></div>
+                    </div>
                 </div>
+                {{end}}
             </div>
             {{else}}
             <div class="glass p-12 rounded-3xl border border-white/5 bg-white/[0.01] text-center">
@@ -213,6 +228,7 @@
             </div>
             {{end}}
         {{end}}
+
     </section>
 
     <!-- Vulnerability Lineage (Zombie CVE) -->
@@ -401,34 +417,8 @@
             clearLoader('<span class="text-[9px] font-mono text-gray-600 italic">Error parsing vector</span>');
         }
 
-        // 2. Extract Vendors
-        const vendorList = document.getElementById('vendor-list');
-        if (vendorList) {
-            vendorList.innerHTML = '';
-            const vendors = new Set();
-            
-            const cpeStrings = document.querySelectorAll('.cpe-string');
-            for (let i = 0; i < cpeStrings.length; i++) {
-                const cpe = cpeStrings[i].dataset.cpe;
-                if (cpe && cpe.indexOf('cpe:2.3:') === 0) {
-                    const parts = cpe.split(':');
-                    if (parts.length > 4) vendors.add(parts[3].replace(/_/g, ' '));
-                }
-            }
+        // 2. Extract Vendors (Legacy fallback removed, now using server-side data)
 
-            const productDetecteds = document.querySelectorAll('.product-detected');
-            for (let i = 0; i < productDetecteds.length; i++) {
-                const vendor = productDetecteds[i].dataset.vendor;
-                if (vendor) vendors.add(vendor.replace(/_/g, ' '));
-            }
-
-            vendors.forEach(function(vendor) {
-                const badge = document.createElement('span');
-                badge.className = 'px-3 py-1 bg-tertiary/10 text-tertiary border border-tertiary/20 rounded-full text-[10px] font-black uppercase tracking-widest';
-                badge.textContent = vendor;
-                vendorList.appendChild(badge);
-            });
-        }
 
         // 3. Enhanced References
         const sourceIcons = {

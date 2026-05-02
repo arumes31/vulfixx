@@ -98,13 +98,32 @@ func TestGetDetectedProduct(t *testing.T) {
 			wantVendor:  "",
 			wantProduct: "",
 		},
+		{
+			description: "CPE test",
+			wantVendor:  "Microsoft",
+			wantProduct: "Office",
+		},
 	}
 
-	for _, tt := range tests {
+	for i, tt := range tests {
 		cve := CVE{Description: tt.description}
+		if tt.description == "CPE test" {
+			cve.Configurations = []CVEConfiguration{
+				{
+					Nodes: []ConfigNode{
+						{
+							CPEMatch: []CPEMatch{
+								{Criteria: "cpe:2.3:a:microsoft:office:2019:*:*:*:*:*:*:*"},
+							},
+						},
+					},
+				},
+			}
+		}
+
 		gotV, gotP := cve.GetDetectedProduct()
 		if gotV != tt.wantVendor || gotP != tt.wantProduct {
-			t.Errorf("GetDetectedProduct() = (%q, %q), want (%q, %q) for description: %q", gotV, gotP, tt.wantVendor, tt.wantProduct, tt.description)
+			t.Errorf("Test %d: GetDetectedProduct() = (%q, %q), want (%q, %q) for description: %q", i, gotV, gotP, tt.wantVendor, tt.wantProduct, tt.description)
 		}
 	}
 }
