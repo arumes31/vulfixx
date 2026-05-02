@@ -43,6 +43,9 @@ CREATE TABLE IF NOT EXISTS cves (
     updated_date TIMESTAMP WITH TIME ZONE,
     "references" TEXT[],
     configurations JSONB DEFAULT '[]',
+    vendor VARCHAR(255),
+    product VARCHAR(255),
+    affected_products JSONB DEFAULT '[]',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -248,6 +251,15 @@ BEGIN
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'configurations') THEN
             ALTER TABLE cves ADD COLUMN configurations JSONB DEFAULT '[]';
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'vendor') THEN
+            ALTER TABLE cves ADD COLUMN vendor VARCHAR(255);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'product') THEN
+            ALTER TABLE cves ADD COLUMN product VARCHAR(255);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'affected_products') THEN
+            ALTER TABLE cves ADD COLUMN affected_products JSONB DEFAULT '[]';
+        END IF;
     END IF;
 
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_activity_logs') THEN
@@ -268,6 +280,9 @@ CREATE INDEX IF NOT EXISTS idx_cves_updated_date ON cves (updated_date DESC);
 CREATE INDEX IF NOT EXISTS idx_assets_team_id ON assets(team_id);
 CREATE INDEX IF NOT EXISTS idx_user_cve_status_team_id ON user_cve_status(team_id);
 CREATE INDEX IF NOT EXISTS idx_cve_notes_team_id ON cve_notes(team_id);
+CREATE INDEX IF NOT EXISTS idx_cves_vendor ON cves(vendor);
+CREATE INDEX IF NOT EXISTS idx_cves_product ON cves(product);
+CREATE INDEX IF NOT EXISTS idx_cves_affected_products ON cves USING GIN (affected_products);
 
 -- Partial Unique Indexes for status and notes
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_status ON user_cve_status (user_id, cve_id) WHERE team_id IS NULL;

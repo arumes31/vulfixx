@@ -94,6 +94,12 @@ func migrate(ctx context.Context) error {
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS github_poc_count INTEGER DEFAULT 0;",
 		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS filter_logic TEXT DEFAULT '';",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS osint_data JSONB DEFAULT '{}';",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS vendor VARCHAR(255);",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS product VARCHAR(255);",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS affected_products JSONB DEFAULT '[]';",
+		"CREATE INDEX IF NOT EXISTS idx_cves_vendor ON cves(vendor);",
+		"CREATE INDEX IF NOT EXISTS idx_cves_product ON cves(product);",
+		"CREATE INDEX IF NOT EXISTS idx_cves_affected_products ON cves USING GIN (affected_products);",
 	}
 
 	for i, q := range queries {
