@@ -199,8 +199,5 @@ func (w *Worker) integrateAdvisoryCVE(ctx context.Context, cveID string, item Ge
 				_ = w.enqueueAlertsForCVE(ctx, model)
 			}
 		}
-	} else {
-		// CVE doesn't exist - Skip as per "no bloat" instruction
-		// log.Printf("Worker: [DEBUG] Skipping unknown CVE %s found in %s RSS", cveID, feed.Name)
 	}
 }
