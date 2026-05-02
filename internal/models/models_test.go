@@ -169,3 +169,80 @@ func TestGetLineage(t *testing.T) {
 		}
 	}
 }
+func TestGetAffectedProducts(t *testing.T) {
+	tests := []struct {
+		name            string
+		vendor          string
+		product         string
+		configurations  CVEConfigurations
+		wantLen         int
+		wantUnconfirmed bool
+		wantVendor      string
+		wantProduct     string
+	}{
+		{
+			name:    "Structured Data Present",
+			vendor:  "kleneway",
+			product: "awesome-cursor-mpc-server",
+			configurations: CVEConfigurations{
+				{
+					Nodes: []ConfigNode{
+						{
+							CPEMatch: []CPEMatch{
+								{Criteria: "cpe:2.3:a:kleneway:awesome-cursor-mpc-server:2.0.1:*:*:*:*:*:*:*"},
+							},
+						},
+					},
+				},
+			},
+			wantLen:         1,
+			wantUnconfirmed: false,
+			wantVendor:      "Kleneway", // Normalized
+			wantProduct:     "Awesome-cursor-mpc-server", // Normalized
+		},
+		{
+			name:            "Fallback to Heuristic",
+			vendor:          "kleneway",
+			product:         "awesome-cursor-mpc-server",
+			configurations:  nil,
+			wantLen:         1,
+			wantUnconfirmed: true,
+			wantVendor:      "kleneway",
+			wantProduct:     "awesome-cursor-mpc-server",
+		},
+		{
+			name:            "Empty All",
+			vendor:          "",
+			product:         "",
+			configurations:  nil,
+			wantLen:         0,
+			wantUnconfirmed: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &CVE{
+				Vendor:         tt.vendor,
+				Product:        tt.product,
+				Configurations: tt.configurations,
+			}
+			got := c.GetAffectedProducts()
+			if len(got) != tt.wantLen {
+				t.Errorf("GetAffectedProducts() len = %d, want %d", len(got), tt.wantLen)
+				return
+			}
+			if tt.wantLen > 0 {
+				if got[0].Unconfirmed != tt.wantUnconfirmed {
+					t.Errorf("GetAffectedProducts() Unconfirmed = %v, want %v", got[0].Unconfirmed, tt.wantUnconfirmed)
+				}
+				if got[0].Vendor != tt.wantVendor {
+					t.Errorf("GetAffectedProducts() Vendor = %q, want %q", got[0].Vendor, tt.wantVendor)
+				}
+				if got[0].Product != tt.wantProduct {
+					t.Errorf("GetAffectedProducts() Product = %q, want %q", got[0].Product, tt.wantProduct)
+				}
+			}
+		})
+	}
+}

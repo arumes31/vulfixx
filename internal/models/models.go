@@ -54,10 +54,11 @@ type CVE struct {
 type CVEConfigurations []CVEConfiguration
 
 type AffectedProduct struct {
-	Vendor  string `json:"vendor"`
-	Product string `json:"product"`
-	Version string `json:"version"`
-	Type    string `json:"type"` // a, o, h
+	Vendor      string `json:"vendor"`
+	Product     string `json:"product"`
+	Version     string `json:"version"`
+	Type        string `json:"type"` // a, o, h
+	Unconfirmed bool   `json:"unconfirmed"`
 }
 
 type AffectedProducts []AffectedProduct
@@ -208,6 +209,15 @@ func (c *CVE) GetAffectedProducts() []AffectedProduct {
 			}
 		}
 	}
+	if len(products) == 0 && c.Vendor != "" && c.Product != "" {
+		products = append(products, AffectedProduct{
+			Vendor:      c.Vendor,
+			Product:     c.Product,
+			Unconfirmed: true,
+			Type:        "a", // Default to application for heuristic matches
+		})
+	}
+
 	return products
 }
 

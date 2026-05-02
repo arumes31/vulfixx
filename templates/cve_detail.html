@@ -178,7 +178,7 @@
         {{if $products}}
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {{range $products}}
-            <div class="glass p-6 rounded-[2rem] border border-white/10 flex items-center gap-6 hover:border-primary/40 transition-all group/card relative overflow-hidden summary-product-card"
+            <div class="glass p-6 rounded-[2rem] border {{if .Unconfirmed}}border-dashed border-orange-500/30{{else}}border-white/10{{end}} flex items-center gap-6 hover:border-primary/40 transition-all group/card relative overflow-hidden summary-product-card"
                  data-vendor="{{.Vendor}}" data-product="{{.Product}}">
                 <div class="absolute top-0 right-0 p-4 opacity-[0.03] group-hover/card:opacity-[0.07] transition-opacity">
                     <span class="material-symbols-outlined text-6xl">
@@ -197,6 +197,12 @@
                 <div class="flex-1 relative z-10">
                     <div class="flex items-center gap-2 mb-1">
                         <div class="text-[9px] font-black uppercase tracking-[0.2em] text-gray-500">{{if eq .Type "a"}}Application{{else if eq .Type "o"}}Operating System{{else if eq .Type "h"}}Hardware / IoT{{else}}Product{{end}}</div>
+                        {{if .Unconfirmed}}
+                        <div class="tooltip-trigger">
+                            <span class="material-symbols-outlined text-[12px] text-orange-400 animate-pulse">help</span>
+                            <div class="tooltip">Heuristic match based on description (Unconfirmed by NVD/OSV)</div>
+                        </div>
+                        {{end}}
                         <div class="product-match-status"></div>
                     </div>
                     <div class="text-lg font-black text-white group-hover/card:text-primary transition-colors leading-tight">{{.Vendor}}</div>
