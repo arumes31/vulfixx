@@ -97,6 +97,7 @@ func migrate(ctx context.Context) error {
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS vendor VARCHAR(255);",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS product VARCHAR(255);",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS affected_products JSONB DEFAULT '[]';",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS osv_data JSONB DEFAULT '{}';",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS greynoise_hits INTEGER DEFAULT 0;",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS greynoise_classification VARCHAR(50);",
 		"CREATE INDEX IF NOT EXISTS idx_cves_vendor ON cves(vendor);",

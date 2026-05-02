@@ -53,8 +53,8 @@ func TestMigrate(t *testing.T) {
 				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
 
 				// Expectations for each migration query in migrate()
-				// There are 22 queries in the queries slice
-				for i := 0; i < 22; i++ {
+				// There are 23 queries in the queries slice
+				for i := 0; i < 23; i++ {
 					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
 				}
 			},
@@ -209,7 +209,7 @@ func TestInitDB_Complex(t *testing.T) {
 				mock.ExpectPing().WillReturnError(fmt.Errorf("not ready yet"))
 				mock.ExpectPing() // Succeeds on 3rd try
 				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
-				for i := 0; i < 22; i++ {
+				for i := 0; i < 23; i++ {
 					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
 				}
 			},
@@ -222,7 +222,7 @@ func TestInitDB_Complex(t *testing.T) {
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectPing()
 				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
-				for i := 0; i < 22; i++ {
+				for i := 0; i < 23; i++ {
 					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
 				}
 			},

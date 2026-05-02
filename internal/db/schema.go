@@ -262,6 +262,9 @@ BEGIN
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'affected_products') THEN
             ALTER TABLE cves ADD COLUMN affected_products JSONB DEFAULT '[]';
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'osv_data') THEN
+            ALTER TABLE cves ADD COLUMN osv_data JSONB DEFAULT '{}';
+        END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'greynoise_hits') THEN
             ALTER TABLE cves ADD COLUMN greynoise_hits INTEGER DEFAULT 0;
         END IF;
