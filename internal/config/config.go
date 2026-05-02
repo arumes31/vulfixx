@@ -25,6 +25,7 @@ type Config struct {
 	SMTPPort        int
 	SMTPUser        string
 	SMTPPass        string
+	SMTPMailFrom    string
 	AdminEmail      string
 	AdminPassword   string
 	AdminTOTPSecret string
@@ -54,6 +55,7 @@ func LoadConfig() {
 		SMTPHost:        getEnv("SMTP_HOST", "smtp.example.com"),
 		SMTPUser:        getEnv("SMTP_USER", "user@example.com"),
 		SMTPPass:        getEnv("SMTP_PASS", ""),
+		SMTPMailFrom:    getEnv("SMTP_MAILFROM", getEnv("SMTP_FROM", getEnv("SMTP_USER", "user@example.com"))),
 		AdminEmail:      getEnv("ADMIN_EMAIL", ""),
 		AdminPassword:   getEnv("ADMIN_PASSWORD", ""),
 		AdminTOTPSecret: getEnv("ADMIN_TOTP_SECRET", ""),
