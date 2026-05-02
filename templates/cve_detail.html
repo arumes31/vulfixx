@@ -78,7 +78,7 @@
                     <span class="text-sm font-mono text-white">{{printf "%.4f" .CVE.EPSSScore}}</span>
                 </div>
                 <div class="w-full h-1 bg-white/5 rounded-full overflow-hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{round (multiply .CVE.EPSSScore 100)}}">
-                    <div class="h-full bg-primary" style="width: {{printf "%.2f%%" (multiply .CVE.EPSSScore 100.0)}}"></div>
+                    <div class="h-full bg-primary epss-bar" data-width="{{printf "%.2f" (multiply .CVE.EPSSScore 100.0)}}"></div>
                     <span class="sr-only">EPSS score: {{round (multiply .CVE.EPSSScore 100)}}%</span>
                 </div>
             </div>
@@ -416,8 +416,24 @@
         0% { transform: scale(.33); }
         80%, 100% { opacity: 0; }
     }
-    .asset-match-badge { @apply bg-primary/20 text-primary border border-primary/30 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter; }
+    .asset-match-badge { 
+        background-color: rgba(0, 218, 243, 0.2); 
+        color: #00daf3; 
+        border: 1px solid rgba(0, 218, 243, 0.3); 
+        padding: 2px 4px; 
+        border-radius: 4px; 
+        font-size: 8px; 
+        font-weight: 900; 
+        text-transform: uppercase; 
+        letter-spacing: -0.05em; 
+    }
 </style>
+
+<script id="cve-data" type="application/json" nonce="{{.Nonce}}">
+{
+    "userAssets": {{marshal .UserAssets}}
+}
+</script>
 
 <script nonce="{{.Nonce}}">
 (function() {
@@ -486,8 +502,15 @@
         }
 
 
+        // EPSS Bar Initialization
+        document.querySelectorAll('.epss-bar').forEach(function(bar) {
+            const width = bar.dataset.width;
+            if (width) bar.style.width = width + '%';
+        });
+
         // Automatic Asset Matching
-        const userAssets = {{marshal .UserAssets}};
+        const cveData = JSON.parse(document.getElementById('cve-data').textContent);
+        const userAssets = cveData.userAssets;
         if (userAssets && userAssets.length > 0) {
             const rows = document.querySelectorAll('.config-row');
             const summaryCards = document.querySelectorAll('.summary-product-card');

@@ -49,6 +49,8 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 - **Categorized Software Impact**: Automatic classification of vulnerable assets into **Application (a)**, **Operating System (o)**, and **Hardware (h)** categories with visual distinction.
 - **Multi-Product Intelligence**: Structured **JSONB storage** supporting the extraction and tracking of multiple affected products per CVE, backed by **GIN (Generalized Inverted Index)** for high-performance sub-second queries.
 - **Vendor Name Normalization**: Centralized alias mapping system that unifies inconsistent vendor names (e.g., `microsoft_corp` → `Microsoft`) for professional-grade reporting.
+- **Intelligence Sync Optimization**: High-throughput synchronization engine with batch processing (200 CVEs/run) and **automated 30-day refresh cycles** for existing records.
+- **OSV & GreyNoise Integration**: Enhanced monitoring for Open Source Vulnerabilities (OSV) and GreyNoise threat intelligence with automated stale-data detection.
 
 ## 🏗️ Architecture
 The application follows a modular architecture designed to prevent monolithic files and improve domain separation.

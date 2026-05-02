@@ -186,40 +186,61 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch severity distribution
 	var severityCounts SeverityCounts
+	severityQuery := fmt.Sprintf(`
+		SELECT 
+			COUNT(DISTINCT CASE WHEN c.cvss_score >= 9.0 THEN c.id END),
+			COUNT(DISTINCT CASE WHEN c.cvss_score >= 7.0 AND c.cvss_score < 9.0 THEN c.id END),
+			COUNT(DISTINCT CASE WHEN c.cvss_score >= 4.0 AND c.cvss_score < 7.0 THEN c.id END),
+			COUNT(DISTINCT CASE WHEN c.cvss_score < 4.0 THEN c.id END)
+		FROM cves c
+		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s
+	`, statusJoinCond)
 
-	// Create base query from metricsQuery by replacing its SELECT list
-	idx := strings.Index(metricsQuery, "FROM cves c")
-	var baseFromJoin string
-	if idx >= 0 {
-		baseFromJoin = metricsQuery[idx:]
-	} else {
-		baseFromJoin = " FROM cves c "
+	if !searchAll {
+		severityQuery += " INNER JOIN user_subscriptions us ON us.user_id = $1 "
+	}
+	severityQuery += whereClause
+
+	err = a.Pool.QueryRow(r.Context(), severityQuery, args...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
+	if err != nil {
+		log.Printf("Severity distribution error: %v", err)
 	}
 
-	// Severity distribution query arguments
-	// Use 'args' which contains parameters for whereClause
-	severityQuery := "SELECT " +
-		"COUNT(DISTINCT CASE WHEN c.cvss_score >= 9.0 THEN c.id END), " +
-		"COUNT(DISTINCT CASE WHEN c.cvss_score >= 7.0 AND c.cvss_score < 9.0 THEN c.id END), " +
-		"COUNT(DISTINCT CASE WHEN c.cvss_score >= 4.0 AND c.cvss_score < 7.0 THEN c.id END), " +
-		"COUNT(DISTINCT CASE WHEN c.cvss_score < 4.0 THEN c.id END) " +
-		baseFromJoin + whereClause
-	_ = a.Pool.QueryRow(r.Context(), severityQuery, args...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
-
-	// Fetch status distribution for the current view
+	// Fetch status distribution
 	var statusCounts StatusCounts
-	statusQuery := "SELECT " +
-		"COUNT(DISTINCT CASE WHEN COALESCE(ucs.status, 'active') = 'active' THEN c.id END), " +
-		"COUNT(DISTINCT CASE WHEN ucs.status = 'in_progress' THEN c.id END), " +
-		"COUNT(DISTINCT CASE WHEN ucs.status = 'resolved' THEN c.id END), " +
-		"COUNT(DISTINCT CASE WHEN ucs.status = 'ignored' THEN c.id END) " +
-		baseFromJoin + whereClause
+	statusQuery := fmt.Sprintf(`
+		SELECT 
+			COUNT(DISTINCT CASE WHEN COALESCE(ucs.status, 'active') = 'active' THEN c.id END),
+			COUNT(DISTINCT CASE WHEN ucs.status = 'in_progress' THEN c.id END),
+			COUNT(DISTINCT CASE WHEN ucs.status = 'resolved' THEN c.id END),
+			COUNT(DISTINCT CASE WHEN ucs.status = 'ignored' THEN c.id END)
+		FROM cves c
+		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s
+	`, statusJoinCond)
 
-	_ = a.Pool.QueryRow(r.Context(), statusQuery, args...).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
-	
+	if !searchAll {
+		statusQuery += " INNER JOIN user_subscriptions us ON us.user_id = $1 "
+	}
+	statusQuery += whereClause
+
+	err = a.Pool.QueryRow(r.Context(), statusQuery, args...).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
+	if err != nil {
+		log.Printf("Status distribution error: %v", err)
+	}
+
 	var topCWEs []CWEStat
-	cweQueryRows, _ := a.Pool.Query(r.Context(), "SELECT cwe_id, COALESCE(MAX(cwe_name), 'Unknown'), COUNT(*) as cnt FROM cves c "+whereClause+" AND cwe_id IS NOT NULL AND cwe_id != '' GROUP BY cwe_id ORDER BY cnt DESC LIMIT 15", args...)
-	if cweQueryRows != nil {
+	cweBaseQuery := "SELECT cwe_id, COALESCE(MAX(cwe_name), 'Unknown'), COUNT(DISTINCT c.id) as cnt FROM cves c "
+	if !searchAll {
+		cweBaseQuery += " INNER JOIN user_subscriptions us ON us.user_id = $1 "
+	}
+	cweBaseQuery += fmt.Sprintf(" LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s ", statusJoinCond)
+	cweQuery := cweBaseQuery + whereClause + " AND cwe_id IS NOT NULL AND cwe_id != '' GROUP BY cwe_id ORDER BY cnt DESC LIMIT 15"
+
+	cweQueryRows, err := a.Pool.Query(r.Context(), cweQuery, args...)
+	if err != nil {
+		log.Printf("CWE distribution error: %v", err)
+	} else {
+		defer cweQueryRows.Close()
 		for cweQueryRows.Next() {
 			var s CWEStat
 			if err := cweQueryRows.Scan(&s.ID, &s.Name, &s.Count); err == nil {
@@ -227,7 +248,6 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 				topCWEs = append(topCWEs, s)
 			}
 		}
-		cweQueryRows.Close()
 	}
 
 	a.RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
@@ -249,6 +269,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"SeverityCounts": severityCounts,
 		"StatusCounts":   statusCounts,
 		"TopCWEs":        topCWEs,
+		"csrfToken":      csrf.Token(r),
 	})
 }
 

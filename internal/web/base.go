@@ -223,6 +223,11 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 		}
 		data["OnboardingCompleted"] = onboardingCompleted
 
+		// Fetch user's subscription count
+		var subCount int
+		_ = a.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1", userID).Scan(&subCount)
+		data["SubCount"] = subCount
+
 		// Fetch user's teams
 		teamRows, err := a.Pool.Query(r.Context(), `
 			SELECT t.id, t.name 

@@ -29,12 +29,12 @@ func (w *Worker) syncOSVPeriodically(ctx context.Context) {
 func (w *Worker) syncOSV(ctx context.Context) {
 	log.Println("Worker: [SYNC] Starting OSV (Open Source Vulnerabilities) synchronization...")
 
-	// Prioritize CVEs that haven't been checked yet, focusing on newest and most critical
+	// Prioritize CVEs that haven't been checked yet, then oldest ones (older than 30 days)
 	rows, err := w.Pool.Query(ctx, `
 		SELECT cve_id FROM cves 
-		WHERE osv_last_updated IS NULL
-		ORDER BY published_date DESC NULLS LAST, cvss_score DESC NULLS LAST
-		LIMIT 100
+		WHERE osv_last_updated IS NULL OR osv_last_updated < NOW() - INTERVAL '30 days'
+		ORDER BY osv_last_updated ASC NULLS FIRST
+		LIMIT 200
 	`)
 	if err != nil {
 		log.Printf("Worker: [ERROR] Failed to fetch CVEs for OSV sync: %v", err)

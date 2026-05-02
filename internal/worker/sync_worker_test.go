@@ -301,7 +301,7 @@ func TestWorkerSync_GreyNoise(t *testing.T) {
 	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, httpClient)
 
 	t.Run("Success", func(t *testing.T) {
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT cve_id FROM cves WHERE greynoise_last_updated IS NULL")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT cve_id FROM cves WHERE greynoise_last_updated IS NULL OR greynoise_last_updated < NOW() - INTERVAL '30 days' ORDER BY greynoise_last_updated ASC NULLS FIRST LIMIT 200")).
 			WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-GN-1"))
 		
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE cves SET greynoise_hits = $1, greynoise_last_updated = NOW() WHERE cve_id = $2")).
@@ -341,7 +341,7 @@ func TestWorkerSync_OSV(t *testing.T) {
 	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, httpClient)
 
 	t.Run("Success", func(t *testing.T) {
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT cve_id FROM cves WHERE osv_last_updated IS NULL")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT cve_id FROM cves WHERE osv_last_updated IS NULL OR osv_last_updated < NOW() - INTERVAL '30 days' ORDER BY osv_last_updated ASC NULLS FIRST LIMIT 200")).
 			WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-OSV-1"))
 		
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE cves SET osv_data = $1, osv_last_updated = NOW() WHERE cve_id = $2")).
@@ -376,7 +376,7 @@ func TestWorkerSync_OSV(t *testing.T) {
 		}
 		w2 := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, httpClient)
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT cve_id FROM cves WHERE osv_last_updated IS NULL")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT cve_id FROM cves WHERE osv_last_updated IS NULL OR osv_last_updated < NOW() - INTERVAL '30 days' ORDER BY osv_last_updated ASC NULLS FIRST LIMIT 200")).
 			WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-OSV-NONE"))
 		
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE cves SET osv_last_updated = NOW() WHERE cve_id = $1")).
