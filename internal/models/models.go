@@ -35,8 +35,8 @@ type CVE struct {
 	GitHubPoCCount int                    `json:"github_poc_count"`
 	GreyNoiseHits  int                    `json:"greynoise_hits"`
 	GreyNoiseClass string                 `json:"greynoise_classification"`
-	OSVData        map[string]interface{} `json:"osv_data"`
-	OSINTData      map[string]interface{} `json:"osint_data"`
+	OSVData        JSONBMap               `json:"osv_data"`
+	OSINTData      JSONBMap               `json:"osint_data"`
 	Status         string                 `json:"status"`
 	Notes          string                 `json:"notes"`
 	References     []string               `json:"references"`
@@ -99,6 +99,29 @@ func (c CVEConfigurations) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return json.Marshal(c)
+}
+
+type JSONBMap map[string]interface{}
+
+// Scan implements the sql.Scanner interface for JSONB.
+func (m *JSONBMap) Scan(value interface{}) error {
+	if value == nil {
+		*m = nil
+		return nil
+	}
+	b, ok := value.([]byte)
+	if !ok {
+		return fmt.Errorf("type assertion to []byte failed")
+	}
+	return json.Unmarshal(b, m)
+}
+
+// Value implements the driver.Valuer interface for JSONB.
+func (m JSONBMap) Value() (driver.Value, error) {
+	if m == nil {
+		return nil, nil
+	}
+	return json.Marshal(m)
 }
 
 func (c *CVE) GetDetectedProduct() (vendor, product string) {
