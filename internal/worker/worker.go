@@ -53,6 +53,7 @@ func (w *Worker) Start(ctx context.Context) {
 	runTask(w.syncIntelligencePeriodically)
 	runTask(w.syncGreyNoisePeriodically)
 	runTask(w.syncOSVPeriodically)
+	runTask(w.syncAdvisoryRSSPeriodically)
 	runTask(w.startHealthCheckPeriodically)
 
 	// Notification & Alert Processing
