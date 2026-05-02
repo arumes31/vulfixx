@@ -2,6 +2,11 @@ name: Manual GHCR Cleanup
 
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (set to false to actually delete)'
+        default: 'true'
+        required: true
 
 jobs:
   cleanup:
@@ -12,16 +17,47 @@ jobs:
 
     steps:
       - name: Delete old GHCR images
-        uses: snok/container-retention-policy@v3.0.1
-        with:
-          # For personal accounts, 'account' must be set to 'user'
-          account: user
-          token: ${{ secrets.GITHUB_TOKEN }}
-          image-names: ${{ github.event.repository.name }}
-          # Keep at least 10 versions of the image
-          keep-n-most-recent: 10
-          # Exclude images tagged 'latest' and 'main'
-          # Syntax: "* !latest !main" means all tags except latest and main
-          image-tags: "* !latest !main"
-          # Dry run mode - set to false to actually delete
-          dry-run: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.event.repository.name }}
+          OWNER: ${{ github.repository_owner }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          echo "Fetching versions for package: $REPO"
+          
+          # Try user endpoint first (for personal accounts)
+          VERSIONS_JSON=$(gh api -H "Accept: application/vnd.github+json" "/user/packages/container/$REPO/versions?per_page=100" 2>/dev/null || \
+                         gh api -H "Accept: application/vnd.github+json" "/orgs/$OWNER/packages/container/$REPO/versions?per_page=100" 2>/dev/null)
+          
+          if [ -z "$VERSIONS_JSON" ] || [ "$VERSIONS_JSON" == "[]" ]; then
+            echo "No versions found or access denied."
+            exit 0
+          fi
+          
+          # Filter logic:
+          # 1. Exclude versions with "latest" or "main" tags
+          # 2. Sort by creation date descending
+          # 3. Skip the first 10 most recent versions
+          IDS_TO_DELETE=$(echo "$VERSIONS_JSON" | jq -r '
+            sort_by(.created_at) | reverse |
+            map(select(.metadata.container.tags | (contains(["latest"]) | not) and (contains(["main"]) | not))) |
+            .[10:] | .[].id
+          ')
+          
+          if [ -z "$IDS_TO_DELETE" ]; then
+            echo "No versions to delete (kept 10 most recent and protected tags: latest, main)."
+            exit 0
+          fi
+          
+          for ID in $IDS_TO_DELETE; do
+            TAGS=$(echo "$VERSIONS_JSON" | jq -r ".[] | select(.id == $ID) | .metadata.container.tags | join(\", \")")
+            echo "Targeting version ID: $ID (Tags: $TAGS)"
+            if [ "$DRY_RUN" == "false" ]; then
+              echo "Deleting version $ID..."
+              # Try user delete endpoint first, then org
+              gh api --method DELETE -H "Accept: application/vnd.github+json" "/user/packages/container/$REPO/versions/$ID" 2>/dev/null || \
+              gh api --method DELETE -H "Accept: application/vnd.github+json" "/orgs/$OWNER/packages/container/$REPO/versions/$ID" 2>/dev/null
+            else
+              echo "[DRY RUN] Would delete version $ID"
+            fi
+          done
