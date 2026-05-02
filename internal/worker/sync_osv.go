@@ -10,8 +10,7 @@ import (
 )
 
 func (w *Worker) syncOSVPeriodically(ctx context.Context) {
-	// Initial delay
-	time.Sleep(3 * time.Minute)
+	w.waitUntilNextRun(ctx, "osv_sync", 12*time.Hour, 3*time.Minute)
 	w.syncOSV(ctx)
 
 	ticker := time.NewTicker(12 * time.Hour)

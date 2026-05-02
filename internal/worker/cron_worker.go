@@ -63,12 +63,11 @@ func (w *Worker) runWeeklySummaryWithLock(ctx context.Context) {
 }
 
 func (w *Worker) startIntelligenceEnrichmentTask(ctx context.Context) {
-	log.Println("Worker: [CRON] Intelligence enrichment task started")
+	w.waitUntilNextRun(ctx, "intelligence_enrichment", 24*time.Hour, 10*time.Minute)
+	w.enrichMissingIntelligence(ctx)
+
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
-
-	// Initial run
-	w.enrichMissingIntelligence(ctx)
 
 	for {
 		select {
@@ -110,6 +109,7 @@ func (w *Worker) enrichMissingIntelligence(ctx context.Context) {
 		}
 	}
 
+	w.updateTaskStats(ctx, "intelligence_enrichment")
 	log.Printf("Worker: [CRON] Intelligence enrichment complete. Enriched %d records. Duration: %v", count, time.Since(start))
 }
 

@@ -11,6 +11,11 @@ import (
 )
 
 func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
+	w.waitUntilNextRun(ctx, "intelligence_sync", 2*time.Hour, 4*time.Minute)
+	if err := w.processIntelligence(ctx); err != nil {
+		log.Printf("Worker: Initial intelligence sync error: %v", err)
+	}
+
 	ticker := time.NewTicker(2 * time.Hour)
 	defer ticker.Stop()
 
@@ -71,6 +76,7 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		time.Sleep(500 * time.Millisecond)
 	}
 
+	w.updateTaskStats(ctx, "intelligence_sync")
 	return nil
 }
 

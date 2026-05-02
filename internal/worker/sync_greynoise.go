@@ -10,8 +10,7 @@ import (
 )
 
 func (w *Worker) syncGreyNoisePeriodically(ctx context.Context) {
-	// Initial delay to avoid race conditions with NVD sync on startup
-	time.Sleep(2 * time.Minute)
+	w.waitUntilNextRun(ctx, "greynoise_sync", 6*time.Hour, 2*time.Minute)
 	w.syncGreyNoise(ctx)
 
 	ticker := time.NewTicker(6 * time.Hour)
