@@ -33,6 +33,9 @@ type CVE struct {
 	CWEID          string                 `json:"cwe_id"`
 	CWEName        string                 `json:"cwe_name"`
 	GitHubPoCCount int                    `json:"github_poc_count"`
+	GreyNoiseHits  int                    `json:"greynoise_hits"`
+	GreyNoiseClass string                 `json:"greynoise_classification"`
+	OSVData        map[string]interface{} `json:"osv_data"`
 	OSINTData      map[string]interface{} `json:"osint_data"`
 	Status         string                 `json:"status"`
 	Notes          string                 `json:"notes"`

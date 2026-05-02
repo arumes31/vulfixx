@@ -51,6 +51,8 @@ func (w *Worker) Start(ctx context.Context) {
 	runTask(w.syncEPSSPeriodically)
 	runTask(w.syncGitHubBuzzPeriodically)
 	runTask(w.syncIntelligencePeriodically)
+	runTask(w.syncGreyNoisePeriodically)
+	runTask(w.syncOSVPeriodically)
 	runTask(w.startHealthCheckPeriodically)
 
 	// Notification & Alert Processing
