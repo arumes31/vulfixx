@@ -30,11 +30,12 @@ func (w *Worker) syncGreyNoisePeriodically(ctx context.Context) {
 func (w *Worker) syncGreyNoise(ctx context.Context) {
 	log.Println("Worker: [SYNC] Starting GreyNoise Intelligence synchronization...")
 	
-	// Fetch recent CVEs (last 30 days) to update GreyNoise hits
+	// Prioritize CVEs that haven't been checked yet, focusing on newest and most critical
 	rows, err := w.Pool.Query(ctx, `
 		SELECT cve_id FROM cves 
-		WHERE published_date > NOW() - INTERVAL '30 days'
-		ORDER BY published_date DESC LIMIT 100
+		WHERE greynoise_last_updated IS NULL
+		ORDER BY published_date DESC NULLS LAST, cvss_score DESC NULLS LAST
+		LIMIT 100
 	`)
 	if err != nil {
 		log.Printf("Worker: [ERROR] Failed to fetch CVEs for GreyNoise sync: %v", err)
@@ -64,7 +65,11 @@ func (w *Worker) syncGreyNoise(ctx context.Context) {
 			continue
 		}
 
-		_, err = w.Pool.Exec(ctx, "UPDATE cves SET greynoise_hits = $1 WHERE cve_id = $2", hits, cveID)
+		_, err = w.Pool.Exec(ctx, `
+			UPDATE cves 
+			SET greynoise_hits = $1, greynoise_last_updated = NOW() 
+			WHERE cve_id = $2
+		`, hits, cveID)
 		if err != nil {
 			log.Printf("Worker: [ERROR] Failed to update GreyNoise hits for %s: %v", cveID, err)
 		}

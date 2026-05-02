@@ -31,11 +31,12 @@ func (w *Worker) syncOSVPeriodically(ctx context.Context) {
 func (w *Worker) syncOSV(ctx context.Context) {
 	log.Println("Worker: [SYNC] Starting OSV (Open Source Vulnerabilities) synchronization...")
 
-	// Fetch recent CVEs to update OSV data
+	// Prioritize CVEs that haven't been checked yet, focusing on newest and most critical
 	rows, err := w.Pool.Query(ctx, `
 		SELECT cve_id FROM cves 
-		WHERE published_date > NOW() - INTERVAL '30 days'
-		ORDER BY published_date DESC LIMIT 50
+		WHERE osv_last_updated IS NULL
+		ORDER BY published_date DESC NULLS LAST, cvss_score DESC NULLS LAST
+		LIMIT 100
 	`)
 	if err != nil {
 		log.Printf("Worker: [ERROR] Failed to fetch CVEs for OSV sync: %v", err)
@@ -66,11 +67,14 @@ func (w *Worker) syncOSV(ctx context.Context) {
 
 		if osvData != nil {
 			dataJSON, _ := json.Marshal(osvData)
-			_, err = w.Pool.Exec(ctx, "UPDATE cves SET osv_data = $1 WHERE cve_id = $2", dataJSON, cveID)
+			_, err = w.Pool.Exec(ctx, "UPDATE cves SET osv_data = $1, osv_last_updated = NOW() WHERE cve_id = $2", dataJSON, cveID)
 			if err != nil {
 				log.Printf("Worker: [ERROR] Failed to update OSV data for %s: %v", cveID, err)
 			}
 			count++
+		} else {
+			// Mark as checked even if no data found to avoid re-checking in the next run
+			_, _ = w.Pool.Exec(ctx, "UPDATE cves SET osv_last_updated = NOW() WHERE cve_id = $1", cveID)
 		}
 
 		// OSV API is very generous but we still throttle
