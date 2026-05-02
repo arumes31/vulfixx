@@ -20,6 +20,9 @@
                 {{if .CVE.CISAKEV}}
                 <span class="px-3 py-1 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/20 text-[10px] font-black uppercase tracking-widest animate-pulse">CISA KEV</span>
                 {{end}}
+                {{if gt .CVE.GreyNoiseHits 0}}
+                <span class="px-3 py-1 rounded-full bg-red-500/20 text-red-400 border border-red-500/20 text-[10px] font-black uppercase tracking-widest animate-bounce">Active Exploitation</span>
+                {{end}}
             </div>
             <p class="text-xl text-gray-400 leading-relaxed max-w-3xl">
                 {{.CVE.Description}}
@@ -63,7 +66,7 @@
     {{end}}
 
     <!-- Technical Specs -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
         <div class="glass p-8 rounded-3xl border border-white/10 space-y-4">
             <div class="flex items-center gap-3 text-primary mb-2">
                 <span class="material-symbols-outlined" aria-hidden="true">analytics</span>
@@ -102,6 +105,17 @@
                 <div class="text-[10px] font-bold text-gray-500 uppercase leading-none">Known PoC Repositories on GitHub</div>
             </div>
         </div>
+
+        <div class="glass p-8 rounded-3xl border border-white/10 space-y-4">
+            <div class="flex items-center gap-3 text-red-400 mb-2">
+                <span class="material-symbols-outlined" aria-hidden="true">radar</span>
+                <span class="text-xs font-black uppercase tracking-widest">In The Wild</span>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="text-4xl font-black text-white">{{.CVE.GreyNoiseHits}}</div>
+                <div class="text-[10px] font-bold text-gray-500 uppercase leading-none">Unique IPs scanning via GreyNoise</div>
+            </div>
+        </div>
     </div>
 
     <!-- References Section -->
@@ -138,6 +152,20 @@
                 </h2>
                 <p class="text-[10px] text-gray-500 font-bold uppercase tracking-[0.1em]">Structured vulnerability data and affected ranges</p>
             </div>
+
+            {{if .CVE.OSVData}}
+            <div class="flex-1 flex justify-center">
+                <div class="glass px-6 py-4 rounded-2xl border border-primary/20 flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                        <span class="material-symbols-outlined">package</span>
+                    </div>
+                    <div>
+                        <div class="text-[8px] font-black uppercase tracking-widest text-gray-500">OSV / GitHub Advisory</div>
+                        <div class="text-xs font-black text-white">{{index .CVE.OSVData "id"}}</div>
+                    </div>
+                </div>
+            </div>
+            {{end}}
             
             <!-- Dynamic Vendors Badge List -->
             <div id="vendor-list" class="flex flex-wrap gap-2 justify-end">
