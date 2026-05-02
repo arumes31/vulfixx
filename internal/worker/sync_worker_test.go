@@ -276,3 +276,75 @@ func TestWorkerSync_GitHub(t *testing.T) {
 		}
 	})
 }
+
+func TestWorkerSync_GreyNoise(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+	
+	httpClient := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			if strings.Contains(req.URL.String(), "CVE-GN-1") {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(`{"total": 5}`)),
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusNotFound,
+				Body:       io.NopCloser(strings.NewReader(`{}`)),
+			}, nil
+		},
+	}
+	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, httpClient)
+
+	t.Run("Success", func(t *testing.T) {
+		mock.ExpectQuery("SELECT cve_id FROM cves").WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-GN-1"))
+		mock.ExpectExec("UPDATE cves SET greynoise_hits = \\$1 WHERE cve_id = \\$2").WithArgs(5, "CVE-GN-1").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("greynoise_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		w.syncGreyNoise(ctx)
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+}
+
+func TestWorkerSync_OSV(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	httpClient := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"vulns":[{"id":"GHSA-xxxx","summary":"Test OSV"}]}`)),
+			}, nil
+		},
+	}
+	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, httpClient)
+
+	t.Run("Success", func(t *testing.T) {
+		mock.ExpectQuery("SELECT cve_id FROM cves").WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-OSV-1"))
+		mock.ExpectExec("UPDATE cves SET osv_data = \\$1 WHERE cve_id = \\$2").
+			WithArgs(pgxmock.AnyArg(), "CVE-OSV-1").
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("osv_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		w.syncOSV(ctx)
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+}
