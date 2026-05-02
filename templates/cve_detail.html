@@ -72,7 +72,7 @@
                     <span class="text-sm font-mono text-white">{{printf "%.4f" .CVE.EPSSScore}}</span>
                 </div>
                 <div class="w-full h-1 bg-white/5 rounded-full overflow-hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{round (multiply .CVE.EPSSScore 100)}}">
-                    <div class="h-full bg-primary" style="width: {{multiply .CVE.EPSSScore 100}}%"></div>
+                    <div class="h-full bg-primary" style="width: {{printf "%.2f%%" (multiply .CVE.EPSSScore 100.0)}}"></div>
                     <span class="sr-only">EPSS score: {{round (multiply .CVE.EPSSScore 100)}}%</span>
                 </div>
             </div>

@@ -144,6 +144,20 @@ func TestLoadConfig(t *testing.T) {
 			},
 			wantFatal: false,
 		},
+		{
+			name: "SMTPMailFrom defaults to SMTPUser if empty",
+			envs: map[string]string{
+				"APP_ENV":       "development",
+				"SMTP_USER":      "default@example.com",
+				"SMTP_MAILFROM":  "",
+			},
+			wantFatal: false,
+			checkConfig: func(t *testing.T, c Config) {
+				if c.SMTPMailFrom != "default@example.com" {
+					t.Errorf("SMTPMailFrom = %v, want default@example.com", c.SMTPMailFrom)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
