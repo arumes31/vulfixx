@@ -17,7 +17,9 @@ var (
 )
 
 func (w *Worker) syncGitHubBuzzPeriodically(ctx context.Context) {
+	w.waitUntilNextRun(ctx, "github_buzz_sync", 4*time.Hour, 1*time.Minute)
 	w.syncGitHubBuzz(ctx)
+
 	ticker := time.NewTicker(4 * time.Hour)
 	defer ticker.Stop()
 	for {
