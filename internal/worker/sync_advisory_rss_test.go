@@ -262,6 +262,150 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		}
 	})
 
+	t.Run("FortiGuardSupport", func(t *testing.T) {
+		xmlContent := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+    <item>
+        <title>FortiGate - Vulnerability in FortiOS</title>
+        <link>https://fortiguard.com/psirt/FG-IR-24-123</link>
+        <description>Fixes CVE-2024-3333</description>
+    </item>
+</channel>
+</rss>`
+
+		httpClient := &MockHTTPClient{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(xmlContent)),
+				}, nil
+			},
+		}
+		wForti := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, httpClient)
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, vendor, product, "references" FROM cves WHERE cve_id = $1`)).
+			WithArgs("CVE-2024-3333").
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "vendor", "product", "references"}).
+				AddRow(1, "CVE-2024-3333", "Existing desc", "Fortinet", "FortiOS", []string{}))
+
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE cves SET "references" = $1, updated_at = NOW() WHERE id = $2`)).
+			WithArgs([]string{"https://fortiguard.com/psirt/FG-IR-24-123"}, 1).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM cves WHERE cve_id = $1`)).
+			WithArgs("CVE-2024-3333").
+			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
+
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
+			WithArgs("advisory_rss_sync").
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		wForti.syncAdvisoryRSS(ctx)
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("UbuntuSupport", func(t *testing.T) {
+		xmlContent := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+    <item>
+        <title>USN-6789-1: Linux kernel vulnerabilities</title>
+        <link>https://ubuntu.com/security/notices/USN-6789-1</link>
+        <description>Vulnerability in kernel CVE-2024-4444</description>
+    </item>
+</channel>
+</rss>`
+
+		httpClient := &MockHTTPClient{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(xmlContent)),
+				}, nil
+			},
+		}
+		wUbuntu := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, httpClient)
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, vendor, product, "references" FROM cves WHERE cve_id = $1`)).
+			WithArgs("CVE-2024-4444").
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "vendor", "product", "references"}).
+				AddRow(1, "CVE-2024-4444", "Existing desc", "Ubuntu", "Kernel", []string{}))
+
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE cves SET "references" = $1, updated_at = NOW() WHERE id = $2`)).
+			WithArgs([]string{"https://ubuntu.com/security/notices/USN-6789-1"}, 1).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM cves WHERE cve_id = $1`)).
+			WithArgs("CVE-2024-4444").
+			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
+
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
+			WithArgs("advisory_rss_sync").
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		wUbuntu.syncAdvisoryRSS(ctx)
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("ZDISupport", func(t *testing.T) {
+		xmlContent := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+    <item>
+        <title>ZDI-24-999: (0-Day) Microsoft Windows Kernel RCE</title>
+        <link>https://www.zerodayinitiative.com/advisories/ZDI-24-999/</link>
+        <description>CVE-2024-5555</description>
+    </item>
+</channel>
+</rss>`
+
+		httpClient := &MockHTTPClient{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(xmlContent)),
+				}, nil
+			},
+		}
+		wZDI := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, httpClient)
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, vendor, product, "references" FROM cves WHERE cve_id = $1`)).
+			WithArgs("CVE-2024-5555").
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "vendor", "product", "references"}).
+				AddRow(1, "CVE-2024-5555", "Existing desc", "Microsoft", "Windows", []string{}))
+
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE cves SET "references" = $1, updated_at = NOW() WHERE id = $2`)).
+			WithArgs([]string{"https://www.zerodayinitiative.com/advisories/ZDI-24-999/"}, 1).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM cves WHERE cve_id = $1`)).
+			WithArgs("CVE-2024-5555").
+			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
+
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
+			WithArgs("advisory_rss_sync").
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		wZDI.syncAdvisoryRSS(ctx)
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
 	t.Run("HandleFeedErrors", func(t *testing.T) {
 		httpClient := &MockHTTPClient{
 			DoFunc: func(req *http.Request) (*http.Response, error) {
