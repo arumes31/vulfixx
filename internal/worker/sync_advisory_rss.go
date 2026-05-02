@@ -24,6 +24,13 @@ type AdvisoryFeed struct {
 
 var advisoryFeeds = []AdvisoryFeed{
 	{Name: "CISA Advisories", URL: "https://www.cisa.gov/cybersecurity-advisories/all.xml"},
+	{Name: "CISA ICS Advisories", URL: "https://www.cisa.gov/cybersecurity-advisories/ics-advisories.xml"},
+	{Name: "Microsoft Security Advisories", URL: "https://api.msrc.microsoft.com/update-guide/rss", DefaultVendor: "Microsoft"},
+	{Name: "AWS Security Bulletins", URL: "https://aws.amazon.com/security/security-bulletins/rss/", DefaultVendor: "AWS"},
+	{Name: "VMware Security Advisories", URL: "https://www.vmware.com/security/advisories.xml", DefaultVendor: "VMware"},
+	{Name: "Oracle Security Alerts", URL: "https://www.oracle.com/ocom/groups/public/@otn/documents/webcontent/rss-otn-sec.xml", DefaultVendor: "Oracle"},
+	{Name: "GitHub Advisory Database", URL: "https://github.com/advisories.atom"},
+	{Name: "CERT-EU Advisories", URL: "https://cert.europa.eu/publications/security-advisories/feed/"},
 	{Name: "FortiGuard PSIRT", URL: "https://filestore.fortinet.com/fortiguard/rss/ir.xml", DefaultVendor: "Fortinet"},
 	{Name: "Cisco PSIRT", URL: "https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisory.xml", DefaultVendor: "Cisco"},
 	{Name: "Red Hat Security", URL: "https://access.redhat.com/security/data/metrics/rhsa.rss", DefaultVendor: "Red Hat"},
