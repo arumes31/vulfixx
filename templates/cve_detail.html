@@ -129,12 +129,15 @@
     </section>
 
     <!-- Affected Software Section -->
-    <section class="space-y-6">
-        <div class="flex items-center justify-between">
-            <h2 class="text-2xl font-black text-white flex items-center gap-3">
-                <span class="material-symbols-outlined text-tertiary">inventory_2</span>
-                {{if .CVE.Configurations}}Known Affected Software Configurations{{else}}Affected Product Details{{end}}
-            </h2>
+    <section class="space-y-8">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div class="space-y-1">
+                <h2 class="text-2xl font-black text-white flex items-center gap-3">
+                    <span class="material-symbols-outlined text-tertiary">inventory_2</span>
+                    {{if .CVE.Configurations}}Known Affected Software Configurations{{else}}Affected Product Details{{end}}
+                </h2>
+                <p class="text-[10px] text-gray-500 font-bold uppercase tracking-[0.1em]">Structured vulnerability data and affected ranges</p>
+            </div>
             
             <!-- Dynamic Vendors Badge List -->
             <div id="vendor-list" class="flex flex-wrap gap-2 justify-end">
@@ -148,50 +151,92 @@
                 </span>
                 {{end}}
             </div>
+        </div>
 
+        <!-- Version Compliance Checker Tool -->
+        <div class="glass p-8 rounded-[2.5rem] border border-white/10 space-y-6 relative overflow-hidden group">
+            <div class="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+                <span class="material-symbols-outlined text-8xl text-primary">rule</span>
+            </div>
+            <div class="flex items-center gap-3 text-primary relative z-10">
+                <span class="material-symbols-outlined">verified_user</span>
+                <h3 class="text-xs font-black uppercase tracking-widest">Environment Compliance Checker</h3>
+            </div>
+            <div class="flex flex-col md:flex-row gap-4 relative z-10">
+                <div class="flex-1 space-y-2">
+                    <label class="text-[9px] font-black uppercase tracking-widest text-gray-500 ml-2">Product Name</label>
+                    <input type="text" id="check-product" placeholder="e.g. windows, solaris, kerberos" class="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-primary/50 transition-all placeholder:text-gray-700">
+                </div>
+                <div class="w-full md:w-48 space-y-2">
+                    <label class="text-[9px] font-black uppercase tracking-widest text-gray-500 ml-2">Version</label>
+                    <input type="text" id="check-version" placeholder="e.g. 11.3, 1.2.0" class="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-primary/50 transition-all placeholder:text-gray-700">
+                </div>
+                <div class="flex items-end pb-0.5">
+                    <button id="btn-check-version" class="w-full md:w-auto px-8 py-4 bg-primary text-on-primary rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-primary/20">
+                        Check Version
+                    </button>
+                </div>
+            </div>
+            <div id="check-result" class="hidden animate-in fade-in slide-in-from-top-2 duration-300">
+                <!-- Populated by JS -->
+            </div>
         </div>
 
         {{if .CVE.Configurations}}
-        <div class="glass rounded-3xl border border-white/10 overflow-hidden">
+        <div class="glass rounded-[2rem] border border-white/10 overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                     <thead>
                         <tr class="bg-white/5 border-b border-white/10">
-                            <th class="p-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Vulnerable</th>
-                            <th class="p-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Platform / Software (CPE)</th>
-                            <th class="p-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Version Range</th>
+                            <th class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Vulnerable</th>
+                            <th class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Platform / Software (CPE)</th>
+                            <th class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500 text-right">Version Range</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-white/5">
                         {{range .CVE.Configurations}}
                             {{range .Nodes}}
                                 {{range .CPEMatch}}
-                                <tr class="hover:bg-white/[0.02] transition-colors">
-                                    <td class="p-4">
+                                {{$cpeData := parseCPE .Criteria}}
+                                <tr class="hover:bg-white/[0.02] transition-colors group/row config-row" 
+                                    data-vendor="{{$cpeData.vendor}}" 
+                                    data-product="{{$cpeData.product}}"
+                                    data-vstart-inc="{{.VersionStartIncluding}}"
+                                    data-vstart-exc="{{.VersionStartExcluding}}"
+                                    data-vend-inc="{{.VersionEndIncluding}}"
+                                    data-vend-exc="{{.VersionEndExcluding}}"
+                                    data-direct-version="{{$cpeData.version}}">
+                                    <td class="p-6">
                                         {{if .Vulnerable}}
-                                        <span class="flex items-center gap-1.5 text-red-400 font-bold text-[10px] uppercase">
-                                            <span class="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></span>
-                                            Yes
+                                        <span class="flex items-center gap-1.5 text-red-400 font-black text-[10px] uppercase tracking-wider">
+                                            <span class="w-2 h-2 rounded-full bg-red-400 animate-pulse shadow-[0_0_8px_rgba(248,113,113,0.5)]"></span>
+                                            Affected
                                         </span>
                                         {{else}}
-                                        <span class="text-gray-600 font-bold text-[10px] uppercase">No</span>
+                                        <span class="text-gray-600 font-bold text-[10px] uppercase">Excluded</span>
                                         {{end}}
                                     </td>
-                                    <td class="p-4">
-                                        <div class="flex flex-col gap-1">
-                                            <span class="text-xs font-mono text-gray-300 cpe-string" data-cpe="{{.Criteria}}">{{.Criteria}}</span>
+                                    <td class="p-6">
+                                        <div class="flex flex-col gap-1.5">
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-sm font-black text-white group-hover/row:text-primary transition-colors">{{$cpeData.vendor}}</span>
+                                                <span class="text-sm font-bold text-gray-500">{{$cpeData.product}}</span>
+                                            </div>
+                                            <span class="text-[9px] font-mono text-gray-600 truncate max-w-md opacity-40 group-hover/row:opacity-100 transition-opacity">{{.Criteria}}</span>
                                         </div>
                                     </td>
-                                    <td class="p-4">
-                                        <div class="flex items-center gap-2 text-[10px] font-mono text-gray-500">
+                                    <td class="p-6 text-right">
+                                        <div class="flex items-center justify-end gap-1.5">
                                             {{if or .VersionStartIncluding .VersionStartExcluding .VersionEndIncluding .VersionEndExcluding}}
-                                                {{if .VersionStartIncluding}}<span class="bg-white/5 px-2 py-0.5 rounded">≥ {{.VersionStartIncluding}}</span>{{end}}
-                                                {{if .VersionStartExcluding}}<span class="bg-white/5 px-2 py-0.5 rounded">> {{.VersionStartExcluding}}</span>{{end}}
-                                                {{if and (or .VersionStartIncluding .VersionStartExcluding) (or .VersionEndIncluding .VersionEndExcluding)}}<span class="text-gray-700">|</span>{{end}}
-                                                {{if .VersionEndIncluding}}<span class="bg-white/5 px-2 py-0.5 rounded">≤ {{.VersionEndIncluding}}</span>{{end}}
-                                                {{if .VersionEndExcluding}}<span class="bg-white/5 px-2 py-0.5 rounded">< {{.VersionEndExcluding}}</span>{{end}}
+                                                {{if .VersionStartIncluding}}<span class="bg-white/5 text-gray-400 px-2 py-1 rounded-md text-[10px] font-mono border border-white/5">≥ {{.VersionStartIncluding}}</span>{{end}}
+                                                {{if .VersionStartExcluding}}<span class="bg-white/5 text-gray-400 px-2 py-1 rounded-md text-[10px] font-mono border border-white/5">> {{.VersionStartExcluding}}</span>{{end}}
+                                                <span class="material-symbols-outlined text-gray-800 text-xs">arrow_forward</span>
+                                                {{if .VersionEndIncluding}}<span class="bg-white/5 text-gray-400 px-2 py-1 rounded-md text-[10px] font-mono border border-white/5">≤ {{.VersionEndIncluding}}</span>{{end}}
+                                                {{if .VersionEndExcluding}}<span class="bg-white/5 text-gray-400 px-2 py-1 rounded-md text-[10px] font-mono border border-white/5">< {{.VersionEndExcluding}}</span>{{end}}
+                                            {{else if $cpeData.version}}
+                                                <span class="bg-tertiary/10 text-tertiary px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-tertiary/20">Exactly {{$cpeData.version}}</span>
                                             {{else}}
-                                                <span class="italic opacity-50">Direct Match</span>
+                                                <span class="italic text-[10px] text-gray-600 font-medium">All Versions</span>
                                             {{end}}
                                         </div>
                                     </td>
@@ -343,85 +388,199 @@
         box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);
     }
     .tooltip-trigger:hover .tooltip { opacity: 1; transform: translateX(-50%) translateY(-5px); }
+
+    @keyframes pulse-ring {
+        0% { transform: scale(.33); }
+        80%, 100% { opacity: 0; }
+    }
+    .check-match { @apply border-primary/50 bg-primary/5 shadow-[0_0_20px_rgba(var(--primary-rgb),0.1)]; }
+    .asset-match-badge { @apply bg-primary/20 text-primary border border-primary/30 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter; }
 </style>
 
 <script nonce="{{.Nonce}}">
 (function() {
+    // 1. Core Version Comparison Utility
+    const compareVersions = (v1, v2) => {
+        if (!v1 || !v2) return 0;
+        const p1 = v1.split('.').map(n => parseInt(n, 10) || 0);
+        const p2 = v2.split('.').map(n => parseInt(n, 10) || 0);
+        const len = Math.max(p1.length, p2.length);
+        for (let i = 0; i < len; i++) {
+            const n1 = p1[i] || 0;
+            const n2 = p2[i] || 0;
+            if (n1 > n2) return 1;
+            if (n1 < n2) return -1;
+        }
+        return 0;
+    };
+
+    const isAffected = (version, row) => {
+        const vStartInc = row.dataset.vstartInc;
+        const vStartExc = row.dataset.vstartExc;
+        const vEndInc = row.dataset.vendInc;
+        const vEndExc = row.dataset.vendExc;
+        const directVersion = row.dataset.directVersion;
+
+        // Direct Match check
+        if (!vStartInc && !vStartExc && !vEndInc && !vEndExc) {
+            if (directVersion) return compareVersions(version, directVersion) === 0;
+            return true; // All versions affected
+        }
+
+        let affected = true;
+        if (vStartInc && compareVersions(version, vStartInc) < 0) affected = false;
+        if (vStartExc && compareVersions(version, vStartExc) <= 0) affected = false;
+        if (vEndInc && compareVersions(version, vEndInc) > 0) affected = false;
+        if (vEndExc && compareVersions(version, vEndExc) >= 0) affected = false;
+
+        return affected;
+    };
+
     const initCVEDetail = function() {
+        // CVSS Vector Parsing
         const vectorContainer = document.getElementById('cvss-vector');
-        if (!vectorContainer) return;
+        if (vectorContainer) {
+            try {
+                const vectorStr = vectorContainer.dataset.vector;
+                const metricMap = {
+                    'AV': { n: 'Attack Vector', v: { N: 'Network', A: 'Adjacent', L: 'Local', P: 'Physical' } },
+                    'AC': { n: 'Complexity', v: { L: 'Low', H: 'High' } },
+                    'PR': { n: 'Privileges', v: { N: 'None', L: 'Low', H: 'High' } },
+                    'UI': { n: 'Interaction', v: { N: 'None', R: 'Required' } },
+                    'S':  { n: 'Scope', v: { U: 'Unchanged', C: 'Changed' } },
+                    'C':  { n: 'Confid.', v: { N: 'None', L: 'Low', H: 'High' } },
+                    'I':  { n: 'Integrity', v: { N: 'None', L: 'Low', H: 'High' } },
+                    'A':  { n: 'Avail.', v: { N: 'None', L: 'Low', H: 'High' } }
+                };
 
-        const clearLoader = function(msg) {
-            vectorContainer.innerHTML = msg || '';
-        };
+                if (vectorStr && vectorStr.indexOf('/') !== -1) {
+                    const parts = vectorStr.split('/');
+                    const v = {};
+                    vectorContainer.innerHTML = '';
+                    
+                    parts.forEach(function(part) {
+                        const kv = part.split(':');
+                        if (kv.length === 2) {
+                            const key = kv[0];
+                            const val = kv[1];
+                            v[key] = val;
+                            if (metricMap[key]) {
+                                const metric = metricMap[key];
+                                const valName = metric.v[val] || val;
+                                const pill = document.createElement('div');
+                                pill.className = 'tooltip-trigger text-[9px] font-mono text-gray-400 bg-white/5 px-2 py-0.5 rounded-md border border-white/5 hover:bg-white/10 hover:text-white transition-all';
+                                pill.innerHTML = '<span class="text-gray-600 mr-1">' + key + ':</span>' + val +
+                                    '<div class="tooltip">' + metric.n + ': ' + valName + '</div>';
+                                vectorContainer.appendChild(pill);
+                            }
+                        }
+                    });
 
-        try {
-            const vectorStr = vectorContainer.dataset.vector;
-            const metricMap = {
-                'AV': { n: 'Attack Vector', v: { N: 'Network', A: 'Adjacent', L: 'Local', P: 'Physical' } },
-                'AC': { n: 'Complexity', v: { L: 'Low', H: 'High' } },
-                'PR': { n: 'Privileges', v: { N: 'None', L: 'Low', H: 'High' } },
-                'UI': { n: 'Interaction', v: { N: 'None', R: 'Required' } },
-                'S':  { n: 'Scope', v: { U: 'Unchanged', C: 'Changed' } },
-                'C':  { n: 'Confid.', v: { N: 'None', L: 'Low', H: 'High' } },
-                'I':  { n: 'Integrity', v: { N: 'None', L: 'Low', H: 'High' } },
-                'A':  { n: 'Avail.', v: { N: 'None', L: 'Low', H: 'High' } }
-            };
+                    const tacticalPath = document.getElementById('tactical-path');
+                    if (tacticalPath) {
+                        const steps = [];
+                        if (v.AV) steps.push({ icon: 'lan', label: metricMap.AV.v[v.AV] });
+                        if (v.AC) steps.push({ icon: 'settings_input_component', label: v.AC === 'L' ? 'Low Complexity' : 'High Complexity' });
+                        if (v.PR) steps.push({ icon: 'person_shield', label: v.PR === 'N' ? 'No Auth' : 'Auth Required' });
+                        if (v.UI) steps.push({ icon: 'mouse', label: v.UI === 'N' ? 'No Interaction' : 'Interaction' });
 
-            if (vectorStr && vectorStr.indexOf('/') !== -1) {
-                const parts = vectorStr.split('/');
-                const v = {};
-                vectorContainer.innerHTML = '';
+                        tacticalPath.innerHTML = steps.map(function(s, i) {
+                            return '<div class="flex items-center gap-1">' +
+                                    '<div class="flex flex-col items-center group">' +
+                                        '<span class="material-symbols-outlined text-[14px] text-primary mb-0.5 group-hover:scale-110 transition-transform">' + s.icon + '</span>' +
+                                        '<span class="text-[7px] font-black uppercase tracking-widest text-gray-500">' + s.label + '</span>' +
+                                    '</div>' +
+                                    (i < steps.length - 1 ? '<span class="material-symbols-outlined text-[10px] text-gray-800 mx-0.5 opacity-30">chevron_right</span>' : '') +
+                                '</div>';
+                        }).join('');
+                        setTimeout(function() { tacticalPath.classList.remove('opacity-0'); }, 100);
+                    }
+                }
+            } catch (e) { console.error('Vector parse error:', e); }
+        }
+
+        // Version Compliance Checker Logic
+        const btnCheck = document.getElementById('btn-check-version');
+        const inputProduct = document.getElementById('check-product');
+        const inputVersion = document.getElementById('check-version');
+        const resultDiv = document.getElementById('check-result');
+
+        if (btnCheck) {
+            btnCheck.addEventListener('click', function() {
+                const prod = inputProduct.value.trim().toLowerCase();
+                const ver = inputVersion.value.trim();
                 
-                parts.forEach(function(part) {
-                    const kv = part.split(':');
-                    if (kv.length === 2) {
-                        const key = kv[0];
-                        const val = kv[1];
-                        v[key] = val;
-                        if (metricMap[key]) {
-                            const metric = metricMap[key];
-                            const valName = metric.v[val] || val;
-                            const pill = document.createElement('div');
-                            pill.className = 'tooltip-trigger text-[9px] font-mono text-gray-400 bg-white/5 px-2 py-0.5 rounded-md border border-white/5 hover:bg-white/10 hover:text-white transition-all';
-                            pill.innerHTML = '<span class="text-gray-600 mr-1">' + key + ':</span>' + val +
-                                '<div class="tooltip">' + metric.n + ': ' + valName + '</div>';
-                            vectorContainer.appendChild(pill);
+                if (!prod || !ver) {
+                    alert('Please enter both product name and version');
+                    return;
+                }
+
+                const rows = document.querySelectorAll('.config-row');
+                let foundMatch = false;
+                let isAffectedResult = false;
+
+                // Reset previous highlighting
+                rows.forEach(r => r.classList.remove('check-match', 'border-red-500/30', 'bg-red-500/5', 'border-green-500/30', 'bg-green-500/5'));
+
+                rows.forEach(row => {
+                    const rowVendor = row.dataset.vendor.toLowerCase();
+                    const rowProduct = row.dataset.product.toLowerCase();
+                    
+                    if (rowVendor.includes(prod) || rowProduct.includes(prod)) {
+                        foundMatch = true;
+                        if (isAffected(ver, row)) {
+                            isAffectedResult = true;
+                            row.classList.add('check-match', 'border-red-500/30', 'bg-red-500/5');
+                        } else {
+                            row.classList.add('check-match', 'border-green-500/30', 'bg-green-500/5');
                         }
                     }
                 });
 
-                // Tactical Path Visualization
-                const tacticalPath = document.getElementById('tactical-path');
-                if (tacticalPath) {
-                    const steps = [];
-                    if (v.AV) steps.push({ icon: 'lan', label: metricMap.AV.v[v.AV] });
-                    if (v.AC) steps.push({ icon: 'settings_input_component', label: v.AC === 'L' ? 'Low Complexity' : 'High Complexity' });
-                    if (v.PR) steps.push({ icon: 'person_shield', label: v.PR === 'N' ? 'No Auth' : 'Auth Required' });
-                    if (v.UI) steps.push({ icon: 'mouse', label: v.UI === 'N' ? 'No Interaction' : 'Interaction' });
-
-                    tacticalPath.innerHTML = steps.map(function(s, i) {
-                        return '<div class="flex items-center gap-1">' +
-                                '<div class="flex flex-col items-center group">' +
-                                    '<span class="material-symbols-outlined text-[14px] text-primary mb-0.5 group-hover:scale-110 transition-transform">' + s.icon + '</span>' +
-                                    '<span class="text-[7px] font-black uppercase tracking-widest text-gray-500">' + s.label + '</span>' +
-                                '</div>' +
-                                (i < steps.length - 1 ? '<span class="material-symbols-outlined text-[10px] text-gray-800 mx-0.5 opacity-30">chevron_right</span>' : '') +
-                            '</div>';
-                    }).join('');
-                    setTimeout(function() { tacticalPath.classList.remove('opacity-0'); }, 100);
+                resultDiv.classList.remove('hidden');
+                if (!foundMatch) {
+                    resultDiv.innerHTML = '<div class="p-4 rounded-2xl bg-white/5 border border-white/10 text-gray-400 font-bold flex items-center gap-3">' +
+                        '<span class="material-symbols-outlined">help_outline</span>' +
+                        'No matching product found in affected configurations.</div>';
+                } else if (isAffectedResult) {
+                    resultDiv.innerHTML = '<div class="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 font-black flex items-center gap-3 uppercase tracking-widest">' +
+                        '<span class="material-symbols-outlined animate-bounce">warning</span>' +
+                        'Your version is VULNERABLE based on the known configurations!</div>';
+                } else {
+                    resultDiv.innerHTML = '<div class="p-4 rounded-2xl bg-green-500/10 border border-green-500/20 text-green-400 font-black flex items-center gap-3 uppercase tracking-widest">' +
+                        '<span class="material-symbols-outlined">check_circle</span>' +
+                        'Your version appears to be SECURE against this specific CVE.</div>';
                 }
-
-            } else {
-                clearLoader('<span class="text-[9px] font-mono text-gray-600 italic">No vector string available</span>');
-            }
-        } catch (e) {
-            console.error('Vector parse error:', e);
-            clearLoader('<span class="text-[9px] font-mono text-gray-600 italic">Error parsing vector</span>');
+            });
         }
 
-        // 2. Extract Vendors (Legacy fallback removed, now using server-side data)
-
+        // Automatic Asset Matching
+        const userAssets = {{marshal .UserAssets}};
+        if (userAssets && userAssets.length > 0) {
+            const rows = document.querySelectorAll('.config-row');
+            userAssets.forEach(asset => {
+                const keywords = asset.keywords || [];
+                rows.forEach(row => {
+                    const rowVendor = row.dataset.vendor.toLowerCase();
+                    const rowProduct = row.dataset.product.toLowerCase();
+                    
+                    keywords.forEach(kw => {
+                        const lowKw = kw.toLowerCase();
+                        if (rowVendor.includes(lowKw) || rowProduct.includes(lowKw)) {
+                            // Match found, add asset label
+                            const vendorCell = row.querySelector('td:nth-child(2) .flex.items-center');
+                            if (vendorCell && !vendorCell.querySelector('.asset-match-badge')) {
+                                const badge = document.createElement('span');
+                                badge.className = 'asset-match-badge ml-2';
+                                badge.textContent = 'Matched Asset: ' + asset.name;
+                                vendorCell.appendChild(badge);
+                                row.classList.add('bg-primary/[0.03]');
+                            }
+                        }
+                    });
+                });
+            });
+        }
 
         // 3. Enhanced References
         const sourceIcons = {

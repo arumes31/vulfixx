@@ -1010,6 +1010,31 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 	// Prevent </script> injection: escape the forward slash so the script tag can't be closed.
 	safeJSONLD := strings.ReplaceAll(string(jsonLDBytes), "</", `<\/`)
 
+	// Fetch user assets if logged in for automatic matching
+	var userAssets []map[string]interface{}
+	if userID, ok := a.GetUserID(r); ok {
+		rows, err := a.Pool.Query(r.Context(), `
+			SELECT a.name, COALESCE(array_agg(ak.keyword) FILTER (WHERE ak.keyword IS NOT NULL), '{}')
+			FROM assets a
+			LEFT JOIN asset_keywords ak ON a.id = ak.asset_id
+			WHERE a.user_id = $1 OR a.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
+			GROUP BY a.id, a.name
+		`, userID)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var name string
+				var keywords []string
+				if err := rows.Scan(&name, &keywords); err == nil {
+					userAssets = append(userAssets, map[string]interface{}{
+						"name":     name,
+						"keywords": keywords,
+					})
+				}
+			}
+		}
+	}
+
 	a.RenderTemplate(w, r, "cve_detail.html", map[string]interface{}{
 		"CVE":             c,
 		"prevID":          prevID,
@@ -1017,6 +1042,7 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 		"MetaTitle":       fmt.Sprintf("%s - %s | Vulfixx Threat Intel", c.CVEID, c.Description),
 		"MetaDescription": fmt.Sprintf("Security analysis of %s. Severity: %.1f. %s", c.CVEID, c.CVSSScore, c.Description),
 		"Canonical":       fmt.Sprintf("/cve/%s", c.CVEID),
+		"UserAssets":      userAssets,
 		/* #nosec G203 */
 		"JSONLD": template.JS(safeJSONLD), // safe: JSON-marshaled then </script>-escaped
 	})

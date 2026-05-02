@@ -167,6 +167,13 @@ func (a *App) InitTemplatesWithFuncs() error {
 		"lower": func(s string) string {
 			return strings.ToLower(s)
 		},
+		"parseCPE": func(cpe string) map[string]string {
+			v, p, ver, t := models.ParseCPE(cpe)
+			if v == "" {
+				return nil
+			}
+			return map[string]string{"vendor": v, "product": p, "version": ver, "type": t}
+		},
 	}
 
 	a.TemplateMu.Lock()

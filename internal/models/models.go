@@ -142,7 +142,7 @@ func (c *CVE) GetAffectedProducts() []AffectedProduct {
 		for _, node := range config.Nodes {
 			for _, match := range node.CPEMatch {
 				if match.Criteria != "" {
-					v, p, t := ParseCPE(match.Criteria)
+					v, p, _, t := ParseCPE(match.Criteria)
 					if v != "" && p != "" {
 						key := fmt.Sprintf("%s:%s:%s", v, p, t)
 						if !seen[key] {
@@ -161,19 +161,29 @@ func (c *CVE) GetAffectedProducts() []AffectedProduct {
 	return products
 }
 
-func ParseCPE(cpe string) (vendor, product, part string) {
+func ParseCPE(cpe string) (vendor, product, version, part string) {
 	if !strings.HasPrefix(cpe, "cpe:2.3:") {
-		return "", "", ""
+		return "", "", "", ""
 	}
 	parts := strings.Split(cpe, ":")
-	if len(parts) >= 5 {
-		// cpe:2.3:part:vendor:product:...
+	if len(parts) >= 6 {
+		// cpe:2.3:part:vendor:product:version:...
 		t := parts[2]
 		v := parts[3]
 		p := parts[4]
-		return NormalizeName(v), NormalizeName(p), t
+		ver := parts[5]
+		if ver == "*" || ver == "-" {
+			ver = ""
+		}
+		return NormalizeName(v), NormalizeName(p), ver, t
 	}
-	return "", "", ""
+	if len(parts) >= 5 {
+		t := parts[2]
+		v := parts[3]
+		p := parts[4]
+		return NormalizeName(v), NormalizeName(p), "", t
+	}
+	return "", "", "", ""
 }
 
 var nameAliases = map[string]string{
