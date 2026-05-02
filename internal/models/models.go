@@ -54,6 +54,7 @@ type CVEConfigurations []CVEConfiguration
 type AffectedProduct struct {
 	Vendor  string `json:"vendor"`
 	Product string `json:"product"`
+	Version string `json:"version"`
 	Type    string `json:"type"` // a, o, h
 }
 
@@ -168,14 +169,35 @@ func (c *CVE) GetAffectedProducts() []AffectedProduct {
 		for _, node := range config.Nodes {
 			for _, match := range node.CPEMatch {
 				if match.Criteria != "" {
-					v, p, _, t := ParseCPE(match.Criteria)
+					v, p, v_ver, t := ParseCPE(match.Criteria)
 					if v != "" && p != "" {
 						key := fmt.Sprintf("%s:%s:%s", v, p, t)
 						if !seen[key] {
 							seen[key] = true
+							versionStr := ""
+							if match.VersionStartIncluding != "" || match.VersionEndIncluding != "" || match.VersionStartExcluding != "" || match.VersionEndExcluding != "" {
+								var parts []string
+								if match.VersionStartIncluding != "" {
+									parts = append(parts, "≥"+match.VersionStartIncluding)
+								}
+								if match.VersionStartExcluding != "" {
+									parts = append(parts, ">"+match.VersionStartExcluding)
+								}
+								if match.VersionEndIncluding != "" {
+									parts = append(parts, "≤"+match.VersionEndIncluding)
+								}
+								if match.VersionEndExcluding != "" {
+									parts = append(parts, "<"+match.VersionEndExcluding)
+								}
+								versionStr = strings.Join(parts, " ")
+							} else if v_ver != "" && v_ver != "*" && v_ver != "-" {
+								versionStr = v_ver
+							}
+
 							products = append(products, AffectedProduct{
 								Vendor:  v,
 								Product: p,
+								Version: versionStr,
 								Type:    t,
 							})
 						}
