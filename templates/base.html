@@ -14,6 +14,27 @@
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #0a0e14; color: #dfe2eb; }
         h1, h2, h3, h4, h5, h6 { font-family: 'Space Grotesk', sans-serif; }
+        .onboarding-highlight {
+            position: relative;
+            z-index: 100 !important;
+            box-shadow: 0 0 0 4px #00daf3, 0 0 40px #00daf344 !important;
+            border-color: #00daf3 !important;
+            transition: all 0.5s ease;
+        }
+        .onboarding-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(4px);
+            z-index: 90;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            pointer-events: none;
+        }
+        .onboarding-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
     </style>
 </head>
 <body class="bg-[#0a0e14] text-on-surface font-sans selection:bg-primary selection:text-on-primary" 
@@ -173,6 +194,7 @@
 
     <div id="toast-container"></div>
     <div id="modal-container" class="hidden"></div>
+    <div id="onboarding-overlay" class="onboarding-overlay"></div>
 
     <script nonce="{{.Nonce}}">
         const vulfixx = {
@@ -282,6 +304,9 @@
             
             closeModal: () => {
                 document.getElementById('modal-container').classList.add('hidden');
+                document.querySelectorAll('.onboarding-highlight').forEach(el => el.classList.remove('onboarding-highlight'));
+                const overlay = document.getElementById('onboarding-overlay');
+                if (overlay) overlay.classList.remove('active');
                 if (vulfixx.modalKeyHandler) {
                     document.removeEventListener('keydown', vulfixx.modalKeyHandler);
                     vulfixx.modalKeyHandler = null;
@@ -365,6 +390,16 @@
 
                 const showStep = () => {
                     const step = steps[currentStep];
+                    
+                    // Highlight the target element
+                    document.querySelectorAll('.onboarding-highlight').forEach(el => el.classList.remove('onboarding-highlight'));
+                    const targetEl = document.querySelector(step.target);
+                    if (targetEl) {
+                        targetEl.classList.add('onboarding-highlight');
+                        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        document.getElementById('onboarding-overlay').classList.add('active');
+                    }
+
                     vulfixx.modal(step.title, step.content, [
                         {
                             label: currentStep < steps.length - 1 ? "Next" : "Get Started",
@@ -386,6 +421,9 @@
 
             completeOnboarding: async () => {
                 try {
+                    document.querySelectorAll('.onboarding-highlight').forEach(el => el.classList.remove('onboarding-highlight'));
+                    document.getElementById('onboarding-overlay').classList.remove('active');
+                    
                     await vulfixx.fetch('/api/onboarding/complete', { 
                         method: 'POST',
                         headers: { 'X-CSRF-Token': document.querySelector('input[name="gorilla.csrf.Token"]')?.value }
