@@ -114,44 +114,92 @@
     </div>
 </div>
 
-<script nonce="{{.Nonce}}">
-function initSubscriptions() {
-    document.getElementById('subscription-form')?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        submitSubscription(e, e.target);
-    });
-    const webhookToggle = document.querySelector('input[name="enable_webhook"]');
-    const webhookURLInput = document.querySelector('input[name="webhook_url"]');
-    
-    webhookToggle?.addEventListener('change', function() {
-        const field = document.getElementById('webhook-field');
-        if (field) {
-            field.classList.toggle('hidden', !this.checked);
-            if (webhookURLInput) {
-                webhookURLInput.required = this.checked;
-            }
-        }
-    });
-
-    document.querySelectorAll('.delete-monitor-btn').forEach(btn => {
-        btn.addEventListener('click', () => deleteMonitor(btn.dataset.id));
-    });
+<script id="subscription-data" type="application/json" nonce="{{.Nonce}}">
+{
+    "csrfToken": "{{.csrfToken}}"
 }
+</script>
 
+<script nonce="{{.Nonce}}">
 (function() {
-    const runInit = () => {
-        if (typeof window.requestAnimationFrame !== 'undefined') {
-            window.requestAnimationFrame(initSubscriptions);
-        } else {
-            setTimeout(initSubscriptions, 0);
-        }
-    };
+    async function submitSubscription(e, form) {
+        const formData = new FormData(form);
+        const jsonData = {};
+        formData.forEach((value, key) => {
+            if (key === 'enable_email' || key === 'enable_webhook') {
+                jsonData[key] = value === 'true';
+            } else if (key === 'min_severity') {
+                jsonData[key] = parseFloat(value);
+            } else {
+                jsonData[key] = value;
+            }
+        });
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', runInit);
-    } else {
-        runInit();
+        // Ensure checkboxes are false if not present
+        if (!jsonData.enable_email) jsonData.enable_email = false;
+        if (!jsonData.enable_webhook) jsonData.enable_webhook = false;
+
+        const subData = JSON.parse(document.getElementById('subscription-data').textContent);
+        
+        try {
+            const response = await fetch('/subscriptions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-Token': subData.csrfToken
+                },
+                body: JSON.stringify(jsonData)
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                vulfixx.toast(result.message || 'Monitor initialized successfully', 'success');
+                setTimeout(() => vulfixx.navigate('/subscriptions'), 1000);
+            } else {
+                vulfixx.toast(result.error || 'Failed to initialize monitor', 'error');
+            }
+        } catch (err) {
+            console.error('Subscription error:', err);
+            vulfixx.toast('An unexpected error occurred', 'error');
+        }
     }
+
+    function initSubscriptions() {
+        document.getElementById('subscription-form')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            submitSubscription(e, e.target);
+        });
+
+        const webhookToggle = document.querySelector('input[name="enable_webhook"]');
+        const webhookURLInput = document.querySelector('input[name="webhook_url"]');
+        
+        webhookToggle?.addEventListener('change', function() {
+            const field = document.getElementById('webhook-field');
+            if (field) {
+                field.classList.toggle('hidden', !this.checked);
+                if (webhookURLInput) {
+                    webhookURLInput.required = this.checked;
+                }
+            }
+        });
+    }
+
+    (function() {
+        const runInit = () => {
+            if (typeof window.requestAnimationFrame !== 'undefined') {
+                window.requestAnimationFrame(initSubscriptions);
+            } else {
+                setTimeout(initSubscriptions, 0);
+            }
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', runInit);
+        } else {
+            runInit();
+        }
+    })();
 })();
 </script>
 {{end}}

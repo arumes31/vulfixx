@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gorilla/csrf"
 )
 
 // escapeLikePattern escapes backslash, percent, and underscore so the value can
@@ -55,42 +57,58 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Err(); err != nil {
 			log.Printf("Error iterating subscriptions: %v", err)
 		}
-		a.RenderTemplate(w, r, "subscriptions.html", map[string]interface{}{"Subscriptions": subs})
+		a.RenderTemplate(w, r, "subscriptions.html", map[string]interface{}{
+			"Subscriptions": subs,
+			"csrfToken":     csrf.Token(r),
+		})
 		return
 	}
 	if r.Method == "POST" {
-		if err := r.ParseForm(); err != nil {
-			a.SendResponse(w, r, false, "", "", "Error parsing form")
-			return
+		var jsonData struct {
+			Keyword      string  `json:"keyword"`
+			MinSeverity  float64 `json:"min_severity"`
+			WebhookURL   string  `json:"webhook_url"`
+			EnableEmail  bool    `json:"enable_email"`
+			EnableWebhook bool   `json:"enable_webhook"`
 		}
-		keyword := strings.TrimSpace(r.FormValue("keyword"))
-		minSeverityStr := r.FormValue("min_severity")
-		webhookUrl := strings.TrimSpace(r.FormValue("webhook_url"))
 
-		if keyword == "" {
+		if strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+			if err := json.NewDecoder(r.Body).Decode(&jsonData); err != nil {
+				a.SendResponse(w, r, false, "", "", "Error decoding JSON")
+				return
+			}
+		} else {
+			if err := r.ParseForm(); err != nil {
+				a.SendResponse(w, r, false, "", "", "Error parsing form")
+				return
+			}
+			jsonData.Keyword = strings.TrimSpace(r.FormValue("keyword"))
+			jsonData.MinSeverity, _ = strconv.ParseFloat(r.FormValue("min_severity"), 64)
+			jsonData.WebhookURL = strings.TrimSpace(r.FormValue("webhook_url"))
+			jsonData.EnableEmail = r.FormValue("enable_email") == "on" || r.FormValue("enable_email") == "true"
+			jsonData.EnableWebhook = r.FormValue("enable_webhook") == "on" || r.FormValue("enable_webhook") == "true"
+		}
+
+		if jsonData.Keyword == "" {
 			a.SendResponse(w, r, false, "", "", "Keyword is required")
 			return
 		}
-		if len(keyword) > 100 {
+		if len(jsonData.Keyword) > 100 {
 			a.SendResponse(w, r, false, "", "", "Target infrastructure keyword too long (max 100 characters)")
 			return
 		}
 
-		minSeverity, err := strconv.ParseFloat(minSeverityStr, 64)
-		if err != nil || minSeverity < 0 || minSeverity > 10 {
+		if jsonData.MinSeverity < 0 || jsonData.MinSeverity > 10 {
 			a.SendResponse(w, r, false, "", "", "Invalid severity score (must be 0-10)")
 			return
 		}
 
-		enableEmail := r.FormValue("enable_email") == "on" || r.FormValue("enable_email") == "true"
-		enableWebhook := r.FormValue("enable_webhook") == "on" || r.FormValue("enable_webhook") == "true"
-
-		if enableWebhook {
-			if webhookUrl == "" {
+		if jsonData.EnableWebhook {
+			if jsonData.WebhookURL == "" {
 				a.SendResponse(w, r, false, "", "", "A webhook URL is required")
 				return
 			}
-			parsed, err := url.ParseRequestURI(webhookUrl)
+			parsed, err := url.ParseRequestURI(jsonData.WebhookURL)
 			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 				a.SendResponse(w, r, false, "", "", "A valid HTTP/HTTPS webhook URL is required")
 				return
@@ -110,9 +128,9 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			webhookUrl = parsed.String()
+			jsonData.WebhookURL = parsed.String()
 
-			if len(webhookUrl) > 2048 {
+			if len(jsonData.WebhookURL) > 2048 {
 				a.SendResponse(w, r, false, "", "", "Webhook URL is too long")
 				return
 			}
@@ -153,7 +171,7 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 		_, err = tx.Exec(ctx, `
 			INSERT INTO user_subscriptions (user_id, keyword, min_severity, webhook_url, enable_email, enable_webhook)
 			VALUES ($1, $2, $3, $4, $5, $6)
-		`, userID, keyword, minSeverity, webhookUrl, enableEmail, enableWebhook)
+		`, userID, jsonData.Keyword, jsonData.MinSeverity, jsonData.WebhookURL, jsonData.EnableEmail, jsonData.EnableWebhook)
 		if err != nil {
 			log.Printf("Error saving subscription: %v", err)
 			a.SendResponse(w, r, false, "", "", "Error saving subscription")
@@ -165,7 +183,7 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 			a.SendResponse(w, r, false, "", "", "Internal server error")
 			return
 		}
-		a.LogActivity(ctx, userID, "subscription_added", "Added keyword: "+keyword, r.RemoteAddr, r.UserAgent())
+		a.LogActivity(ctx, userID, "subscription_added", "Added keyword: "+jsonData.Keyword, r.RemoteAddr, r.UserAgent())
 		a.SendResponse(w, r, true, "Telemetry monitor initialized", "/subscriptions", "")
 		return
 	}
