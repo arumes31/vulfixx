@@ -185,6 +185,17 @@ func (a *App) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// IP-based rate limit for registration: 5 attempts per hour
+	ip, ok := r.Context().Value(clientIPKey).(string)
+	if !ok {
+		ip = r.RemoteAddr
+	}
+	rlKey := "reg_limit:" + ip
+	if count, err := a.Redis.Get(r.Context(), rlKey).Int(); err == nil && count >= 5 {
+		a.RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Too many registration attempts. Please try again in an hour."})
+		return
+	}
+
 	if err := r.ParseForm(); err != nil {
 		a.RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Invalid form"})
 		return
@@ -217,6 +228,10 @@ func (a *App) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Increment IP rate limit
+	a.Redis.Incr(r.Context(), rlKey)
+	a.Redis.Expire(r.Context(), rlKey, 1*time.Hour)
+
 	// Push email verification payload to redis queue
 	payload, err := json.Marshal(map[string]string{
 		"email": email,
@@ -246,6 +261,52 @@ func (a *App) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Verification queued for %q", sanitizeForLog(redactEmail(email)))
 
 	a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Registration successful. Please check your email to verify your account."})
+}
+
+func (a *App) ResendVerificationHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		a.RenderTemplate(w, r, "resend_verification.html", nil)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form", http.StatusBadRequest)
+		return
+	}
+
+	email := r.FormValue("email")
+	captchaAnswer := r.FormValue("captcha")
+
+	session, _ := a.SessionStore.Get(r, "vulfixx-session")
+	expected, _ := session.Values["captcha_answer"].(int)
+	actual, _ := strconv.Atoi(captchaAnswer)
+
+	if expected == 0 || actual != expected {
+		a.RenderTemplate(w, r, "resend_verification.html", map[string]interface{}{"Error": "Invalid captcha answer", "Email": email})
+		return
+	}
+	delete(session.Values, "captcha_answer")
+	_ = session.Save(r, w)
+
+	token, err := auth.ResendVerificationToken(r.Context(), email)
+	if err != nil {
+		a.RenderTemplate(w, r, "resend_verification.html", map[string]interface{}{"Error": err.Error(), "Email": email})
+		return
+	}
+
+	// Push to queue
+	payload, _ := json.Marshal(map[string]string{
+		"email": email,
+		"token": token,
+	})
+	_ = a.Redis.LPush(r.Context(), "email_verification_queue", payload).Err()
+
+	a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Verification email resent. Please check your inbox."})
 }
 
 func (a *App) LogoutHandler(w http.ResponseWriter, r *http.Request) {

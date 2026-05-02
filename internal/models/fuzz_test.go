@@ -53,3 +53,59 @@ func FuzzGetCWEName(f *testing.F) {
 		}
 	})
 }
+
+func FuzzNormalizeName(f *testing.F) {
+	f.Add("microsoft")
+	f.Add("linux_kernel")
+	f.Add("Normal Name")
+	f.Add("multiple_underscores_here")
+	f.Add("")
+	f.Add(" ")
+
+	f.Fuzz(func(t *testing.T, name string) {
+		NormalizeName(name)
+	})
+}
+
+func FuzzCapitalize(f *testing.F) {
+	f.Add("hello world")
+	f.Add("multiple   spaces")
+	f.Add("ALREADY CAPS")
+	f.Add("")
+	f.Add("a b c")
+
+	f.Fuzz(func(t *testing.T, s string) {
+		capitalize(s)
+	})
+}
+
+func FuzzGetDetectedProduct(f *testing.F) {
+	f.Add("vulnerability in vendor product version 1.0")
+	f.Add("detected in Microsoft Office 2019")
+	f.Add("affects some_vendor some_product")
+	f.Add("found in the Cisco IOS")
+	f.Add("nothing here")
+	f.Add("")
+
+	f.Fuzz(func(t *testing.T, description string) {
+		cve := &CVE{Description: description}
+		cve.GetDetectedProduct()
+	})
+}
+
+func FuzzGetLineage(f *testing.F) {
+	f.Add("Related to CVE-2023-1234 and CVE-2022-5678")
+	f.Add("Fixed in CVE-2024-0001")
+	f.Add("http://example.com/CVE-2021-9999")
+	f.Add("No CVEs here")
+	f.Add("")
+
+	f.Fuzz(func(t *testing.T, data string) {
+		cve := &CVE{
+			CVEID:       "CVE-2024-TEST",
+			Description: data,
+			References:  []string{data},
+		}
+		cve.GetLineage()
+	})
+}

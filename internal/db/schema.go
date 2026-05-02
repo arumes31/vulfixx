@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS users (
     onboarding_completed BOOLEAN DEFAULT FALSE,
     max_subscriptions INTEGER DEFAULT 5,
     max_assets INTEGER DEFAULT 10,
+    verification_resend_count INTEGER DEFAULT 0,
+    last_verification_resend_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
