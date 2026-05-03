@@ -39,6 +39,8 @@ type CVE struct {
 	OSINTData      JSONBMap               `json:"osint_data"`
 	OSVLastUpdated *time.Time             `json:"osv_last_updated,omitempty"`
 	GreyNoiseLastUpdated *time.Time       `json:"greynoise_last_updated,omitempty"`
+	InTheWildData        JSONBMap               `json:"inthewild_data"`
+	InTheWildLastUpdated *time.Time             `json:"inthewild_last_updated,omitempty"`
 	Status         string                 `json:"status"`
 	Notes          string                 `json:"notes"`
 	References     []string               `json:"references"`

@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS cves (
     greynoise_last_updated TIMESTAMP WITH TIME ZONE,
     osv_data JSONB DEFAULT '{}',
     osv_last_updated TIMESTAMP WITH TIME ZONE,
+    inthewild_data JSONB DEFAULT '{}',
+    inthewild_last_updated TIMESTAMP WITH TIME ZONE,
     osint_data JSONB DEFAULT '{}',
     published_date TIMESTAMP WITH TIME ZONE,
     updated_date TIMESTAMP WITH TIME ZONE,
@@ -281,6 +283,12 @@ BEGIN
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'greynoise_classification') THEN
             ALTER TABLE cves ADD COLUMN greynoise_classification VARCHAR(50);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'inthewild_data') THEN
+            ALTER TABLE cves ADD COLUMN inthewild_data JSONB DEFAULT '{}';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'inthewild_last_updated') THEN
+            ALTER TABLE cves ADD COLUMN inthewild_last_updated TIMESTAMP WITH TIME ZONE;
         END IF;
     END IF;
 
