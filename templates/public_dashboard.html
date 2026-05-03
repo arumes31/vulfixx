@@ -833,10 +833,10 @@ input[type=number] {
     document.addEventListener('vulfixx:ajaxComplete', initMarquee);
 })();
 </script>
+{{end}}
 
-
-    {{define "cve_rows"}}
-        {{range .CVEs}}
+{{define "cve_rows"}}
+    {{range .CVEs}}
         <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer" data-cve-url="/cve/{{.CVEID}}">
             <td class="p-6">
                 <div class="flex items-center gap-3">
@@ -893,5 +893,4 @@ input[type=number] {
             </td>
         </tr>
         {{end}}
-    {{end}}
 {{end}}

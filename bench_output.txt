@@ -1,0 +1,155 @@
+2026/05/03 09:45:31 Registration error for f***@example.com: db fail
+SCAN ERROR: no row
+PASS
+ok  	cve-tracker/internal/auth	2.391s
+PASS
+ok  	cve-tracker/internal/config	0.008s
+redis: 2026/05/03 09:45:33 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp: lookup invalid-host on 192.168.0.1:53: no such host
+redis: 2026/05/03 09:45:33 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp: lookup invalid-host on 192.168.0.1:53: no such host
+redis: 2026/05/03 09:45:34 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp: lookup invalid-host on 192.168.0.1:53: no such host
+redis: 2026/05/03 09:45:34 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp: lookup invalid-host on 192.168.0.1:53: no such host
+redis: 2026/05/03 09:45:35 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp [::1]:6379: connect: connection refused
+redis: 2026/05/03 09:45:35 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp [::1]:6379: connect: connection refused
+redis: 2026/05/03 09:45:35 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp [::1]:6379: connect: connection refused
+redis: 2026/05/03 09:45:36 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp [::1]:6379: connect: connection refused
+2026/05/03 09:45:36 WARNING: DB_SSLMODE is set to 'disable'. Database traffic is unencrypted.
+2026/05/03 09:45:36 WARNING: DB_SSLMODE is set to 'disable'. Database traffic is unencrypted.
+2026/05/03 09:45:36 WARNING: DB_SSLMODE is set to 'disable'. Database traffic is unencrypted.
+2026/05/03 09:45:36 WARNING: DB_SSLMODE is set to 'disable'. Database traffic is unencrypted.
+2026/05/03 09:45:36 WARNING: DB_SSLMODE is set to 'disable'. Database traffic is unencrypted.
+redis: 2026/05/03 09:45:36 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp [::1]:1: connect: connection refused
+redis: 2026/05/03 09:45:37 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp [::1]:1: connect: connection refused
+redis: 2026/05/03 09:45:37 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp [::1]:1: connect: connection refused
+redis: 2026/05/03 09:45:38 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp [::1]:1: connect: connection refused
+PASS
+ok  	cve-tracker/internal/db	5.275s
+PASS
+ok  	cve-tracker/internal/models	0.007s
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error querying activity logs: db error
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error querying activity logs for export: db error
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Template public_dashboard.html not found
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+--- FAIL: TestIndexHandler (0.02s)
+    --- FAIL: TestIndexHandler/Unauthenticated (0.01s)
+        cve_handlers_test.go:52: expected 200 OK, got 500
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 CWE distribution error: could not match actual sql: "SELECT cwe_id, COALESCE(MAX(cwe_name), 'Unknown'), COUNT(DISTINCT c.id) as cnt FROM cves c INNER JOIN user_subscriptions us ON us.user_id = $1 LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1 AND ucs.team_id IS NULL WHERE (1=1) AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) AND c.cvss_score >= us.min_severity AND (us.keyword = '' OR c.description ILIKE '%%' || us.keyword || '%%') AND cwe_id IS NOT NULL AND cwe_id != '' GROUP BY cwe_id ORDER BY cnt DESC LIMIT 15" with expected regexp "SELECT onboarding_completed FROM users WHERE id = \$1"
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 CVEDetailHandler error: db error
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Error fetching CVEs for export: db error
+2026/05/03 09:45:38 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:38 Warning: skipping row during CVE export (scan error): Destination kind 'float64' not supported for value kind 'string' of column 'cvss_score'
+2026/05/03 09:45:38 CVE export: 1 row(s) skipped due to scan errors, 0 row(s) exported
+2026/05/03 09:45:39 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:39 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:39 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:39 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:39 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:39 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:39 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:39 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:39 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:39 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:39 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:39 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:39 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:39 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:39 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+redis: 2026/05/03 09:45:39 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp 127.0.0.1:43829: connect: connection refused
+redis: 2026/05/03 09:45:40 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp 127.0.0.1:43829: connect: connection refused
+redis: 2026/05/03 09:45:40 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp 127.0.0.1:43829: connect: connection refused
+redis: 2026/05/03 09:45:41 pool.go:717: redis: connection pool: failed to dial after 5 attempts: dial tcp 127.0.0.1:43829: connect: connection refused
+2026/05/03 09:45:41 Error enqueueing email change payloads: dial tcp 127.0.0.1:43829: connect: connection refused
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 TeamsHandler DB Error: db error
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Verification queued for "we****@example.com"
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+2026/05/03 09:45:41 Error parsing template public_dashboard.html: template: public_dashboard.html:838: unexpected <define> in command
+FAIL
+exit status 1
+FAIL	cve-tracker/internal/web	3.734s
+2026/05/03 09:45:42 Reddit API returned status 403 for CVE-ASSET
+2026/05/03 09:45:42 ALERT: Sending to us****@example.com for CVE-2023-0001
+2026/05/03 09:45:42 ALERT: Sending to us****@example.com for CVE-2023-0001
+2026/05/03 09:45:42 Webhook error response from http://127.0.0.1:46803/: status 400, body:
+2026/05/03 09:45:42 ALERT: Sending to us****@example.com for CVE-CRIT
+2026/05/03 09:45:42 ALERT: Sending to us****@example.com for CVE-2023-0001
+2026/05/03 09:45:42 ALERT: Sending to us****@example.com for CVE-2023-0002
+2026/05/03 09:45:43 Worker: Failed to send verification email to te****@example.com (attempt 1): mail error
+2026/05/03 09:45:45 Worker: No prior sync found — starting full NVD backfill...
+2026/05/03 09:45:45 Worker: Rate limited by NVD (attempt 1/5), waiting 30s...
+2026/05/03 09:45:45 Worker: [SYNC] Fetching CISA KEV catalog...
+2026/05/03 09:45:45 Worker: [SYNC] Updating 1 CISA KEV records...
+2026/05/03 09:45:45 Worker: [SYNC] CISA KEV update complete.
+2026/05/03 09:45:45 Worker: [SYNC] Fetching CISA KEV catalog...
+2026/05/03 09:45:45 Worker: [ERROR] CISA KEV API returned status 500
+2026/05/03 09:45:45 Worker: [SYNC] Starting EPSS score synchronization...
+2026/05/03 09:45:45 Worker: [SYNC] EPSS score synchronization complete. Processed 1 records. Duration: 3.587617ms
+2026/05/03 09:45:45 Worker: [SYNC] Starting GitHub Social Buzz synchronization...
+2026/05/03 09:45:45 Worker: [SYNC] GitHub Social Buzz synchronization complete. Duration: 1.259154ms
+2026/05/03 09:45:45 Worker: [SYNC] Starting GreyNoise Intelligence synchronization...
+2026/05/03 09:45:46 Worker: [SYNC] GreyNoise synchronization complete. Processed 1 CVEs.
+2026/05/03 09:45:46 Worker: [SYNC] Starting OSV (Open Source Vulnerabilities) synchronization...
+2026/05/03 09:45:47 Worker: [SYNC] OSV synchronization complete. Updated 1 records.
+2026/05/03 09:45:47 Worker: [SYNC] Starting OSV (Open Source Vulnerabilities) synchronization...
+2026/05/03 09:45:47 Worker: [SYNC] OSV synchronization complete. Updated 0 records.
+PASS
+ok  	cve-tracker/internal/worker	5.697s
+FAIL
