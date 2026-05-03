@@ -36,3 +36,4 @@ covages
 *.txt
 coverage
 *_coverage
+subagents.yaml
