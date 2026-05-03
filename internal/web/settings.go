@@ -135,7 +135,7 @@ func (a *App) VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
 		delete(session.Values, "totp_setup_ts")
 		delete(session.Values, "totp_setup_attempts")
 		_ = session.Save(r, w)
-		a.LogActivity(r.Context(), userID, "totp_enabled", "Successfully enabled 2FA", r.RemoteAddr, r.UserAgent())
+		a.LogActivity(r.Context(), userID, "totp_enabled", "Successfully enabled 2FA", a.GetClientIP(r), r.UserAgent())
 	} else {
 		session.Values["totp_setup_attempts"] = attempts + 1
 		_ = session.Save(r, w)
@@ -189,7 +189,7 @@ func (a *App) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.LogActivity(r.Context(), userID, "password_changed", "Successfully updated account password", r.RemoteAddr, r.UserAgent())
+	a.LogActivity(r.Context(), userID, "password_changed", "Successfully updated account password", a.GetClientIP(r), r.UserAgent())
 
 	a.RenderTemplate(w, r, "settings.html", map[string]interface{}{
 		"Email":           email,
@@ -266,7 +266,7 @@ func (a *App) ChangeEmailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.LogActivity(r.Context(), userID, "email_change_requested", "Requested change from "+email+" to "+newEmail, r.RemoteAddr, r.UserAgent())
+	a.LogActivity(r.Context(), userID, "email_change_requested", "Requested change from "+email+" to "+newEmail, a.GetClientIP(r), r.UserAgent())
 
 	a.RenderTemplate(w, r, "settings.html", map[string]interface{}{
 		"Email":         email,

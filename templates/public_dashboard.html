@@ -431,11 +431,16 @@ input[type=number] {
                         temp.innerHTML = html;
                         
                         temp.querySelectorAll('tr').forEach(row => {
-                            row.addEventListener('click', function(e) {
+                            const navigateRow = (e) => {
                                 if (e.target.closest('a, button, select, input, textarea, label')) return;
+                                if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+                                if (e.type === 'keydown') e.preventDefault();
+                                
                                 const url = row.getAttribute('data-cve-url');
                                 if (url) vulfixx.navigate(url);
-                            });
+                            };
+                            row.addEventListener('click', navigateRow);
+                            row.addEventListener('keydown', navigateRow);
                             tbody.appendChild(row);
                         });
                     }
@@ -489,12 +494,18 @@ input[type=number] {
                     newUrl.search = new URLSearchParams(new FormData(filterForm)).toString();
                     window.history.pushState({}, '', newUrl);
                     
+                    const navigateRow = (e) => {
+                        if (e.target.closest('a, button, select, input, textarea, label')) return;
+                        if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+                        if (e.type === 'keydown') e.preventDefault();
+                        
+                        const url = e.currentTarget.getAttribute('data-cve-url');
+                        if (url) vulfixx.navigate(url);
+                    };
+
                     tbody.querySelectorAll('tr').forEach(row => {
-                        row.addEventListener('click', function(e) {
-                            if (e.target.closest('a, button, select, input, textarea, label')) return;
-                            const url = row.getAttribute('data-cve-url');
-                            if (url) vulfixx.navigate(url);
-                        });
+                        row.addEventListener('click', navigateRow);
+                        row.addEventListener('keydown', navigateRow);
                     });
 
                     // Update charts and UI state
@@ -756,12 +767,18 @@ input[type=number] {
         updateCharts(dashboardData);
 
         // Navigate rows safely
+        const navigateRow = (e) => {
+            if (e.target.closest('a, button, select, input, textarea, label')) return;
+            if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+            if (e.type === 'keydown') e.preventDefault();
+            
+            const url = e.currentTarget.getAttribute('data-cve-url');
+            if (url) vulfixx.navigate(url);
+        };
+
         document.querySelectorAll('tr[data-cve-url]').forEach(function(row) {
-            row.addEventListener('click', function(e) {
-                if (e.target.closest('a, button, select, input, textarea, label')) return;
-                const url = row.getAttribute('data-cve-url');
-                if (url) vulfixx.navigate(url);
-            });
+            row.addEventListener('click', navigateRow);
+            row.addEventListener('keydown', navigateRow);
         });
     }
 
@@ -838,7 +855,7 @@ input[type=number] {
 
 {{define "cve_rows"}}
     {{range .CVEs}}
-    <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer" data-cve-url="/cve/{{.CVEID}}">
+    <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer" data-cve-url="/cve/{{.CVEID}}" tabindex="0" role="button" aria-label="View details for {{.CVEID}}">
         <td class="p-6">
             <div class="flex items-center gap-3">
                 <a href="/cve/{{.CVEID}}" class="text-sm font-black text-white group-hover:text-primary transition-colors">{{.CVEID}}</a>

@@ -16,25 +16,26 @@ var (
 	cveRegex = regexp.MustCompile(`CVE-\d{4}-\d+`)
 )
 
+const maxFeedBodySize = 10 << 20 // 10MB
+
 type AdvisoryFeed struct {
-	Name          string
-	URL           string
-	DefaultVendor string
+	Name string
+	URL  string
 }
 
 var advisoryFeeds = []AdvisoryFeed{
 	{Name: "CISA Advisories", URL: "https://www.cisa.gov/cybersecurity-advisories/all.xml"},
 	{Name: "CISA ICS Advisories", URL: "https://www.cisa.gov/cybersecurity-advisories/ics-advisories.xml"},
-	{Name: "Microsoft Security Advisories", URL: "https://api.msrc.microsoft.com/update-guide/rss", DefaultVendor: "Microsoft"},
-	{Name: "AWS Security Bulletins", URL: "https://aws.amazon.com/security/security-bulletins/rss/", DefaultVendor: "AWS"},
-	{Name: "VMware Security Advisories", URL: "https://www.vmware.com/security/advisories.xml", DefaultVendor: "VMware"},
-	{Name: "Oracle Security Alerts", URL: "https://www.oracle.com/ocom/groups/public/@otn/documents/webcontent/rss-otn-sec.xml", DefaultVendor: "Oracle"},
+	{Name: "Microsoft Security Advisories", URL: "https://api.msrc.microsoft.com/update-guide/rss"},
+	{Name: "AWS Security Bulletins", URL: "https://aws.amazon.com/security/security-bulletins/rss/"},
+	{Name: "VMware Security Advisories", URL: "https://www.vmware.com/security/advisories.xml"},
+	{Name: "Oracle Security Alerts", URL: "https://www.oracle.com/ocom/groups/public/@otn/documents/webcontent/rss-otn-sec.xml"},
 	{Name: "GitHub Advisory Database", URL: "https://github.com/advisories.atom"},
 	{Name: "CERT-EU Advisories", URL: "https://cert.europa.eu/publications/security-advisories/feed/"},
-	{Name: "FortiGuard PSIRT", URL: "https://filestore.fortinet.com/fortiguard/rss/ir.xml", DefaultVendor: "Fortinet"},
-	{Name: "Cisco PSIRT", URL: "https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisory.xml", DefaultVendor: "Cisco"},
-	{Name: "Red Hat Security", URL: "https://access.redhat.com/security/data/metrics/rhsa.rss", DefaultVendor: "Red Hat"},
-	{Name: "Ubuntu Security", URL: "https://ubuntu.com/security/notices/rss.xml", DefaultVendor: "Ubuntu"},
+	{Name: "FortiGuard PSIRT", URL: "https://filestore.fortinet.com/fortiguard/rss/ir.xml"},
+	{Name: "Cisco PSIRT", URL: "https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisory.xml"},
+	{Name: "Red Hat Security", URL: "https://access.redhat.com/security/data/metrics/rhsa.rss"},
+	{Name: "Ubuntu Security", URL: "https://ubuntu.com/security/notices/rss.xml"},
 	{Name: "ZDI Advisories", URL: "https://www.zerodayinitiative.com/rss/advisories/"},
 }
 
@@ -76,7 +77,13 @@ type AtomFeed struct {
 func (w *Worker) syncAdvisoryRSSPeriodically(ctx context.Context) {
 	// 12 hour interval, with a small initial delay
 	w.waitUntilNextRun(ctx, "advisory_rss_sync", 12*time.Hour, 2*time.Minute)
-	w.syncAdvisoryRSS(ctx)
+
+	select {
+	case <-ctx.Done():
+		return
+	default:
+		w.syncAdvisoryRSS(ctx)
+	}
 
 	ticker := time.NewTicker(12 * time.Hour)
 	defer ticker.Stop()
@@ -93,7 +100,12 @@ func (w *Worker) syncAdvisoryRSSPeriodically(ctx context.Context) {
 func (w *Worker) syncAdvisoryRSS(ctx context.Context) {
 	log.Printf("Worker: [SYNC] Starting Generalized Advisory feeds synchronization for %d feeds...", len(advisoryFeeds))
 	for _, feed := range advisoryFeeds {
-		w.processAdvisoryFeed(ctx, feed)
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			w.processAdvisoryFeed(ctx, feed)
+		}
 	}
 	w.updateTaskStats(ctx, "advisory_rss_sync")
 	log.Println("Worker: [SYNC] Generalized Advisory feeds synchronization complete.")
@@ -119,10 +131,14 @@ func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
 		return
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxFeedBodySize))
 	if err != nil {
 		log.Printf("Worker: [ERROR] Failed to read feed body for %s: %v", feed.Name, err)
 		return
+	}
+
+	if int64(len(body)) >= maxFeedBodySize {
+		log.Printf("Worker: [WARN] Feed body for %s was truncated (exceeded %d bytes)", feed.Name, maxFeedBodySize)
 	}
 
 	var items []GenericFeedItem
@@ -203,7 +219,9 @@ func (w *Worker) integrateAdvisoryCVE(ctx context.Context, cveID string, item Ge
 			} else {
 				log.Printf("Worker: [SYNC] Added %s reference to existing CVE %s", feed.Name, cveID)
 				// Enqueue alert for enrichment/update
-				_ = w.enqueueAlertsForCVE(ctx, model)
+				if err := w.enqueueAlertsForCVE(ctx, model); err != nil {
+					log.Printf("Worker: [ERROR] Failed to enqueue alerts for CVE %s: %v", cveID, err)
+				}
 			}
 		}
 	}

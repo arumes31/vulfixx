@@ -213,6 +213,12 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'onboarding_completed') THEN
         ALTER TABLE users ADD COLUMN onboarding_completed BOOLEAN DEFAULT FALSE;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'verification_resend_count') THEN
+        ALTER TABLE users ADD COLUMN verification_resend_count INTEGER DEFAULT 0;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'last_verification_resend_at') THEN
+        ALTER TABLE users ADD COLUMN last_verification_resend_at TIMESTAMP WITH TIME ZONE;
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'teams' AND column_name = 'max_subscriptions') THEN
         ALTER TABLE teams ADD COLUMN max_subscriptions INTEGER DEFAULT 10;
     END IF;

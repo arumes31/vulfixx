@@ -26,9 +26,10 @@ func TestResendVerificationToken(t *testing.T) {
 			WillReturnError(pgx.ErrNoRows)
 		mock.ExpectRollback()
 
+		genericMsg := "If this email is registered and unverified, a new verification link will be sent."
 		_, err = ResendVerificationToken(ctx, "notfound@test.com")
-		if err == nil || err.Error() != "user not found" {
-			t.Errorf("expected user not found, got %v", err)
+		if err == nil || err.Error() != genericMsg {
+			t.Errorf("expected generic error, got %v", err)
 		}
 	})
 
@@ -46,9 +47,10 @@ func TestResendVerificationToken(t *testing.T) {
 				AddRow(1, true, 0, nil))
 		mock.ExpectRollback()
 
+		genericMsg := "If this email is registered and unverified, a new verification link will be sent."
 		_, err = ResendVerificationToken(ctx, "verified@test.com")
-		if err == nil || err.Error() != "email already verified" {
-			t.Errorf("expected email already verified, got %v", err)
+		if err == nil || err.Error() != genericMsg {
+			t.Errorf("expected generic error, got %v", err)
 		}
 	})
 
@@ -67,9 +69,10 @@ func TestResendVerificationToken(t *testing.T) {
 				AddRow(1, false, 0, &now))
 		mock.ExpectRollback()
 
+		genericMsg := "If this email is registered and unverified, a new verification link will be sent."
 		_, err = ResendVerificationToken(ctx, "wait@test.com")
-		if err == nil {
-			t.Errorf("expected please wait error, got nil")
+		if err == nil || err.Error() != genericMsg {
+			t.Errorf("expected generic error, got %v", err)
 		}
 	})
 

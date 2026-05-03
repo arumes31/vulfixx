@@ -354,7 +354,7 @@ func (a *App) UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	a.LogActivity(r.Context(), userID, "cve_status_updated", fmt.Sprintf("Updated CVE ID %d status to %s", req.CVEID, req.Status), r.RemoteAddr, r.UserAgent())
+	a.LogActivity(r.Context(), userID, "cve_status_updated", fmt.Sprintf("Updated CVE ID %d status to %s", req.CVEID, req.Status), a.GetClientIP(r), r.UserAgent())
 	a.SendResponse(w, r, true, "Remediation status updated", "", "")
 }
 
@@ -420,7 +420,7 @@ func (a *App) UpdateCVENoteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.LogActivity(r.Context(), userID, "cve_note_updated", fmt.Sprintf("Updated notes for CVE ID %d", req.CVEID), r.RemoteAddr, r.UserAgent())
+	a.LogActivity(r.Context(), userID, "cve_note_updated", fmt.Sprintf("Updated notes for CVE ID %d", req.CVEID), a.GetClientIP(r), r.UserAgent())
 	a.SendResponse(w, r, true, "Notes saved successfully", "", "")
 }
 
@@ -521,7 +521,7 @@ func (a *App) BulkUpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	a.LogActivity(r.Context(), userID, "cve_status_bulk_updated", fmt.Sprintf("Bulk updated %d CVEs to %s", len(req.CVEIDs), req.Status), r.RemoteAddr, r.UserAgent())
+	a.LogActivity(r.Context(), userID, "cve_status_bulk_updated", fmt.Sprintf("Bulk updated %d CVEs to %s", len(req.CVEIDs), req.Status), a.GetClientIP(r), r.UserAgent())
 	a.SendResponse(w, r, true, fmt.Sprintf("Updated %d CVEs", len(req.CVEIDs)), "", "")
 }
 

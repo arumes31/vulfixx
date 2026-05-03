@@ -2,11 +2,49 @@ package web
 
 import (
 	"cve-tracker/internal/db"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+func TestErrorReportHandler(t *testing.T) {
+	app := &App{}
+	t.Run("GET_NotAllowed", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/report-error", nil)
+		rr := httptest.NewRecorder()
+		app.ErrorReportHandler(rr, req)
+		// ErrorReportHandler returns nothing for GET
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", rr.Code)
+		}
+	})
+
+	t.Run("POST_InvalidJSON", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/report-error", strings.NewReader("{invalid"))
+		rr := httptest.NewRecorder()
+		app.ErrorReportHandler(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 (silent ignore), got %d", rr.Code)
+		}
+	})
+
+	t.Run("POST_Success", func(t *testing.T) {
+		data := map[string]string{
+			"message": "test error",
+			"type": "TypeError",
+			"url": "http://localhost/test",
+		}
+		body, _ := json.Marshal(data)
+		req := httptest.NewRequest("POST", "/report-error", strings.NewReader(string(body)))
+		rr := httptest.NewRecorder()
+		app.ErrorReportHandler(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", rr.Code)
+		}
+	})
+}
 
 func TestWebErrorPaths(t *testing.T) {
 	mock, _ := db.SetupTestDB()

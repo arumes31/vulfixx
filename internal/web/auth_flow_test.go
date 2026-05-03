@@ -13,7 +13,10 @@ import (
 )
 
 func TestAuthFlow_FullLifecycle(t *testing.T) {
-	mock, _ := db.SetupTestDB()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
 	mock.MatchExpectationsInOrder(false)
 	
 	oldPool := db.Pool
@@ -49,6 +52,7 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to post registration: %v", err)
 		}
+		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("expected status OK, got %d", resp.StatusCode)
 		}
@@ -64,7 +68,11 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 		form.Add("password_confirm", password)
 		form.Add("captcha", "10")
 
-		resp, _ := client.PostForm(ts.URL+"/register", form)
+		resp, err := client.PostForm(ts.URL+"/register", form)
+		if err != nil {
+			t.Fatalf("failed to post registration: %v", err)
+		}
+		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("expected status OK (rendering template with error), got %d", resp.StatusCode)
 		}
@@ -86,7 +94,11 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 		mock.ExpectExec("UPDATE users SET email_verify_token").WithArgs(pgxmock.AnyArg(), 1).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()
 
-		resp, _ := client.PostForm(ts.URL+"/resend-verification", form)
+		resp, err := client.PostForm(ts.URL+"/resend-verification", form)
+		if err != nil {
+			t.Fatalf("failed to post resend: %v", err)
+		}
+		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("expected status OK, got %d", resp.StatusCode)
 		}
@@ -106,7 +118,11 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 				AddRow(1, false, 1, &lastResend))
 		mock.ExpectRollback()
 
-		resp, _ := client.PostForm(ts.URL+"/resend-verification", form)
+		resp, err := client.PostForm(ts.URL+"/resend-verification", form)
+		if err != nil {
+			t.Fatalf("failed to post resend: %v", err)
+		}
+		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("expected status OK, got %d", resp.StatusCode)
 		}
@@ -118,7 +134,10 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 		form.Add("email", email)
 		form.Add("password", password)
 
-		hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			t.Fatalf("failed to hash password: %v", err)
+		}
 
 		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users").
 			WithArgs(email).
@@ -129,7 +148,11 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 			WithArgs(1, "login", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-		resp, _ := client.PostForm(ts.URL+"/login", form)
+		resp, err := client.PostForm(ts.URL+"/login", form)
+		if err != nil {
+			t.Fatalf("failed to post login: %v", err)
+		}
+		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusFound {
 			t.Errorf("expected redirect to dashboard, got %d", resp.StatusCode)
 		}

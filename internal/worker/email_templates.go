@@ -2,8 +2,10 @@ package worker
 
 import (
 	"fmt"
+	"html"
 	"os"
 	"strings"
+	"time"
 )
 
 func WrapInModernLayout(title, content string) string {
@@ -14,6 +16,7 @@ func WrapInModernLayout(title, content string) string {
 	baseURL = strings.TrimSuffix(baseURL, "/")
 
 	logoURL := baseURL + "/static/img/logo.png"
+	escapedTitle := html.EscapeString(title)
 
 	return fmt.Sprintf(`
 <!DOCTYPE html>
@@ -141,5 +144,5 @@ func WrapInModernLayout(title, content string) string {
     </div>
 </body>
 </html>
-	`, logoURL, title, content, 2026) // Fixed year as requested in system context
+	`, logoURL, escapedTitle, content, time.Now().Year())
 }

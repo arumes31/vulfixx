@@ -19,7 +19,7 @@ tmp/
 # Coverage artifacts – never commit generated profiles
 coverage/
 coverage.*
-*.txt
+coverage.txt
 *.coverprofile
 *_cov
 *_coverage

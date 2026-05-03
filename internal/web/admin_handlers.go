@@ -105,7 +105,7 @@ func (a *App) AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if res.RowsAffected() > 0 {
-		a.LogActivity(r.Context(), currentUserID, "user_delete", "Deleted user ID "+strconv.Itoa(id), r.RemoteAddr, r.UserAgent())
+		a.LogActivity(r.Context(), currentUserID, "user_delete", "Deleted user ID "+strconv.Itoa(id), a.GetClientIP(r), r.UserAgent())
 	}
 
 	if res.RowsAffected() == 0 {

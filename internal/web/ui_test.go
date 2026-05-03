@@ -138,8 +138,8 @@ func TestUI_SettingsPageStructure(t *testing.T) {
 
 	t.Run("CheckSettingsSections", func(t *testing.T) {
 		body := rr.Body.String()
-		if !strings.Contains(body, "System Preferences") && !strings.Contains(body, "Credentials") {
-			t.Errorf("Settings sections not found")
+		if !strings.Contains(body, "System Preferences") || !strings.Contains(body, "Credentials") {
+			t.Errorf("Settings sections (System Preferences or Credentials) not found")
 		}
 		if doc.Find("form").Length() == 0 {
 			t.Errorf("settings form not found")

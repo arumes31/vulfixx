@@ -164,6 +164,17 @@ func (a *App) AdminMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func (a *App) GetClientIP(r *http.Request) string {
+	if ip, ok := r.Context().Value(clientIPKey).(string); ok {
+		return ip
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
 func (a *App) LogActivity(ctx context.Context, userID int, activityType, description, ipAddress, userAgent string) {
 	host, _, err := net.SplitHostPort(ipAddress)
 	if err == nil {

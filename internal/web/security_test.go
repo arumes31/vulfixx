@@ -55,8 +55,17 @@ func TestCSRFProtection(t *testing.T) {
 		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=valid"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		
+		rr := httptest.NewRecorder()
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["admin_csrf_token"] = "valid"
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("failed to save session: %v", err)
+		}
+		
+		// Add the cookie to the request so ValidateCSRF can find the session
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
 		
 		if !app.ValidateCSRF(req) {
 			t.Errorf("expected CSRF validation to pass")
@@ -77,7 +86,11 @@ func TestCSRFProtection(t *testing.T) {
 }
 
 func TestXSSPrevention(t *testing.T) {
-	mock, _ := db.SetupTestDB()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
 	app := setupTestApp(t, mock)
 	
 	// We'll test RenderTemplate with a malicious string
@@ -129,7 +142,11 @@ func TestRateLimitMiddleware(t *testing.T) {
 }
 
 func TestAuthMiddleware(t *testing.T) {
-	mock, _ := db.SetupTestDB()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
 	app := setupTestApp(t, mock)
 	
 	handler := app.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -157,13 +174,23 @@ func TestAuthMiddleware(t *testing.T) {
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)
 		
-		// If unverified, it should allow access but maybe templates show warning?
-		// Actually, let's check base.go middleware logic.
+		// If unverified, it should return 403 Forbidden
+		if rr.Code != http.StatusForbidden {
+			t.Errorf("expected 403 Forbidden for unverified user, got %d", rr.Code)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 }
 
 func TestAdminMiddleware(t *testing.T) {
-	mock, _ := db.SetupTestDB()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
 	app := setupTestApp(t, mock)
 	
 	handler := app.AdminMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -202,7 +229,11 @@ func TestAdminMiddleware(t *testing.T) {
 }
 
 func TestSQLInjectionPrevention(t *testing.T) {
-	mock, _ := db.SetupTestDB()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
 	app := setupTestApp(t, mock)
 	
 	// Malicious keyword that attempts to break out of string and run additional commands

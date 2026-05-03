@@ -56,6 +56,10 @@ func TestAlertHistoryHandler(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected 200 OK, got %d", rr.Code)
 	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
 }
 
 func TestCompleteOnboardingHandler(t *testing.T) {
@@ -80,5 +84,9 @@ func TestCompleteOnboardingHandler(t *testing.T) {
 	// SendResponse with redirect sends 302
 	if rr.Code != http.StatusFound {
 		t.Errorf("expected 302 Found, got %d", rr.Code)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
 	}
 }

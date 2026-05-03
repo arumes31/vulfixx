@@ -11,10 +11,74 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v3"
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
 )
+
+func TestConfirmEmailChangeHandler(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+	app := setupTestApp(t, mock)
+
+	// auth.ConfirmEmailChange uses db.Pool
+	oldPool := db.Pool
+	db.Pool = mock
+	defer func() { db.Pool = oldPool }()
+
+	t.Run("MissingToken", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/confirm-email-change", nil)
+		rr := httptest.NewRecorder()
+		app.ConfirmEmailChangeHandler(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", rr.Code)
+		}
+	})
+
+	t.Run("InvalidToken", func(t *testing.T) {
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT user_id, new_email").WithArgs("invalid").WillReturnError(pgx.ErrNoRows)
+		mock.ExpectRollback()
+
+		req, _ := http.NewRequest("GET", "/confirm-email-change?token=invalid", nil)
+		rr := httptest.NewRecorder()
+		app.ConfirmEmailChangeHandler(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", rr.Code)
+		}
+	})
+
+	t.Run("Success_Full", func(t *testing.T) {
+		token := "full-tok"
+		userID := 1
+		newEmail := "new@test.com"
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT user_id, new_email").WithArgs(token).WillReturnRows(pgxmock.NewRows([]string{"user_id", "new_email", "old_email_confirmed", "new_email_confirmed", "old_email_token", "new_email_token"}).
+			AddRow(userID, newEmail, true, false, "old", token))
+		mock.ExpectExec("UPDATE email_change_requests SET new_email_confirmed = TRUE").WithArgs(userID).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("UPDATE users SET email = \\$1").WithArgs(newEmail, userID).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("DELETE FROM email_change_requests").WithArgs(userID).WillReturnResult(pgxmock.NewResult("DELETE", 1))
+		mock.ExpectCommit()
+		
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(userID, "email_change", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		req, _ := http.NewRequest("GET", "/confirm-email-change?token="+token, nil)
+		rr := httptest.NewRecorder()
+		app.ConfirmEmailChangeHandler(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", rr.Code)
+		}
+	})
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
 
 func TestLoginHandler(t *testing.T) {
 	t.Run("GET", func(t *testing.T) {
@@ -89,10 +153,18 @@ func TestLoginHandler(t *testing.T) {
 
 func TestLogoutHandler(t *testing.T) {
 	StopStatsTicker()
-	mock, _ := db.SetupTestDB()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
 	app := setupTestApp(t, mock)
 	
-	req, _ := http.NewRequest("POST", "/logout", nil)
+	req, err := http.NewRequest("POST", "/logout", nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
 	setSessionUser(t, app, req, 1, false)
 	
 	rr := httptest.NewRecorder()
@@ -101,25 +173,45 @@ func TestLogoutHandler(t *testing.T) {
 	if rr.Code != http.StatusFound {
 		t.Errorf("expected redirect, got %d", rr.Code)
 	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
 }
 
 func TestVerifyEmailHandler(t *testing.T) {
 	StopStatsTicker()
-	mock, _ := db.SetupTestDB()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
 	app := setupTestApp(t, mock)
 	
 	// auth.VerifyEmail uses db.Pool
+	oldPool := db.Pool
 	db.Pool = mock
+	defer func() { db.Pool = oldPool }()
+
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE users SET is_email_verified = TRUE, email_verify_token = NULL WHERE email_verify_token = $1")).
 		WithArgs("valid-token").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	
-	req, _ := http.NewRequest("GET", "/verify-email?token=valid-token", nil)
+	req, err := http.NewRequest("GET", "/verify-email?token=valid-token", nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+
 	rr := httptest.NewRecorder()
 	app.VerifyEmailHandler(rr, req)
 	
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
 	}
 }
 
@@ -293,7 +385,7 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 			req.AddCookie(c)
 		}
 
-		app.Redis.Set(req.Context(), "login_failures:"+req.RemoteAddr, 5, 0)
+		app.Redis.Set(req.Context(), "login_failures:"+app.GetClientIP(req), 5, 0)
 
 		rr := httptest.NewRecorder()
 		app.LoginHandler(rr, req)

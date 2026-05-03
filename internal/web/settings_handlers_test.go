@@ -9,12 +9,107 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pquerna/otp/totp"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 )
+
+func TestTOTPHandlers(t *testing.T) {
+	t.Run("GenerateTOTPHandler_Success", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		mock.ExpectQuery("SELECT email FROM users").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"email"}).AddRow("test@example.com"))
+		mock.ExpectExec("UPDATE users SET totp_secret").WithArgs(pgxmock.AnyArg(), 1).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+		expectBaseQueries(mock, 1)
+
+		req, _ := http.NewRequest("POST", "/settings/totp/generate", nil)
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.GenerateTOTPHandler(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d. Body: %s", rr.Code, rr.Body.String())
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("VerifyTOTPHandler_InvalidCode", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		mock.ExpectQuery("SELECT totp_secret FROM users").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"totp_secret"}).AddRow("SECRET"))
+
+		form := url.Values{"totp_code": {"000000"}}
+		req, _ := http.NewRequest("POST", "/settings/totp/verify", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		
+		// Set setup values in session
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["totp_setup_ts"] = time.Now().Unix()
+		session.Values["totp_setup_attempts"] = 0
+		_ = session.Save(req, httptest.NewRecorder())
+
+		rr := httptest.NewRecorder()
+		app.VerifyTOTPHandler(rr, req)
+		if rr.Code != http.StatusFound {
+			t.Errorf("expected 302, got %d", rr.Code)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("VerifyTOTPHandler_Success", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		secret := "JBSWY3DPEHPK3PXP"
+		code, _ := totp.GenerateCode(secret, time.Now())
+		mock.ExpectQuery("SELECT totp_secret FROM users").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"totp_secret"}).AddRow(secret))
+		mock.ExpectExec("UPDATE users SET is_totp_enabled = TRUE").WithArgs(1).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(1, "totp_enabled", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		form := url.Values{"totp_code": {code}}
+		req, _ := http.NewRequest("POST", "/settings/totp/verify", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+
+		// Set setup values in session
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["totp_setup_ts"] = time.Now().Unix()
+		session.Values["totp_setup_attempts"] = 0
+		_ = session.Save(req, httptest.NewRecorder())
+
+		rr := httptest.NewRecorder()
+		app.VerifyTOTPHandler(rr, req)
+		if rr.Code != http.StatusFound {
+			t.Errorf("expected 302Found, got %d", rr.Code)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+}
 
 func TestSettingsHandler(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {

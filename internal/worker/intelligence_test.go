@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"cve-tracker/internal/db"
+	"cve-tracker/internal/models"
 	"io"
 	"net/http"
 	"regexp"
@@ -10,7 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/pashagolub/pgxmock/v3"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestWorker_FetchOSINTLinks(t *testing.T) {
@@ -19,6 +22,14 @@ func TestWorker_FetchOSINTLinks(t *testing.T) {
 		t.Fatalf("failed to setup mock db: %v", err)
 	}
 	defer mock.Close()
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis.Run failed: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
 
 	httpClient := &MockHTTPClient{
 		DoFunc: func(req *http.Request) (*http.Response, error) {
@@ -38,7 +49,7 @@ func TestWorker_FetchOSINTLinks(t *testing.T) {
 		},
 	}
 
-	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, httpClient)
+	w := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
 	t.Run("Success", func(t *testing.T) {
 		data := w.fetchOSINTLinks(context.Background(), "CVE-2024-TEST")
@@ -75,7 +86,7 @@ func TestWorker_FetchOSINTLinks(t *testing.T) {
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("{}"))}, nil
 			},
 		}
-		w2 := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, httpClientRateLimit)
+		w2 := NewWorker(mock, rdb, &EmailSenderMock{}, httpClientRateLimit)
 		
 		_ = w2.fetchOSINTLinks(context.Background(), "CVE-2024-LIMIT")
 		if callCount < 2 {
@@ -91,6 +102,14 @@ func TestWorker_Intelligence(t *testing.T) {
 	}
 	defer mock.Close()
 
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis.Run failed: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
 	httpClient := &MockHTTPClient{
 		DoFunc: func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
@@ -99,7 +118,7 @@ func TestWorker_Intelligence(t *testing.T) {
 			}, nil
 		},
 	}
-	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, httpClient)
+	w := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
 	t.Run("EnrichMissingIntelligence", func(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cve_id, description, configurations FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' LIMIT 1000")).
@@ -117,16 +136,47 @@ func TestWorker_Intelligence(t *testing.T) {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
+
+	t.Run("syncIntelligencePeriodically", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		w.syncIntelligencePeriodically(ctx)
+	})
+
+	t.Run("processIntelligence", func(t *testing.T) {
+		// processIntelligence(ctx) - no second arg
+		_ = w.processIntelligence(context.Background())
+	})
+
+	t.Run("updateSocialSentiment", func(t *testing.T) {
+		cve := models.CVE{CVEID: "CVE-SENT-1", OSINTData: make(models.JSONBMap)}
+		// Should just run without panicking
+		w.updateSocialSentiment(context.Background(), &cve)
+	})
+
+	t.Run("detectDuplicates", func(t *testing.T) {
+		cve := models.CVE{CVEID: "CVE-DUP-1", Description: "This is a duplicate of CVE-2023-0001", OSINTData: make(models.JSONBMap)}
+		// Should just run without panicking
+		w.detectDuplicates(context.Background(), &cve)
+	})
 }
 
-func TestWorker_Health(t *testing.T) {
+func TestWorker_Health_Coverage(t *testing.T) {
 	mock, err := db.SetupTestDB()
 	if err != nil {
 		t.Fatalf("failed to setup mock db: %v", err)
 	}
 	defer mock.Close()
 
-	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis.Run failed: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	w := NewWorker(mock, rdb, &EmailSenderMock{}, http.DefaultClient)
 
 	t.Run("UpdateTaskStats", func(t *testing.T) {
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO worker_sync_stats (task_name, last_run) VALUES ($1, NOW()) ON CONFLICT (task_name) DO UPDATE SET last_run = NOW(), updated_at = NOW()")).

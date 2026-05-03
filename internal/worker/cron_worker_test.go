@@ -58,7 +58,10 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 	})
 
 	t.Run("startWeeklySummaryTask", func(t *testing.T) {
-		mock, _ := pgxmock.NewPool()
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
 		defer mock.Close()
 		w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
 		ctx, cancel := context.WithCancel(context.Background())
@@ -69,10 +72,17 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 		mock.ExpectBegin().WillReturnError(context.Canceled)
 		
 		w.startWeeklySummaryTask(ctx)
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
 	t.Run("startIntelligenceEnrichmentTask", func(t *testing.T) {
-		mock, _ := pgxmock.NewPool()
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
 		defer mock.Close()
 		w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
 		ctx, cancel := context.WithCancel(context.Background())
@@ -84,6 +94,10 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 		mock.ExpectQuery("SELECT id, cve_id, description, configurations FROM cves").WillReturnError(context.Canceled)
 		
 		w.startIntelligenceEnrichmentTask(ctx)
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
 	t.Run("sendWeeklySummaries", func(t *testing.T) {

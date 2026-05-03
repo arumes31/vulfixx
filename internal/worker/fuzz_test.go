@@ -13,6 +13,6 @@ func FuzzParseNVDDate(f *testing.F) {
 	f.Add("")
 
 	f.Fuzz(func(t *testing.T, dateStr string) {
-		parseNVDDate(dateStr)
+		_, _ = parseNVDDate(dateStr)
 	})
 }

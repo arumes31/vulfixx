@@ -45,7 +45,10 @@ func TestWorker_emailWorker_Coverage(t *testing.T) {
 		w.pollDelayedQueue(context.Background(), "email_verification_delayed", "email_verification_queue")
 
 		// Check if it was moved
-		count, _ := rdb.LLen(context.Background(), "email_verification_queue").Result()
+		count, err := rdb.LLen(context.Background(), "email_verification_queue").Result()
+		if err != nil {
+			t.Fatalf("LLen failed: %v", err)
+		}
 		if count != 1 {
 			t.Errorf("expected 1 item in queue, got %d", count)
 		}

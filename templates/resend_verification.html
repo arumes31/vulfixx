@@ -13,14 +13,14 @@
             </div>
 
             {{if .Error}}
-            <div class="bg-red-500/10 border border-red-500/20 text-red-400 px-6 py-4 rounded-2xl mb-8 flex items-center gap-3">
+            <div role="alert" aria-atomic="true" class="bg-red-500/10 border border-red-500/20 text-red-400 px-6 py-4 rounded-2xl mb-8 flex items-center gap-3">
                 <span class="material-symbols-outlined text-xl">error</span>
                 <p class="text-sm">{{.Error}}</p>
             </div>
             {{end}}
 
             {{if .Message}}
-            <div class="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-6 py-4 rounded-2xl mb-8 flex items-center gap-3">
+            <div role="status" aria-live="polite" class="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-6 py-4 rounded-2xl mb-8 flex items-center gap-3">
                 <span class="material-symbols-outlined text-xl">check_circle</span>
                 <p class="text-sm">{{.Message}}</p>
             </div>
@@ -46,7 +46,7 @@
                             <img id="captcha-img" src="/captcha" alt="Captcha" class="h-full w-full object-contain">
                         </div>
                         <div class="relative flex-1">
-                            <input type="number" name="captcha" required 
+                            <input type="text" inputmode="numeric" pattern="\d*" name="captcha" required 
                                    class="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-3 px-4 text-white focus:outline-none focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all text-center font-bold tracking-widest"
                                    placeholder="Result">
                         </div>

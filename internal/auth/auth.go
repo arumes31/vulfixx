@@ -102,22 +102,23 @@ func ResendVerificationToken(ctx context.Context, email string) (string, error) 
 	var resendCount int
 	var lastResend *time.Time
 
+	genericMsg := "If this email is registered and unverified, a new verification link will be sent."
+
 	err = tx.QueryRow(ctx, "SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at FROM users WHERE email = $1 FOR UPDATE", email).
 		Scan(&userID, &isVerified, &resendCount, &lastResend)
 	if err != nil {
-		return "", errors.New("user not found")
+		return "", errors.New(genericMsg)
 	}
 
 	if isVerified {
-		return "", errors.New("email already verified")
+		return "", errors.New(genericMsg)
 	}
 
 	if lastResend != nil {
 		// Progressive backoff: 10m + (count * 20m)
 		waitTime := 10*time.Minute + time.Duration(resendCount)*20*time.Minute
 		if time.Since(*lastResend) < waitTime {
-			remaining := waitTime - time.Since(*lastResend)
-			return "", fmt.Errorf("please wait another %v before requesting a new verification email", remaining.Round(time.Second))
+			return "", errors.New(genericMsg)
 		}
 	}
 
@@ -142,6 +143,16 @@ func ResendVerificationToken(ctx context.Context, email string) (string, error) 
 	}
 
 	return newToken, nil
+}
+
+func RollbackResend(ctx context.Context, email string) error {
+	_, err := db.Pool.Exec(ctx, `
+		UPDATE users 
+		SET email_verify_token = NULL, 
+		    verification_resend_count = GREATEST(0, verification_resend_count - 1)
+		WHERE email = $1 AND is_email_verified = FALSE
+	`, email)
+	return err
 }
 
 func Login(ctx context.Context, email, password string) (*models.User, error) {

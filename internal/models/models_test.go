@@ -390,6 +390,9 @@ func TestGetAffectedProducts(t *testing.T) {
 				if tt.wantVersion != "" && got[0].Version != tt.wantVersion {
 					t.Errorf("GetAffectedProducts() Version = %q, want %q", got[0].Version, tt.wantVersion)
 				}
+				if got[0].Unconfirmed != tt.wantUnconfirmed {
+					t.Errorf("GetAffectedProducts() Unconfirmed = %v, want %v", got[0].Unconfirmed, tt.wantUnconfirmed)
+				}
 			}
 		})
 	}
