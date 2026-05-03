@@ -3,12 +3,14 @@ package worker
 import (
 	"context"
 	"encoding/xml"
+	"errors"
 	"io"
 	"log"
 	"net/http"
 	"regexp"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"cve-tracker/internal/models"
 )
 
@@ -213,7 +215,11 @@ func (w *Worker) integrateAdvisoryCVE(ctx context.Context, cveID string, item Ge
 		Scan(&model.ID, &model.CVEID, &model.Description, &model.CVSSScore, &model.Vendor, &model.Product, &model.References, &model.EPSSScore)
 
 	if err != nil {
-		// CVE likely doesn't exist in our database; we skip it to prevent "bloat"
+		if errors.Is(err, pgx.ErrNoRows) {
+			// CVE doesn't exist in our database; we skip it to prevent "bloat"
+			return
+		}
+		log.Printf("Worker: [ERROR] Failed to query CVE %s for advisory sync: %v", cveID, err)
 		return
 	}
 

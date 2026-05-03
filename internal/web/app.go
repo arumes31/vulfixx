@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/gorilla/sessions"
+	"time"
 )
 
 // EmailSender defines the interface for sending emails.
@@ -20,6 +21,7 @@ type App struct {
 	Mailer       EmailSender
 	TemplateMap  map[string]*template.Template
 	TemplateMu   sync.RWMutex
+	Now          func() time.Time
 }
 
 func NewApp(pool db.DBPool, redis db.RedisProvider, sessionStore sessions.Store, mailer EmailSender) *App {
@@ -29,5 +31,6 @@ func NewApp(pool db.DBPool, redis db.RedisProvider, sessionStore sessions.Store,
 		SessionStore: sessionStore,
 		Mailer:       mailer,
 		TemplateMap:  make(map[string]*template.Template),
+		Now:          time.Now,
 	}
 }

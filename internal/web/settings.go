@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/pquerna/otp/totp"
 	"github.com/redis/go-redis/v9"
@@ -64,7 +63,7 @@ func (a *App) GenerateTOTPHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	session, _ := a.SessionStore.Get(r, "vulfixx-session")
-	session.Values["totp_setup_ts"] = time.Now().Unix()
+	session.Values["totp_setup_ts"] = a.Now().Unix()
 	session.Values["totp_setup_attempts"] = 0
 	_ = session.Save(r, w)
 
@@ -109,7 +108,7 @@ func (a *App) VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
 	setupTS, _ := session.Values["totp_setup_ts"].(int64)
 	attempts, _ := session.Values["totp_setup_attempts"].(int)
 
-	if setupTS == 0 || time.Now().Unix()-setupTS > 600 {
+	if setupTS == 0 || a.Now().Unix()-setupTS > 600 {
 		delete(session.Values, "totp_setup_ts")
 		delete(session.Values, "totp_setup_attempts")
 		_ = session.Save(r, w)
@@ -127,7 +126,11 @@ func (a *App) VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	valid := totp.Validate(code, secret)
+	valid, _ := totp.ValidateCustom(code, secret, a.Now(), totp.ValidateOpts{
+		Period: 30,
+		Skew:   1,
+		Digits: 6,
+	})
 	if valid {
 		if _, err := a.Pool.Exec(r.Context(), "UPDATE users SET is_totp_enabled = TRUE WHERE id = $1", userID); err != nil {
 			log.Printf("Error enabling TOTP: %v", err)

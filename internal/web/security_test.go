@@ -301,7 +301,7 @@ func TestSQLInjectionPrevention(t *testing.T) {
 	app.DashboardHandler(rr, req)
 	
 	body := rr.Body.String()
-	badPhrases := []string{"syntax error", "unterminated string literal", "SQL error"}
+	badPhrases := []string{"syntax error", "unterminated string literal", "sql error"}
 	for _, p := range badPhrases {
 		if strings.Contains(strings.ToLower(body), p) {
 			t.Errorf("Potential SQL injection leak detected in response body: %s", body)

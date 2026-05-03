@@ -31,9 +31,14 @@ coverage_stats.txt
 .swarm/
 scratch/
 covages
-*.md
+# Narrowed documentation ignores
+vendor/**/*.md
+docs/**/*.md
 !README.md
-*.txt
+!CHANGELOG.md
+!LICENSE
+!CONTRIBUTING.md
+!requirements.txt
 coverage
 *_coverage
 subagents.yaml

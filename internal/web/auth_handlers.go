@@ -96,8 +96,12 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if !totp.Validate(totpCode, secret) {
-			a.Redis.Incr(r.Context(), rlKey)
-			a.Redis.Expire(r.Context(), rlKey, 15*time.Minute)
+			pipe := a.Redis.Pipeline()
+			pipe.Incr(r.Context(), rlKey)
+			pipe.Expire(r.Context(), rlKey, 15*time.Minute)
+			if _, err := pipe.Exec(r.Context()); err != nil {
+				log.Printf("Redis pipeline error for %s: %v", rlKey, err)
+			}
 			a.RenderTemplate(w, r, "login.html", map[string]interface{}{
 				"Error":       "Invalid TOTP code",
 				"RequireTOTP": true,
@@ -140,8 +144,12 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	user, err := auth.Login(r.Context(), email, password)
 	if err != nil {
-		a.Redis.Incr(r.Context(), rlKeyLogin)
-		a.Redis.Expire(r.Context(), rlKeyLogin, 15*time.Minute)
+		pipe := a.Redis.Pipeline()
+		pipe.Incr(r.Context(), rlKeyLogin)
+		pipe.Expire(r.Context(), rlKeyLogin, 15*time.Minute)
+		if _, err := pipe.Exec(r.Context()); err != nil {
+			log.Printf("Redis pipeline error for %s: %v", rlKeyLogin, err)
+		}
 		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Invalid credentials"})
 		return
 	}
@@ -227,8 +235,12 @@ func (a *App) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Increment IP rate limit
-	a.Redis.Incr(r.Context(), rlKey)
-	a.Redis.Expire(r.Context(), rlKey, 1*time.Hour)
+	pipe := a.Redis.Pipeline()
+	pipe.Incr(r.Context(), rlKey)
+	pipe.Expire(r.Context(), rlKey, 1*time.Hour)
+	if _, err := pipe.Exec(r.Context()); err != nil {
+		log.Printf("Redis pipeline error for %s: %v", rlKey, err)
+	}
 
 	// Push email verification payload to redis queue
 	payload, err := json.Marshal(map[string]string{
@@ -337,10 +349,14 @@ func (a *App) ResendVerificationHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Increment rate limits only after successful queueing
-	a.Redis.Incr(r.Context(), rlKey)
-	a.Redis.Expire(r.Context(), rlKey, 1*time.Hour)
-	a.Redis.Incr(r.Context(), emailRlKey)
-	a.Redis.Expire(r.Context(), emailRlKey, 30*time.Minute)
+	pipe := a.Redis.Pipeline()
+	pipe.Incr(r.Context(), rlKey)
+	pipe.Expire(r.Context(), rlKey, 1*time.Hour)
+	pipe.Incr(r.Context(), emailRlKey)
+	pipe.Expire(r.Context(), emailRlKey, 30*time.Minute)
+	if _, err := pipe.Exec(r.Context()); err != nil {
+		log.Printf("Redis pipeline error for resend limits: %v", err)
+	}
 
 	a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "If this email is registered and unverified, a new verification link will be sent."})
 }

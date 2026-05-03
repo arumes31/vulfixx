@@ -59,9 +59,12 @@ func TestTOTPHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		setSessionUser(t, app, req, 1, false)
 		
+		fixedTime := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+		app.Now = func() time.Time { return fixedTime }
+		
 		// Set setup values in session and persist them via cookie
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
-		session.Values["totp_setup_ts"] = time.Now().Unix()
+		session.Values["totp_setup_ts"] = fixedTime.Unix()
 		session.Values["totp_setup_attempts"] = 0
 		
 		rr := httptest.NewRecorder()
@@ -90,8 +93,14 @@ func TestTOTPHandlers(t *testing.T) {
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
+		fixedTime := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+		app.Now = func() time.Time { return fixedTime }
+
 		secret := "JBSWY3DPEHPK3PXP"
-		code, _ := totp.GenerateCode(secret, time.Now())
+		code, err := totp.GenerateCode(secret, fixedTime)
+		if err != nil {
+			t.Fatalf("failed to generate totp code: %v", err)
+		}
 		mock.ExpectQuery("SELECT totp_secret FROM users").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"totp_secret"}).AddRow(secret))
 		mock.ExpectExec("UPDATE users SET is_totp_enabled = TRUE").WithArgs(1).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(1, "totp_enabled", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -103,7 +112,7 @@ func TestTOTPHandlers(t *testing.T) {
 
 		// Set setup values in session and persist them via cookie
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
-		session.Values["totp_setup_ts"] = time.Now().Unix()
+		session.Values["totp_setup_ts"] = fixedTime.Unix()
 		session.Values["totp_setup_attempts"] = 0
 		
 		rr := httptest.NewRecorder()

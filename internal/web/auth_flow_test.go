@@ -72,6 +72,10 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 
 	// 2. Registration Rate Limit
 	t.Run("RegistrationRateLimit", func(t *testing.T) {
+		// Refresh captcha
+		respCap, _ := client.Get(ts.URL + "/captcha")
+		respCap.Body.Close()
+
 		app.Redis.Set(context.Background(), "reg_limit:127.0.0.1", 5, 1*time.Hour)
 
 		form := url.Values{}
