@@ -33,3 +33,6 @@ scratch/
 covages
 *.md
 !README.md
+*.txt
+coverage
+*_coverage
