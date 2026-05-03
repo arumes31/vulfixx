@@ -29,7 +29,8 @@ type NVDCVE struct {
 		Value string `json:"value"`
 	} `json:"descriptions"`
 	References []struct {
-		URL string `json:"url"`
+		URL  string   `json:"url"`
+		Tags []string `json:"tags"`
 	} `json:"references"`
 	Metrics struct {
 		CvssMetricV31 []struct {
@@ -295,11 +296,31 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 		}
 
 		var references []string
+		exploitAvailable := false
 		for _, ref := range cve.References {
 			u, err := url.Parse(ref.URL)
 			if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 				continue
 			}
+
+			// Check for exploit tags
+			for _, tag := range ref.Tags {
+				if strings.ToLower(tag) == "exploit" {
+					exploitAvailable = true
+					break
+				}
+			}
+
+			// Also heuristic check on common exploit sites
+			urlLower := strings.ToLower(ref.URL)
+			if strings.Contains(urlLower, "exploit-db.com") ||
+				strings.Contains(urlLower, "packetstormsecurity.com") ||
+				strings.Contains(urlLower, "metasploit.com") ||
+				strings.Contains(urlLower, "rapid7.com/db/modules") ||
+				strings.Contains(urlLower, "github.com/") && (strings.Contains(urlLower, "/exploit") || strings.Contains(urlLower, "/poc")) {
+				exploitAvailable = true
+			}
+
 			// Normalize
 			u.Fragment = ""
 			u.User = nil
@@ -327,6 +348,7 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			PublishedDate:  pubDate,
 			UpdatedDate:    modDate,
 			Configurations: cve.Configurations,
+			ExploitAvailable: exploitAvailable,
 		}
 
 		vendor, product := model.GetDetectedProduct()
@@ -335,8 +357,8 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 		model.AffectedProducts = model.GetAffectedProducts()
 
 		query := `
-			INSERT INTO cves (cve_id, description, cvss_score, vector_string, cwe_id, "references", configurations, published_date, updated_date, vendor, product, affected_products)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			INSERT INTO cves (cve_id, description, cvss_score, vector_string, cwe_id, "references", configurations, published_date, updated_date, vendor, product, affected_products, exploit_available)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 			ON CONFLICT (cve_id) DO UPDATE SET
 				description = EXCLUDED.description,
 				cvss_score = EXCLUDED.cvss_score,
@@ -348,9 +370,10 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 				vendor = EXCLUDED.vendor,
 				product = EXCLUDED.product,
 				affected_products = EXCLUDED.affected_products,
+				exploit_available = EXCLUDED.exploit_available,
 				updated_at = CURRENT_TIMESTAMP
 		`
-		_, err = w.Pool.Exec(ctx, query, model.CVEID, model.Description, model.CVSSScore, model.VectorString, model.CWEID, model.References, model.Configurations, model.PublishedDate, model.UpdatedDate, model.Vendor, model.Product, model.AffectedProducts)
+		_, err = w.Pool.Exec(ctx, query, model.CVEID, model.Description, model.CVSSScore, model.VectorString, model.CWEID, model.References, model.Configurations, model.PublishedDate, model.UpdatedDate, model.Vendor, model.Product, model.AffectedProducts, model.ExploitAvailable)
 		if err != nil {
 			log.Printf("Worker: Error upserting CVE %s: %v", cve.ID, err)
 			continue

@@ -31,6 +31,7 @@
                     <div class="flex items-center gap-2">
                         {{if .CISAKEV}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-orange-500/20 text-orange-400 border border-orange-500/20">KEV</span>{{end}}
                         {{if gt .GreyNoiseHits 0}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-red-500/20 text-red-400 border border-red-500/20 animate-pulse">Active</span>{{end}}
+                        {{if .ExploitAvailable}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-red-600/20 text-red-500 border border-red-600/20">Exploit</span>{{end}}
                         {{if gt .GitHubPoCCount 0}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-purple-500/20 text-purple-400 border border-purple-500/20">PoC</span>{{end}}
                         {{if gt .EPSSScore 0.5}}<span class="px-1.5 py-0.5 rounded text-[7px] font-black uppercase bg-red-500/20 text-red-400 border border-red-500/20">High EPSS</span>{{end}}
                     </div>
@@ -867,6 +868,7 @@ input[type=number] {
             <div class="flex flex-wrap gap-1.5">
                 {{if .CISAKEV}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-orange-500/20 text-orange-400 border border-orange-500/10">KEV</span>{{end}}
                 {{if gt .GreyNoiseHits 0}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-red-500/20 text-red-400 border border-red-500/10 animate-pulse">Active</span>{{end}}
+                {{if .ExploitAvailable}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-red-600/20 text-red-500 border border-red-600/10">Exploit</span>{{end}}
                 {{if gt .GitHubPoCCount 0}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-purple-500/20 text-purple-400 border border-purple-500/10">PoC</span>{{end}}
                 {{if gt .EPSSScore 0.5}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-red-500/20 text-red-400 border border-red-500/10">High EPSS</span>{{end}}
                 {{if gt .EPSSScore 0.0}}<span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-white/5 text-gray-500 border border-white/5">EPSS: {{printf "%.4f" .EPSSScore}}</span>{{end}}

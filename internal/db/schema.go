@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS cves (
     cvss_score NUMERIC(4,1),
     vector_string TEXT,
     cisa_kev BOOLEAN DEFAULT FALSE,
+    exploit_available BOOLEAN DEFAULT FALSE,
     epss_score NUMERIC(6,5),
     cwe_id VARCHAR(50),
     cwe_name TEXT,
@@ -289,6 +290,9 @@ BEGIN
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'inthewild_last_updated') THEN
             ALTER TABLE cves ADD COLUMN inthewild_last_updated TIMESTAMP WITH TIME ZONE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'exploit_available') THEN
+            ALTER TABLE cves ADD COLUMN exploit_available BOOLEAN DEFAULT FALSE;
         END IF;
     END IF;
 
