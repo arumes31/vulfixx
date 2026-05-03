@@ -26,3 +26,10 @@ coverage.txt
 *_coverage.txt
 coverage_stats.txt
 **/coverage.out
+
+# Custom exclusions
+.swarm/
+scratch/
+covages
+*.md
+!README.md
