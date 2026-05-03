@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -92,7 +93,11 @@ func (w *Worker) syncInTheWild(ctx context.Context) {
 }
 
 func (w *Worker) fetchInTheWildData(ctx context.Context, cveID string) (map[string]interface{}, error) {
-	url := fmt.Sprintf("https://inthewild.io/api/v1/vulns/%s", cveID)
+	baseURL := "https://inthewild.io/api/v1/vulns"
+	if envURL := os.Getenv("INTHEWILD_API_URL"); envURL != "" {
+		baseURL = envURL
+	}
+	url := fmt.Sprintf("%s/%s", baseURL, cveID)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err

@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS cves (
     affected_products JSONB DEFAULT '[]',
     osv_last_updated TIMESTAMP WITH TIME ZONE,
     greynoise_last_updated TIMESTAMP WITH TIME ZONE,
+    darknet_mentions INTEGER DEFAULT 0,
+    darknet_last_seen TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -189,6 +191,7 @@ CREATE INDEX IF NOT EXISTS idx_cves_product ON cves(product);
 CREATE INDEX IF NOT EXISTS idx_cves_affected_products ON cves USING GIN (affected_products);
 CREATE INDEX IF NOT EXISTS idx_cves_osv_last_updated ON cves (osv_last_updated ASC NULLS FIRST);
 CREATE INDEX IF NOT EXISTS idx_cves_greynoise_last_updated ON cves (greynoise_last_updated ASC NULLS FIRST);
+CREATE INDEX IF NOT EXISTS idx_cves_darknet_last_seen ON cves (darknet_last_seen ASC NULLS FIRST);
 
 -- Partial Unique Indexes for status and notes
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_status ON user_cve_status (user_id, cve_id) WHERE team_id IS NULL;

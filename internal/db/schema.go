@@ -56,9 +56,26 @@ CREATE TABLE IF NOT EXISTS cves (
     vendor VARCHAR(255),
     product VARCHAR(255),
     affected_products JSONB DEFAULT '[]',
+    darknet_mentions INTEGER DEFAULT 0,
+    darknet_last_seen TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS darknet_intel_hits (
+    id SERIAL PRIMARY KEY,
+    cve_id VARCHAR(50) NOT NULL,
+    engine VARCHAR(50),
+    title TEXT,
+    url TEXT UNIQUE, -- deduplication by URL (57)
+    snippet TEXT,
+    translation TEXT,
+    language VARCHAR(10), -- (23)
+    source_link TEXT,
+    is_honey_link BOOLEAN DEFAULT FALSE, -- (97)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_darknet_intel_hits_cve_id ON darknet_intel_hits(cve_id);
 
 CREATE TABLE IF NOT EXISTS sync_state (
     key VARCHAR(100) PRIMARY KEY,

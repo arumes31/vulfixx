@@ -49,9 +49,22 @@ type CVE struct {
 	Vendor         string                 `json:"vendor"`
 	Product        string                 `json:"product"`
 	AffectedProducts AffectedProducts     `json:"affected_products"`
+	DarknetMentions  int                    `json:"darknet_mentions"`
+	DarknetLastSeen  *time.Time             `json:"darknet_last_seen,omitempty"`
+	DarknetHits      []DarknetHit           `json:"darknet_hits,omitempty"`
 	PublishedDate  time.Time              `json:"published_date"`
 	UpdatedDate    time.Time              `json:"updated_date"`
 	CreatedAt      time.Time              `json:"created_at"`
+}
+
+type DarknetHit struct {
+	Title       string    `json:"title"`
+	URL         string    `json:"url"`
+	Engine      string    `json:"engine"`
+	Snippet     string    `json:"snippet"`
+	Language    string    `json:"language"`
+	IsHoneyLink bool      `json:"is_honey_link"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type CVEConfigurations []CVEConfiguration

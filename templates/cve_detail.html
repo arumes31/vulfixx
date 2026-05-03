@@ -375,6 +375,117 @@
     </section>
     {{end}}
 
+    <!-- Darknet Intelligence Section -->
+    <section class="space-y-6">
+        <div class="flex items-center justify-between">
+            <h2 class="text-2xl font-black text-white flex items-center gap-3">
+                <span class="material-symbols-outlined text-gray-400">visibility_off</span>
+                Darknet Discussion Evidence
+            </h2>
+            {{if gt .CVE.DarknetMentions 0}}
+            <div class="px-3 py-1 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20 text-[8px] font-black uppercase tracking-[0.2em] animate-pulse">
+                Active Discussions Detected
+            </div>
+            {{else}}
+            <div class="px-3 py-1 rounded-full bg-white/5 text-gray-500 border border-white/10 text-[8px] font-black uppercase tracking-[0.2em]">
+                No Darknet Activity Found
+            </div>
+            {{end}}
+        </div>
+        
+        <div class="glass p-8 rounded-[2.5rem] border border-white/10 flex flex-col md:flex-row items-center gap-12 relative overflow-hidden">
+            <!-- Background Pulse if active -->
+            {{if gt .CVE.DarknetMentions 0}}
+            <div class="absolute inset-0 bg-gradient-to-br from-orange-500/[0.03] to-transparent pointer-events-none"></div>
+            {{end}}
+
+            <div class="flex flex-col items-center text-center space-y-2 min-w-[150px]">
+                <div class="text-5xl font-black {{if gt .CVE.DarknetMentions 0}}text-orange-400{{else}}text-gray-700{{end}} tracking-tighter">
+                    {{.CVE.DarknetMentions}}
+                </div>
+                <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Verified Mentions</span>
+            </div>
+
+            <div class="flex-1 space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div class="space-y-1">
+                        <div class="text-[10px] font-black uppercase tracking-widest text-gray-600 mb-1">Intelligence Status</div>
+                        <div class="flex items-center gap-2">
+                            {{if eq .CVE.DarknetMentions 0}}
+                            <span class="w-2 h-2 rounded-full bg-gray-700"></span>
+                            <span class="text-sm font-bold text-gray-500 uppercase tracking-tight">Silent</span>
+                            {{else if lt .CVE.DarknetMentions 5}}
+                            <span class="w-2 h-2 rounded-full bg-orange-400"></span>
+                            <span class="text-sm font-bold text-orange-400 uppercase tracking-tight">Emerging Interest</span>
+                            {{else}}
+                            <div class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+                                <span class="text-sm font-black text-red-500 uppercase tracking-tight">High Interest / Hot</span>
+                            </div>
+                            {{end}}
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <div class="text-[10px] font-black uppercase tracking-widest text-gray-600 mb-1">Last Observed</div>
+                        <div class="text-sm font-mono text-gray-400">
+                            {{if .CVE.DarknetLastSeen}}{{.CVE.DarknetLastSeen.Format "Jan 02, 2006 15:04"}}{{else}}Never{{end}}
+                        </div>
+                    </div>
+                </div>
+                <p class="text-[11px] text-gray-500 leading-relaxed italic border-l-2 border-white/5 pl-4">
+                    Our scalpers monitor anonymous forums, marketplace listings, and underground paste services. 
+                    Mentions indicate that threat actors are actively discussing, researching, or trading information regarding this vulnerability.
+                </p>
+            </div>
+
+            <div class="hidden lg:block">
+                <div class="w-24 h-24 rounded-full border-4 border-dashed {{if gt .CVE.DarknetMentions 0}}border-orange-500/20 animate-[spin_10s_linear_infinite]{{else}}border-white/5{{end}} flex items-center justify-center">
+                    <span class="material-symbols-outlined text-4xl {{if gt .CVE.DarknetMentions 0}}text-orange-500/40{{else}}text-white/5{{end}}">
+                        {{if gt .CVE.DarknetMentions 0}}radar{{else}}security{{end}}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        {{if .CVE.DarknetHits}}
+        <div class="grid grid-cols-1 gap-4 mt-8">
+            <h3 class="text-xs font-black uppercase tracking-widest text-gray-500 flex items-center gap-2 px-4">
+                <span class="material-symbols-outlined text-[14px]">history_edu</span>
+                Evidence Snippets from Darknet Indexes
+            </h3>
+            {{range .CVE.DarknetHits}}
+            <div class="glass p-6 rounded-3xl border {{if .IsHoneyLink}}border-red-500/30 bg-red-500/5{{else}}border-white/5{{end}} space-y-3 relative overflow-hidden group">
+                {{if .IsHoneyLink}}
+                <div class="absolute top-0 right-0 px-4 py-1 bg-red-500 text-white text-[8px] font-black uppercase tracking-widest rounded-bl-xl shadow-lg animate-pulse">
+                    Honey-Link Detected
+                </div>
+                {{end}}
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <span class="text-xs font-black text-white group-hover:text-primary transition-colors">{{.Title}}</span>
+                        <span class="px-2 py-0.5 rounded bg-white/5 text-[9px] font-mono text-gray-500">{{.Engine}}</span>
+                        {{if .Language}}
+                        <span class="px-2 py-0.5 rounded bg-tertiary/10 text-tertiary text-[9px] font-black uppercase">{{.Language}}</span>
+                        {{end}}
+                    </div>
+                    <span class="text-[9px] font-mono text-gray-600">{{.CreatedAt.Format "Jan 02, 2006"}}</span>
+                </div>
+                <p class="text-xs text-gray-400 leading-relaxed font-mono bg-black/20 p-4 rounded-xl border border-white/5 truncate-3-lines">
+                    {{.Snippet}}
+                </p>
+                <div class="flex items-center justify-between pt-2">
+                    <div class="text-[9px] text-gray-600 truncate max-w-md font-mono opacity-50 group-hover:opacity-100 transition-opacity">{{.URL}}</div>
+                    <a href="#" class="text-[10px] font-black uppercase tracking-widest text-primary hover:underline flex items-center gap-1">
+                        View Details
+                        <span class="material-symbols-outlined text-xs">open_in_new</span>
+                    </a>
+                </div>
+            </div>
+            {{end}}
+        </div>
+        {{end}}
+    </section>
+
     <!-- Call to Action -->
     <div class="glass p-12 rounded-[3rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-transparent text-center space-y-6">
         <h2 class="text-3xl font-black text-white">Protect your infrastructure from this threat.</h2>

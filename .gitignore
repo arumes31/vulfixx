@@ -42,3 +42,11 @@ docs/**/*.md
 coverage
 *_coverage
 subagents.yaml
+data/
+*.db
+results/
+*.json
+!go.json
+!composer.json
+!package.json
+!package-lock.json
