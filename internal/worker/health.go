@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"time"
 )
 
@@ -57,7 +58,25 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 				w.alertMu.Unlock()
 
 				if canAlert {
-					_ = w.Mailer.SendEmail(w.AdminEmail, "Vulfixx Health Alert", msg)
+					baseURL := os.Getenv("BASE_URL")
+					if baseURL == "" {
+						baseURL = "http://localhost:8080"
+					}
+					content := fmt.Sprintf(`
+						<div style="background-color: #ff4d4d1a; padding: 20px; border-radius: 16px; border: 1px solid #ff4d4d33; color: #ff4d4d; margin-bottom: 20px;">
+							<strong>⚠️ Critical System Event</strong>
+						</div>
+						<p style="font-size: 16px; line-height: 1.6;">The following health event was detected in the Vulfixx environment:</p>
+						<div style="background-color: #1c2026; padding: 20px; border-radius: 16px; border: 1px solid #232931; font-family: monospace; font-size: 14px;">
+							%s
+						</div>
+						<div style="margin-top: 30px; text-align: center;">
+							<a href="%s/admin/users" class="btn">Access Control Center</a>
+						</div>
+					`, msg, baseURL)
+
+					body := WrapInModernLayout("Vulfixx Health Alert", content)
+					_ = w.Mailer.SendEmail(w.AdminEmail, "Vulfixx Health Alert", body)
 				}
 			}
 		}

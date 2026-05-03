@@ -4,12 +4,53 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/pashagolub/pgxmock/v3"
 	"github.com/redis/go-redis/v9"
 )
+
+func TestWorker_emailWorker_Coverage(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create mock pool: %v", err)
+	}
+	defer mock.Close()
+	mock.MatchExpectationsInOrder(false)
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	w := NewWorker(mock, rdb, &EmailSenderMock{}, http.DefaultClient)
+
+	t.Run("startEmailRetryPoller", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		w.startEmailRetryPoller(ctx)
+	})
+
+	t.Run("pollDelayedQueue", func(t *testing.T) {
+		now := float64(time.Now().UnixMilli())
+		rdb.ZAdd(context.Background(), "email_verification_delayed", redis.Z{Score: now - 1000, Member: "test_item"})
+
+		w.pollDelayedQueue(context.Background(), "email_verification_delayed", "email_verification_queue")
+
+		// Check if it was moved
+		count, _ := rdb.LLen(context.Background(), "email_verification_queue").Result()
+		if count != 1 {
+			t.Errorf("expected 1 item in queue, got %d", count)
+		}
+	})
+}
 
 func TestEmailWorker_Queues(t *testing.T) {
 	mr, err := miniredis.Run()

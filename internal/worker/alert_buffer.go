@@ -206,22 +206,28 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 		baseURLStr = parsedBase.String()
 	}
 
-	body := fmt.Sprintf(`
-		<div style="font-family: 'Inter', sans-serif; max-width: 600px; margin: auto; background: #101418; color: #dfe2eb; padding: 40px; border-radius: 12px; border: 1px solid #232931;">
-			<h2 style="color: #00daf3; margin-top: 0;">Intelligence Brief: %d New Threats</h2>
-			<table style="width: 100%%; border-collapse: collapse; margin-bottom: 30px;">
+	content := fmt.Sprintf(`
+		<p>Our threat monitoring systems have detected <strong>%d new vulnerabilities</strong> matching your intelligence profiles.</p>
+		
+		<div style="margin: 30px 0;">
+			<table width="100%%" style="border-collapse: collapse; background-color: #1c2026; border-radius: 16px; border: 1px solid #232931; overflow: hidden;">
 				<thead>
-					<tr style="font-size: 11px; text-transform: uppercase; opacity: 0.5; text-align: left;">
-						<th style="padding: 10px 15px;">Vulnerability</th>
-						<th style="padding: 10px 15px; text-align: center;">Buzz</th>
-						<th style="padding: 10px 15px; text-align: right;">CVSS</th>
+					<tr style="background-color: #232931; color: #ffffff; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;">
+						<th style="padding: 15px; text-align: left;">CVE ID</th>
+						<th style="padding: 15px; text-align: center;">Status</th>
+						<th style="padding: 15px; text-align: right;">CVSS</th>
 					</tr>
 				</thead>
 				<tbody>%s</tbody>
 			</table>
-			<a href="%s/dashboard" style="display: block; width: 100%%; background: #00daf3; color: #101418; text-align: center; padding: 15px 0; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 14px; text-transform: uppercase;">Review All Threats</a>
+		</div>
+
+		<div style="text-align: center; margin-top: 30px;">
+			<a href="%s/dashboard" class="btn">Analyze All Threats</a>
 		</div>
 	`, len(items), rowsHTML, baseURLStr)
+
+	body := WrapInModernLayout(fmt.Sprintf("Intelligence Brief: %d New Threats", len(items)), content)
 
 	if len(uniqueEmails) == 0 {
 		log.Printf("Error: No recipient email found for user %d digest", userID)

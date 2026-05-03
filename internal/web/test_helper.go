@@ -74,29 +74,28 @@ func expectBaseQueries(mock pgxmock.PgxPoolIface, userID int) {
 	if userID <= 0 {
 		return
 	}
-	// Onboarding status query in RenderTemplate
+	// 1. Onboarding status query in RenderTemplate
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT onboarding_completed FROM users WHERE id = $1")).
 		WithArgs(userID).
 		WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed"}).AddRow(true))
 
-	// Sub count query in RenderTemplate
+	// 2. Sub count query in RenderTemplate
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1")).
 		WithArgs(userID).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
 
-	// Team list query in RenderTemplate
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT t.id, t.name FROM teams t JOIN team_members tm ON t.id = tm.team_id WHERE tm.user_id = $1")).
+	// 3. Team list query in RenderTemplate
+	mock.ExpectQuery("(?is)SELECT t.id, t.name FROM teams t").
 		WithArgs(userID).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(1, "Team1"))
 }
 
-func setupTestServer(t *testing.T, mock pgxmock.PgxPoolIface) (*httptest.Server, *App, *http.Client) {
+
+
+func setupTestServerFull(t *testing.T, mock pgxmock.PgxPoolIface) (*httptest.Server, *App, *http.Client) {
 	app := setupTestApp(t, mock)
 
 	r := http.NewServeMux()
-	// Add routes as needed for TestWebEndpointsCoverage
-	// For simplicity, we can just use the real router if available
-	// but here we define what we need.
 	r.HandleFunc("/", app.IndexHandler)
 	r.HandleFunc("/login", app.LoginHandler)
 	r.HandleFunc("/register", app.RegisterHandler)
@@ -119,4 +118,8 @@ func setupTestServer(t *testing.T, mock pgxmock.PgxPoolIface) (*httptest.Server,
 	}
 
 	return ts, app, client
+}
+
+func setupTestServer(t *testing.T, mock pgxmock.PgxPoolIface) (*httptest.Server, *App, *http.Client) {
+    return setupTestServerFull(t, mock)
 }

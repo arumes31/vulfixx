@@ -190,30 +190,41 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 			}
 
 			escapedToken := url.QueryEscape(actionToken)
-			buttonsHTML := fmt.Sprintf(`
-				<div style="margin-top: 30px; display: table; width: 100%%; border-collapse: separate; border-spacing: 10px 0;">
-					<div style="display: table-cell; width: 50%%;">
-						<a href="%s/alert-action?token=%s&action=acknowledge" style="display: block; background: #00daf3; color: #101418; text-align: center; padding: 12px 0; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 13px;">ACKNOWLEDGE</a>
-					</div>
-					<div style="display: table-cell; width: 50%%;">
-						<a href="%s/alert-action?token=%s&action=mute" style="display: block; background: #1c2026; color: #dfe2eb; text-align: center; padding: 12px 0; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 13px; border: 1px solid #232931;">MUTE KEYWORD</a>
-					</div>
-				</div>
-			`, baseURL, escapedToken, baseURL, escapedToken)
-			body := fmt.Sprintf(`
-				<div style="font-family: sans-serif; max-width: 600px; margin: auto; background: #101418; color: #dfe2eb; padding: 40px; border-radius: 12px; border: 1px solid #232931;">
-					<h1 style="color: #ffffff; margin-top: 0;">%s</h1>
+			
+			content := fmt.Sprintf(`
+				<div style="margin-bottom: 20px;">
 					%s %s
-					<div style="margin: 20px 0; font-size: 14px; opacity: 0.8;">
-						CVSS: <span style="color: %s; font-weight: bold;">%.1f (%s)</span> | EPSS: <span style="font-weight: bold;">%s</span>
-					</div>
-					<p style="line-height: 1.6; margin-bottom: 25px;">%s</p>
-					%s
-					<div style="margin-top: 25px; border-top: 1px solid #232931; pt: 20px;">
-						<a href="%s/dashboard" style="display: block; text-align: center; color: #00daf3; text-decoration: none; font-size: 12px; font-weight: bold; padding-top: 20px;">OPEN DASHBOARD &rarr;</a>
+				</div>
+				<div style="background-color: #1c2026; padding: 20px; border-radius: 16px; border: 1px solid #232931; margin-bottom: 25px;">
+					<div style="font-size: 14px; opacity: 0.7; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Vulnerability Metrics</div>
+					<div style="font-size: 18px;">
+						CVSS: <span style="color: %s; font-weight: 800;">%.1f (%s)</span> 
+						<span style="color: #232931; margin: 0 10px;">|</span>
+						EPSS: <span style="font-weight: 800; color: #ffffff;">%s</span>
 					</div>
 				</div>
-			`, html.EscapeString(cve.CVEID), kevBadge, advisoryHTML, severityColor, cve.CVSSScore, severity, epssDisplay, html.EscapeString(cve.Description), buttonsHTML, baseURL)
+				<p style="font-size: 16px; line-height: 1.7; color: #dfe2eb; margin-bottom: 30px;">%s</p>
+				
+				<div style="margin-top: 30px;">
+					<table width="100%%" border="0" cellspacing="0" cellpadding="0">
+						<tr>
+							<td width="48%%">
+								<a href="%s/alert-action?token=%s&action=acknowledge" class="btn" style="display: block; text-align: center; padding: 14px 0; margin: 0;">ACKNOWLEDGE</a>
+							</td>
+							<td width="4%%"></td>
+							<td width="48%%">
+								<a href="%s/alert-action?token=%s&action=mute" class="secondary-btn" style="display: block; text-align: center; padding: 14px 0; margin: 0;">MUTE KEYWORD</a>
+							</td>
+						</tr>
+					</table>
+				</div>
+
+				<div style="margin-top: 40px; text-align: center;">
+					<a href="%s/dashboard" style="color: #00daf3; text-decoration: none; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;">Open Security Dashboard &rarr;</a>
+				</div>
+			`, kevBadge, advisoryHTML, severityColor, cve.CVSSScore, severity, epssDisplay, html.EscapeString(cve.Description), baseURL, escapedToken, baseURL, escapedToken, baseURL)
+
+			body := WrapInModernLayout("Security Alert: "+cve.CVEID, content)
 			if err := w.Mailer.SendEmail(email, "Security Alert: "+cve.CVEID, body); err == nil {
 				successChan <- true
 			} else {

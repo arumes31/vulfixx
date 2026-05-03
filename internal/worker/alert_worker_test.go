@@ -11,11 +11,85 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/pashagolub/pgxmock/v3"
 	"github.com/redis/go-redis/v9"
 )
+
+func TestWorker_matchCVE(t *testing.T) {
+	cve := &models.CVE{
+		CVEID:       "CVE-123",
+		Description: "A test vulnerability",
+		CVSSScore:   5.0,
+	}
+
+	tests := []struct {
+		name string
+		sub  models.UserSubscription
+		want bool
+	}{
+		{"match_keyword", models.UserSubscription{Keyword: "test"}, true},
+		{"no_match_keyword", models.UserSubscription{Keyword: "foo"}, false},
+		{"match_severity", models.UserSubscription{MinSeverity: 4.0}, true},
+		{"no_match_severity", models.UserSubscription{MinSeverity: 6.0}, false},
+		{"complex_filter", models.UserSubscription{FilterLogic: "regex: test"}, true},
+		{"complex_filter_false", models.UserSubscription{FilterLogic: "regex: foo"}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := matchCVE(cve, tt.sub); got != tt.want {
+				t.Errorf("matchCVE() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWorker_processAlerts_Coverage(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create mock pool: %v", err)
+	}
+	defer mock.Close()
+	mock.MatchExpectationsInOrder(false)
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	w := NewWorker(mock, rdb, &EmailSenderMock{}, http.DefaultClient)
+
+	cve := models.CVE{CVEID: "CVE-TEST"}
+	data, _ := json.Marshal(cve)
+
+	// We expect evaluateSubscriptions to be called for the valid item, which does a query
+	mock.ExpectQuery("SELECT s.id, s.user_id").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"id", "user_id", "keyword", "min_severity", "webhook_url", "enable_email", "enable_webhook", "filter_logic", "email"}))
+	mock.ExpectQuery("SELECT ak.keyword, a.user_id").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"keyword", "user_id", "email", "name"}))
+
+	// Invalid JSON item first
+	rdb.LPush(context.Background(), "cve_alerts_queue", "{invalid")
+	// Valid item
+	rdb.LPush(context.Background(), "cve_alerts_queue", data)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		cancel()
+	}()
+
+	w.processAlerts(ctx)
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
 
 func TestWorkerAlert_EvaluateSubscriptions(t *testing.T) {
 	mock, err := db.SetupTestDB()

@@ -75,7 +75,7 @@ func isQuantifier(op syntax.Op) bool {
 
 func (w *Worker) processAlerts(ctx context.Context) {
 	for {
-		result, err := w.Redis.BRPop(ctx, 0, "cve_alerts_queue").Result()
+		result, err := w.Redis.BRPop(ctx, 1*time.Second, "cve_alerts_queue").Result()
 		if err != nil {
 			if ctx.Err() != nil {
 				return
