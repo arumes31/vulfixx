@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"log"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -13,8 +12,8 @@ import (
 	"cve-tracker/internal/models"
 )
 
-func (a *App) InitTemplatesWithFuncs() error {
-	funcs := template.FuncMap{
+func (a *App) GetTemplateFuncs() template.FuncMap {
+	return template.FuncMap{
 		"map": func(values ...interface{}) map[string]interface{} {
 			if len(values)%2 != 0 {
 				return nil
@@ -58,7 +57,6 @@ func (a *App) InitTemplatesWithFuncs() error {
 			if err != nil {
 				return template.URL("#invalid-url")
 			}
-			// Allow empty scheme (relative URLs) but avoid protocol-relative //host
 			if parsed.Scheme == "" {
 				if parsed.Host != "" {
 					return template.URL("#invalid-url")
@@ -106,52 +104,21 @@ func (a *App) InitTemplatesWithFuncs() error {
 		"vendorLinks": func(cveID string, description string) []map[string]string {
 			links := []map[string]string{}
 			desc := strings.ToLower(description)
-
-			// Microsoft
 			if strings.Contains(desc, "microsoft") || strings.Contains(desc, "windows") || strings.Contains(desc, "office") {
-				links = append(links, map[string]string{
-					"name": "Microsoft Security",
-					"url":  fmt.Sprintf("https://msrc.microsoft.com/update-guide/vulnerability/%s", cveID),
-					"icon": "lan",
-				})
+				links = append(links, map[string]string{"name": "Microsoft Security", "url": fmt.Sprintf("https://msrc.microsoft.com/update-guide/vulnerability/%s", cveID), "icon": "lan"})
 			}
-
-			// RedHat
 			if strings.Contains(desc, "red hat") || strings.Contains(desc, "redhat") || strings.Contains(desc, "fedora") || strings.Contains(desc, "rhel") {
-				links = append(links, map[string]string{
-					"name": "RedHat Advisory",
-					"url":  fmt.Sprintf("https://access.redhat.com/security/cve/%s", cveID),
-					"icon": "security",
-				})
+				links = append(links, map[string]string{"name": "RedHat Advisory", "url": fmt.Sprintf("https://access.redhat.com/security/cve/%s", cveID), "icon": "security"})
 			}
-
-			// Cisco
 			if strings.Contains(desc, "cisco") {
-				links = append(links, map[string]string{
-					"name": "Cisco Advisory",
-					"url":  fmt.Sprintf("https://tools.cisco.com/security/center/content/CiscoSecurityAdvisory/%s", cveID),
-					"icon": "router",
-				})
+				links = append(links, map[string]string{"name": "Cisco Advisory", "url": fmt.Sprintf("https://tools.cisco.com/security/center/content/CiscoSecurityAdvisory/%s", cveID), "icon": "router"})
 			}
-
-			// Ubuntu
 			if strings.Contains(desc, "ubuntu") || strings.Contains(desc, "canonical") {
-				links = append(links, map[string]string{
-					"name": "Ubuntu Security",
-					"url":  fmt.Sprintf("https://ubuntu.com/security/%s", cveID),
-					"icon": "terminal",
-				})
+				links = append(links, map[string]string{"name": "Ubuntu Security", "url": fmt.Sprintf("https://ubuntu.com/security/%s", cveID), "icon": "terminal"})
 			}
-
-			// VMware / Broadcom
 			if strings.Contains(desc, "vmware") || strings.Contains(desc, "vcenter") || strings.Contains(desc, "esxi") {
-				links = append(links, map[string]string{
-					"name": "VMware Advisory",
-					"url":  fmt.Sprintf("https://www.vmware.com/security/advisories/%s.html", cveID),
-					"icon": "layers",
-				})
+				links = append(links, map[string]string{"name": "VMware Advisory", "url": fmt.Sprintf("https://www.vmware.com/security/advisories/%s.html", cveID), "icon": "layers"})
 			}
-
 			return links
 		},
 		"detectProduct": func(c models.CVE) map[string]string {
@@ -175,26 +142,22 @@ func (a *App) InitTemplatesWithFuncs() error {
 			return map[string]string{"vendor": v, "product": p, "version": ver, "type": t}
 		},
 	}
+}
+
+func (a *App) InitTemplatesWithFuncs() error {
+	funcs := a.GetTemplateFuncs()
 
 	a.TemplateMu.Lock()
 	a.TemplateMap = make(map[string]*template.Template)
 	a.TemplateMu.Unlock()
 
-	// Locate the templates directory by walking up from the current working directory.
-	// This avoids os.Chdir which is not goroutine-safe.
 	templateDir := findTemplatesDir()
 	if templateDir == "" {
-		wd, _ := os.Getwd()
-		log.Printf("No templates found starting from %s", wd)
 		return fmt.Errorf("no templates directory found")
 	}
 
 	baseFile := filepath.Join(templateDir, "base.html")
-	pattern := filepath.Join(templateDir, "*.html")
-	files, err := filepath.Glob(pattern)
-	if err != nil {
-		return fmt.Errorf("error globbing templates: %w", err)
-	}
+	files, _ := filepath.Glob(filepath.Join(templateDir, "*.html"))
 
 	for _, file := range files {
 		name := filepath.Base(file)
@@ -203,7 +166,6 @@ func (a *App) InitTemplatesWithFuncs() error {
 		}
 		tmpl, err := template.New(name).Funcs(funcs).ParseFiles(baseFile, file)
 		if err != nil {
-			log.Printf("Error parsing template %s: %v", name, err)
 			continue
 		}
 		a.TemplateMu.Lock()
@@ -211,19 +173,9 @@ func (a *App) InitTemplatesWithFuncs() error {
 		a.TemplateMu.Unlock()
 	}
 
-	a.TemplateMu.RLock()
-	mapLen := len(a.TemplateMap)
-	a.TemplateMu.RUnlock()
-	if mapLen == 0 {
-		log.Printf("No renderable templates loaded from %s", templateDir)
-	}
 	return nil
 }
 
-// findTemplatesDir walks up from the current working directory looking for a
-// "templates" directory that contains at least one .html file. It checks up to
-// five levels to accommodate different working directories used by tests vs the
-// binary. No os.Chdir is performed.
 func findTemplatesDir() string {
 	start, err := os.Getwd()
 	if err != nil {
@@ -232,18 +184,13 @@ func findTemplatesDir() string {
 	candidate := start
 	for i := 0; i < 5; i++ {
 		dir := filepath.Join(candidate, "templates")
-		if matches, err := filepath.Glob(filepath.Join(dir, "*.html")); err != nil {
-			log.Printf("Error finding templates dir: %v", err)
-		} else if len(matches) > 0 {
-			abs, err := filepath.Abs(dir)
-			if err == nil {
-				return abs
-			}
-			return dir
+		if matches, err := filepath.Glob(filepath.Join(dir, "*.html")); err == nil && len(matches) > 0 {
+			abs, _ := filepath.Abs(dir)
+			return abs
 		}
 		parent := filepath.Dir(candidate)
 		if parent == candidate {
-			break // filesystem root reached
+			break
 		}
 		candidate = parent
 	}

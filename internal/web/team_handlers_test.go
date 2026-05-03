@@ -48,6 +48,22 @@ func TestTeamsHandler(t *testing.T) {
 			},
 			expectedStatus: http.StatusInternalServerError,
 		},
+		{
+			name:   "Row Scan Error",
+			userID: 1,
+			mockExpect: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery("SELECT t.id, t.name, t.invite_code, tm.role, t.created_at").
+					WithArgs(1).
+					WillReturnRows(pgxmock.NewRows([]string{"id", "name", "invite_code", "role", "created_at"}).
+						AddRow(1, "Team A", "ABC", "owner", "invalid-time"))
+				// RenderTemplate expectations (required because TeamsHandler continues after scan error)
+				mock.ExpectQuery("SELECT onboarding_completed FROM users WHERE id = \\$1").WithArgs(1).
+					WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed"}).AddRow(true))
+				mock.ExpectQuery("SELECT t.id, t.name").WithArgs(1).
+					WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(1, "Team A"))
+			},
+			expectedStatus: http.StatusOK, // scans error is logged but continues
+		},
 	}
 
 	for _, tt := range tests {
@@ -324,6 +340,22 @@ func TestJoinTeamHandler(t *testing.T) {
 			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "Internal server error",
 		},
+		{
+			name:   "Already a Member",
+			method: "POST",
+			form:   url.Values{"invite_code": {"abc"}},
+			userID: 1,
+			mockExpect: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery("SELECT id FROM teams WHERE invite_code =").
+					WithArgs("abc").
+					WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(10))
+				mock.ExpectExec("INSERT INTO team_members").
+					WithArgs(10, 1).
+					WillReturnResult(pgxmock.NewResult("INSERT", 0)) // 0 rows affected = already exists
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   "Already a member of this workspace",
+		},
 	}
 
 	for _, tt := range tests {
@@ -489,6 +521,25 @@ func TestLeaveTeamHandler(t *testing.T) {
 			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   "Internal server error",
 		},
+		{
+			name:   "Commit Error",
+			method: "POST",
+			form:   url.Values{"team_id": {"10"}},
+			userID: 1,
+			mockExpect: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectBegin()
+				mock.ExpectQuery("SELECT role FROM team_members .* FOR UPDATE").
+					WithArgs(10, 1).
+					WillReturnRows(pgxmock.NewRows([]string{"role"}).AddRow("member"))
+				mock.ExpectExec("DELETE FROM team_members").
+					WithArgs(10, 1).
+					WillReturnResult(pgxmock.NewResult("DELETE", 1))
+				mock.ExpectCommit().WillReturnError(fmt.Errorf("commit error"))
+				mock.ExpectRollback()
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "Internal server error",
+		},
 	}
 
 	for _, tt := range tests {
@@ -593,6 +644,41 @@ func TestSwitchTeamHandler(t *testing.T) {
 					WillReturnError(fmt.Errorf("db error"))
 			},
 			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name:   "Invalid Team ID Format",
+			method: "POST",
+			form:   url.Values{"team_id": {"not-an-int"}},
+			userID: 1,
+			mockExpect: func(mock pgxmock.PgxPoolIface) {
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:    "External Referer Security Check",
+			method:  "POST",
+			form:    url.Values{"team_id": {"10"}},
+			userID:  1,
+			referer: "http://evil.com/malicious",
+			mockExpect: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery("SELECT EXISTS").
+					WithArgs(10, 1).
+					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
+			},
+			expectedStatus: http.StatusFound, // Should redirect to /dashboard, not evil.com
+		},
+		{
+			name:    "Invalid Scheme Referer Security Check",
+			method:  "POST",
+			form:    url.Values{"team_id": {"10"}},
+			userID:  1,
+			referer: "javascript:alert(1)",
+			mockExpect: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery("SELECT EXISTS").
+					WithArgs(10, 1).
+					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
+			},
+			expectedStatus: http.StatusFound, // Should redirect to /dashboard
 		},
 	}
 
