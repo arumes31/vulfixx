@@ -10,9 +10,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"vulfixx-scalper/proto"
@@ -24,7 +26,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
 )
 
 // Config holds environment configurations
@@ -76,14 +80,42 @@ func main() {
 	proto.RegisterScalperServiceServer(s, &scalperServer{})
 	reflection.Register(s)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var wg sync.WaitGroup
+
 	// (8) Workers are stateless - can run multiple in background
 	if rdb != nil {
-		go runWorker()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runWorker(ctx)
+		}()
 	}
 
-	log.Printf("Hardened Darknet Scalper gRPC Server listening on %v", lis.Addr())
-	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+	go func() {
+		log.Printf("Hardened Darknet Scalper gRPC Server listening on %v", lis.Addr())
+		if err := s.Serve(lis); err != nil {
+			log.Fatalf("failed to serve: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down gracefully...")
+
+	cancel()
+	s.GracefulStop()
+
+	wg.Wait()
+
+	if pool != nil {
+		pool.Close()
+	}
+	if rdb != nil {
+		rdb.Close()
 	}
 }
 
@@ -105,7 +137,11 @@ func initRedis() {
 		log.Printf("REDIS_URL not set, distributed logic disabled.")
 		return
 	}
-	rdb = redis.NewClient(&redis.Options{Addr: config.RedisURL})
+	opts, err := redis.ParseURL(config.RedisURL)
+	if err != nil {
+		log.Fatalf("Failed to parse REDIS_URL: %v", err)
+	}
+	rdb = redis.NewClient(opts)
 	rsync = redsync.New(goredis.NewPool(rdb))
 	log.Printf("Redis & Redlock initialized.")
 }
@@ -151,10 +187,15 @@ func (s *scalperServer) Backfill(ctx context.Context, req *proto.BackfillRequest
 	for _, cve := range req.CveIds {
 		// (9) Priority Queuing: Higher priority tasks are pushed to front (using LPush/RPush)
 		// Or using a sorted set if complex priority is needed.
+		var err error
 		if req.Priority > 5 {
-			rdb.LPush(ctx, "darknet_scan_tasks", cve)
+			err = rdb.LPush(ctx, "darknet_scan_tasks", cve).Err()
 		} else {
-			rdb.RPush(ctx, "darknet_scan_tasks", cve)
+			err = rdb.RPush(ctx, "darknet_scan_tasks", cve).Err()
+		}
+		if err != nil {
+			log.Printf("Backfill error queuing %s: %v", cve, err)
+			return nil, fmt.Errorf("failed to queue tasks")
 		}
 	}
 
@@ -166,6 +207,12 @@ func (s *scalperServer) Backfill(ctx context.Context, req *proto.BackfillRequest
 
 func (s *scalperServer) Health(ctx context.Context, req *proto.HealthRequest) (*proto.HealthResponse, error) {
 	latency := checkTorLatency()
+	if latency == 0 {
+		return &proto.HealthResponse{
+			Status:         "UNHEALTHY",
+			TorLatencyMs:   0,
+		}, status.Errorf(codes.Unavailable, "Tor proxy is unreachable")
+	}
 	return &proto.HealthResponse{
 		Status:         "OK",
 		TorLatencyMs: float32(latency.Seconds() * 1000),
@@ -173,12 +220,21 @@ func (s *scalperServer) Health(ctx context.Context, req *proto.HealthRequest) (*
 }
 
 // (1, 5, 8, 9) Worker Logic with Redlock
-func runWorker() {
+func runWorker(ctx context.Context) {
 	log.Printf("Stateless worker started...")
 	for {
-		result, err := rdb.BLPop(context.Background(), 0, "darknet_scan_tasks").Result()
+		select {
+		case <-ctx.Done():
+			log.Printf("Worker shutting down...")
+			return
+		default:
+		}
+
+		result, err := rdb.BLPop(ctx, 5*time.Second, "darknet_scan_tasks").Result()
 		if err != nil {
-			time.Sleep(5 * time.Second)
+			if err != redis.Nil {
+				time.Sleep(1 * time.Second)
+			}
 			continue
 		}
 
@@ -188,6 +244,9 @@ func runWorker() {
 		mutex := rsync.NewMutex("lock:"+cveID, redsync.WithExpiry(10*time.Minute))
 		if err := mutex.Lock(); err != nil {
 			log.Printf("Worker: Skipping %s (already locked by another node)", cveID)
+			if pushErr := rdb.RPush(context.Background(), "darknet_scan_tasks", cveID).Err(); pushErr != nil {
+				log.Printf("Worker: Failed to requeue task %s: %v", cveID, pushErr)
+			}
 			continue
 		}
 
@@ -246,16 +305,25 @@ func scalpAhmia(q string, maxDepth int) ([]*proto.Hit, error) {
 	// (18) Multi-depth logic added here
 	query := fmt.Sprintf("%s OR \"%s exploit\"", q, q)
 	
+	torProxy := config.TorProxy
+	if torProxy == "" {
+		torProxy = "socks5://localhost:9050"
+	}
+
 	opts := []chromedp.ExecAllocatorOption{
 		chromedp.UserAgent(userAgents[rand.Intn(len(userAgents))]),
 		chromedp.NoSandbox,
-		chromedp.ProxyServer("socks5://localhost:9050"),
+		chromedp.ProxyServer(torProxy),
 	}
 
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
 	defer cancel()
-	ctx, cancel := chromedp.NewContext(allocCtx)
-	defer cancel()
+	
+	timeoutCtx, cancelTimeout := context.WithTimeout(allocCtx, 30*time.Second)
+	defer cancelTimeout()
+
+	ctx, cancelChrome := chromedp.NewContext(timeoutCtx)
+	defer cancelChrome()
 
 	var html string
 	err := chromedp.Run(ctx,
@@ -285,12 +353,15 @@ func enrichHit(hit *proto.Hit, depth int) {
 		return
 	}
 
-	// (19) Session Persistence logic: Load cookies for domain from DB/Redis if exists
-	// (17) OCR, (23) Lang Detection, (97) Honey-link check
-	
+	torProxy := config.TorProxy
+	if torProxy == "" {
+		torProxy = "socks5://localhost:9050"
+	}
+	proxyURL, _ := url.Parse(torProxy)
+
 	client := &http.Client{
 		Transport: &http.Transport{
-			Proxy: http.ProxyURL(&url.URL{Scheme: "socks5", Host: "localhost:9050"}),
+			Proxy: http.ProxyURL(proxyURL),
 		},
 		Timeout: 30 * time.Second,
 	}
@@ -382,18 +453,24 @@ func fetchHitsFromDB(query string) ([]*proto.Hit, int) {
 
 func saveHitsToDB(res *proto.ScanResponse) {
 	for _, h := range res.Hits {
-		_, _ = pool.Exec(context.Background(), `
+		_, err := pool.Exec(context.Background(), `
 			INSERT INTO darknet_intel_hits (cve_id, engine, title, url, snippet, language, is_honey_link)
 			VALUES ($1, $2, $3, $4, $5, $6, $7)
 			ON CONFLICT (url) DO NOTHING
 		`, res.Query, h.Engine, h.Title, h.Url, h.Snippet, h.Language, h.IsHoneyLink)
+		if err != nil {
+			log.Printf("Error saving hit (query: %s, url: %s): %v", res.Query, h.Url, err)
+		}
 	}
 
 	// Update main CVE table
-	_, _ = pool.Exec(context.Background(), `
+	_, err := pool.Exec(context.Background(), `
 		UPDATE cves SET darknet_mentions = (SELECT COUNT(*) FROM darknet_intel_hits WHERE cve_id = $1), darknet_last_seen = NOW()
 		WHERE cve_id = $1
 	`, res.Query)
+	if err != nil {
+		log.Printf("Error updating darknet mentions (query: %s): %v", res.Query, err)
+	}
 }
 
 func getEnv(key, fallback string) string {
@@ -414,8 +491,14 @@ func checkTorLatency() time.Duration {
 }
 
 func downloadFile(u string) ([]byte, error) {
+	torProxy := config.TorProxy
+	if torProxy == "" {
+		torProxy = "socks5://localhost:9050"
+	}
+	proxyURL, _ := url.Parse(torProxy)
+
 	client := &http.Client{
-		Transport: &http.Transport{Proxy: http.ProxyURL(&url.URL{Scheme: "socks5", Host: "localhost:9050"})},
+		Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)},
 		Timeout: 20 * time.Second,
 	}
 	resp, err := client.Get(u)
@@ -424,14 +507,32 @@ func downloadFile(u string) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 	
-	return io.ReadAll(resp.Body)
+	const maxDownload = 10 * 1024 * 1024 // 10MB
+	if resp.ContentLength > maxDownload {
+		return nil, fmt.Errorf("response too large")
+	}
+
+	limitedReader := io.LimitReader(resp.Body, maxDownload+1)
+	data, err := io.ReadAll(limitedReader)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxDownload {
+		return nil, fmt.Errorf("response exceeded maximum size")
+	}
+	
+	return data, nil
 }
 
 // Ahmia HTML Parser (simplified for demo)
 func parseAhmiaHTML(html, q string) []*proto.Hit {
 	_ = q // Future use for keyword highlighting
-	doc, _ := goquery.NewDocumentFromReader(strings.NewReader(html))
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
 	var hits []*proto.Hit
+	if err != nil {
+		log.Printf("Error parsing HTML: %v", err)
+		return hits
+	}
 	doc.Find("li.result").Each(func(i int, s *goquery.Selection) {
 		hits = append(hits, &proto.Hit{
 			Title:  strings.TrimSpace(s.Find("h4").Text()),

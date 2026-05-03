@@ -49,9 +49,11 @@ func (w *Worker) syncInTheWild(ctx context.Context) {
 	var cveIDs []string
 	for rows.Next() {
 		var id string
-		if err := rows.Scan(&id); err == nil {
-			cveIDs = append(cveIDs, id)
+		if err := rows.Scan(&id); err != nil {
+			log.Printf("Worker: [ERROR] Failed to scan CVE ID: %v", err)
+			continue
 		}
+		cveIDs = append(cveIDs, id)
 	}
 
 	count := 0
@@ -69,7 +71,11 @@ func (w *Worker) syncInTheWild(ctx context.Context) {
 		}
 
 		if data != nil {
-			dataJSON, _ := json.Marshal(data)
+			dataJSON, err := json.Marshal(data)
+			if err != nil {
+				log.Printf("Worker: [ERROR] Failed to marshal InTheWild data for %s: %v", cveID, err)
+				continue
+			}
 			_, err = w.Pool.Exec(ctx, `
 				UPDATE cves 
 				SET inthewild_data = $1, inthewild_last_updated = NOW() 
@@ -77,8 +83,9 @@ func (w *Worker) syncInTheWild(ctx context.Context) {
 			`, dataJSON, cveID)
 			if err != nil {
 				log.Printf("Worker: [ERROR] Failed to update InTheWild data for %s: %v", cveID, err)
+			} else {
+				count++
 			}
-			count++
 		} else {
 			// Mark as checked even if no data found
 			_, _ = w.Pool.Exec(ctx, "UPDATE cves SET inthewild_last_updated = NOW() WHERE cve_id = $1", cveID)

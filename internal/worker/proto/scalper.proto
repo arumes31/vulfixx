@@ -14,6 +14,8 @@ message ScanRequest {
   string query = 1;
   int32 depth = 2; // (18) Multi-depth crawling
   bool force_refresh = 3;
+  int32 page_size = 4;
+  string page_token = 5;
 }
 
 message ScanResponse {
@@ -21,6 +23,7 @@ message ScanResponse {
   int32 total_hits = 2;
   repeated Hit hits = 3;
   bool is_cached = 4;
+  string next_page_token = 5;
 }
 
 message Hit {

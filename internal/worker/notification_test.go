@@ -15,11 +15,17 @@ import (
 )
 
 func TestWorker_FloodProtection(t *testing.T) {
-	mr, _ := miniredis.Run()
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to start miniredis: %v", err)
+	}
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	
-	mock, _ := pgxmock.NewPool()
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create mock pool: %v", err)
+	}
 	defer mock.Close()
 	
 	w := &Worker{Pool: mock, Redis: rdb, HTTP: http.DefaultClient}
@@ -44,6 +50,10 @@ func TestWorker_FloodProtection(t *testing.T) {
 	
 	if w.notifyIfNew(ctx, userID, cve, sub, "test@example.com", "") {
 		t.Errorf("Alert should have been blocked by flood protection (count=51)")
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
 	}
 }
 

@@ -39,9 +39,11 @@ func (w *Worker) syncDarknetIntelligence(ctx context.Context) {
 func (w *Worker) runDarknetScanGRPC(ctx context.Context, target string) {
 	log.Printf("Worker: [SYNC] Running Darknet Scalper check via gRPC (%s)...", target)
 
-	conn, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	dialCtx, dialCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer dialCancel()
+	conn, err := grpc.DialContext(dialCtx, target, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
 	if err != nil {
-		log.Printf("Worker: Failed to connect to scalper gRPC: %v", err)
+		log.Printf("Worker: Failed to connect to scalper gRPC (%s): %v", target, err)
 		return
 	}
 	defer conn.Close()
@@ -59,9 +61,14 @@ func (w *Worker) runDarknetScanGRPC(ctx context.Context, target string) {
 	var cveIDs []string
 	for rows.Next() {
 		var cveID string
-		if err := rows.Scan(&cveID); err == nil {
-			cveIDs = append(cveIDs, cveID)
+		if err := rows.Scan(&cveID); err != nil {
+			log.Printf("Worker: Failed to scan row: %v", err)
+			continue
 		}
+		cveIDs = append(cveIDs, cveID)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Worker: Error iterating rows: %v", err)
 	}
 
 	// (9) Use Backfill for batch processing with priority

@@ -302,6 +302,12 @@ BEGIN
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'updated_at') THEN
             ALTER TABLE cves ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'darknet_mentions') THEN
+            ALTER TABLE cves ADD COLUMN darknet_mentions INTEGER DEFAULT 0;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'darknet_last_seen') THEN
+            ALTER TABLE cves ADD COLUMN darknet_last_seen TIMESTAMP WITH TIME ZONE;
+        END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'vector_string') THEN
             ALTER TABLE cves ADD COLUMN vector_string TEXT;
         END IF;

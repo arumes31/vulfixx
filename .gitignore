@@ -40,7 +40,6 @@ docs/**/*.md
 !CONTRIBUTING.md
 !requirements.txt
 coverage
-*_coverage
 subagents.yaml
 data/
 *.db

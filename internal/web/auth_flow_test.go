@@ -73,10 +73,15 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 	// 2. Registration Rate Limit
 	t.Run("RegistrationRateLimit", func(t *testing.T) {
 		// Refresh captcha
-		respCap, _ := client.Get(ts.URL + "/captcha")
+		respCap, err := client.Get(ts.URL + "/captcha")
+		if err != nil {
+			t.Fatalf("failed to get captcha: %v", err)
+		}
 		respCap.Body.Close()
 
-		app.Redis.Set(context.Background(), "reg_limit:127.0.0.1", 5, 1*time.Hour)
+		if err := app.Redis.Set(context.Background(), "reg_limit:127.0.0.1", 5, 1*time.Hour).Err(); err != nil {
+			t.Fatalf("failed to set redis reg_limit: %v", err)
+		}
 
 		form := url.Values{}
 		form.Add("email", "another@example.com")
@@ -99,7 +104,10 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 		app.Redis.Del(context.Background(), "reg_limit:127.0.0.1")
 		
 		// Refresh captcha
-		respCap, _ := client.Get(ts.URL + "/captcha")
+		respCap, err := client.Get(ts.URL + "/captcha")
+		if err != nil {
+			t.Fatalf("failed to get captcha: %v", err)
+		}
 		respCap.Body.Close()
 
 		form := url.Values{}
@@ -127,7 +135,10 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 	// 4. Resend Backoff
 	t.Run("ResendBackoff", func(t *testing.T) {
 		// Refresh captcha
-		respCap, _ := client.Get(ts.URL + "/captcha")
+		respCap, err := client.Get(ts.URL + "/captcha")
+		if err != nil {
+			t.Fatalf("failed to get captcha: %v", err)
+		}
 		respCap.Body.Close()
 
 		form := url.Values{}

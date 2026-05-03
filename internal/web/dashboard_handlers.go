@@ -998,8 +998,10 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch Darknet Evidence if mentions exist
 	if c.DarknetMentions > 0 {
-		hrows, _ := a.Pool.Query(r.Context(), "SELECT title, url, engine, snippet, language, is_honey_link, created_at FROM darknet_intel_hits WHERE cve_id = $1 ORDER BY created_at DESC", c.CVEID)
-		if hrows != nil {
+		hrows, err := a.Pool.Query(r.Context(), "SELECT title, url, engine, snippet, language, is_honey_link, created_at FROM darknet_intel_hits WHERE cve_id = $1 ORDER BY created_at DESC LIMIT 200", c.CVEID)
+		if err != nil {
+			log.Printf("Darknet query error: %v", err)
+		} else if hrows != nil {
 			defer hrows.Close()
 			for hrows.Next() {
 				var h models.DarknetHit

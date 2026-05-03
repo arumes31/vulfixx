@@ -95,7 +95,11 @@ func (w *Worker) checkNotificationHealth(ctx context.Context) {
 		WHERE status = 'failure' AND delivery_time > NOW() - INTERVAL '24 hours'
 	`).Scan(&failureCount)
 	
-	if err == nil && failureCount > 0 {
+	if err != nil {
+		log.Printf("Worker Health ERROR: notification health query failed: %v", err)
+		return
+	}
+	if failureCount > 0 {
 		log.Printf("Worker Health WARNING: %d notification delivery failures in the last 24 hours!", failureCount)
 		// Could send a consolidated alert here if failureCount > threshold
 	}

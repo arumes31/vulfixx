@@ -433,7 +433,7 @@
                     </div>
                 </div>
                 <p class="text-[11px] text-gray-500 leading-relaxed italic border-l-2 border-white/5 pl-4">
-                    Our scalpers monitor anonymous forums, marketplace listings, and underground paste services. 
+                    Our scrapers monitor anonymous forums, marketplace listings, and underground paste services. 
                     Mentions indicate that threat actors are actively discussing, researching, or trading information regarding this vulnerability.
                 </p>
             </div>
@@ -475,10 +475,11 @@
                 </p>
                 <div class="flex items-center justify-between pt-2">
                     <div class="text-[9px] text-gray-600 truncate max-w-md font-mono opacity-50 group-hover:opacity-100 transition-opacity">{{.URL}}</div>
-                    <a href="#" class="text-[10px] font-black uppercase tracking-widest text-primary hover:underline flex items-center gap-1">
+                    <span aria-disabled="true" class="text-[10px] font-black uppercase tracking-widest text-gray-500 cursor-not-allowed flex items-center gap-1 tooltip-trigger">
                         View Details
                         <span class="material-symbols-outlined text-xs">open_in_new</span>
-                    </a>
+                        <div class="tooltip">Coming soon</div>
+                    </span>
                 </div>
             </div>
             {{end}}

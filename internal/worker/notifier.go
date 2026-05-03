@@ -123,6 +123,7 @@ func getSeverityInfo(score float64) (string, string) {
 }
 
 func (w *Worker) sendSlackAlert(webhookURL string, cve *models.CVE, asset string, color, token, baseURL string) (bool, string) {
+	_ = color // For future use in Slack attachments
 	payload := map[string]interface{}{
 		"blocks": []interface{}{
 			map[string]interface{}{
@@ -161,6 +162,8 @@ func (w *Worker) sendSlackAlert(webhookURL string, cve *models.CVE, asset string
 }
 
 func (w *Worker) sendTeamsAlert(webhookURL string, cve *models.CVE, asset string, color, token, baseURL string) (bool, string) {
+	_ = asset
+	_ = color
 	payload := map[string]interface{}{
 		"type": "message",
 		"attachments": []interface{}{
@@ -192,12 +195,16 @@ func (w *Worker) sendBrowserPush(userID int, cve *models.CVE) bool {
 	// Implementation would use web-push-go and VAPID keys
 	// For now, we log the intent and could trigger a WebSocket event as a fallback
 	log.Printf("Browser Push triggered for user %d, CVE %s", userID, cve.CVEID)
-	return true 
+	return false 
 }
 
 func (w *Worker) postJSON(url string, payload interface{}) (bool, string) {
 	data, _ := json.Marshal(payload)
-	resp, err := http.Post(url, "application/json", strings.NewReader(string(data)))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(data)))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil { return false, err.Error() }
 	defer resp.Body.Close()
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 { return true, "" }

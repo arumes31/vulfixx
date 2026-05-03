@@ -27,6 +27,7 @@ services:
     depends_on:
       - db
       - redis
+      - scalper
     restart: unless-stopped
 
   db:
@@ -38,7 +39,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
       - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
     restart: unless-stopped
 
@@ -52,6 +53,9 @@ services:
 
   scalper:
     build: ./addons/darknet-scalper
+    depends_on:
+      - db
+      - redis
     environment:
       - PORT=9090
       - REDIS_URL=redis:6379
@@ -66,5 +70,8 @@ services:
     cap_add:
       - NET_BIND_SERVICE
     restart: unless-stopped
+
+volumes:
+  pgdata:
 
 # Volumes are now bind-mounted to local directories

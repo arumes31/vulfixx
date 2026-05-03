@@ -9,7 +9,10 @@ import (
 
 func TestWorker_DarknetScalper(t *testing.T) {
 	// 1. Mock Database
-	mock, _ := pgxmock.NewPool()
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create mock pool: %v", err)
+	}
 	defer mock.Close()
 
 	w := &Worker{Pool: mock}

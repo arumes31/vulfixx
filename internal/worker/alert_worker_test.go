@@ -296,7 +296,10 @@ func TestWorkerAlert_ProcessUserBuffer(t *testing.T) {
 	})
 
 	t.Run("Redis_RPush_Error", func(t *testing.T) {
-		mr2, _ := miniredis.Run()
+		mr2, err := miniredis.Run()
+		if err != nil {
+			t.Fatalf("failed to start miniredis: %v", err)
+		}
 		rdb2 := redis.NewClient(&redis.Options{Addr: mr2.Addr()})
 		mr2.Close() // Force connection error
 		

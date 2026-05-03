@@ -20,7 +20,7 @@ while ! nc -z 127.0.0.1 9050; do
   sleep 1
   COUNT=$((COUNT+1))
   if [ $((COUNT % 5)) -eq 0 ]; then
-     echo "Still waiting for Tor... ($COUNT/60)"
+     echo "Still waiting for Tor... ($COUNT/$MAX_WAIT)"
   fi
   if [ $COUNT -ge $MAX_WAIT ]; then
     echo "CRITICAL: Tor failed to start within $MAX_WAIT seconds"

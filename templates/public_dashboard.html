@@ -489,12 +489,6 @@ input[type=number] {
                     const newUrl = new URL(window.location.href);
                     newUrl.search = new URLSearchParams(new FormData(filterForm)).toString();
                     window.history.pushState({}, '', newUrl);
-                    
-                    const navigateRow = (e) => {
-                        if (e.target.closest('a, button, select, input, textarea, label')) return;
-                        const anchor = e.currentTarget.querySelector('a');
-                        if (anchor) anchor.click();
-                    };
 
                     tbody.querySelectorAll('tr[data-cve-url]').forEach(row => {
                         row.addEventListener('click', navigateRow);

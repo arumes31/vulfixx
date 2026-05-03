@@ -259,13 +259,11 @@ func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, s
 
 	// 21. Alert Flood Protection (Rate limiting per user/hour)
 	floodKey := fmt.Sprintf("flood_protection:%d", userID)
-	count, _ := w.Redis.Incr(ctx, floodKey).Result()
-	if count == 1 {
-		w.Redis.Expire(ctx, floodKey, 1*time.Hour)
-	}
-	if count > 50 { // Max 50 alerts per hour
-		if count == 51 {
+	count, _ := w.Redis.Get(ctx, floodKey).Int()
+	if count >= 50 { // Max 50 alerts per hour
+		if count == 50 {
 			log.Printf("Flood Protection: Throttling alerts for user %d", userID)
+			w.Redis.Incr(ctx, floodKey) // increment to 51 so we only log once
 		}
 		return false
 	}
@@ -287,6 +285,14 @@ func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, s
 
 	if !w.bufferAlert(ctx, userID, cve, sub, email, assetName) {
 		return false
+	}
+
+	newCount, _ := w.Redis.Incr(ctx, floodKey).Result()
+	if newCount == 1 {
+		success, _ := w.Redis.Expire(ctx, floodKey, 1*time.Hour).Result()
+		if !success {
+			w.Redis.Expire(ctx, floodKey, 1*time.Hour) // retry
+		}
 	}
 
 	_, err := w.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id, sent_at) VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING", userID, cve.ID)

@@ -126,11 +126,16 @@ func (a *App) VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	valid, _ := totp.ValidateCustom(code, secret, a.Now(), totp.ValidateOpts{
+	valid, err := totp.ValidateCustom(code, secret, a.Now(), totp.ValidateOpts{
 		Period: 30,
 		Skew:   1,
 		Digits: 6,
 	})
+	if err != nil {
+		log.Printf("Error validating TOTP code: %v", err)
+		http.Redirect(w, r, "/settings?error=Invalid+TOTP+code", http.StatusFound)
+		return
+	}
 	if valid {
 		if _, err := a.Pool.Exec(r.Context(), "UPDATE users SET is_totp_enabled = TRUE WHERE id = $1", userID); err != nil {
 			log.Printf("Error enabling TOTP: %v", err)
@@ -269,7 +274,7 @@ func (a *App) ChangeEmailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.LogActivity(r.Context(), userID, "email_change_requested", "Requested change from "+email+" to "+newEmail, a.GetClientIP(r), r.UserAgent())
+	a.LogActivity(r.Context(), userID, "email_change_requested", "email_change_requested", a.GetClientIP(r), r.UserAgent())
 
 	a.RenderTemplate(w, r, "settings.html", map[string]interface{}{
 		"Email":         email,

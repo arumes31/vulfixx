@@ -179,7 +179,7 @@ func TestAuthMiddleware(t *testing.T) {
 		// Mock verified check in middleware
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_email_verified FROM users WHERE id = $1")).
 			WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"is_verified"}).AddRow(false))
+			WillReturnRows(pgxmock.NewRows([]string{"is_email_verified"}).AddRow(false))
 			
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)
@@ -187,6 +187,27 @@ func TestAuthMiddleware(t *testing.T) {
 		// If unverified, it should return 403 Forbidden
 		if rr.Code != http.StatusForbidden {
 			t.Errorf("expected 403 Forbidden for unverified user, got %d", rr.Code)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("Authenticated_Verified", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/dashboard", nil)
+		setSessionUser(t, app, req, 1, false)
+		
+		// Mock verified check in middleware
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_email_verified FROM users WHERE id = $1")).
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"is_email_verified"}).AddRow(true))
+			
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK for verified user, got %d", rr.Code)
 		}
 
 		if err := mock.ExpectationsWereMet(); err != nil {

@@ -51,7 +51,4 @@ RUN echo "SocksPort 9050" > /etc/tor/torrc && \
 EXPOSE 9090
 
 # Use dumb-init to handle signals and su-exec to drop privileges
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
 ENTRYPOINT ["/usr/bin/dumb-init", "--", "/entrypoint.sh"]

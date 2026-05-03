@@ -1,6 +1,6 @@
 module vulfixx-scalper
 
-go 1.26
+go 1.26.2
 
 require (
 	github.com/PuerkitoBio/goquery v1.12.0

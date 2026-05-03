@@ -12,7 +12,10 @@ import (
 )
 
 func TestWorker_ExploitDetection(t *testing.T) {
-	mock, _ := pgxmock.NewPool()
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create mock pool: %v", err)
+	}
 	defer mock.Close()
 	
 	w := &Worker{Pool: mock}
@@ -63,7 +66,10 @@ func TestWorker_InTheWildSync(t *testing.T) {
 	}))
 	defer ts.Close()
 	
-	mock, _ := pgxmock.NewPool()
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create mock pool: %v", err)
+	}
 	defer mock.Close()
 	
 	t.Setenv("INTHEWILD_API_URL", ts.URL)

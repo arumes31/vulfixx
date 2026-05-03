@@ -3,6 +3,8 @@
 package main
 
 import (
+	"log"
+
 	"github.com/otiai10/gosseract/v2"
 )
 
@@ -14,6 +16,10 @@ func performOCR(imgData []byte) string {
 		return ""
 	}
 	
-	text, _ := client.Text()
+	text, err := client.Text()
+	if err != nil {
+		log.Printf("OCR error: %v", err)
+		return ""
+	}
 	return text
 }

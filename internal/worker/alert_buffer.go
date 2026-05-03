@@ -247,10 +247,25 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 
 	// Also send consolidated alerts to other channels if enabled
 	if len(blobs) > 1 {
-		firstData := alertData{}
-		_ = json.Unmarshal([]byte(blobs[0]), &firstData) // Get common sub settings
+		type SlackTarget struct {
+			URL   string
+			SubID int
+		}
+		slackTargets := make(map[string]SlackTarget)
 
-		if firstData.Sub.EnableSlack && firstData.Sub.SlackWebhookURL != "" {
+		for _, b := range blobs {
+			var data alertData
+			if err := json.Unmarshal([]byte(b), &data); err != nil {
+				log.Printf("Error unmarshaling alert blob for Slack digest: %v", err)
+				w.logDelivery(userID, 0, 0, "slack", false, err.Error())
+				continue
+			}
+			if data.Sub.EnableSlack && data.Sub.SlackWebhookURL != "" {
+				slackTargets[data.Sub.SlackWebhookURL] = SlackTarget{URL: data.Sub.SlackWebhookURL, SubID: data.Sub.ID}
+			}
+		}
+
+		for _, target := range slackTargets {
 			msg := fmt.Sprintf("🛡️ *Intelligence Brief: %d New Threats Detected*\n\n", len(items))
 			for _, it := range items {
 				msg += fmt.Sprintf("• *%s* (CVSS: %.1f) - %s\n", it.CVEID, it.Score, it.AssetName)
@@ -258,8 +273,8 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 			msg += fmt.Sprintf("\n<%s/dashboard|Analyze in Command Console>", baseURLStr)
 			
 			payload := map[string]interface{}{"text": msg}
-			success, errMsg := w.postJSON(firstData.Sub.SlackWebhookURL, payload)
-			w.logDelivery(userID, firstData.Sub.ID, 0, "slack", success, errMsg)
+			success, errMsg := w.postJSON(target.URL, payload)
+			w.logDelivery(userID, target.SubID, 0, "slack", success, errMsg)
 		}
 	}
 }
