@@ -102,7 +102,7 @@ func TestRollbackResend(t *testing.T) {
 	}
 	defer mock.Close()
 
-	mock.ExpectExec("UPDATE users SET email_verify_token = NULL").
+	mock.ExpectExec("UPDATE users SET verification_resend_count = GREATEST").
 		WithArgs("test@example.com").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 

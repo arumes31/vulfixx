@@ -124,7 +124,8 @@ func ResendVerificationToken(ctx context.Context, email string) (string, error) 
 
 	newToken, err := GenerateToken()
 	if err != nil {
-		return "", err
+		log.Printf("Error generating token for resend (email: %s): %v", maskEmail(email), err)
+		return "", errors.New(genericMsg)
 	}
 
 	_, err = tx.Exec(ctx, `
@@ -135,11 +136,13 @@ func ResendVerificationToken(ctx context.Context, email string) (string, error) 
 		WHERE id = $2
 	`, newToken, userID)
 	if err != nil {
-		return "", err
+		log.Printf("Error updating verification token for user %d: %v", userID, err)
+		return "", errors.New(genericMsg)
 	}
 
 	if err = tx.Commit(ctx); err != nil {
-		return "", err
+		log.Printf("Error committing resend transaction for user %d: %v", userID, err)
+		return "", errors.New(genericMsg)
 	}
 
 	return newToken, nil
@@ -148,11 +151,18 @@ func ResendVerificationToken(ctx context.Context, email string) (string, error) 
 func RollbackResend(ctx context.Context, email string) error {
 	_, err := db.Pool.Exec(ctx, `
 		UPDATE users 
-		SET email_verify_token = NULL, 
-		    verification_resend_count = GREATEST(0, verification_resend_count - 1)
+		SET verification_resend_count = GREATEST(0, verification_resend_count - 1)
 		WHERE email = $1 AND is_email_verified = FALSE
 	`, email)
 	return err
+}
+
+func maskEmail(email string) string {
+	at := strings.Index(email, "@")
+	if at <= 1 {
+		return email
+	}
+	return email[:1] + "***" + email[at:]
 }
 
 func Login(ctx context.Context, email, password string) (*models.User, error) {

@@ -14,7 +14,11 @@ import (
 )
 
 func TestUI_DashboardStructure(t *testing.T) {
-	mock, _ := db.SetupTestDB()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
 	mock.MatchExpectationsInOrder(false)
 	app := setupTestApp(t, mock)
 
@@ -48,10 +52,18 @@ func TestUI_DashboardStructure(t *testing.T) {
 			t.Errorf("Dashboard header not found")
 		}
 	})
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
 }
 
 func TestUI_RegisterPageStructure(t *testing.T) {
-	mock, _ := db.SetupTestDB()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
 	mock.MatchExpectationsInOrder(false)
 	app := setupTestApp(t, mock)
 	expectBaseQueries(mock, 0)
@@ -76,10 +88,18 @@ func TestUI_RegisterPageStructure(t *testing.T) {
 			t.Errorf("password_confirm input missing")
 		}
 	})
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
 }
 
 func TestUI_CVEDetailStructure(t *testing.T) {
-	mock, _ := db.SetupTestDB()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
 	mock.MatchExpectationsInOrder(false)
 	app := setupTestApp(t, mock)
 
@@ -112,10 +132,18 @@ func TestUI_CVEDetailStructure(t *testing.T) {
 			t.Errorf("CVE ID not found in page")
 		}
 	})
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
 }
 
 func TestUI_SettingsPageStructure(t *testing.T) {
-	mock, _ := db.SetupTestDB()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
 	mock.MatchExpectationsInOrder(false)
 	app := setupTestApp(t, mock)
 
@@ -145,10 +173,18 @@ func TestUI_SettingsPageStructure(t *testing.T) {
 			t.Errorf("settings form not found")
 		}
 	})
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
 }
 
 func TestUI_TeamPageStructure(t *testing.T) {
-	mock, _ := db.SetupTestDB()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
 	mock.MatchExpectationsInOrder(false)
 	app := setupTestApp(t, mock)
 
@@ -179,4 +215,8 @@ func TestUI_TeamPageStructure(t *testing.T) {
 			t.Errorf("Invite code not found")
 		}
 	})
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
 }

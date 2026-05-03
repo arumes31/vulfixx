@@ -73,6 +73,7 @@ The application follows a modular architecture designed to prevent monolithic fi
 - **`sync_nvd.go`**: NVD CVE data synchronization with incremental backoff.
 - **`sync_github.go`**: GitHub Social Buzz and PoC discovery tracking.
 - **`sync_cisa.go`**: Automated CISA KEV catalog synchronization.
+- **`sync_advisory_rss.go`**: Generalized multi-format synchronization (RSS 1.0, 2.0, and Atom) for official bulletins from CISA, Microsoft, AWS, VMware, Oracle, GitHub, CERT-EU, FortiGuard, Cisco, Red Hat, Ubuntu, and ZDI. Implements a **"matched-only" policy** via `processAdvisoryFeed` (must contain valid CVE-ID) and `integrateAdvisoryCVE` (only syncs if the CVE already exists in the database) to prevent data bloat.
 - **`sync_epss.go`**: Probability-based risk scoring (FIRST EPSS).
 - **`cron_worker.go`**: Scheduled tasks (Weekly summaries).
 

@@ -31,6 +31,10 @@ func TestResendVerificationToken(t *testing.T) {
 		if err == nil || err.Error() != genericMsg {
 			t.Errorf("expected generic error, got %v", err)
 		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
 	t.Run("AlreadyVerified", func(t *testing.T) {
@@ -51,6 +55,10 @@ func TestResendVerificationToken(t *testing.T) {
 		_, err = ResendVerificationToken(ctx, "verified@test.com")
 		if err == nil || err.Error() != genericMsg {
 			t.Errorf("expected generic error, got %v", err)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
 		}
 	})
 
@@ -73,6 +81,10 @@ func TestResendVerificationToken(t *testing.T) {
 		_, err = ResendVerificationToken(ctx, "wait@test.com")
 		if err == nil || err.Error() != genericMsg {
 			t.Errorf("expected generic error, got %v", err)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
 		}
 	})
 
@@ -99,6 +111,10 @@ func TestResendVerificationToken(t *testing.T) {
 		}
 		if token == "" {
 			t.Errorf("expected token, got empty string")
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
 		}
 	})
 }

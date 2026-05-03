@@ -168,6 +168,10 @@ func TestHandleAlertAction(t *testing.T) {
 
 		app.HandleAlertAction(rrPost, reqPost)
 
+		if rrPost.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500 Internal Server Error, got %d", rrPost.Code)
+		}
+
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
 		}

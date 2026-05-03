@@ -67,9 +67,11 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		w := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
 		// 1. Check if CVE exists - case where it doesn't
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, vendor, product, "references" FROM cves WHERE cve_id = $1`)).
+		mock.ExpectBegin()
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-9999").
 			WillReturnError(pgx.ErrNoRows)
+		mock.ExpectRollback()
 		
 		// Update task stats at the very end
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
@@ -117,15 +119,18 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		w := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
 		// 1. Check if CVE exists - case where it DOES exist
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, vendor, product, "references" FROM cves WHERE cve_id = $1`)).
+		mock.ExpectBegin()
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-9999").
-			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "vendor", "product", "references"}).
-				AddRow(1, "CVE-2024-9999", "Existing desc", "Cisco", "Cisco Product", []string{}))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vendor", "product", "references", "epss_score"}).
+				AddRow(1, "CVE-2024-9999", "Existing desc", 7.5, "Cisco", "Cisco Product", []string{}, 0.1))
 
 		// 2. Update references
 		mock.ExpectExec(regexp.QuoteMeta(`UPDATE cves SET "references" = $1, updated_at = NOW() WHERE id = $2`)).
 			WithArgs([]string{"https://cisco.com/psirt/123"}, 1).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		
+		mock.ExpectCommit()
 
 		// 3. Select back for alerting (enqueueAlertsForCVE)
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM cves WHERE cve_id = $1`)).
@@ -180,14 +185,17 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		}
 		wRDF := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, vendor, product, "references" FROM cves WHERE cve_id = $1`)).
+		mock.ExpectBegin()
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-5678").
-			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "vendor", "product", "references"}).
-				AddRow(1, "CVE-2024-5678", "Existing desc", "Red Hat", "RHEL", []string{}))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vendor", "product", "references", "epss_score"}).
+				AddRow(1, "CVE-2024-5678", "Existing desc", 8.0, "Red Hat", "RHEL", []string{}, 0.2))
 
 		mock.ExpectExec(regexp.QuoteMeta(`UPDATE cves SET "references" = $1, updated_at = NOW() WHERE id = $2`)).
 			WithArgs([]string{"https://access.redhat.com/errata/RHSA-2024-5678"}, 1).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+		mock.ExpectCommit()
 
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM cves WHERE cve_id = $1`)).
 			WithArgs("CVE-2024-5678").
@@ -243,25 +251,29 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		wMulti := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
 		// Expectations for CVE-2024-0001
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, vendor, product, "references" FROM cves WHERE cve_id = $1`)).
+		mock.ExpectBegin()
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-0001").
-			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "vendor", "product", "references"}).
-				AddRow(1, "CVE-2024-0001", "desc1", "V", "P", []string{}))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vendor", "product", "references", "epss_score"}).
+				AddRow(1, "CVE-2024-0001", "desc1", 5.0, "V", "P", []string{}, 0.1))
 		mock.ExpectExec(regexp.QuoteMeta(`UPDATE cves SET "references" = $1, updated_at = NOW() WHERE id = $2`)).
 			WithArgs([]string{"https://example.com/advisory/multi"}, 1).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectCommit()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM cves WHERE cve_id = $1`)).
 			WithArgs("CVE-2024-0001").
 			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 
 		// Expectations for CVE-2024-0002
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, vendor, product, "references" FROM cves WHERE cve_id = $1`)).
+		mock.ExpectBegin()
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-0002").
-			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "vendor", "product", "references"}).
-				AddRow(2, "CVE-2024-0002", "desc2", "V", "P", []string{}))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vendor", "product", "references", "epss_score"}).
+				AddRow(2, "CVE-2024-0002", "desc2", 6.0, "V", "P", []string{}, 0.2))
 		mock.ExpectExec(regexp.QuoteMeta(`UPDATE cves SET "references" = $1, updated_at = NOW() WHERE id = $2`)).
 			WithArgs([]string{"https://example.com/advisory/multi"}, 2).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectCommit()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM cves WHERE cve_id = $1`)).
 			WithArgs("CVE-2024-0002").
 			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(2))
@@ -315,10 +327,12 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		}
 		wDup := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, vendor, product, "references" FROM cves WHERE cve_id = $1`)).
+		mock.ExpectBegin()
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-1111").
-			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "vendor", "product", "references"}).
-				AddRow(1, "CVE-2024-1111", "desc", "V", "P", []string{"https://example.com/ref/1"}))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vendor", "product", "references", "epss_score"}).
+				AddRow(1, "CVE-2024-1111", "desc", 8.0, "V", "P", []string{"https://example.com/ref/1"}, 0.3))
+		mock.ExpectRollback()
 
 		// No UPDATE should happen because reference already exists
 

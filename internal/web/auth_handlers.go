@@ -311,17 +311,11 @@ func (a *App) ResendVerificationHandler(w http.ResponseWriter, r *http.Request) 
 
 	token, err := auth.ResendVerificationToken(r.Context(), email)
 	if err != nil {
-		// Log the real error but show generic message
+		// Log the real error internally but show generic success message to prevent enumeration
 		log.Printf("Error resending verification for %q: %v", redactEmail(email), err)
-		a.RenderTemplate(w, r, "resend_verification.html", map[string]interface{}{"Error": "Unable to resend verification email, please try again", "Email": email})
+		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "If this email is registered and unverified, a new verification link will be sent."})
 		return
 	}
-
-	// Increment rate limits
-	a.Redis.Incr(r.Context(), rlKey)
-	a.Redis.Expire(r.Context(), rlKey, 1*time.Hour)
-	a.Redis.Incr(r.Context(), emailRlKey)
-	a.Redis.Expire(r.Context(), emailRlKey, 30*time.Minute)
 
 	// Push to queue
 	payload, err := json.Marshal(map[string]string{
@@ -331,16 +325,22 @@ func (a *App) ResendVerificationHandler(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		log.Printf("Error marshaling verification payload: %v", err)
 		_ = auth.RollbackResend(r.Context(), email)
-		a.RenderTemplate(w, r, "resend_verification.html", map[string]interface{}{"Error": "Unable to resend verification email, please try again", "Email": email})
+		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "If this email is registered and unverified, a new verification link will be sent."})
 		return
 	}
 
 	if err := a.Redis.LPush(r.Context(), "email_verification_queue", payload).Err(); err != nil {
 		log.Printf("Error enqueueing verification payload: %v", err)
 		_ = auth.RollbackResend(r.Context(), email)
-		a.RenderTemplate(w, r, "resend_verification.html", map[string]interface{}{"Error": "Unable to resend verification email, please try again", "Email": email})
+		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "If this email is registered and unverified, a new verification link will be sent."})
 		return
 	}
+
+	// Increment rate limits only after successful queueing
+	a.Redis.Incr(r.Context(), rlKey)
+	a.Redis.Expire(r.Context(), rlKey, 1*time.Hour)
+	a.Redis.Incr(r.Context(), emailRlKey)
+	a.Redis.Expire(r.Context(), emailRlKey, 30*time.Minute)
 
 	a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "If this email is registered and unverified, a new verification link will be sent."})
 }

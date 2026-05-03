@@ -61,6 +61,7 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 					baseURL := os.Getenv("BASE_URL")
 					if baseURL == "" {
 						baseURL = "http://localhost:8080"
+						log.Printf("Worker Health ALERT: BASE_URL environment variable is unset. Falling back to %s (Environment: %s). Links in alerts may be broken.", baseURL, os.Getenv("GO_ENV"))
 					}
 					content := fmt.Sprintf(`
 						<div style="background-color: #ff4d4d1a; padding: 20px; border-radius: 16px; border: 1px solid #ff4d4d33; color: #ff4d4d; margin-bottom: 20px;">
@@ -71,7 +72,7 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 							%s
 						</div>
 						<div style="margin-top: 30px; text-align: center;">
-							<a href="%s/admin/users" class="btn">Access Control Center</a>
+							<a href="%s/dashboard" class="btn">Access Command Center</a>
 						</div>
 					`, msg, baseURL)
 

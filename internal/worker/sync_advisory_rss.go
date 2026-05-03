@@ -195,34 +195,54 @@ func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
 }
 
 func (w *Worker) integrateAdvisoryCVE(ctx context.Context, cveID string, item GenericFeedItem, feed AdvisoryFeed) {
+	if item.Link == "" {
+		return
+	}
+
+	tx, err := w.Pool.Begin(ctx)
+	if err != nil {
+		log.Printf("Worker: [ERROR] Failed to start transaction for advisory sync: %v", err)
+		return
+	}
+	defer tx.Rollback(ctx)
+
 	var model models.CVE
 
-	// Only sync if the CVE already exists in our database to prevent "bloat" from skeleton entries
-	err := w.Pool.QueryRow(ctx, "SELECT id, cve_id, description, vendor, product, \"references\" FROM cves WHERE cve_id = $1", cveID).
-		Scan(&model.ID, &model.CVEID, &model.Description, &model.Vendor, &model.Product, &model.References)
+	// Lock the row and fetch required fields for alert processing
+	err = tx.QueryRow(ctx, "SELECT id, cve_id, description, cvss_score, vendor, product, \"references\", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE", cveID).
+		Scan(&model.ID, &model.CVEID, &model.Description, &model.CVSSScore, &model.Vendor, &model.Product, &model.References, &model.EPSSScore)
 
-	if err == nil {
-		// CVE exists - check if this reference is already known
-		refExists := false
-		for _, ref := range model.References {
-			if ref == item.Link {
-				refExists = true
-				break
-			}
+	if err != nil {
+		// CVE likely doesn't exist in our database; we skip it to prevent "bloat"
+		return
+	}
+
+	// Check if this reference is already known
+	refExists := false
+	for _, ref := range model.References {
+		if ref == item.Link {
+			refExists = true
+			break
+		}
+	}
+
+	if !refExists {
+		model.References = append(model.References, item.Link)
+		_, err := tx.Exec(ctx, "UPDATE cves SET \"references\" = $1, updated_at = NOW() WHERE id = $2", model.References, model.ID)
+		if err != nil {
+			log.Printf("Worker: [ERROR] Failed to update %s reference for %s: %v", feed.Name, cveID, err)
+			return
 		}
 
-		if !refExists {
-			model.References = append(model.References, item.Link)
-			_, err := w.Pool.Exec(ctx, "UPDATE cves SET \"references\" = $1, updated_at = NOW() WHERE id = $2", model.References, model.ID)
-			if err != nil {
-				log.Printf("Worker: [ERROR] Failed to update %s reference for %s: %v", feed.Name, cveID, err)
-			} else {
-				log.Printf("Worker: [SYNC] Added %s reference to existing CVE %s", feed.Name, cveID)
-				// Enqueue alert for enrichment/update
-				if err := w.enqueueAlertsForCVE(ctx, model); err != nil {
-					log.Printf("Worker: [ERROR] Failed to enqueue alerts for CVE %s: %v", cveID, err)
-				}
-			}
+		if err := tx.Commit(ctx); err != nil {
+			log.Printf("Worker: [ERROR] Failed to commit transaction for %s: %v", cveID, err)
+			return
+		}
+
+		log.Printf("Worker: [SYNC] Added %s reference to existing CVE %s", feed.Name, cveID)
+		// Enqueue alert for enrichment/update using the updated model
+		if err := w.enqueueAlertsForCVE(ctx, model); err != nil {
+			log.Printf("Worker: [ERROR] Failed to enqueue alerts for CVE %s: %v", cveID, err)
 		}
 	}
 }

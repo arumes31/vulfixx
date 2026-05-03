@@ -21,7 +21,12 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 	
 	oldPool := db.Pool
 	db.Pool = mock
-	t.Cleanup(func() { db.Pool = oldPool })
+	t.Cleanup(func() {
+		db.Pool = oldPool
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
 
 	ts, app, client := setupTestServer(t, mock)
 
@@ -40,11 +45,18 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 
 	// 1. Registration Attempt
 	t.Run("Registration", func(t *testing.T) {
+		// Call captcha to set session
+		respCap, err := client.Get(ts.URL + "/captcha")
+		if err != nil {
+			t.Fatalf("failed to get captcha: %v", err)
+		}
+		respCap.Body.Close()
+
 		form := url.Values{}
 		form.Add("email", email)
 		form.Add("password", password)
 		form.Add("password_confirm", password)
-		form.Add("captcha", "10")
+		form.Add("captcha", "10") // CaptchaHandler in test returns 5+5=10
 
 		mock.ExpectExec("INSERT INTO users").WithArgs(email, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
@@ -82,6 +94,10 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 	t.Run("ResendVerification", func(t *testing.T) {
 		app.Redis.Del(context.Background(), "reg_limit:127.0.0.1")
 		
+		// Refresh captcha
+		respCap, _ := client.Get(ts.URL + "/captcha")
+		respCap.Body.Close()
+
 		form := url.Values{}
 		form.Add("email", email)
 		form.Add("captcha", "10")
@@ -106,6 +122,10 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 
 	// 4. Resend Backoff
 	t.Run("ResendBackoff", func(t *testing.T) {
+		// Refresh captcha
+		respCap, _ := client.Get(ts.URL + "/captcha")
+		respCap.Body.Close()
+
 		form := url.Values{}
 		form.Add("email", email)
 		form.Add("captcha", "10")

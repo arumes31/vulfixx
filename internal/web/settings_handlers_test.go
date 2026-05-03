@@ -59,16 +59,23 @@ func TestTOTPHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		setSessionUser(t, app, req, 1, false)
 		
-		// Set setup values in session
+		// Set setup values in session and persist them via cookie
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["totp_setup_ts"] = time.Now().Unix()
 		session.Values["totp_setup_attempts"] = 0
-		_ = session.Save(req, httptest.NewRecorder())
-
+		
 		rr := httptest.NewRecorder()
-		app.VerifyTOTPHandler(rr, req)
-		if rr.Code != http.StatusFound {
-			t.Errorf("expected 302, got %d", rr.Code)
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("session.Save: %v", err)
+		}
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		rr2 := httptest.NewRecorder()
+		app.VerifyTOTPHandler(rr2, req)
+		if rr2.Code != http.StatusFound {
+			t.Errorf("expected 302, got %d", rr2.Code)
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
@@ -94,16 +101,23 @@ func TestTOTPHandlers(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		setSessionUser(t, app, req, 1, false)
 
-		// Set setup values in session
+		// Set setup values in session and persist them via cookie
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["totp_setup_ts"] = time.Now().Unix()
 		session.Values["totp_setup_attempts"] = 0
-		_ = session.Save(req, httptest.NewRecorder())
-
+		
 		rr := httptest.NewRecorder()
-		app.VerifyTOTPHandler(rr, req)
-		if rr.Code != http.StatusFound {
-			t.Errorf("expected 302Found, got %d", rr.Code)
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("session.Save: %v", err)
+		}
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		rr2 := httptest.NewRecorder()
+		app.VerifyTOTPHandler(rr2, req)
+		if rr2.Code != http.StatusFound {
+			t.Errorf("expected 302Found, got %d", rr2.Code)
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)

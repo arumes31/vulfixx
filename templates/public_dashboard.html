@@ -433,14 +433,10 @@ input[type=number] {
                         temp.querySelectorAll('tr').forEach(row => {
                             const navigateRow = (e) => {
                                 if (e.target.closest('a, button, select, input, textarea, label')) return;
-                                if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
-                                if (e.type === 'keydown') e.preventDefault();
-                                
-                                const url = row.getAttribute('data-cve-url');
-                                if (url) vulfixx.navigate(url);
+                                const anchor = row.querySelector('a');
+                                if (anchor) anchor.click();
                             };
                             row.addEventListener('click', navigateRow);
-                            row.addEventListener('keydown', navigateRow);
                             tbody.appendChild(row);
                         });
                     }
@@ -496,16 +492,12 @@ input[type=number] {
                     
                     const navigateRow = (e) => {
                         if (e.target.closest('a, button, select, input, textarea, label')) return;
-                        if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
-                        if (e.type === 'keydown') e.preventDefault();
-                        
-                        const url = e.currentTarget.getAttribute('data-cve-url');
-                        if (url) vulfixx.navigate(url);
+                        const anchor = e.currentTarget.querySelector('a');
+                        if (anchor) anchor.click();
                     };
 
                     tbody.querySelectorAll('tr').forEach(row => {
                         row.addEventListener('click', navigateRow);
-                        row.addEventListener('keydown', navigateRow);
                     });
 
                     // Update charts and UI state
@@ -855,7 +847,7 @@ input[type=number] {
 
 {{define "cve_rows"}}
     {{range .CVEs}}
-    <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer" data-cve-url="/cve/{{.CVEID}}" tabindex="0" role="button" aria-label="View details for {{.CVEID}}">
+    <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer" data-cve-url="/cve/{{.CVEID}}">
         <td class="p-6">
             <div class="flex items-center gap-3">
                 <a href="/cve/{{.CVEID}}" class="text-sm font-black text-white group-hover:text-primary transition-colors">{{.CVEID}}</a>

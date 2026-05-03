@@ -4,6 +4,7 @@ import (
 	"cve-tracker/internal/db"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"regexp"
 	"strings"
 	"testing"
@@ -76,8 +77,17 @@ func TestCSRFProtection(t *testing.T) {
 		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=invalid"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		
+		rr := httptest.NewRecorder()
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["admin_csrf_token"] = "valid"
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("failed to save session: %v", err)
+		}
+
+		// Add the cookie so ValidateCSRF can find the session
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
 		
 		if app.ValidateCSRF(req) {
 			t.Errorf("expected CSRF validation to fail")
@@ -210,6 +220,9 @@ func TestAdminMiddleware(t *testing.T) {
 		if rr.Code != http.StatusForbidden {
 			t.Errorf("expected 403 Forbidden for non-admin, got %d", rr.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
 	t.Run("Admin", func(t *testing.T) {
@@ -225,6 +238,9 @@ func TestAdminMiddleware(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK for admin, got %d", rr.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 }
 
@@ -239,24 +255,59 @@ func TestSQLInjectionPrevention(t *testing.T) {
 	// Malicious keyword that attempts to break out of string and run additional commands
 	maliciousKeyword := "'; DROP TABLE users; --"
 	
-	req, _ := http.NewRequest("GET", "/dashboard?q="+maliciousKeyword, nil)
+	v := url.Values{}
+	v.Set("q", maliciousKeyword)
+	req, _ := http.NewRequest("GET", "/dashboard?"+v.Encode(), nil)
 	setSessionUser(t, app, req, 1, false)
 
-	// Mocking the query to ensure it's still using the expected structure
-	mock.ExpectQuery("SELECT.*COUNT.*DISTINCT").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit", "prog"}).AddRow(100, 10, 5, 2))
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT DISTINCT c.id")).
-		WithArgs(1, 20, 0).
+	// 1. metricsQuery
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(DISTINCT c.id) as total_cves")).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit", "prog"}).AddRow(100, 10, 5, 2))
+	
+	// 2. query (CVE list)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT DISTINCT c.id, c.cve_id")).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "vendor", "product", "affected_products"}).
 			AddRow(1, "CVE-1", "Desc", 5.0, "", false, time.Now(), time.Now(), "active", []string{}, "", 0.1, "", "", 0, 0, "", []byte(`{}`), "V", "P", []byte(`[]`)))
 
-	mock.ExpectQuery("SELECT.*COUNT.*DISTINCT.*cvss_score").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(0, 0, 1, 0))
-	mock.ExpectQuery("SELECT.*COUNT.*DISTINCT.*status").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"active", "prog", "res", "ign"}).AddRow(1, 0, 0, 0))
+	// 3. severityQuery
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(DISTINCT CASE WHEN c.cvss_score >= 9.0 THEN c.id END)")).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(0, 0, 1, 0))
 	
-	expectBaseQueries(mock, 1)
+	// 4. statusQuery
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(DISTINCT CASE WHEN COALESCE(ucs.status, 'active') = 'active' THEN c.id END)")).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"active", "prog", "res", "ign"}).AddRow(1, 0, 0, 0))
+	
+	// 5. cweQuery
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT cwe_id, COALESCE(MAX(cwe_name), 'Unknown')")).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"cwe_id", "cwe_name", "cnt"}).AddRow("CWE-79", "XSS", 1))
+	
+	// 6. RenderTemplate calls
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT onboarding_completed FROM users WHERE id = $1")).
+		WithArgs(1).
+		WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed"}).AddRow(true))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1")).
+		WithArgs(1).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectQuery("(?is)SELECT t.id, t.name FROM teams t").
+		WithArgs(1).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(1, "Team1"))
 
 	rr := httptest.NewRecorder()
 	app.DashboardHandler(rr, req)
 	
+	body := rr.Body.String()
+	badPhrases := []string{"syntax error", "unterminated string literal", "SQL error"}
+	for _, p := range badPhrases {
+		if strings.Contains(strings.ToLower(body), p) {
+			t.Errorf("Potential SQL injection leak detected in response body: %s", body)
+		}
+	}
+
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unmet expectations: %v", err)
 	}

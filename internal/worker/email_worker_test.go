@@ -40,7 +40,9 @@ func TestWorker_emailWorker_Coverage(t *testing.T) {
 
 	t.Run("pollDelayedQueue", func(t *testing.T) {
 		now := float64(time.Now().UnixMilli())
-		rdb.ZAdd(context.Background(), "email_verification_delayed", redis.Z{Score: now - 1000, Member: "test_item"})
+		if err := rdb.ZAdd(context.Background(), "email_verification_delayed", redis.Z{Score: now - 1000, Member: "test_item"}).Err(); err != nil {
+			t.Fatalf("ZAdd failed: %v", err)
+		}
 
 		w.pollDelayedQueue(context.Background(), "email_verification_delayed", "email_verification_queue")
 
