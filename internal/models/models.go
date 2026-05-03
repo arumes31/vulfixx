@@ -362,16 +362,42 @@ type TeamMember struct {
 }
 
 type UserSubscription struct {
-	ID            int       `json:"id"`
-	UserID        int       `json:"user_id"`
-	TeamID        *int      `json:"team_id"`
-	Keyword       string    `json:"keyword"`
-	MinSeverity   float64   `json:"min_severity"`
-	WebhookURL    string    `json:"webhook_url"`
-	EnableEmail   bool      `json:"enable_email"`
-	EnableWebhook bool      `json:"enable_webhook"`
-	FilterLogic   string    `json:"filter_logic"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID                int       `json:"id"`
+	UserID            int       `json:"user_id"`
+	TeamID            *int      `json:"team_id"`
+	Keyword           string    `json:"keyword"`
+	MinSeverity       float64   `json:"min_severity"`
+	WebhookURL        string    `json:"webhook_url"`
+	SlackWebhookURL   string    `json:"slack_webhook_url"`
+	TeamsWebhookURL   string    `json:"teams_webhook_url"`
+	EnableEmail       bool      `json:"enable_email"`
+	EnableWebhook     bool      `json:"enable_webhook"`
+	EnableSlack       bool      `json:"enable_slack"`
+	EnableTeams       bool      `json:"enable_teams"`
+	EnableBrowserPush bool      `json:"enable_browser_push"`
+	FilterLogic       string    `json:"filter_logic"`
+	AggregationMode   string    `json:"aggregation_mode"` // instant, hourly, daily
+	CreatedAt         time.Time `json:"created_at"`
+}
+
+type BrowserPushSubscription struct {
+	ID        int       `json:"id"`
+	UserID    int       `json:"user_id"`
+	Endpoint  string    `json:"endpoint"`
+	P256dh    string    `json:"p256dh"`
+	Auth      string    `json:"auth"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type NotificationDeliveryLog struct {
+	ID             int       `json:"id"`
+	UserID         int       `json:"user_id"`
+	SubscriptionID int       `json:"subscription_id"`
+	CVEID          int       `json:"cve_id"`
+	Channel        string    `json:"channel"` // email, webhook, slack, teams, browser
+	Status         string    `json:"status"`  // success, failure
+	ErrorMessage   string    `json:"error_message"`
+	DeliveryTime   time.Time `json:"delivery_time"`
 }
 
 type UserCVEStatus struct {

@@ -95,7 +95,9 @@ func (w *Worker) processAlerts(ctx context.Context) {
 
 func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 	rows, err := w.Pool.Query(ctx, `
-		SELECT s.id, s.user_id, s.keyword, s.min_severity, s.webhook_url, s.enable_email, s.enable_webhook, s.filter_logic, u.email
+		SELECT s.id, s.user_id, s.keyword, s.min_severity, s.webhook_url, s.slack_webhook_url, s.teams_webhook_url, 
+		       s.enable_email, s.enable_webhook, s.enable_slack, s.enable_teams, s.enable_browser_push,
+		       s.filter_logic, s.aggregation_mode, u.email
 		FROM user_subscriptions s
 		JOIN users u ON s.user_id = u.id
 		WHERE u.is_email_verified = TRUE
@@ -112,7 +114,10 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 	for rows.Next() {
 		var sub models.UserSubscription
 		var email string
-		if err := rows.Scan(&sub.ID, &sub.UserID, &sub.Keyword, &sub.MinSeverity, &sub.WebhookURL, &sub.EnableEmail, &sub.EnableWebhook, &sub.FilterLogic, &email); err != nil {
+		if err := rows.Scan(&sub.ID, &sub.UserID, &sub.Keyword, &sub.MinSeverity, 
+			&sub.WebhookURL, &sub.SlackWebhookURL, &sub.TeamsWebhookURL,
+			&sub.EnableEmail, &sub.EnableWebhook, &sub.EnableSlack, &sub.EnableTeams, &sub.EnableBrowserPush,
+			&sub.FilterLogic, &sub.AggregationMode, &email); err != nil {
 			log.Printf("Error scanning subscription row: %v", err)
 			continue
 		}
@@ -249,6 +254,19 @@ func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, s
 	var exists bool
 	_ = w.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM alert_history WHERE user_id = $1 AND cve_id = $2)", userID, cve.ID).Scan(&exists)
 	if exists {
+		return false
+	}
+
+	// 21. Alert Flood Protection (Rate limiting per user/hour)
+	floodKey := fmt.Sprintf("flood_protection:%d", userID)
+	count, _ := w.Redis.Incr(ctx, floodKey).Result()
+	if count == 1 {
+		w.Redis.Expire(ctx, floodKey, 1*time.Hour)
+	}
+	if count > 50 { // Max 50 alerts per hour
+		if count == 51 {
+			log.Printf("Flood Protection: Throttling alerts for user %d", userID)
+		}
 		return false
 	}
 

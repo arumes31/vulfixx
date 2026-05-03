@@ -29,6 +29,7 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 	log.Println("Worker: Running self-health checks...")
 
 	tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync"}
+	w.checkNotificationHealth(ctx)
 	for _, task := range tasks {
 		var lastRun time.Time
 		err := w.Pool.QueryRow(ctx, "SELECT last_run FROM worker_sync_stats WHERE task_name = $1", task).Scan(&lastRun)
@@ -85,6 +86,19 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 		}
 	}
 	w.updateTaskStats(ctx, "health_check")
+}
+
+func (w *Worker) checkNotificationHealth(ctx context.Context) {
+	var failureCount int
+	err := w.Pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM notification_delivery_logs 
+		WHERE status = 'failure' AND delivery_time > NOW() - INTERVAL '24 hours'
+	`).Scan(&failureCount)
+	
+	if err == nil && failureCount > 0 {
+		log.Printf("Worker Health WARNING: %d notification delivery failures in the last 24 hours!", failureCount)
+		// Could send a consolidated alert here if failureCount > threshold
+	}
 }
 
 func (w *Worker) updateTaskStats(ctx context.Context, taskName string) {

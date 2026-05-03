@@ -18,9 +18,8 @@ var (
 )
 
 func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, sub models.UserSubscription, email, assetName string) bool {
-	// Severity-Based Routing:
-	// Critical (>= 9.0) gets immediate delivery.
-	if cve.CVSSScore >= 9.0 {
+	// Mode-Based Routing:
+	if sub.AggregationMode == "instant" || sub.AggregationMode == "" || cve.CVSSScore >= 9.0 {
 		return w.sendAlert(sub, cve, email, assetName)
 	}
 
@@ -55,7 +54,11 @@ func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, s
 	}
 	if set {
 		bufferTime := bufferTimeStandard
-		if cve.CVSSScore >= 7.0 {
+		if sub.AggregationMode == "hourly" {
+			bufferTime = 1 * time.Hour
+		} else if sub.AggregationMode == "daily" {
+			bufferTime = 24 * time.Hour
+		} else if cve.CVSSScore >= 7.0 {
 			bufferTime = bufferTimeHigh
 		}
 		/* #nosec G118 */
@@ -149,9 +152,8 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 		} else if r, ok := data.CVE.OSINTData["reddit"].([]interface{}); ok && len(r) > 0 {
 			hasOSINT = true
 		}
-		// Also invoke webhook for each item individually since it's a digest
-		cveCopy := data.CVE
-		w.sendAlert(data.Sub, &cveCopy, data.Email, data.AssetName)
+		// In digest mode, we skip individual webhooks/slack/teams calls here
+		// to avoid flooding. We will send a consolidated digest instead.
 
 		items = append(items, AlertItem{
 			CVEID:     data.CVE.CVEID,
@@ -159,7 +161,7 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 			AssetName: data.AssetName,
 			Buzz:      data.CVE.GitHubPoCCount,
 			HasOSINT:  hasOSINT,
-			CVE:       &cveCopy,
+			CVE:       &data.CVE,
 		})
 	}
 	rowsHTML := ""
@@ -236,7 +238,28 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 
 	for email := range uniqueEmails {
 		if err := w.Mailer.SendEmail(email, "Threat Brief: Multiple Vulnerabilities Detected", body); err != nil {
-			log.Printf("Failed to send threat brief to %s: %v", maskEmail(email), err)
+			log.Printf("Failed to send threat brief to %s: %v", redactEmail(email), err)
+			w.logDelivery(userID, 0, 0, "email", false, err.Error())
+		} else {
+			w.logDelivery(userID, 0, 0, "email", true, "")
+		}
+	}
+
+	// Also send consolidated alerts to other channels if enabled
+	if len(blobs) > 1 {
+		firstData := alertData{}
+		_ = json.Unmarshal([]byte(blobs[0]), &firstData) // Get common sub settings
+
+		if firstData.Sub.EnableSlack && firstData.Sub.SlackWebhookURL != "" {
+			msg := fmt.Sprintf("🛡️ *Intelligence Brief: %d New Threats Detected*\n\n", len(items))
+			for _, it := range items {
+				msg += fmt.Sprintf("• *%s* (CVSS: %.1f) - %s\n", it.CVEID, it.Score, it.AssetName)
+			}
+			msg += fmt.Sprintf("\n<%s/dashboard|Analyze in Command Console>", baseURLStr)
+			
+			payload := map[string]interface{}{"text": msg}
+			success, errMsg := w.postJSON(firstData.Sub.SlackWebhookURL, payload)
+			w.logDelivery(userID, firstData.Sub.ID, 0, "slack", success, errMsg)
 		}
 	}
 }
