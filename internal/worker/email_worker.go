@@ -153,7 +153,8 @@ func (w *Worker) sendEmailChangeNotification(email, token, emailType string) err
 			<div style="text-align: center; margin: 30px 0;">
 				<a href="%s" class="btn">Confirm Change</a>
 			</div>
-		`, link)
+			<p style="font-size: 12px; opacity: 0.6; text-align: center;">Or copy this link: %s</p>
+		`, link, link)
 	}
 
 	body := WrapInModernLayout(subject, content)
@@ -174,8 +175,9 @@ func (w *Worker) sendVerificationEmail(email, token string) error {
 		<div style="text-align: center; margin: 30px 0;">
 			<a href="%s" class="btn">Verify Account</a>
 		</div>
+		<p style="font-size: 12px; opacity: 0.6; text-align: center;">Or copy this link: %s</p>
 		<p style="font-size: 12px; opacity: 0.6; text-align: center;">If you didn't create this account, you can safely ignore this email.</p>
-	`, link)
+		`, link, link)
 
 	body := WrapInModernLayout(subject, content)
 	return w.Mailer.SendEmail(email, subject, body)

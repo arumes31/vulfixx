@@ -15,9 +15,8 @@ func TestErrorReportHandler(t *testing.T) {
 		req := httptest.NewRequest("GET", "/report-error", nil)
 		rr := httptest.NewRecorder()
 		app.ErrorReportHandler(rr, req)
-		// ErrorReportHandler returns nothing for GET
-		if rr.Code != http.StatusOK {
-			t.Errorf("expected 200, got %d", rr.Code)
+		if rr.Code != http.StatusMethodNotAllowed {
+			t.Errorf("expected 405, got %d", rr.Code)
 		}
 	})
 
@@ -25,8 +24,8 @@ func TestErrorReportHandler(t *testing.T) {
 		req := httptest.NewRequest("POST", "/report-error", strings.NewReader("{invalid"))
 		rr := httptest.NewRecorder()
 		app.ErrorReportHandler(rr, req)
-		if rr.Code != http.StatusOK {
-			t.Errorf("expected 200 (silent ignore), got %d", rr.Code)
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", rr.Code)
 		}
 	})
 

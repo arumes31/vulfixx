@@ -717,6 +717,14 @@ func TestSwitchTeamHandler(t *testing.T) {
 			if rr2.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr2.Code)
 			}
+			if tt.expectedStatus == http.StatusFound {
+				loc := rr2.Header().Get("Location")
+				if tt.referer != "" && (strings.Contains(tt.referer, "evil.com") || strings.HasPrefix(tt.referer, "javascript:")) {
+					if loc != "/dashboard" {
+						t.Errorf("expected redirect to /dashboard for unsafe referer %q, got %q", tt.referer, loc)
+					}
+				}
+			}
 			if err := mock.ExpectationsWereMet(); err != nil {
 				t.Errorf("unmet expectations: %v", err)
 			}
