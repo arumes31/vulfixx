@@ -91,8 +91,14 @@ func (w *Worker) syncInTheWild(ctx context.Context) {
 			_, _ = w.Pool.Exec(ctx, "UPDATE cves SET inthewild_last_updated = NOW() WHERE cve_id = $1", cveID)
 		}
 
-		// "Slow Sync" - Throttle to respect API limits (1.5s delay)
-		time.Sleep(1500 * time.Millisecond)
+		// "Slow Sync" - Throttle to respect API limits (1.5s delay, cancellable)
+		throttle := time.NewTimer(1500 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			throttle.Stop()
+			return
+		case <-throttle.C:
+		}
 	}
 
 	w.updateTaskStats(ctx, "inthewild_sync")

@@ -67,13 +67,14 @@ CREATE TABLE IF NOT EXISTS darknet_intel_hits (
     cve_id VARCHAR(50) NOT NULL,
     engine VARCHAR(50),
     title TEXT,
-    url TEXT UNIQUE, -- deduplication by URL (57)
+    url TEXT, -- deduplication by (cve_id, url) composite below
     snippet TEXT,
     translation TEXT,
     language VARCHAR(10), -- (23)
     source_link TEXT,
     is_honey_link BOOLEAN DEFAULT FALSE, -- (97)
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(cve_id, url)
 );
 CREATE INDEX IF NOT EXISTS idx_darknet_intel_hits_cve_id ON darknet_intel_hits(cve_id);
 
@@ -348,13 +349,21 @@ BEGIN
 
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'enable_slack') THEN
         ALTER TABLE user_subscriptions ADD COLUMN enable_slack BOOLEAN DEFAULT FALSE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'enable_teams') THEN
         ALTER TABLE user_subscriptions ADD COLUMN enable_teams BOOLEAN DEFAULT FALSE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'enable_browser_push') THEN
         ALTER TABLE user_subscriptions ADD COLUMN enable_browser_push BOOLEAN DEFAULT FALSE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'slack_webhook_url') THEN
         ALTER TABLE user_subscriptions ADD COLUMN slack_webhook_url TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'teams_webhook_url') THEN
         ALTER TABLE user_subscriptions ADD COLUMN teams_webhook_url TEXT;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'aggregation_mode') THEN
-            ALTER TABLE user_subscriptions ADD COLUMN aggregation_mode VARCHAR(20) DEFAULT 'instant' CHECK (aggregation_mode IN ('instant', 'hourly', 'daily'));
-        END IF;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'aggregation_mode') THEN
+        ALTER TABLE user_subscriptions ADD COLUMN aggregation_mode VARCHAR(20) DEFAULT 'instant' CHECK (aggregation_mode IN ('instant', 'hourly', 'daily'));
     END IF;
 
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_activity_logs') THEN

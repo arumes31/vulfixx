@@ -43,6 +43,7 @@ func (w *Worker) runDarknetScanGRPC(ctx context.Context, target string) {
 	}
 	if err := rows.Err(); err != nil {
 		log.Printf("Worker: Error iterating rows: %v", err)
+		return // Do not proceed with truncated data
 	}
 
 	// (9) Use Backfill for batch processing with priority

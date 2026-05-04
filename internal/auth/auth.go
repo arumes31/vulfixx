@@ -90,10 +90,13 @@ func VerifyEmail(ctx context.Context, token string) error {
 	return nil
 }
 
-func ResendVerificationToken(ctx context.Context, email string) (string, error) {
+// ResendVerificationToken rotates the verification token and returns
+// (newToken, oldToken, oldLastResend, error). The caller should use the old*
+// values to call RollbackResend if the downstream email send fails.
+func ResendVerificationToken(ctx context.Context, email string) (string, string, *time.Time, error) {
 	tx, err := db.Pool.Begin(ctx)
 	if err != nil {
-		return "", err
+		return "", "", nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
@@ -101,31 +104,32 @@ func ResendVerificationToken(ctx context.Context, email string) (string, error) 
 	var isVerified bool
 	var resendCount int
 	var lastResend *time.Time
+	var oldToken *string
 
 	genericMsg := "If this email is registered and unverified, a new verification link will be sent."
 
-	err = tx.QueryRow(ctx, "SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at FROM users WHERE email = $1 FOR UPDATE", email).
-		Scan(&userID, &isVerified, &resendCount, &lastResend)
+	err = tx.QueryRow(ctx, "SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token FROM users WHERE email = $1 FOR UPDATE", email).
+		Scan(&userID, &isVerified, &resendCount, &lastResend, &oldToken)
 	if err != nil {
-		return "", errors.New(genericMsg)
+		return "", "", nil, errors.New(genericMsg)
 	}
 
 	if isVerified {
-		return "", errors.New(genericMsg)
+		return "", "", nil, errors.New(genericMsg)
 	}
 
 	if lastResend != nil {
 		// Progressive backoff: 10m + (count * 20m)
 		waitTime := 10*time.Minute + time.Duration(resendCount)*20*time.Minute
 		if time.Since(*lastResend) < waitTime {
-			return "", errors.New(genericMsg)
+			return "", "", nil, errors.New(genericMsg)
 		}
 	}
 
 	newToken, err := GenerateToken()
 	if err != nil {
 		log.Printf("Error generating token for resend (email: %s): %v", maskEmail(email), err)
-		return "", errors.New(genericMsg)
+		return "", "", nil, errors.New(genericMsg)
 	}
 
 	_, err = tx.Exec(ctx, `
@@ -137,24 +141,31 @@ func ResendVerificationToken(ctx context.Context, email string) (string, error) 
 	`, newToken, userID)
 	if err != nil {
 		log.Printf("Error updating verification token for user %s: %v", maskEmail(email), err)
-		return "", errors.New(genericMsg)
+		return "", "", nil, errors.New(genericMsg)
 	}
 
 	if err = tx.Commit(ctx); err != nil {
 		log.Printf("Error committing resend transaction for user %s: %v", maskEmail(email), err)
-		return "", errors.New(genericMsg)
+		return "", "", nil, errors.New(genericMsg)
 	}
 
-	return newToken, nil
+	prevToken := ""
+	if oldToken != nil {
+		prevToken = *oldToken
+	}
+	return newToken, prevToken, lastResend, nil
 }
 
-func RollbackResend(ctx context.Context, email string) error {
+// RollbackResend atomically restores the previous email_verify_token, resend count,
+// and last_verification_resend_at so the prior verification link remains valid.
+func RollbackResend(ctx context.Context, email string, oldToken string, oldLastResend *time.Time) error {
 	_, err := db.Pool.Exec(ctx, `
 		UPDATE users 
-		SET verification_resend_count = GREATEST(0, verification_resend_count - 1),
-		    last_verification_resend_at = CASE WHEN verification_resend_count - 1 <= 0 THEN NULL ELSE last_verification_resend_at END
+		SET email_verify_token = $2,
+		    verification_resend_count = GREATEST(0, verification_resend_count - 1),
+		    last_verification_resend_at = $3
 		WHERE email = $1 AND is_email_verified = FALSE
-	`, email)
+	`, email, oldToken, oldLastResend)
 	return err
 }
 
