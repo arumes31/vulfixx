@@ -41,6 +41,11 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	endDate := r.URL.Query().Get("end_date")
 	searchAll := r.URL.Query().Get("all") == "true"
 	statusFilter := r.URL.Query().Get("status")
+	// Whitelist valid statuses to prevent unexpected DB comparisons
+	validStatuses := map[string]bool{"active": true, "in_progress": true, "resolved": true, "ignored": true}
+	if statusFilter != "" && !validStatuses[statusFilter] {
+		statusFilter = ""
+	}
 	kevOnly := r.URL.Query().Get("kev") == "true"
 	minCvssStr := r.URL.Query().Get("min_cvss")
 	maxCvssStr := r.URL.Query().Get("max_cvss")

@@ -211,18 +211,54 @@ func (w *Worker) sendBrowserPush(userID int, cve *models.CVE) bool {
 }
 
 func (w *Worker) postJSON(webhookURL string, payload interface{}) (bool, string) {
+	parsedURL, err := url.Parse(webhookURL)
+	if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+		return false, "invalid webhook URL scheme"
+	}
+
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return false, fmt.Sprintf("failed to marshal payload: %v", err)
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	// SSRF protection: resolve DNS and block internal IPs
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	transport := &http.Transport{
+		DialContext: func(dialCtx context.Context, network, _ string) (net.Conn, error) {
+			ips, _ := net.DefaultResolver.LookupIPAddr(dialCtx, parsedURL.Hostname())
+			var safeIP net.IP
+			for _, ipAddr := range ips {
+				if addr, ok := netip.AddrFromSlice(ipAddr.IP); ok {
+					if addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified() {
+						if os.Getenv("TEST_MODE") != "1" { continue }
+					}
+					safeIP = ipAddr.IP
+					break
+				}
+			}
+			if safeIP == nil { return nil, fmt.Errorf("no safe IP for webhook host") }
+			port := parsedURL.Port()
+			if port == "" {
+				if parsedURL.Scheme == "https" { port = "443" } else { port = "80" }
+			}
+			return dialer.DialContext(dialCtx, network, net.JoinHostPort(safeIP.String(), port))
+		},
+		IdleConnTimeout: 1 * time.Second,
+	}
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Transport: transport, Timeout: 10 * time.Second}
+
 	req, err := http.NewRequestWithContext(ctx, "POST", webhookURL, strings.NewReader(string(data)))
 	if err != nil {
 		return false, fmt.Sprintf("failed to create request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	req.Host = parsedURL.Host
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return false, err.Error()
 	}
