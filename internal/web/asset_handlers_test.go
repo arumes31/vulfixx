@@ -46,8 +46,8 @@ func TestAssetsHandler(t *testing.T) {
 
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT a.id, a.name")).
 			WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "name", "type", "created_at", "keywords", "team_name"}).
-				AddRow(1, "Asset 1", "server", time.Now(), []string{"test"}, "Team A"))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "name", "type", "priority", "created_at", "keywords", "team_name"}).
+				AddRow(1, "Asset 1", "server", "P3", time.Now(), []string{"test"}, "Team A"))
 
 		// RenderTemplate expectations
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT onboarding_completed FROM users WHERE id = $1")).
@@ -93,7 +93,7 @@ func TestAssetsHandler(t *testing.T) {
 						WithArgs(1).
 						WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 					mock.ExpectQuery("INSERT INTO assets").
-						WithArgs(1, pgxmock.AnyArg(), "My Asset", "Server").
+						WithArgs(1, pgxmock.AnyArg(), "My Asset", "Server", "P3").
 						WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(101))
 					mock.ExpectExec("INSERT INTO asset_keywords").
 						WithArgs(101, "prod").
@@ -129,7 +129,7 @@ func TestAssetsHandler(t *testing.T) {
 						WithArgs(10).
 						WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 					mock.ExpectQuery("INSERT INTO assets").
-						WithArgs(1, pgxmock.AnyArg(), "Team Asset", "Cloud").
+						WithArgs(1, pgxmock.AnyArg(), "Team Asset", "Cloud", "P3").
 						WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(102))
 					mock.ExpectCommit()
 					mock.ExpectExec("INSERT INTO user_activity_logs").

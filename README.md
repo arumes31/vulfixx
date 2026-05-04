@@ -40,6 +40,7 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 - **Automated Intelligence**: Weekly email summaries and CISA KEV automated synchronization.
 - **Enhanced Telemetry**: Risk Profile distribution charts and direct Proof-of-Concept (PoC) discovery links.
 - **Asset-Linked Monitoring**: Proactive infrastructure defense via asset-keyword mapping.
+- **Priority Classification Engine**: Automated P0-P3 threat scoring based on CVSS, EPSS, and CISA KEV presence to prioritize critical remediation.
 - **Secure Integration**: Filtered, token-authenticated RSS feeds for personalized technical intel.
 - **Rich Email Alerts**: Premium HTML notifications with OSINT links, Vendor advisories, and Risk gauges.
 - **Modern UI**: High-density dashboard with a premium glassmorphic Amber theme, built on a custom SPA navigation framework for high-performance, seamless transitions. Features **interactive column sorting**, dynamic multi-variable filtering, and synchronized risk distribution charts.

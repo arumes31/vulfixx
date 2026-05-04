@@ -18,7 +18,7 @@ func (a *App) AssetsHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == "GET" {
 		rows, err := a.Pool.Query(r.Context(), `
-			SELECT a.id, a.name, COALESCE(a.type, ''), a.created_at, 
+			SELECT a.id, a.name, COALESCE(a.type, ''), a.priority, a.created_at, 
 			       COALESCE(array_agg(ak.keyword) FILTER (WHERE ak.keyword IS NOT NULL), '{}'),
 			       COALESCE(t.name, '') as team_name
 			FROM assets a
@@ -43,7 +43,7 @@ func (a *App) AssetsHandler(w http.ResponseWriter, r *http.Request) {
 		var assets []AssetWithKeywords
 		for rows.Next() {
 			var as AssetWithKeywords
-			if err := rows.Scan(&as.ID, &as.Name, &as.Type, &as.CreatedAt, &as.Keywords, &as.TeamName); err != nil {
+			if err := rows.Scan(&as.ID, &as.Name, &as.Type, &as.Priority, &as.CreatedAt, &as.Keywords, &as.TeamName); err != nil {
 				log.Printf("Error scanning asset row: %v", err)
 				http.Error(w, "Error parsing assets", http.StatusInternalServerError)
 				return
@@ -66,6 +66,10 @@ func (a *App) AssetsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		name := r.FormValue("name")
 		assetType := r.FormValue("type")
+		priority := r.FormValue("priority")
+		if priority == "" {
+			priority = "P3"
+		}
 		keywords := r.FormValue("keywords")
 		teamIDStr := r.FormValue("team_id")
 
@@ -99,6 +103,12 @@ func (a *App) AssetsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if !allowedTypes[assetType] {
 			a.SendResponse(w, r, false, "", "", "Invalid asset category")
+			return
+		}
+
+		allowedPriorities := map[string]bool{"P0": true, "P1": true, "P2": true, "P3": true}
+		if !allowedPriorities[priority] {
+			a.SendResponse(w, r, false, "", "", "Invalid priority level")
 			return
 		}
 
@@ -172,8 +182,8 @@ func (a *App) AssetsHandler(w http.ResponseWriter, r *http.Request) {
 
 		var assetID int
 		err = tx.QueryRow(ctx, `
-			INSERT INTO assets (user_id, team_id, name, type) VALUES ($1, $2, $3, $4) RETURNING id
-		`, userID, teamID, name, assetType).Scan(&assetID)
+			INSERT INTO assets (user_id, team_id, name, type, priority) VALUES ($1, $2, $3, $4, $5) RETURNING id
+		`, userID, teamID, name, assetType, priority).Scan(&assetID)
 		if err != nil {
 			log.Printf("Error creating asset: %v", err)
 			a.SendResponse(w, r, false, "", "", "Internal server error")

@@ -55,6 +55,7 @@ type CVE struct {
 	PublishedDate  time.Time              `json:"published_date"`
 	UpdatedDate    time.Time              `json:"updated_date"`
 	CreatedAt      time.Time              `json:"created_at"`
+	Priority       string                 `json:"priority"`
 }
 
 type DarknetHit struct {
@@ -457,6 +458,7 @@ type Asset struct {
 	TeamID    *int      `json:"team_id"`
 	Name      string    `json:"name"`
 	Type      string    `json:"type"` // e.g., 'Server', 'Software', 'Network'
+	Priority  string    `json:"priority"`
 	CreatedAt time.Time `json:"created_at"`
 }
 

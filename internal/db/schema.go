@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS cves (
     affected_products JSONB DEFAULT '[]',
     darknet_mentions INTEGER DEFAULT 0,
     darknet_last_seen TIMESTAMP WITH TIME ZONE,
+    priority VARCHAR(2) DEFAULT 'P3',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -105,6 +106,7 @@ CREATE TABLE IF NOT EXISTS assets (
     team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     type VARCHAR(100),
+    priority VARCHAR(2) DEFAULT 'P3',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_assets_user_xor_team CHECK ((user_id IS NULL) <> (team_id IS NULL))
 );
@@ -371,7 +373,34 @@ BEGIN
             ALTER TABLE user_activity_logs ADD COLUMN retention_expires_at TIMESTAMP WITH TIME ZONE;
         END IF;
     END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'priority') THEN
+        ALTER TABLE cves ADD COLUMN priority VARCHAR(2) DEFAULT 'P3';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'assets' AND column_name = 'priority') THEN
+        ALTER TABLE assets ADD COLUMN priority VARCHAR(2) DEFAULT 'P3';
+    END IF;
 END $$;
+
+CREATE OR REPLACE FUNCTION calculate_cve_priority() RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.cvss_score >= 9.0 OR NEW.cisa_kev = TRUE OR NEW.epss_score >= 0.5 THEN
+        NEW.priority := 'P0';
+    ELSIF NEW.cvss_score >= 7.0 OR NEW.epss_score >= 0.1 THEN
+        NEW.priority := 'P1';
+    ELSIF NEW.cvss_score >= 4.0 THEN
+        NEW.priority := 'P2';
+    ELSE
+        NEW.priority := 'P3';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_calculate_cve_priority ON cves;
+CREATE TRIGGER trigger_calculate_cve_priority
+BEFORE INSERT OR UPDATE ON cves
+FOR EACH ROW EXECUTE FUNCTION calculate_cve_priority();
 
 -- 5. Indexes
 CREATE EXTENSION IF NOT EXISTS pg_trgm;

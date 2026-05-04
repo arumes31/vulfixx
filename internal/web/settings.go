@@ -204,7 +204,8 @@ func (a *App) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 		case strings.Contains(errMsg, "TOTP") || strings.Contains(errMsg, "totp"):
 			renderError("Invalid or missing 2FA code")
 		default:
-			log.Printf("ChangePassword unexpected error for user %d: %v", userID, err)
+			// #nosec G706 -- the %q format specifier automatically escapes control characters, making log injection impossible
+			log.Printf("ChangePassword unexpected error for user %d: %q", userID, err.Error())
 			renderError("Unable to change password. Please try again later.")
 		}
 		return
