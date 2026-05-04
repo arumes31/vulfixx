@@ -374,6 +374,7 @@ BEGIN
 END $$;
 
 -- 5. Indexes
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE INDEX IF NOT EXISTS idx_user_activity_logs_user_id_created_at ON user_activity_logs (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_user_activity_logs_created_at ON user_activity_logs (created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_email_change_requests_old_token ON email_change_requests (old_email_token);
@@ -393,4 +394,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_status ON user_cve_status (use
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_team_status ON user_cve_status (team_id, cve_id) WHERE team_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_notes ON cve_notes (user_id, cve_id) WHERE team_id IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_team_notes ON cve_notes (team_id, cve_id) WHERE team_id IS NOT NULL;
+
+-- Composite Covering Indexes for fast dashboard JOINs
+CREATE INDEX IF NOT EXISTS idx_user_status_covering ON user_cve_status (user_id, cve_id, status);
+CREATE INDEX IF NOT EXISTS idx_team_status_covering ON user_cve_status (team_id, cve_id, status);
+CREATE INDEX IF NOT EXISTS idx_user_notes_covering ON cve_notes (user_id, cve_id);
+CREATE INDEX IF NOT EXISTS idx_team_notes_covering ON cve_notes (team_id, cve_id);
+
+-- Trigram Indexes for fast ILIKE search performance
+CREATE INDEX IF NOT EXISTS idx_cves_description_trgm ON cves USING GIN (description gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_cves_vendor_trgm ON cves USING GIN (vendor gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_cves_product_trgm ON cves USING GIN (product gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_cves_cve_id_trgm ON cves USING GIN (cve_id gin_trgm_ops);
 `

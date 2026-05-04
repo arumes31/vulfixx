@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"cve-tracker/internal/models"
 	"database/sql"
 	"encoding/json"
@@ -126,10 +127,30 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fullMetricsQuery := metricsQuery + whereClause
-	err := a.Pool.QueryRow(r.Context(), fullMetricsQuery, args...).Scan(&totalItems, &kevCount, &critCount, &progressCount)
-	if err != nil {
-		log.Printf("Dashboard metrics error: %v", err)
+
+	// Generate deterministic cache key (userID, teamID, fullMetricsQuery, args)
+	cacheKeyStr := fmt.Sprintf("%d:%d:%s:%v", userID, activeTeamID, fullMetricsQuery, args)
+	cacheKeyHash := sha256.Sum256([]byte(cacheKeyStr))
+	cacheKey := fmt.Sprintf("dashboard_metrics:%x", cacheKeyHash)
+
+	if cachedData, err := a.Redis.Get(r.Context(), cacheKey).Result(); err == nil {
+		var metrics [4]int
+		if err := json.Unmarshal([]byte(cachedData), &metrics); err == nil {
+			totalItems, kevCount, critCount, progressCount = metrics[0], metrics[1], metrics[2], metrics[3]
+			goto MetricsCached
+		}
 	}
+
+	if err := a.Pool.QueryRow(r.Context(), fullMetricsQuery, args...).Scan(&totalItems, &kevCount, &critCount, &progressCount); err != nil {
+		log.Printf("Dashboard metrics error: %v", err)
+	} else {
+		metricsToCache := [4]int{totalItems, kevCount, critCount, progressCount}
+		if dataToCache, err := json.Marshal(metricsToCache); err == nil {
+			a.Redis.SetEx(r.Context(), cacheKey, dataToCache, 60*time.Second)
+		}
+	}
+
+MetricsCached:
 
 	notesJoinCond := "ucn.user_id = $1 AND ucn.team_id IS NULL"
 	if teamArgIdx != -1 {
