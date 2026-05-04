@@ -70,6 +70,7 @@ func TestWorker_processAlerts_Coverage(t *testing.T) {
 	data, _ := json.Marshal(cve)
 
 	// We expect evaluateSubscriptions to be called for the valid item, which does a query
+	mock.ExpectQuery("SELECT user_id FROM alert_history WHERE cve_id =").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"user_id"}))
 	mock.ExpectQuery("SELECT s.id, s.user_id").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"id", "user_id", "keyword", "min_severity", "webhook_url", "enable_email", "enable_webhook", "filter_logic", "email"}))
 	mock.ExpectQuery("SELECT ak.keyword, a.user_id").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"keyword", "user_id", "email", "name"}))
 
@@ -122,6 +123,9 @@ func TestWorkerAlert_EvaluateSubscriptions(t *testing.T) {
 			CVSSScore:   8.0,
 		}
 
+		mock.ExpectQuery("SELECT user_id FROM alert_history WHERE cve_id =").
+			WithArgs(cve.ID).
+			WillReturnRows(pgxmock.NewRows([]string{"user_id"}))
 		mock.ExpectQuery("SELECT s.id, s.user_id").
 			WithArgs(cve.CVSSScore, cve.Description).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "user_id", "keyword", "min_severity", "webhook_url", "enable_email", "enable_webhook", "filter_logic", "email"}))
@@ -130,7 +134,6 @@ func TestWorkerAlert_EvaluateSubscriptions(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"keyword", "user_id", "email", "name"}).
 				AddRow("wordpress", 1, "user@example.com", "My Site"))
 
-		mock.ExpectQuery("SELECT EXISTS").WithArgs(1, 1).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 		mock.ExpectExec("INSERT INTO alert_history").WithArgs(1, 1).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		w.evaluateSubscriptions(ctx, cve)
