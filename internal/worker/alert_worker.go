@@ -94,6 +94,23 @@ func (w *Worker) processAlerts(ctx context.Context) {
 }
 
 func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
+	notifiedUsers := make(map[int]bool)
+
+	// Pre-fetch all users who have already been notified about this CVE
+	// This prevents the N+1 query problem where we query the DB for each match.
+	historyRows, err := w.Pool.Query(ctx, "SELECT user_id FROM alert_history WHERE cve_id = $1", cve.ID)
+	if err != nil {
+		log.Printf("Error fetching alert history for CVE %d: %v", cve.ID, err)
+	} else {
+		defer historyRows.Close()
+		for historyRows.Next() {
+			var uid int
+			if err := historyRows.Scan(&uid); err == nil {
+				notifiedUsers[uid] = true
+			}
+		}
+	}
+
 	rows, err := w.Pool.Query(ctx, `
 		SELECT s.id, s.user_id, s.keyword, s.min_severity, s.webhook_url, s.enable_email, s.enable_webhook, s.filter_logic, u.email
 		FROM user_subscriptions s
@@ -108,7 +125,6 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 	}
 	defer rows.Close()
 
-	notifiedUsers := make(map[int]bool)
 	for rows.Next() {
 		var sub models.UserSubscription
 		var email string
@@ -116,8 +132,13 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 			log.Printf("Error scanning subscription row: %v", err)
 			continue
 		}
+
+		if notifiedUsers[sub.UserID] {
+			continue
+		}
+
 		if matchCVE(cve, sub) {
-			if w.notifyIfNew(ctx, sub.UserID, cve, sub, email, "") {
+			if w.notifyIfNewWithCache(ctx, sub.UserID, cve, sub, email, "", notifiedUsers) {
 				notifiedUsers[sub.UserID] = true
 			}
 		}
@@ -148,7 +169,7 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		}
 		if getKeywordRegex(keyword).MatchString(cve.Description) {
 			sub := models.UserSubscription{EnableEmail: true, EnableWebhook: true}
-			if w.notifyIfNew(ctx, userID, cve, sub, email, assetName) {
+			if w.notifyIfNewWithCache(ctx, userID, cve, sub, email, assetName, notifiedUsers) {
 				notifiedUsers[userID] = true
 			}
 		}
@@ -244,11 +265,20 @@ func evaluateComplexFilter(logic string, cve *models.CVE) bool {
 	return true
 }
 
+// notifyIfNew checks if the user has been notified.
+// Left here in case it's used elsewhere.
 func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, sub models.UserSubscription, email, assetName string) bool {
-	// Check if already notified
 	var exists bool
 	_ = w.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM alert_history WHERE user_id = $1 AND cve_id = $2)", userID, cve.ID).Scan(&exists)
 	if exists {
+		return false
+	}
+	return w.notifyIfNewWithCache(ctx, userID, cve, sub, email, assetName, nil)
+}
+
+// notifyIfNewWithCache allows callers to bypass the EXISTS query by providing a cache of notified users.
+func (w *Worker) notifyIfNewWithCache(ctx context.Context, userID int, cve *models.CVE, sub models.UserSubscription, email, assetName string, notifiedCache map[int]bool) bool {
+	if notifiedCache != nil && notifiedCache[userID] {
 		return false
 	}
 
