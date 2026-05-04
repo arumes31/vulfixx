@@ -151,7 +151,8 @@ func ResendVerificationToken(ctx context.Context, email string) (string, error) 
 func RollbackResend(ctx context.Context, email string) error {
 	_, err := db.Pool.Exec(ctx, `
 		UPDATE users 
-		SET verification_resend_count = GREATEST(0, verification_resend_count - 1)
+		SET verification_resend_count = GREATEST(0, verification_resend_count - 1),
+		    last_verification_resend_at = CASE WHEN verification_resend_count - 1 <= 0 THEN NULL ELSE last_verification_resend_at END
 		WHERE email = $1 AND is_email_verified = FALSE
 	`, email)
 	return err

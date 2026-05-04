@@ -842,7 +842,7 @@ input[type=number] {
 
 {{define "cve_rows"}}
     {{range .CVEs}}
-    <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer focus:bg-white/[0.05] focus:outline-none" data-cve-url="/cve/{{.CVEID}}" tabindex="0" role="link" aria-label="View details for {{.CVEID}}">
+    <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer focus:bg-white/[0.05] focus:outline-none" data-cve-url="/cve/{{.CVEID}}" tabindex="0" aria-label="View details for {{.CVEID}}">
         <td class="p-6">
             <div class="flex items-center gap-3">
                 <a href="/cve/{{.CVEID}}" class="text-sm font-black text-white group-hover:text-primary transition-colors">{{.CVEID}}</a>

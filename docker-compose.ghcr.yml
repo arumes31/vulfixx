@@ -72,7 +72,6 @@ services:
     restart: unless-stopped
 
 volumes:
-  db_data:
-  redis_data:
+  pgdata:
 
 # Volumes are now bind-mounted to local directories

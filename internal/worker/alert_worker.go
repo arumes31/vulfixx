@@ -122,8 +122,8 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 			log.Printf("Error scanning subscription row: %v", err)
 			continue
 		}
-		sub.SlackWebhookURL = models.DecryptWebhook(slackURL)
-		sub.TeamsWebhookURL = models.DecryptWebhook(teamsURL)
+		sub.SlackWebhookURL, _ = models.DecryptWebhook(slackURL)
+		sub.TeamsWebhookURL, _ = models.DecryptWebhook(teamsURL)
 		if matchCVE(cve, sub) {
 			if w.notifyIfNew(ctx, sub.UserID, cve, sub, email, "") {
 				notifiedUsers[sub.UserID] = true

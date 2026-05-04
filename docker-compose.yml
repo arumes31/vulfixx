@@ -74,4 +74,4 @@ services:
 volumes:
   pgdata:
 
-# Volumes are now bind-mounted to local directories
+# Volumes: pgdata is a named volume, redis/scalper use bind mounts to local directories.

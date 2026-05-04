@@ -344,13 +344,16 @@ BEGIN
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'exploit_available') THEN
             ALTER TABLE cves ADD COLUMN exploit_available BOOLEAN DEFAULT FALSE;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'enable_slack') THEN
-            ALTER TABLE user_subscriptions ADD COLUMN enable_slack BOOLEAN DEFAULT FALSE;
-            ALTER TABLE user_subscriptions ADD COLUMN enable_teams BOOLEAN DEFAULT FALSE;
-            ALTER TABLE user_subscriptions ADD COLUMN enable_browser_push BOOLEAN DEFAULT FALSE;
-            ALTER TABLE user_subscriptions ADD COLUMN slack_webhook_url TEXT;
-            ALTER TABLE user_subscriptions ADD COLUMN teams_webhook_url TEXT;
-            ALTER TABLE user_subscriptions ADD COLUMN aggregation_mode VARCHAR(20) DEFAULT 'instant';
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'enable_slack') THEN
+        ALTER TABLE user_subscriptions ADD COLUMN enable_slack BOOLEAN DEFAULT FALSE;
+        ALTER TABLE user_subscriptions ADD COLUMN enable_teams BOOLEAN DEFAULT FALSE;
+        ALTER TABLE user_subscriptions ADD COLUMN enable_browser_push BOOLEAN DEFAULT FALSE;
+        ALTER TABLE user_subscriptions ADD COLUMN slack_webhook_url TEXT;
+        ALTER TABLE user_subscriptions ADD COLUMN teams_webhook_url TEXT;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'aggregation_mode') THEN
+            ALTER TABLE user_subscriptions ADD COLUMN aggregation_mode VARCHAR(20) DEFAULT 'instant' CHECK (aggregation_mode IN ('instant', 'hourly', 'daily'));
         END IF;
     END IF;
 

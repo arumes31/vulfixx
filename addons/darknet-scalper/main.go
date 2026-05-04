@@ -57,6 +57,13 @@ type Config struct {
 	EnableOCR          bool
 }
 
+const (
+	MAX_CVE_IDS      = 100
+	MAX_PRIORITY     = 10
+	MAX_DEPTH        = 5
+	MAX_BODY_SIZE    = 10 << 20 // 10MB
+)
+
 var (
 	pool    *pgxpool.Pool
 	rdb     *redis.Client
@@ -191,15 +198,46 @@ func initRedis() {
 func (s *scalperServer) Scan(ctx context.Context, req *proto.ScanRequest) (*proto.ScanResponse, error) {
 	log.Printf("gRPC: Received Scan for %s (depth: %d)", req.Query, req.Depth)
 	
+	if req.Depth < 0 || req.Depth > MAX_DEPTH {
+		return nil, status.Errorf(codes.InvalidArgument, "depth out of range (0-%d)", MAX_DEPTH)
+	}
+
 	// Improvement 57: Check PostgreSQL for existing hits (deduplication)
 	if !req.ForceRefresh && pool != nil {
 		hits, count := fetchHitsFromDB(req.Query)
 		if count > 0 {
+			// Basic pagination logic
+			start := 0
+			if req.PageToken != "" {
+				fmt.Sscanf(req.PageToken, "%d", &start)
+			}
+			
+			pageSize := int(req.PageSize)
+			if pageSize <= 0 {
+				pageSize = 10
+			}
+			
+			end := start + pageSize
+			if end > count {
+				end = count
+			}
+			
+			var paginatedHits []*proto.Hit
+			if start < count {
+				paginatedHits = hits[start:end]
+			}
+			
+			nextPageToken := ""
+			if end < count {
+				nextPageToken = fmt.Sprintf("%d", end)
+			}
+
 			return &proto.ScanResponse{
-				Query:     req.Query,
-				TotalHits: int32(count),
-				Hits:      hits,
-				IsCached:  true,
+				Query:         req.Query,
+				TotalHits:     int32(count),
+				Hits:          paginatedHits,
+				IsCached:      true,
+				NextPageToken: nextPageToken,
 			}, nil
 		}
 	}
@@ -211,21 +249,53 @@ func (s *scalperServer) Scan(ctx context.Context, req *proto.ScanRequest) (*prot
 		saveHitsToDB(results)
 	}
 
+	// Pagination for fresh results
+	pageSize := int(req.PageSize)
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	
+	totalHits := len(results.Hits)
+	end := pageSize
+	if end > totalHits {
+		end = totalHits
+	}
+	
+	nextPageToken := ""
+	if totalHits > pageSize {
+		nextPageToken = fmt.Sprintf("%d", pageSize)
+	}
+
 	return &proto.ScanResponse{
-		Query:     req.Query,
-		TotalHits: int32(results.TotalHits),
-		Hits:      results.Hits,
-		IsCached:  false,
+		Query:         req.Query,
+		TotalHits:     int32(totalHits),
+		Hits:          results.Hits[:end],
+		IsCached:      false,
+		NextPageToken: nextPageToken,
 	}, nil
 }
+
+var cveRegex = regexp.MustCompile(`^CVE-\d{4}-\d+$`)
 
 func (s *scalperServer) Backfill(ctx context.Context, req *proto.BackfillRequest) (*proto.BackfillResponse, error) {
 	if rdb == nil {
 		return nil, status.Error(codes.FailedPrecondition, "redis not available")
 	}
 
+	if len(req.CveIds) > MAX_CVE_IDS {
+		return nil, status.Errorf(codes.InvalidArgument, "too many CVE IDs (max %d)", MAX_CVE_IDS)
+	}
+	if req.Priority < 0 || req.Priority > MAX_PRIORITY {
+		return nil, status.Errorf(codes.InvalidArgument, "priority out of range (0-%d)", MAX_PRIORITY)
+	}
+
 	pipe := rdb.TxPipeline()
+	queuedCount := 0
 	for _, cve := range req.CveIds {
+		if cve == "" || !cveRegex.MatchString(cve) {
+			continue
+		}
+		queuedCount++
 		if req.Priority > 5 {
 			pipe.LPush(ctx, "darknet_scan_tasks", cve)
 		} else {
@@ -240,7 +310,7 @@ func (s *scalperServer) Backfill(ctx context.Context, req *proto.BackfillRequest
 
 	return &proto.BackfillResponse{
 		Status:       "Queued",
-		QueuedCount: int32(len(req.CveIds)),
+		QueuedCount: int32(queuedCount),
 	}, nil
 }
 
@@ -271,6 +341,9 @@ func runWorker(ctx context.Context) {
 
 		result, err := rdb.BLPop(ctx, config.WorkerPopTimeout, "darknet_scan_tasks").Result()
 		if err != nil {
+			if err == context.Canceled || err == context.DeadlineExceeded {
+				return
+			}
 			if err != redis.Nil {
 				time.Sleep(config.RetryInterval)
 			}
@@ -291,6 +364,7 @@ func runWorker(ctx context.Context) {
 
 		log.Printf("Worker: Locked and processing %s", cveID)
 		
+		parentCtx, cancel := context.WithCancel(ctx)
 		done := make(chan struct{})
 		go func() {
 			ticker := time.NewTicker(config.RedlockExtend)
@@ -299,7 +373,8 @@ func runWorker(ctx context.Context) {
 				select {
 				case <-ticker.C:
 					if ok, _ := mutex.Extend(); !ok {
-						log.Printf("Worker: Failed to extend lock for %s", cveID)
+						log.Printf("Worker: Failed to extend lock for %s, aborting...", cveID)
+						cancel()
 					}
 				case <-done:
 					return
@@ -308,12 +383,13 @@ func runWorker(ctx context.Context) {
 		}()
 
 		// Perform scan
-		res := scalpMultiEngine(ctx, cveID, config.DefaultDepth)
-		if pool != nil {
+		res := scalpMultiEngine(parentCtx, cveID, config.DefaultDepth)
+		if parentCtx.Err() == nil && pool != nil {
 			saveHitsToDB(res)
 		}
 		
 		close(done)
+		cancel()
 		if ok, err := mutex.Unlock(); !ok || err != nil {
 			log.Printf("Worker: Error unlocking %s: %v", cveID, err)
 		}
@@ -365,8 +441,15 @@ func scalpAhmia(ctx context.Context, q string, maxDepth int) ([]*proto.Hit, erro
 	
 	torProxy := config.TorProxy
 
+	var ua string
+	if len(config.UserAgents) > 0 {
+		ua = config.UserAgents[rand.Intn(len(config.UserAgents))]
+	} else {
+		ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+	}
+
 	opts := []chromedp.ExecAllocatorOption{
-		chromedp.UserAgent(config.UserAgents[rand.Intn(len(config.UserAgents))]),
+		chromedp.UserAgent(ua),
 		chromedp.NoSandbox,
 		chromedp.ProxyServer(torProxy),
 	}
@@ -428,7 +511,7 @@ func enrichHit(hit *proto.Hit, depth int) {
 	}
 	defer resp.Body.Close()
 
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	doc, err := goquery.NewDocumentFromReader(io.LimitReader(resp.Body, MAX_BODY_SIZE))
 	if err != nil {
 		return
 	}
@@ -478,7 +561,12 @@ func performOCRFromURL(imgURL string) string {
 	if err != nil {
 		return ""
 	}
-	return performOCR(imgData)
+	text, err := performOCR(imgData)
+	if err != nil {
+		log.Printf("OCR error for %s: %v", imgURL, err)
+		return ""
+	}
+	return text
 }
 
 func detectLanguage(text string) string {

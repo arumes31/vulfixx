@@ -8,19 +8,19 @@ import (
 	"github.com/otiai10/gosseract/v2"
 )
 
-func performOCR(imgData []byte) string {
+func performOCR(imgData []byte) (string, error) {
 	client := gosseract.NewClient()
 	defer client.Close()
 
 	if err := client.SetImageFromBytes(imgData); err != nil {
 		log.Printf("OCR SetImageFromBytes error: %v", err)
-		return ""
+		return "", err
 	}
 	
 	text, err := client.Text()
 	if err != nil {
 		log.Printf("OCR error: %v", err)
-		return ""
+		return "", err
 	}
-	return text
+	return text, nil
 }

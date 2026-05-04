@@ -48,7 +48,7 @@ func TestEmailChangeFlow_Coverage(t *testing.T) {
 		oldTok := "old-tok"
 		newTok := "new-tok"
 		newEmail := "new@example.com"
-		userID := 1
+		userID := int64(1)
 
 		// 1. Confirm old token
 		mock.ExpectBegin()
@@ -62,7 +62,7 @@ func TestEmailChangeFlow_Coverage(t *testing.T) {
 		mock.ExpectCommit()
 
 		confirmed, email, uid, err := ConfirmEmailChange(ctx, oldTok)
-		if err != nil || confirmed || email != "" || uid != userID {
+		if err != nil || confirmed || email != "" || int64(uid) != userID {
 			t.Errorf("expected half-confirmation, got err=%v, confirmed=%v, email=%q, uid=%d", err, confirmed, email, uid)
 		}
 
@@ -84,7 +84,7 @@ func TestEmailChangeFlow_Coverage(t *testing.T) {
 		mock.ExpectCommit()
 
 		confirmed, email, uid, err = ConfirmEmailChange(ctx, newTok)
-		if err != nil || !confirmed || email != newEmail || uid != userID {
+		if err != nil || !confirmed || email != newEmail || int64(uid) != userID {
 			t.Errorf("expected full-confirmation, got err=%v, confirmed=%v, email=%q, uid=%d", err, confirmed, email, uid)
 		}
 	})
