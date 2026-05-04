@@ -432,7 +432,7 @@ type NotificationDeliveryLog struct {
 	CVEID          int       `json:"cve_id"`
 	Channel        string    `json:"channel"` // email, webhook, slack, teams, browser
 	Status         string    `json:"status"`  // success, failure
-	ErrorMessage   string    `json:"error_message"`
+	ErrorMessage   string    `json:"-"`
 	DeliveryTime   time.Time `json:"delivery_time"`
 }
 

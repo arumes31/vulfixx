@@ -2,7 +2,9 @@ package web
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"cve-tracker/internal/auth"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -313,7 +315,8 @@ func (a *App) ResendVerificationHandler(w http.ResponseWriter, r *http.Request) 
 	_ = session.Save(r, w)
 
 	// Per-email rate limit: 3 attempts per 30 mins
-	emailRlKey := "resend_email_limit:" + email
+	emailHash := sha256.Sum256([]byte(email))
+	emailRlKey := "resend_email_limit:" + hex.EncodeToString(emailHash[:])
 	if count, err := a.Redis.Get(r.Context(), emailRlKey).Int(); err == nil && count >= 3 {
 		log.Printf("Email rate limit hit for resend: %s", redactEmail(email)) // #nosec G706
 		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "If this email is registered and unverified, a new verification link will be sent."})

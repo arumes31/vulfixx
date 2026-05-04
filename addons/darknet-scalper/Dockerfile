@@ -5,12 +5,8 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN go mod tidy
 RUN go build -o scalper .
-RUN go install gitlab.com/yawning/obfs4.git/obfs4proxy@latest
-RUN apk add --no-cache protobuf protobuf-dev
-RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+RUN go install gitlab.com/yawning/obfs4.git/obfs4proxy@v0.0.14
 
 # Stage 2: Final hardened image
 FROM alpine:3.19

@@ -30,7 +30,7 @@ coverage_stats.txt
 # Custom exclusions
 .swarm/
 scratch/
-covages
+coverage
 # Narrowed documentation ignores
 vendor/**/*.md
 docs/**/*.md
