@@ -31,13 +31,14 @@ func TestWorker_FloodProtection(t *testing.T) {
 	w := &Worker{Pool: mock, Redis: rdb, HTTP: http.DefaultClient}
 	ctx := context.Background()
 	userID := 1
-	cve := &models.CVE{ID: 1, CVEID: "CVE-2024-0001"}
+	cve := &models.CVE{ID: 1, CVEID: ""}
 	sub := models.UserSubscription{UserID: userID, AggregationMode: "hourly"}
 	
 	// Mock CVE details fetch
-	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
-	mock.ExpectQuery("SELECT cve_id").WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "epss_score", "cwe_id", "github_poc_count", "published_date", "references"}).
+	mock.ExpectQuery("SELECT EXISTS").WithArgs(userID, cve.ID).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
+	mock.ExpectQuery("SELECT cve_id").WithArgs(cve.ID).WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "epss_score", "cwe_id", "github_poc_count", "published_date", "references"}).
 		AddRow("CVE-2024-0001", "desc", 7.0, "V", false, 0.1, "CWE-1", 0, time.Now(), []byte("[]")))
+	mock.ExpectExec("INSERT INTO alert_history").WithArgs(userID, cve.ID).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	// 1. First alert should pass
 	if !w.notifyIfNew(ctx, userID, cve, sub, "test@example.com", "") {
@@ -47,6 +48,9 @@ func TestWorker_FloodProtection(t *testing.T) {
 	// 2. Flood it
 	floodKey := fmt.Sprintf("flood_protection:%d", userID)
 	rdb.Set(ctx, floodKey, 50, 0)
+	
+	// Expect EXISTS again for second call
+	mock.ExpectQuery("SELECT EXISTS").WithArgs(userID, cve.ID).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 	
 	if w.notifyIfNew(ctx, userID, cve, sub, "test@example.com", "") {
 		t.Errorf("Alert should have been blocked by flood protection (count=51)")

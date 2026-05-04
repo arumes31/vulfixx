@@ -106,8 +106,8 @@ func TestUI_CVEDetailStructure(t *testing.T) {
 	cveID := "CVE-2024-1234"
 	mock.ExpectQuery("(?is)SELECT.*FROM cves WHERE cve_id =").
 		WithArgs(cveID).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "configurations", "vendor", "product", "affected_products"}).
-			AddRow(1, cveID, "Detailed description", 8.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N", false, time.Now(), time.Now(), "active", []string{"http://ref.com"}, 0.5, "CWE-79", "XSS", 1, 0, "", []byte(`{}`), []byte(`[]`), "V", "P", []byte(`[]`)))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "configurations", "vendor", "product", "affected_products", "darknet_mentions", "darknet_last_seen"}).
+			AddRow(1, cveID, "Detailed description", 8.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N", false, time.Now(), time.Now(), "active", []string{"http://ref.com"}, 0.5, "CWE-79", "XSS", 1, 0, "", []byte(`{}`), []byte(`[]`), "V", "P", []byte(`[]`), 0, nil))
 
 	mock.ExpectQuery("(?is)SELECT cve_id FROM cves.*WHERE published_date <").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-2024-1233"))
 	mock.ExpectQuery("(?is)SELECT cve_id FROM cves.*WHERE published_date >").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-2024-1235"))
@@ -129,7 +129,7 @@ func TestUI_CVEDetailStructure(t *testing.T) {
 
 	t.Run("CheckCVEDetails", func(t *testing.T) {
 		if !strings.Contains(doc.Text(), cveID) {
-			t.Errorf("CVE ID not found in page")
+			t.Errorf("CVE ID not found in page. Body: %s", rr.Body.String())
 		}
 	})
 
