@@ -25,8 +25,8 @@ func TestUI_DashboardStructure(t *testing.T) {
 	// Mock data for dashboard
 	// Use (?is) for case-insensitive and dot-matches-newline matching
 	mock.ExpectQuery("(?is)SELECT.*COUNT.*total_cves").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit", "prog"}).AddRow(10, 2, 1, 0))
-	mock.ExpectQuery("(?is)SELECT DISTINCT c.id").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "vendor", "product", "affected_products"}).
-			AddRow(1, "CVE-2024-UI", "UI Test", 9.0, "", true, time.Now(), time.Now(), "active", []string{}, "", 0.5, "CWE-1", "XSS", 0, 0, "", []byte(`{}`), "V", "P", []byte(`[]`)))
+	mock.ExpectQuery("(?is)SELECT DISTINCT c.id").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "vendor", "product", "affected_products", "priority"}).
+			AddRow(1, "CVE-2024-UI", "UI Test", 9.0, "", true, time.Now(), time.Now(), "active", []string{}, "", 0.5, "CWE-1", "XSS", 0, 0, "", []byte(`{}`), "V", "P", []byte(`[]`), "P0"))
 	mock.ExpectQuery("(?is)SELECT.*COUNT.*cvss_score").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(1, 0, 0, 0))
 	mock.ExpectQuery("(?is)SELECT.*COUNT.*status").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"active", "prog", "res", "ign"}).AddRow(1, 0, 0, 0))
 	mock.ExpectQuery("(?is)SELECT cwe_id.*FROM cves").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"cwe_id", "cwe_name", "cnt"}).AddRow("CWE-79", "XSS", 1))
@@ -106,8 +106,8 @@ func TestUI_CVEDetailStructure(t *testing.T) {
 	cveID := "CVE-2024-1234"
 	mock.ExpectQuery("(?is)SELECT.*FROM cves WHERE cve_id =").
 		WithArgs(cveID).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "configurations", "vendor", "product", "affected_products", "darknet_mentions", "darknet_last_seen"}).
-			AddRow(1, cveID, "Detailed description", 8.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N", false, time.Now(), time.Now(), "active", []string{"http://ref.com"}, 0.5, "CWE-79", "XSS", 1, 0, "", []byte(`{}`), []byte(`[]`), "V", "P", []byte(`[]`), 0, nil))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "configurations", "vendor", "product", "affected_products", "darknet_mentions", "darknet_last_seen", "priority"}).
+			AddRow(1, cveID, "Detailed description", 8.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N", false, time.Now(), time.Now(), "active", []string{"http://ref.com"}, 0.5, "CWE-79", "XSS", 1, 0, "", []byte(`{}`), []byte(`[]`), "V", "P", []byte(`[]`), 0, nil, "P2"))
 
 	mock.ExpectQuery("(?is)SELECT cve_id FROM cves.*WHERE published_date <").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-2024-1233"))
 	mock.ExpectQuery("(?is)SELECT cve_id FROM cves.*WHERE published_date >").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-2024-1235"))

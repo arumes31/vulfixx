@@ -18,7 +18,7 @@ func (a *App) ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch CVEs filtered by user subscriptions (same as dashboard but all of them)
 	query := `
-		SELECT DISTINCT c.cve_id, c.description, c.cvss_score, c.cisa_kev, c.published_date
+		SELECT DISTINCT c.cve_id, c.description, c.cvss_score, c.cisa_kev, c.published_date, COALESCE(c.priority, 'P3') as priority
 		FROM cves c
 		INNER JOIN user_subscriptions us ON us.user_id = $1
 		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ucs.user_id = $1
@@ -39,7 +39,7 @@ func (a *App) ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 	// before committing response headers.
 	var buf bytes.Buffer
 	bufWriter := csv.NewWriter(&buf)
-	header := []string{"CVE ID", "Description", "CVSS Score", "CISA KEV", "Published Date"}
+	header := []string{"CVE ID", "Description", "CVSS Score", "CISA KEV", "Published Date", "Priority"}
 	if err := bufWriter.Write(header); err != nil {
 		log.Printf("Error preparing CSV header: %v", err)
 		http.Error(w, "Error preparing export", http.StatusInternalServerError)
@@ -71,7 +71,8 @@ func (a *App) ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 		var cisaKEV bool
 		var publishedDate time.Time
 
-		if err := rows.Scan(&cveID, &description, &cvssScore, &cisaKEV, &publishedDate); err != nil {
+		var priority string
+		if err := rows.Scan(&cveID, &description, &cvssScore, &cisaKEV, &publishedDate, &priority); err != nil {
 			skipped++
 			log.Printf("Warning: skipping row during CVE export (scan error): %v", err)
 			continue
@@ -83,6 +84,7 @@ func (a *App) ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("%.1f", cvssScore),
 			fmt.Sprintf("%t", cisaKEV),
 			publishedDate.Format("2006-01-02"),
+			priority,
 		}
 		if err := csvWriter.Write(row); err != nil {
 			log.Printf("Error writing CSV row for %s: %v", cveID, err)

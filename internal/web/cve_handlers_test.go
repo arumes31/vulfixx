@@ -36,10 +36,10 @@ func TestIndexHandler(t *testing.T) {
 		statsCache.Unlock()
 
 		// Main query should have 2 args (pageSize, offset) if others are empty
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, 'active' as status, COALESCE(c.\"references\", '{}'), COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0), COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'), COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]') FROM cves c WHERE (1=1) ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $1 OFFSET $2")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, 'active' as status, COALESCE(c.\"references\", '{}'), COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0), COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'), COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]'), COALESCE(c.priority, 'P3') as priority FROM cves c WHERE (1=1) ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $1 OFFSET $2")).
 			WithArgs(20, 0).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "vendor", "product", "affected_products"}).
-				AddRow(1, "CVE-2024-0001", "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, 0.123, "CWE-79", "XSS", 1, 0, "", []byte("{}"), "", "", []byte("[]")))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "vendor", "product", "affected_products", "priority"}).
+				AddRow(1, "CVE-2024-0001", "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, 0.123, "CWE-79", "XSS", 1, 0, "", []byte("{}"), "", "", []byte("[]"), "P2"))
 
 		// Trending CVEs
 		mock.ExpectQuery("SELECT.*c.id, c.cve_id.*FROM cves c.*ORDER BY c.github_poc_count DESC").WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "vendor", "product", "affected_products"}).
@@ -107,10 +107,10 @@ func TestDashboardHandler(t *testing.T) {
 		}
 
 		mock.ExpectQuery("SELECT.*COUNT.*DISTINCT").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit", "prog"}).AddRow(100, 10, 5, 2))
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT DISTINCT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, COALESCE(c.\"references\", '{}'), ucn.notes, COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0), COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'), COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]')")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT DISTINCT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, COALESCE(c.\"references\", '{}'), ucn.notes, COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0), COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'), COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]'), COALESCE(c.priority, 'P3') as priority")).
 			WithArgs(1, 20, 0).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "vendor", "product", "affected_products"}).
-				AddRow(1, "CVE-2024-0001", "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, "", 0.123, "CWE-79", "XSS", 1, 0, "", []byte("{}"), "", "", []byte("[]")))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "vendor", "product", "affected_products", "priority"}).
+				AddRow(1, "CVE-2024-0001", "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, "", 0.123, "CWE-79", "XSS", 1, 0, "", []byte("{}"), "", "", []byte("[]"), "P1"))
 
 		mock.ExpectQuery("SELECT.*COUNT.*DISTINCT.*cvss_score").
 			WithArgs(1).
@@ -181,10 +181,10 @@ func TestCVEDetailHandler_Extra(t *testing.T) {
 		app := setupTestApp(t, mock)
 
 		cveID := "CVE-2023-1234"
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cve_id, description, COALESCE(cvss_score, 0), vector_string, cisa_kev, published_date, updated_date, 'active' as status, \"references\", COALESCE(epss_score, 0), COALESCE(cwe_id, ''), COALESCE(cwe_name, ''), COALESCE(github_poc_count, 0), COALESCE(greynoise_hits, 0), COALESCE(greynoise_classification, ''), osv_data, configurations, COALESCE(vendor, ''), COALESCE(product, ''), COALESCE(affected_products, '[]')")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cve_id, description, COALESCE(cvss_score, 0), vector_string, cisa_kev, published_date, updated_date, 'active' as status, \"references\", COALESCE(epss_score, 0), COALESCE(cwe_id, ''), COALESCE(cwe_name, ''), COALESCE(github_poc_count, 0), COALESCE(greynoise_hits, 0), COALESCE(greynoise_classification, ''), osv_data, configurations, COALESCE(vendor, ''), COALESCE(product, ''), COALESCE(affected_products, '[]'), COALESCE(darknet_mentions, 0), darknet_last_seen, COALESCE(priority, 'P3') as priority")).
 			WithArgs(cveID).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "configurations", "vendor", "product", "affected_products"}).
-				AddRow(1, cveID, "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, 0.123, "CWE-79", "XSS", 1, 0, "", []byte("{}"), []byte("[]"), "", "", []byte("[]")))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "configurations", "vendor", "product", "affected_products", "darknet_mentions", "darknet_last_seen", "priority"}).
+				AddRow(1, cveID, "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, 0.123, "CWE-79", "XSS", 1, 0, "", []byte("{}"), []byte("[]"), "", "", []byte("[]"), 0, nil, "P0"))
 
 		req, _ := http.NewRequest("GET", "/cve/"+cveID, nil)
 		req = mux.SetURLVars(req, map[string]string{"id": cveID})
@@ -267,11 +267,11 @@ func TestExportCVEsHandler_Extra(t *testing.T) {
 		req, _ := http.NewRequest("GET", "/export", nil)
 		setSessionUser(t, app, req, 1, false)
 
-		mock.ExpectQuery(`SELECT DISTINCT c.cve_id, c.description, c.cvss_score, c.cisa_kev, c.published_date`).
+		mock.ExpectQuery(`(?is)SELECT DISTINCT c.cve_id,.*priority`).
 			WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score", "cisa_kev", "published_date"}).
-				AddRow("CVE-2023-0001", "Desc 1", 9.8, true, time.Now()).
-				AddRow("CVE-2023-0002", "Desc 2", 5.0, false, time.Now()))
+			WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score", "cisa_kev", "published_date", "priority"}).
+				AddRow("CVE-2023-0001", "Desc 1", 9.8, true, time.Now(), "P0").
+				AddRow("CVE-2023-0002", "Desc 2", 5.0, false, time.Now(), "P3"))
 
 		rr := httptest.NewRecorder()
 		app.ExportCVEsHandler(rr, req)
