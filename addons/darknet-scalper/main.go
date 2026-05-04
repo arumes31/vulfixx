@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -33,10 +34,27 @@ import (
 
 // Config holds environment configurations
 type Config struct {
-	Port        string
-	DatabaseURL string
-	RedisURL    string
-	TorProxy    string
+	Port               string
+	DatabaseURL        string
+	RedisURL           string
+	TorProxy           string
+	UserAgents         []string
+	AhmiaURL           string
+	AhmiaSleep         time.Duration
+	AhmiaTimeout       time.Duration
+	WorkerPopTimeout   time.Duration
+	RedlockExpiry      time.Duration
+	RedlockExtend      time.Duration
+	RetryInterval      time.Duration
+	DefaultDepth       int
+	EnrichTimeout      time.Duration
+	EnrichSnippetLen   int
+	EnrichMaxLinks     int
+	DownloadMaxSize    int64
+	DownloadTimeout    time.Duration
+	LatencyTimeout     time.Duration
+	HoneyLures         []string
+	EnableOCR          bool
 }
 
 var (
@@ -44,11 +62,6 @@ var (
 	rdb     *redis.Client
 	rsync   *redsync.Redsync
 	config  Config
-	userAgents = []string{
-		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-		"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-	}
 )
 
 type scalperServer struct {
@@ -56,11 +69,36 @@ type scalperServer struct {
 }
 
 func init() {
+	defaultUserAgents := []string{
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+		"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+	}
+
+	defaultHoneyLures := []string{"official law enforcement", "trap", "honeypot", "fbi.gov", "interpol"}
+
 	config = Config{
-		Port:        getEnv("PORT", "9090"),
-		DatabaseURL: os.Getenv("DATABASE_URL"),
-		RedisURL:    os.Getenv("REDIS_URL"),
-		TorProxy:    getEnv("TOR_PROXY", "socks5://localhost:9050"),
+		Port:               getEnv("PORT", "9090"),
+		DatabaseURL:        os.Getenv("DATABASE_URL"),
+		RedisURL:           os.Getenv("REDIS_URL"),
+		TorProxy:           getEnv("SCALPER_TOR_PROXY", getEnv("TOR_PROXY", "socks5://localhost:9050")),
+		UserAgents:         getEnvSlice("SCALPER_USER_AGENTS", defaultUserAgents),
+		AhmiaURL:           getEnv("SCALPER_AHMIA_URL", "https://ahmia.fi/search/?q="),
+		AhmiaSleep:         getEnvDuration("SCALPER_AHMIA_SLEEP", 5*time.Second),
+		AhmiaTimeout:       getEnvDuration("SCALPER_AHMIA_TIMEOUT", 30*time.Second),
+		WorkerPopTimeout:   getEnvDuration("SCALPER_WORKER_POP_TIMEOUT", 5*time.Second),
+		RedlockExpiry:      getEnvDuration("SCALPER_REDLOCK_EXPIRY", 10*time.Minute),
+		RedlockExtend:      getEnvDuration("SCALPER_REDLOCK_EXTEND", 3*time.Minute),
+		RetryInterval:      getEnvDuration("SCALPER_RETRY_INTERVAL", 1*time.Second),
+		DefaultDepth:       getEnvInt("SCALPER_DEFAULT_DEPTH", 2),
+		EnrichTimeout:      getEnvDuration("SCALPER_ENRICH_TIMEOUT", 30*time.Second),
+		EnrichSnippetLen:   getEnvInt("SCALPER_ENRICH_SNIPPET_LEN", 500),
+		EnrichMaxLinks:     getEnvInt("SCALPER_ENRICH_MAX_LINKS", 3),
+		DownloadMaxSize:    getEnvInt64("SCALPER_DOWNLOAD_MAX_SIZE", 10*1024*1024),
+		DownloadTimeout:    getEnvDuration("SCALPER_DOWNLOAD_TIMEOUT", 20*time.Second),
+		LatencyTimeout:     getEnvDuration("SCALPER_LATENCY_TIMEOUT", 5*time.Second),
+		HoneyLures:         getEnvSlice("SCALPER_HONEY_LURES", defaultHoneyLures),
+		EnableOCR:          getEnvBool("SCALPER_ENABLE_OCR", true),
 	}
 }
 
@@ -231,10 +269,10 @@ func runWorker(ctx context.Context) {
 		default:
 		}
 
-		result, err := rdb.BLPop(ctx, 5*time.Second, "darknet_scan_tasks").Result()
+		result, err := rdb.BLPop(ctx, config.WorkerPopTimeout, "darknet_scan_tasks").Result()
 		if err != nil {
 			if err != redis.Nil {
-				time.Sleep(1 * time.Second)
+				time.Sleep(config.RetryInterval)
 			}
 			continue
 		}
@@ -242,7 +280,7 @@ func runWorker(ctx context.Context) {
 		cveID := result[1]
 		
 		// (5) Redlock: Prevent concurrent scans of the same CVE
-		mutex := rsync.NewMutex("lock:"+cveID, redsync.WithExpiry(10*time.Minute))
+		mutex := rsync.NewMutex("lock:"+cveID, redsync.WithExpiry(config.RedlockExpiry))
 		if err := mutex.Lock(); err != nil {
 			log.Printf("Worker: Skipping %s (already locked by another node)", cveID)
 			if pushErr := rdb.RPush(context.Background(), "darknet_scan_tasks", cveID).Err(); pushErr != nil {
@@ -255,7 +293,7 @@ func runWorker(ctx context.Context) {
 		
 		done := make(chan struct{})
 		go func() {
-			ticker := time.NewTicker(3 * time.Minute)
+			ticker := time.NewTicker(config.RedlockExtend)
 			defer ticker.Stop()
 			for {
 				select {
@@ -269,8 +307,8 @@ func runWorker(ctx context.Context) {
 			}
 		}()
 
-		// Perform scan (default depth 2)
-		res := scalpMultiEngine(ctx, cveID, 2)
+		// Perform scan
+		res := scalpMultiEngine(ctx, cveID, config.DefaultDepth)
 		if pool != nil {
 			saveHitsToDB(res)
 		}
@@ -326,12 +364,9 @@ func scalpAhmia(ctx context.Context, q string, maxDepth int) ([]*proto.Hit, erro
 	query := fmt.Sprintf("%s OR \"%s exploit\"", q, q)
 	
 	torProxy := config.TorProxy
-	if torProxy == "" {
-		torProxy = "socks5://localhost:9050"
-	}
 
 	opts := []chromedp.ExecAllocatorOption{
-		chromedp.UserAgent(userAgents[rand.Intn(len(userAgents))]),
+		chromedp.UserAgent(config.UserAgents[rand.Intn(len(config.UserAgents))]),
 		chromedp.NoSandbox,
 		chromedp.ProxyServer(torProxy),
 	}
@@ -339,7 +374,7 @@ func scalpAhmia(ctx context.Context, q string, maxDepth int) ([]*proto.Hit, erro
 	allocCtx, cancel := chromedp.NewExecAllocator(ctx, opts...)
 	defer cancel()
 	
-	timeoutCtx, cancelTimeout := context.WithTimeout(allocCtx, 30*time.Second)
+	timeoutCtx, cancelTimeout := context.WithTimeout(allocCtx, config.AhmiaTimeout)
 	defer cancelTimeout()
 
 	chromeCtx, cancelChrome := chromedp.NewContext(timeoutCtx)
@@ -347,8 +382,8 @@ func scalpAhmia(ctx context.Context, q string, maxDepth int) ([]*proto.Hit, erro
 
 	var html string
 	err := chromedp.Run(chromeCtx,
-		chromedp.Navigate("https://ahmia.fi/search/?q="+url.QueryEscape(query)),
-		chromedp.Sleep(5*time.Second),
+		chromedp.Navigate(config.AhmiaURL+url.QueryEscape(query)),
+		chromedp.Sleep(config.AhmiaSleep),
 		chromedp.OuterHTML("html", &html),
 	)
 	if err != nil {
@@ -359,7 +394,7 @@ func scalpAhmia(ctx context.Context, q string, maxDepth int) ([]*proto.Hit, erro
 	
 	// (18) Depth logic: Traverse discovered links
 	if maxDepth > 1 {
-		for i := 0; i < len(hits) && i < 3; i++ {
+		for i := 0; i < len(hits) && i < config.EnrichMaxLinks; i++ {
 			enrichHit(hits[i], maxDepth-1)
 		}
 	}
@@ -374,9 +409,6 @@ func enrichHit(hit *proto.Hit, depth int) {
 	}
 
 	torProxy := config.TorProxy
-	if torProxy == "" {
-		torProxy = "socks5://localhost:9050"
-	}
 	proxyURL, err := url.Parse(torProxy)
 	if err != nil {
 		log.Printf("Error parsing tor proxy %q: %v", torProxy, err)
@@ -387,7 +419,7 @@ func enrichHit(hit *proto.Hit, depth int) {
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(proxyURL),
 		},
-		Timeout: 30 * time.Second,
+		Timeout: config.EnrichTimeout,
 	}
 
 	resp, err := client.Get(hit.Url)
@@ -413,24 +445,26 @@ func enrichHit(hit *proto.Hit, depth int) {
 	hitURL, parseErr := url.Parse(hit.Url)
 
 	// (17) OCR Integration: Find images and scan for CVE IDs
-	doc.Find("img").Each(func(i int, s *goquery.Selection) {
-		imgSrc, _ := s.Attr("src")
-		if imgSrc != "" {
-			if parseErr == nil {
-				imgURL, err := url.Parse(imgSrc)
-				if err == nil {
-					imgSrc = hitURL.ResolveReference(imgURL).String()
+	if config.EnableOCR {
+		doc.Find("img").Each(func(i int, s *goquery.Selection) {
+			imgSrc, _ := s.Attr("src")
+			if imgSrc != "" {
+				if parseErr == nil {
+					imgURL, err := url.Parse(imgSrc)
+					if err == nil {
+						imgSrc = hitURL.ResolveReference(imgURL).String()
+					}
+				}
+				ocrText := performOCRFromURL(imgSrc)
+				if strings.Contains(ocrText, hit.Title) || strings.Contains(ocrText, "CVE-") {
+					text += " [OCR: " + ocrText + "]"
 				}
 			}
-			ocrText := performOCRFromURL(imgSrc)
-			if strings.Contains(ocrText, hit.Title) || strings.Contains(ocrText, "CVE-") {
-				text += " [OCR: " + ocrText + "]"
-			}
-		}
-	})
+		})
+	}
 
-	if len(text) > 500 {
-		hit.Snippet = text[:500] + "..."
+	if len(text) > config.EnrichSnippetLen {
+		hit.Snippet = text[:config.EnrichSnippetLen] + "..."
 	} else {
 		hit.Snippet = text
 	}
@@ -457,8 +491,7 @@ func detectLanguage(text string) string {
 
 func isHoneyLink(u, text string) bool {
 	// (97) Pattern matching for known LE lure terms
-	lures := []string{"official law enforcement", "trap", "honeypot", "fbi.gov", "interpol"}
-	for _, lure := range lures {
+	for _, lure := range config.HoneyLures {
 		if strings.Contains(strings.ToLower(text), lure) || strings.Contains(strings.ToLower(u), lure) {
 			return true
 		}
@@ -517,17 +550,65 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
+func getEnvDuration(key string, fallback time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		d, err := time.ParseDuration(v)
+		if err == nil {
+			return d
+		}
+		log.Printf("Invalid duration for %s: %v. Using fallback: %v", key, v, fallback)
+	}
+	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	if v := os.Getenv(key); v != "" {
+		i, err := strconv.Atoi(v)
+		if err == nil {
+			return i
+		}
+		log.Printf("Invalid integer for %s: %v. Using fallback: %d", key, v, fallback)
+	}
+	return fallback
+}
+
+func getEnvInt64(key string, fallback int64) int64 {
+	if v := os.Getenv(key); v != "" {
+		i, err := strconv.ParseInt(v, 10, 64)
+		if err == nil {
+			return i
+		}
+		log.Printf("Invalid int64 for %s: %v. Using fallback: %d", key, v, fallback)
+	}
+	return fallback
+}
+
+func getEnvSlice(key string, fallback []string) []string {
+	if v := os.Getenv(key); v != "" {
+		return strings.Split(v, ",")
+	}
+	return fallback
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	if v := os.Getenv(key); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err == nil {
+			return b
+		}
+		log.Printf("Invalid boolean for %s: %v. Using fallback: %v", key, v, fallback)
+	}
+	return fallback
+}
+
 func checkTorLatency() time.Duration {
 	torProxy := config.TorProxy
-	if torProxy == "" {
-		torProxy = "socks5://localhost:9050"
-	}
 	proxyURL, err := url.Parse(torProxy)
 	if err != nil || proxyURL.Host == "" {
 		return 0
 	}
 	start := time.Now()
-	conn, err := net.DialTimeout("tcp", proxyURL.Host, 5*time.Second)
+	conn, err := net.DialTimeout("tcp", proxyURL.Host, config.LatencyTimeout)
 	if err != nil {
 		return 0
 	}
@@ -537,9 +618,6 @@ func checkTorLatency() time.Duration {
 
 func downloadFile(u string) ([]byte, error) {
 	torProxy := config.TorProxy
-	if torProxy == "" {
-		torProxy = "socks5://localhost:9050"
-	}
 	proxyURL, err := url.Parse(torProxy)
 	if err != nil {
 		log.Printf("Error parsing tor proxy %q in downloadFile: %v", torProxy, err)
@@ -548,7 +626,7 @@ func downloadFile(u string) ([]byte, error) {
 
 	client := &http.Client{
 		Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)},
-		Timeout: 20 * time.Second,
+		Timeout: config.DownloadTimeout,
 	}
 	resp, err := client.Get(u)
 	if err != nil {
@@ -556,7 +634,7 @@ func downloadFile(u string) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 	
-	const maxDownload = 10 * 1024 * 1024 // 10MB
+	maxDownload := config.DownloadMaxSize
 	if resp.ContentLength > maxDownload {
 		return nil, fmt.Errorf("response too large")
 	}
@@ -566,7 +644,7 @@ func downloadFile(u string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(data) > maxDownload {
+	if int64(len(data)) > maxDownload {
 		return nil, fmt.Errorf("response exceeded maximum size")
 	}
 	
