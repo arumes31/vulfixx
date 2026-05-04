@@ -86,6 +86,10 @@ func (a *App) CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		a.SendResponse(w, r, false, "", "", "Team name is required")
 		return
 	}
+	if len(name) > 100 {
+		a.SendResponse(w, r, false, "", "", "Team name too long (max 100 characters)")
+		return
+	}
 
 	inviteCode, err := generateInviteCode()
 	if err != nil {

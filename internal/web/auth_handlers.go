@@ -113,11 +113,13 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		// Clear rate limit on success
 		a.Redis.Del(r.Context(), rlKey)
 
-		// Success! Clear pre-auth and set full auth
-		delete(session.Values, "pre_auth_user_id")
-		delete(session.Values, "pre_auth_ts")
-		delete(session.Values, "pre_auth_attempts")
-		session.Values["user_id"] = preAuthUserID
+		// Regenerate session to prevent session fixation
+		session.Options.MaxAge = -1
+		if err := session.Save(r, w); err != nil {
+			log.Printf("Error invalidating pre-auth session: %v", err)
+		}
+		newSession, _ := a.SessionStore.Get(r, "vulfixx-session")
+		newSession.Values["user_id"] = preAuthUserID
 
 		var isAdmin bool
 		err = a.Pool.QueryRow(r.Context(), "SELECT is_admin FROM users WHERE id = $1", preAuthUserID).Scan(&isAdmin)
@@ -126,10 +128,10 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
-		session.Values["is_admin"] = isAdmin
+		newSession.Values["is_admin"] = isAdmin
 
-		if err := session.Save(r, w); err != nil {
-			log.Printf("Error saving session: %v", err)
+		if err := newSession.Save(r, w); err != nil {
+			log.Printf("Error saving new session: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
@@ -173,10 +175,16 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session.Values["user_id"] = user.ID
-	session.Values["is_admin"] = user.IsAdmin
+	// Regenerate session to prevent session fixation
+	session.Options.MaxAge = -1
 	if err := session.Save(r, w); err != nil {
-		log.Printf("Error saving session: %v", err)
+		log.Printf("Error invalidating old session: %v", err)
+	}
+	newSession, _ := a.SessionStore.Get(r, "vulfixx-session")
+	newSession.Values["user_id"] = user.ID
+	newSession.Values["is_admin"] = user.IsAdmin
+	if err := newSession.Save(r, w); err != nil {
+		log.Printf("Error saving new session: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}

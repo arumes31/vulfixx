@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/pquerna/otp/totp"
 	"github.com/redis/go-redis/v9"
@@ -193,7 +194,19 @@ func (a *App) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = auth.ChangePassword(r.Context(), userID, currentPassword, newPassword, totpCode)
 	if err != nil {
-		renderError(err.Error())
+		errMsg := err.Error()
+		// Map known errors to safe user-facing messages; log unknown ones
+		switch {
+		case strings.Contains(errMsg, "current password"):
+			renderError("Current password is incorrect")
+		case strings.Contains(errMsg, "too short") || strings.Contains(errMsg, "at least"):
+			renderError("New password is too short (minimum 8 characters)")
+		case strings.Contains(errMsg, "TOTP") || strings.Contains(errMsg, "totp"):
+			renderError("Invalid or missing 2FA code")
+		default:
+			log.Printf("ChangePassword unexpected error for user %d: %v", userID, err)
+			renderError("Unable to change password. Please try again later.")
+		}
 		return
 	}
 

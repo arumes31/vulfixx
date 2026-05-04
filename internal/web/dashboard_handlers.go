@@ -93,7 +93,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	if searchQuery != "" {
 		whereClause += fmt.Sprintf(" AND (c.cve_id ILIKE $%d OR c.description ILIKE $%d) ", argIdx, argIdx)
-		args = append(args, "%"+searchQuery+"%")
+		args = append(args, "%"+escapeLikePattern(searchQuery)+"%")
 		argIdx++
 	}
 	if kevOnly {
@@ -669,25 +669,25 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	if searchQuery != "" {
 		whereClause += fmt.Sprintf(" AND (c.cve_id ILIKE $%d OR c.description ILIKE $%d) ", argIdx, argIdx)
-		args = append(args, "%"+searchQuery+"%")
+		args = append(args, "%"+escapeLikePattern(searchQuery)+"%")
 		argIdx++
 	}
 
 	if vendorQuery != "" {
 		whereClause += fmt.Sprintf(" AND (c.vendor ILIKE $%d OR EXISTS (SELECT 1 FROM jsonb_array_elements(c.affected_products) AS p WHERE p->>'vendor' ILIKE $%d)) ", argIdx, argIdx)
-		args = append(args, "%"+vendorQuery+"%")
+		args = append(args, "%"+escapeLikePattern(vendorQuery)+"%")
 		argIdx++
 	}
 
 	if productQuery != "" {
 		whereClause += fmt.Sprintf(" AND (c.product ILIKE $%d OR EXISTS (SELECT 1 FROM jsonb_array_elements(c.affected_products) AS p WHERE p->>'product' ILIKE $%d)) ", argIdx, argIdx)
-		args = append(args, "%"+productQuery+"%")
+		args = append(args, "%"+escapeLikePattern(productQuery)+"%")
 		argIdx++
 	}
 
 	if cveIDQuery != "" {
 		whereClause += fmt.Sprintf(" AND c.cve_id ILIKE $%d ", argIdx)
-		args = append(args, "%"+cveIDQuery+"%")
+		args = append(args, "%"+escapeLikePattern(cveIDQuery)+"%")
 		argIdx++
 	}
 
@@ -718,7 +718,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	if cweQuery != "" {
 		whereClause += fmt.Sprintf(" AND (c.cwe_id ILIKE $%d OR c.cwe_name ILIKE $%d) ", argIdx, argIdx)
-		args = append(args, "%"+cweQuery+"%")
+		args = append(args, "%"+escapeLikePattern(cweQuery)+"%")
 		argIdx++
 	}
 

@@ -71,7 +71,7 @@ func (a *App) ProxyMiddleware(next http.Handler) http.Handler {
 		}
 		clientIP := host
 
-		if enableCF {
+		if enableCF && isTrustedProxy(host) {
 			if cfIP := r.Header.Get("CF-Connecting-IP"); cfIP != "" {
 				clientIP = cfIP
 			}

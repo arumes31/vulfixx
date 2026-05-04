@@ -42,6 +42,7 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 
 	t.Run("ProxyMiddleware_Cloudflare", func(t *testing.T) {
 		t.Setenv("ENABLE_CLOUDFLARE_PROXY", "true")
+		t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8")
 
 		mock, _ := pgxmock.NewPool()
 		defer mock.Close()
@@ -57,6 +58,7 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 
 		middleware := app.ProxyMiddleware(next)
 		req, _ := http.NewRequest("GET", "/", nil)
+		req.RemoteAddr = "10.0.0.1:12345"
 		req.Header.Set("CF-Connecting-IP", "1.2.3.4")
 		rr := httptest.NewRecorder()
 
