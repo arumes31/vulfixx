@@ -387,7 +387,8 @@ CREATE INDEX IF NOT EXISTS idx_user_cve_status_team_id ON user_cve_status(team_i
 CREATE INDEX IF NOT EXISTS idx_cve_notes_team_id ON cve_notes(team_id);
 CREATE INDEX IF NOT EXISTS idx_cves_vendor ON cves(vendor);
 CREATE INDEX IF NOT EXISTS idx_cves_product ON cves(product);
-CREATE INDEX IF NOT EXISTS idx_cves_affected_products ON cves USING GIN (affected_products);
+DROP INDEX IF EXISTS idx_cves_affected_products;
+CREATE INDEX IF NOT EXISTS idx_cves_affected_products_trgm ON cves USING GIN ((affected_products::text) gin_trgm_ops);
 
 -- Partial Unique Indexes for status and notes
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_status ON user_cve_status (user_id, cve_id) WHERE team_id IS NULL;

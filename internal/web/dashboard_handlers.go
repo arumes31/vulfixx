@@ -603,6 +603,12 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	pageSize := 20
 	offset := (page - 1) * pageSize
 
+	cursorStr := r.URL.Query().Get("cursor")
+	cursorIDStr := r.URL.Query().Get("cursor_id")
+	if cursorStr != "" && cursorIDStr != "" {
+		offset = 0 // override offset when using cursor pagination
+	}
+
 	searchQuery := strings.TrimSpace(r.URL.Query().Get("q"))
 	vendorQuery := strings.TrimSpace(r.URL.Query().Get("vendor"))
 	productQuery := strings.TrimSpace(r.URL.Query().Get("product"))
@@ -700,13 +706,13 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if vendorQuery != "" {
-		whereClause += fmt.Sprintf(" AND (c.vendor ILIKE $%d OR EXISTS (SELECT 1 FROM jsonb_array_elements(c.affected_products) AS p WHERE p->>'vendor' ILIKE $%d)) ", argIdx, argIdx)
+		whereClause += fmt.Sprintf(" AND (c.vendor ILIKE $%d OR c.affected_products::text ILIKE $%d) ", argIdx, argIdx)
 		args = append(args, "%"+escapeLikePattern(vendorQuery)+"%")
 		argIdx++
 	}
 
 	if productQuery != "" {
-		whereClause += fmt.Sprintf(" AND (c.product ILIKE $%d OR EXISTS (SELECT 1 FROM jsonb_array_elements(c.affected_products) AS p WHERE p->>'product' ILIKE $%d)) ", argIdx, argIdx)
+		whereClause += fmt.Sprintf(" AND (c.product ILIKE $%d OR c.affected_products::text ILIKE $%d) ", argIdx, argIdx)
 		args = append(args, "%"+escapeLikePattern(productQuery)+"%")
 		argIdx++
 	}
@@ -807,6 +813,29 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.ToUpper(order) == "ASC" {
 		sortOrder = "ASC"
+	}
+
+	if cursorStr != "" && cursorIDStr != "" {
+		cursorID, err := strconv.Atoi(cursorIDStr)
+		if err == nil && cursorID > 0 {
+			op := "<"
+			if sortOrder == "ASC" {
+				op = ">"
+			}
+			var castType string
+			switch sortCol {
+			case "c.published_date":
+				castType = "::timestamptz"
+			case "c.cvss_score", "c.epss_score":
+				castType = "::numeric"
+			default:
+				castType = ""
+			}
+			keysetCond := fmt.Sprintf(" AND (%s %s $%d%s OR (%s = $%d%s AND c.id < $%d)) ", sortCol, op, argIdx, castType, sortCol, argIdx, castType, argIdx+1)
+			whereClause += keysetCond
+			args = append(args, cursorStr, cursorStr, cursorID)
+			argIdx += 3
+		}
 	}
 
 	query += whereClause

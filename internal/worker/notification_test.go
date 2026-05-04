@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -112,12 +113,14 @@ func TestWorker_DeliveryLogging(t *testing.T) {
 }
 
 func TestWorker_SlackTeamsDelivery(t *testing.T) {
+	os.Setenv("TEST_MODE", "1")
+	defer os.Unsetenv("TEST_MODE")
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer ts.Close()
 	
-	w := &Worker{}
+	w := &Worker{HTTP: http.DefaultClient}
 	cve := &models.CVE{CVEID: "CVE-2024-TEST", CVSSScore: 8.0, Description: "Test desc"}
 	
 	success, err := w.sendSlackAlert(ts.URL, cve, "Asset1", "#ff0000", "token", "http://localhost")
