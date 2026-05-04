@@ -267,6 +267,7 @@ func evaluateComplexFilter(logic string, cve *models.CVE) bool {
 
 // notifyIfNew checks if the user has been notified.
 // Left here in case it's used elsewhere.
+//nolint:unused
 func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, sub models.UserSubscription, email, assetName string) bool {
 	var exists bool
 	_ = w.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM alert_history WHERE user_id = $1 AND cve_id = $2)", userID, cve.ID).Scan(&exists)
