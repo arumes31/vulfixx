@@ -68,9 +68,19 @@
 </div>
 
 <script nonce="{{.Nonce}}">
-    document.getElementById('captcha-container')?.addEventListener('click', () => {
+    const refreshCaptcha = () => {
         const img = document.getElementById('captcha-img');
         if (img) img.src = '/captcha?t=' + Date.now();
-    });
+    };
+    const container = document.getElementById('captcha-container');
+    if (container) {
+        container.addEventListener('click', refreshCaptcha);
+        container.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                refreshCaptcha();
+            }
+        });
+    }
 </script>
 {{end}}

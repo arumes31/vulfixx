@@ -563,6 +563,12 @@
         text-transform: uppercase; 
         letter-spacing: -0.05em; 
     }
+    .truncate-3-lines {
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
 </style>
 
 <script id="cve-data" type="application/json" nonce="{{.Nonce}}">

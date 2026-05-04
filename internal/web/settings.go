@@ -274,7 +274,7 @@ func (a *App) ChangeEmailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.LogActivity(r.Context(), userID, "email_change_requested", "email_change_requested", a.GetClientIP(r), r.UserAgent())
+	a.LogActivity(r.Context(), userID, "email_change_requested", "Email change requested", a.GetClientIP(r), r.UserAgent())
 
 	a.RenderTemplate(w, r, "settings.html", map[string]interface{}{
 		"Email":         email,

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"log"
 	"math"
 	"net/url"
@@ -157,7 +158,10 @@ func (w *Worker) sendEmailChangeNotification(email, token, emailType string) err
 		`, link, link)
 	}
 
-	body := WrapInModernLayout(subject, content)
+	body := WrapInModernLayout(EmailTemplateData{
+		Title: subject,
+		Body:  template.HTML(content),
+	})
 	return w.Mailer.SendEmail(email, subject, body)
 }
 
@@ -179,7 +183,10 @@ func (w *Worker) sendVerificationEmail(email, token string) error {
 		<p style="font-size: 12px; opacity: 0.6; text-align: center;">If you didn't create this account, you can safely ignore this email.</p>
 		`, link, link)
 
-	body := WrapInModernLayout(subject, content)
+	body := WrapInModernLayout(EmailTemplateData{
+		Title: subject,
+		Body:  template.HTML(content),
+	})
 	return w.Mailer.SendEmail(email, subject, body)
 }
 

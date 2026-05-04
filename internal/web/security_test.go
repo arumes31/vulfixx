@@ -265,7 +265,7 @@ func TestAdminMiddleware(t *testing.T) {
 	})
 }
 
-func TestSQLInjectionPrevention(t *testing.T) {
+func TestDashboardNoErrorLeakOnMalformedQuery(t *testing.T) {
 	mock, err := db.SetupTestDB()
 	if err != nil {
 		t.Fatalf("failed to setup mock db: %v", err)

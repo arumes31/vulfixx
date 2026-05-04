@@ -114,13 +114,16 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 	for rows.Next() {
 		var sub models.UserSubscription
 		var email string
+		var slackURL, teamsURL string
 		if err := rows.Scan(&sub.ID, &sub.UserID, &sub.Keyword, &sub.MinSeverity, 
-			&sub.WebhookURL, &sub.SlackWebhookURL, &sub.TeamsWebhookURL,
+			&sub.WebhookURL, &slackURL, &teamsURL,
 			&sub.EnableEmail, &sub.EnableWebhook, &sub.EnableSlack, &sub.EnableTeams, &sub.EnableBrowserPush,
 			&sub.FilterLogic, &sub.AggregationMode, &email); err != nil {
 			log.Printf("Error scanning subscription row: %v", err)
 			continue
 		}
+		sub.SlackWebhookURL = models.DecryptWebhook(slackURL)
+		sub.TeamsWebhookURL = models.DecryptWebhook(teamsURL)
 		if matchCVE(cve, sub) {
 			if w.notifyIfNew(ctx, sub.UserID, cve, sub, email, "") {
 				notifiedUsers[sub.UserID] = true
@@ -259,11 +262,13 @@ func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, s
 
 	// 21. Alert Flood Protection (Rate limiting per user/hour)
 	floodKey := fmt.Sprintf("flood_protection:%d", userID)
-	count, _ := w.Redis.Get(ctx, floodKey).Int()
-	if count >= 50 { // Max 50 alerts per hour
-		if count == 50 {
+	count, _ := w.Redis.Incr(ctx, floodKey).Result()
+	if count == 1 {
+		w.Redis.Expire(ctx, floodKey, 1*time.Hour)
+	}
+	if count > 50 { // Max 50 alerts per hour
+		if count == 51 {
 			log.Printf("Flood Protection: Throttling alerts for user %d", userID)
-			w.Redis.Incr(ctx, floodKey) // increment to 51 so we only log once
 		}
 		return false
 	}
@@ -276,6 +281,7 @@ func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, s
 			FROM cves WHERE id = $1
 		`, cve.ID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.VectorString, &cve.CISAKEV, &cve.EPSSScore, &cve.CWEID, &cve.GitHubPoCCount, &cve.PublishedDate, &cve.References)
 		if err != nil {
+			w.Redis.Decr(ctx, floodKey)
 			log.Printf("Failed to fetch full CVE details for alert: %v", err)
 			return false
 		}
@@ -284,15 +290,8 @@ func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, s
 	cve.OSINTData = w.fetchOSINTLinks(ctx, cve.CVEID)
 
 	if !w.bufferAlert(ctx, userID, cve, sub, email, assetName) {
+		w.Redis.Decr(ctx, floodKey)
 		return false
-	}
-
-	newCount, _ := w.Redis.Incr(ctx, floodKey).Result()
-	if newCount == 1 {
-		success, _ := w.Redis.Expire(ctx, floodKey, 1*time.Hour).Result()
-		if !success {
-			w.Redis.Expire(ctx, floodKey, 1*time.Hour) // retry
-		}
 	}
 
 	_, err := w.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id, sent_at) VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING", userID, cve.ID)

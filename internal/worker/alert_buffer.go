@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"html/template"
 	"log"
 	"net/url"
 	"os"
@@ -42,8 +43,16 @@ func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, s
 	}
 
 	processingKey := fmt.Sprintf("alert_processing:%d", userID)
+	bufferTime := bufferTimeStandard
+	if sub.AggregationMode == "hourly" {
+		bufferTime = 1 * time.Hour
+	} else if sub.AggregationMode == "daily" {
+		bufferTime = 24 * time.Hour
+	} else if cve.CVSSScore >= 7.0 {
+		bufferTime = bufferTimeHigh
+	}
 	// Lock TTL = buffer time + processing buffer
-	set, err := w.Redis.SetNX(ctx, processingKey, "true", bufferTimeStandard+10*time.Minute).Result()
+	set, err := w.Redis.SetNX(ctx, processingKey, "true", bufferTime+10*time.Minute).Result()
 	if err != nil {
 		log.Printf("Error setting alert processing lock for key %s: %v", processingKey, err)
 		// Rollback the pushed alert
@@ -53,14 +62,6 @@ func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, s
 		return false
 	}
 	if set {
-		bufferTime := bufferTimeStandard
-		if sub.AggregationMode == "hourly" {
-			bufferTime = 1 * time.Hour
-		} else if sub.AggregationMode == "daily" {
-			bufferTime = 24 * time.Hour
-		} else if cve.CVSSScore >= 7.0 {
-			bufferTime = bufferTimeHigh
-		}
 		/* #nosec G118 */
 		go func(bTime time.Duration, pKey string, uid int) {
 			bgCtx := context.Background()
@@ -229,7 +230,10 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 		</div>
 	`, len(items), rowsHTML, baseURLStr)
 
-	body := WrapInModernLayout(fmt.Sprintf("Intelligence Brief: %d New Threats", len(items)), content)
+	body := WrapInModernLayout(EmailTemplateData{
+		Title: fmt.Sprintf("Intelligence Brief: %d New Threats", len(items)),
+		Body:  template.HTML(content),
+	})
 
 	if len(uniqueEmails) == 0 {
 		log.Printf("Error: No recipient email found for user %d digest", userID)
@@ -268,7 +272,11 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 		for _, target := range slackTargets {
 			msg := fmt.Sprintf("🛡️ *Intelligence Brief: %d New Threats Detected*\n\n", len(items))
 			for _, it := range items {
-				msg += fmt.Sprintf("• *%s* (CVSS: %.1f) - %s\n", it.CVEID, it.Score, it.AssetName)
+				if it.AssetName != "" {
+					msg += fmt.Sprintf("• *%s* (CVSS: %.1f) - %s\n", it.CVEID, it.Score, it.AssetName)
+				} else {
+					msg += fmt.Sprintf("• *%s* (CVSS: %.1f)\n", it.CVEID, it.Score)
+				}
 			}
 			msg += fmt.Sprintf("\n<%s/dashboard|Analyze in Command Console>", baseURLStr)
 			

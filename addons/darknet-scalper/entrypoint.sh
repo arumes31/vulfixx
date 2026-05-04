@@ -5,10 +5,12 @@ echo "Starting Tor..."
 # (24) Configure Bridges if provided
 if [ -n "$TOR_BRIDGES" ]; then
     echo "Configuring Tor Bridges..."
-    echo "UseBridges 1" >> /etc/tor/torrc
-    echo "ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy" >> /etc/tor/torrc
-    # TOR_BRIDGES should be a newline separated list of bridge lines
-    echo "$TOR_BRIDGES" >> /etc/tor/torrc
+    if ! grep -q "%include /etc/tor/bridges.conf" /etc/tor/torrc; then
+        echo "%include /etc/tor/bridges.conf" >> /etc/tor/torrc
+    fi
+    echo "UseBridges 1" > /etc/tor/bridges.conf
+    echo "ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy" >> /etc/tor/bridges.conf
+    echo "$TOR_BRIDGES" >> /etc/tor/bridges.conf
 fi
 tor -f /etc/tor/torrc &
 

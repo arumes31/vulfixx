@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"html/template"
 	"log"
 	"net"
 	"net/http"
@@ -270,7 +271,10 @@ func (w *Worker) sendEmailAlert(email string, cve *models.CVE, sev, color, token
 		</div>
 	`, kevBadge, advisoryHTML, color, cve.CVSSScore, sev, epssDisplay, html.EscapeString(cve.Description), baseURL, escapedToken, baseURL, escapedToken, baseURL)
 
-	body := WrapInModernLayout("Security Alert: "+cve.CVEID, content)
+	body := WrapInModernLayout(EmailTemplateData{
+		Title: "Security Alert: " + cve.CVEID,
+		Body:  template.HTML(content),
+	})
 	err := w.Mailer.SendEmail(email, "Security Alert: "+cve.CVEID, body)
 	return err == nil
 }

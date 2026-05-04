@@ -403,9 +403,9 @@ type UserSubscription struct {
 	TeamID            *int      `json:"team_id"`
 	Keyword           string    `json:"keyword"`
 	MinSeverity       float64   `json:"min_severity"`
-	WebhookURL        string    `json:"webhook_url"`
-	SlackWebhookURL   string    `json:"slack_webhook_url"`
-	TeamsWebhookURL   string    `json:"teams_webhook_url"`
+	WebhookURL        string    `json:"-"`
+	SlackWebhookURL   string    `json:"-"`
+	TeamsWebhookURL   string    `json:"-"`
 	EnableEmail       bool      `json:"enable_email"`
 	EnableWebhook     bool      `json:"enable_webhook"`
 	EnableSlack       bool      `json:"enable_slack"`

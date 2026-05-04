@@ -20,7 +20,7 @@ import (
 func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	clientIP := a.GetClientIP(r)
 	if r.Method == http.MethodGet {
-		rlKeyGet := "totp_failures:" + clientIP
+		rlKeyGet := "login_failures:" + clientIP
 		if count, err := a.Redis.Get(r.Context(), rlKeyGet).Int(); err == nil && count >= 5 {
 			a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Too many attempts"})
 			return
@@ -288,7 +288,7 @@ func (a *App) ResendVerificationHandler(w http.ResponseWriter, r *http.Request) 
 	clientIP := a.GetClientIP(r)
 	rlKey := "resend_limit:" + clientIP
 	if count, err := a.Redis.Get(r.Context(), rlKey).Int(); err == nil && count >= 5 {
-		log.Printf("IP rate limit hit for resend: %s", clientIP)
+		log.Printf("IP rate limit hit for resend: %s", "REDACTED_IP")
 		a.RenderTemplate(w, r, "resend_verification.html", map[string]interface{}{"Error": "Too many resend attempts. Please try again in an hour."})
 		return
 	}

@@ -176,7 +176,7 @@ func TestWorker_Health_Coverage(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	defer rdb.Close()
 
-	w := NewWorker(mock, rdb, &EmailSenderMock{}, http.DefaultClient)
+	w := NewWorker(mock, rdb, &EmailSenderMock{}, &MockHTTPClient{})
 
 	t.Run("UpdateTaskStats", func(t *testing.T) {
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO worker_sync_stats (task_name, last_run) VALUES ($1, NOW()) ON CONFLICT (task_name) DO UPDATE SET last_run = NOW(), updated_at = NOW()")).

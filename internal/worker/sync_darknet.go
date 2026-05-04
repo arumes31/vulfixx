@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"log"
-	"os"
 	"time"
 
 	"cve-tracker/internal/worker/proto"
@@ -11,37 +10,12 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func (w *Worker) syncDarknetIntelligence(ctx context.Context) {
-	scalperGRPC := os.Getenv("SCALPER_GRPC_URL")
-	if scalperGRPC == "" {
-		scalperGRPC = "scalper:9090"
-	}
 
-	w.waitUntilNextRun(ctx, "darknet_sync", 24*time.Hour, 10*time.Minute)
-	
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		w.runDarknetScanGRPC(ctx, scalperGRPC)
-		
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(24 * time.Hour):
-		}
-	}
-}
 
 func (w *Worker) runDarknetScanGRPC(ctx context.Context, target string) {
 	log.Printf("Worker: [SYNC] Running Darknet Scalper check via gRPC (%s)...", target)
 
-	dialCtx, dialCancel := context.WithTimeout(ctx, 10*time.Second)
-	defer dialCancel()
-	conn, err := grpc.DialContext(dialCtx, target, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+	conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Printf("Worker: Failed to connect to scalper gRPC (%s): %v", target, err)
 		return
@@ -72,7 +46,9 @@ func (w *Worker) runDarknetScanGRPC(ctx context.Context, target string) {
 	}
 
 	// (9) Use Backfill for batch processing with priority
-	resp, err := client.Backfill(ctx, &proto.BackfillRequest{
+	childCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	resp, err := client.Backfill(childCtx, &proto.BackfillRequest{
 		CveIds:   cveIDs,
 		Priority: 8, // High priority for our sync worker
 	})

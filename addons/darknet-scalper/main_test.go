@@ -25,7 +25,7 @@ func TestParseAhmiaHTML(t *testing.T) {
 	hits := parseAhmiaHTML(sampleHTML, "CVE-2024-1234")
 
 	if len(hits) != 2 {
-		t.Errorf("expected 2 hits, got %d", len(hits))
+		t.Fatalf("expected 2 hits, got %d", len(hits))
 	}
 
 	if hits[0].Title != "Exploit for CVE-2024-1234" {

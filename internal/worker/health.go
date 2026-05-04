@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"fmt"
+	"html/template"
 	"log"
 	"os"
 	"time"
@@ -77,7 +78,10 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 						</div>
 					`, msg, baseURL)
 
-					body := WrapInModernLayout("Vulfixx Health Alert", content)
+					body := WrapInModernLayout(EmailTemplateData{
+						Title: "Vulfixx Health Alert",
+						Body:  template.HTML(content),
+					})
 					if err := w.Mailer.SendEmail(w.AdminEmail, "Vulfixx Health Alert", body); err != nil {
 						log.Printf("Worker: Failed to send health alert to %s: %v", w.AdminEmail, err)
 					}

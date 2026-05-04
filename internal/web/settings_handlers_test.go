@@ -126,7 +126,7 @@ func TestTOTPHandlers(t *testing.T) {
 		rr2 := httptest.NewRecorder()
 		app.VerifyTOTPHandler(rr2, req)
 		if rr2.Code != http.StatusFound {
-			t.Errorf("expected 302Found, got %d", rr2.Code)
+			t.Errorf("expected 302 Found, got %d", rr2.Code)
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)

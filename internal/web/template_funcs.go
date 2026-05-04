@@ -157,7 +157,10 @@ func (a *App) InitTemplatesWithFuncs() error {
 	}
 
 	baseFile := filepath.Join(templateDir, "base.html")
-	files, _ := filepath.Glob(filepath.Join(templateDir, "*.html"))
+	files, err := filepath.Glob(filepath.Join(templateDir, "*.html"))
+	if err != nil {
+		return fmt.Errorf("failed to glob templates: %v", err)
+	}
 
 	for _, file := range files {
 		name := filepath.Base(file)

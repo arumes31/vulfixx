@@ -80,7 +80,14 @@ func TestWorker_processAlerts_Coverage(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		time.Sleep(300 * time.Millisecond)
+		for {
+			llen, _ := rdb.LLen(context.Background(), "cve_alerts_queue").Result()
+			if llen == 0 {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		time.Sleep(100 * time.Millisecond)
 		cancel()
 	}()
 

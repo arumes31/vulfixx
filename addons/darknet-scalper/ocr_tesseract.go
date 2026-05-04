@@ -13,6 +13,7 @@ func performOCR(imgData []byte) string {
 	defer client.Close()
 
 	if err := client.SetImageFromBytes(imgData); err != nil {
+		log.Printf("OCR SetImageFromBytes error: %v", err)
 		return ""
 	}
 	

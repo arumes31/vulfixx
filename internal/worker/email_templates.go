@@ -3,16 +3,22 @@ package worker
 import (
 	"fmt"
 	"html"
+	"html/template"
 	"os"
 	"strings"
 	"time"
 )
 
+type EmailTemplateData struct {
+	Title string
+	Body  template.HTML
+}
+
 // WrapInModernLayout wraps the provided title and content in a standard premium HTML email template.
 // SECURITY: The 'content' parameter is interpolated directly into the HTML. Callers MUST ensure
 // that 'content' contains trusted or pre-sanitized HTML. User-controlled input MUST be
 // sanitized or HTML-escaped before being passed to this function to prevent XSS.
-func WrapInModernLayout(title, content string) string {
+func WrapInModernLayout(data EmailTemplateData) string {
 	baseURL := os.Getenv("BASE_URL")
 	if baseURL == "" {
 		baseURL = "http://localhost:8080"
@@ -20,7 +26,7 @@ func WrapInModernLayout(title, content string) string {
 	baseURL = strings.TrimSuffix(baseURL, "/")
 
 	logoURL := baseURL + "/static/img/logo.png"
-	escapedTitle := html.EscapeString(title)
+	escapedTitle := html.EscapeString(data.Title)
 
 	return fmt.Sprintf(`
 <!DOCTYPE html>
@@ -148,5 +154,5 @@ func WrapInModernLayout(title, content string) string {
     </div>
 </body>
 </html>
-	`, logoURL, escapedTitle, content, time.Now().Year())
+	`, logoURL, escapedTitle, data.Body, time.Now().Year())
 }

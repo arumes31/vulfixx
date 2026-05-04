@@ -136,12 +136,12 @@ func ResendVerificationToken(ctx context.Context, email string) (string, error) 
 		WHERE id = $2
 	`, newToken, userID)
 	if err != nil {
-		log.Printf("Error updating verification token for user %d: %v", userID, err)
+		log.Printf("Error updating verification token for user %s: %v", maskEmail(email), err)
 		return "", errors.New(genericMsg)
 	}
 
 	if err = tx.Commit(ctx); err != nil {
-		log.Printf("Error committing resend transaction for user %d: %v", userID, err)
+		log.Printf("Error committing resend transaction for user %s: %v", maskEmail(email), err)
 		return "", errors.New(genericMsg)
 	}
 

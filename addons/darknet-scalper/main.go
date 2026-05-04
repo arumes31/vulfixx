@@ -94,15 +94,17 @@ func main() {
 		}()
 	}
 
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
 	go func() {
 		log.Printf("Hardened Darknet Scalper gRPC Server listening on %v", lis.Addr())
 		if err := s.Serve(lis); err != nil {
-			log.Fatalf("failed to serve: %v", err)
+			log.Printf("failed to serve: %v", err)
+			quit <- syscall.SIGTERM
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit
 	log.Println("Shutting down gracefully...")
 
@@ -164,7 +166,7 @@ func (s *scalperServer) Scan(ctx context.Context, req *proto.ScanRequest) (*prot
 		}
 	}
 
-	results := scalpMultiEngine(req.Query, int(req.Depth))
+	results := scalpMultiEngine(ctx, req.Query, int(req.Depth))
 	
 	// Save to DB
 	if pool != nil {
@@ -181,22 +183,21 @@ func (s *scalperServer) Scan(ctx context.Context, req *proto.ScanRequest) (*prot
 
 func (s *scalperServer) Backfill(ctx context.Context, req *proto.BackfillRequest) (*proto.BackfillResponse, error) {
 	if rdb == nil {
-		return nil, fmt.Errorf("redis not available")
+		return nil, status.Error(codes.FailedPrecondition, "redis not available")
 	}
 
+	pipe := rdb.TxPipeline()
 	for _, cve := range req.CveIds {
-		// (9) Priority Queuing: Higher priority tasks are pushed to front (using LPush/RPush)
-		// Or using a sorted set if complex priority is needed.
-		var err error
 		if req.Priority > 5 {
-			err = rdb.LPush(ctx, "darknet_scan_tasks", cve).Err()
+			pipe.LPush(ctx, "darknet_scan_tasks", cve)
 		} else {
-			err = rdb.RPush(ctx, "darknet_scan_tasks", cve).Err()
+			pipe.RPush(ctx, "darknet_scan_tasks", cve)
 		}
-		if err != nil {
-			log.Printf("Backfill error queuing %s: %v", cve, err)
-			return nil, fmt.Errorf("failed to queue tasks")
-		}
+	}
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		log.Printf("Backfill error queuing tasks: %v", err)
+		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to queue tasks: %v", err))
 	}
 
 	return &proto.BackfillResponse{
@@ -252,20 +253,39 @@ func runWorker(ctx context.Context) {
 
 		log.Printf("Worker: Locked and processing %s", cveID)
 		
+		done := make(chan struct{})
+		go func() {
+			ticker := time.NewTicker(3 * time.Minute)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					if ok, _ := mutex.Extend(); !ok {
+						log.Printf("Worker: Failed to extend lock for %s", cveID)
+					}
+				case <-done:
+					return
+				}
+			}
+		}()
+
 		// Perform scan (default depth 2)
-		res := scalpMultiEngine(cveID, 2)
+		res := scalpMultiEngine(ctx, cveID, 2)
 		if pool != nil {
 			saveHitsToDB(res)
 		}
 		
-		mutex.Unlock()
+		close(done)
+		if ok, err := mutex.Unlock(); !ok || err != nil {
+			log.Printf("Worker: Error unlocking %s: %v", cveID, err)
+		}
 		log.Printf("Worker: Task complete for %s", cveID)
 	}
 }
 
 // Scraping Core
 
-func scalpMultiEngine(q string, maxDepth int) *proto.ScanResponse {
+func scalpMultiEngine(ctx context.Context, q string, maxDepth int) *proto.ScanResponse {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	finalResult := &proto.ScanResponse{
@@ -282,9 +302,9 @@ func scalpMultiEngine(q string, maxDepth int) *proto.ScanResponse {
 			var hits []*proto.Hit
 			switch e {
 			case "ahmia":
-				hits, _ = scalpAhmia(q, maxDepth)
+				hits, _ = scalpAhmia(ctx, q, maxDepth)
 			case "torch":
-				hits, _ = scalpTorch(q, maxDepth)
+				hits, _ = scalpTorch(ctx, q, maxDepth)
 			}
 
 			if len(hits) > 0 {
@@ -300,7 +320,7 @@ func scalpMultiEngine(q string, maxDepth int) *proto.ScanResponse {
 	return finalResult
 }
 
-func scalpAhmia(q string, maxDepth int) ([]*proto.Hit, error) {
+func scalpAhmia(ctx context.Context, q string, maxDepth int) ([]*proto.Hit, error) {
 	// Implementation using chromedp (Fingerprinting already hardened in Phase 2)
 	// (18) Multi-depth logic added here
 	query := fmt.Sprintf("%s OR \"%s exploit\"", q, q)
@@ -316,17 +336,17 @@ func scalpAhmia(q string, maxDepth int) ([]*proto.Hit, error) {
 		chromedp.ProxyServer(torProxy),
 	}
 
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	allocCtx, cancel := chromedp.NewExecAllocator(ctx, opts...)
 	defer cancel()
 	
 	timeoutCtx, cancelTimeout := context.WithTimeout(allocCtx, 30*time.Second)
 	defer cancelTimeout()
 
-	ctx, cancelChrome := chromedp.NewContext(timeoutCtx)
+	chromeCtx, cancelChrome := chromedp.NewContext(timeoutCtx)
 	defer cancelChrome()
 
 	var html string
-	err := chromedp.Run(ctx,
+	err := chromedp.Run(chromeCtx,
 		chromedp.Navigate("https://ahmia.fi/search/?q="+url.QueryEscape(query)),
 		chromedp.Sleep(5*time.Second),
 		chromedp.OuterHTML("html", &html),
@@ -357,7 +377,11 @@ func enrichHit(hit *proto.Hit, depth int) {
 	if torProxy == "" {
 		torProxy = "socks5://localhost:9050"
 	}
-	proxyURL, _ := url.Parse(torProxy)
+	proxyURL, err := url.Parse(torProxy)
+	if err != nil {
+		log.Printf("Error parsing tor proxy %q: %v", torProxy, err)
+		return
+	}
 
 	client := &http.Client{
 		Transport: &http.Transport{
@@ -386,10 +410,18 @@ func enrichHit(hit *proto.Hit, depth int) {
 		hit.IsHoneyLink = true
 	}
 
+	hitURL, parseErr := url.Parse(hit.Url)
+
 	// (17) OCR Integration: Find images and scan for CVE IDs
 	doc.Find("img").Each(func(i int, s *goquery.Selection) {
 		imgSrc, _ := s.Attr("src")
 		if imgSrc != "" {
+			if parseErr == nil {
+				imgURL, err := url.Parse(imgSrc)
+				if err == nil {
+					imgSrc = hitURL.ResolveReference(imgURL).String()
+				}
+			}
 			ocrText := performOCRFromURL(imgSrc)
 			if strings.Contains(ocrText, hit.Title) || strings.Contains(ocrText, "CVE-") {
 				text += " [OCR: " + ocrText + "]"
@@ -446,7 +478,12 @@ func fetchHitsFromDB(query string) ([]*proto.Hit, int) {
 		var h proto.Hit
 		if err := rows.Scan(&h.Title, &h.Url, &h.Engine, &h.Snippet, &h.Language, &h.IsHoneyLink); err == nil {
 			hits = append(hits, &h)
+		} else {
+			log.Printf("Error scanning hit row: %v", err)
 		}
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating hits rows: %v", err)
 	}
 	return hits, len(hits)
 }
@@ -481,8 +518,16 @@ func getEnv(key, fallback string) string {
 }
 
 func checkTorLatency() time.Duration {
+	torProxy := config.TorProxy
+	if torProxy == "" {
+		torProxy = "socks5://localhost:9050"
+	}
+	proxyURL, err := url.Parse(torProxy)
+	if err != nil || proxyURL.Host == "" {
+		return 0
+	}
 	start := time.Now()
-	conn, err := net.DialTimeout("tcp", "127.0.0.1:9050", 5*time.Second)
+	conn, err := net.DialTimeout("tcp", proxyURL.Host, 5*time.Second)
 	if err != nil {
 		return 0
 	}
@@ -495,7 +540,11 @@ func downloadFile(u string) ([]byte, error) {
 	if torProxy == "" {
 		torProxy = "socks5://localhost:9050"
 	}
-	proxyURL, _ := url.Parse(torProxy)
+	proxyURL, err := url.Parse(torProxy)
+	if err != nil {
+		log.Printf("Error parsing tor proxy %q in downloadFile: %v", torProxy, err)
+		return nil, err
+	}
 
 	client := &http.Client{
 		Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)},
@@ -543,7 +592,7 @@ func parseAhmiaHTML(html, q string) []*proto.Hit {
 	return hits
 }
 
-func scalpTorch(q string, depth int) ([]*proto.Hit, error) {
+func scalpTorch(ctx context.Context, q string, depth int) ([]*proto.Hit, error) {
 	_ = q
 	_ = depth
 	// Mock implementation for Torch

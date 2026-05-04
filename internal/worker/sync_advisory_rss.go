@@ -140,7 +140,8 @@ func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
 	}
 
 	if int64(len(body)) >= maxFeedBodySize {
-		log.Printf("Worker: [WARN] Feed body for %s was truncated (exceeded %d bytes)", feed.Name, maxFeedBodySize)
+		log.Printf("Worker: [ERROR] Feed body for %s was truncated (exceeded %d bytes)", feed.Name, maxFeedBodySize)
+		return
 	}
 
 	var items []GenericFeedItem
@@ -206,7 +207,7 @@ func (w *Worker) integrateAdvisoryCVE(ctx context.Context, cveID string, item Ge
 		log.Printf("Worker: [ERROR] Failed to start transaction for advisory sync: %v", err)
 		return
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	var model models.CVE
 
