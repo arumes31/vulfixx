@@ -102,11 +102,11 @@ func TestRollbackResend(t *testing.T) {
 	}
 	defer mock.Close()
 
-	mock.ExpectExec("UPDATE users SET verification_resend_count = GREATEST").
-		WithArgs("test@example.com").
+	mock.ExpectExec("UPDATE users").
+		WithArgs("test@example.com", "old-token-123", pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
-	err = RollbackResend(ctx, "test@example.com")
+	err = RollbackResend(ctx, "test@example.com", "old-token-123", nil)
 	if err != nil {
 		t.Errorf("RollbackResend failed: %v", err)
 	}

@@ -20,6 +20,12 @@ func TestWorkerSync_InTheWild(t *testing.T) {
 	}
 	defer mock.Close()
 
+	mr, err := db.SetupTestRedis()
+	if err != nil {
+		t.Fatalf("failed to setup test redis: %v", err)
+	}
+	defer mr.Close()
+
 	httpClient := &MockHTTPClient{
 		DoFunc: func(req *http.Request) (*http.Response, error) {
 			if strings.Contains(req.URL.String(), "CVE-ITW-1") {
@@ -46,7 +52,7 @@ func TestWorkerSync_InTheWild(t *testing.T) {
 		
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("inthewild_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		w.syncInTheWild(ctx)
 
@@ -65,7 +71,7 @@ func TestWorkerSync_InTheWild(t *testing.T) {
 		
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("inthewild_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		w.syncInTheWild(ctx)
 

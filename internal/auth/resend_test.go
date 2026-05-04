@@ -21,13 +21,13 @@ func TestResendVerificationToken(t *testing.T) {
 		defer mock.Close()
 
 		mock.ExpectBegin()
-		mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at").
+		mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token").
 			WithArgs("notfound@test.com").
 			WillReturnError(pgx.ErrNoRows)
 		mock.ExpectRollback()
 
 		genericMsg := "If this email is registered and unverified, a new verification link will be sent."
-		_, err = ResendVerificationToken(ctx, "notfound@test.com")
+		_, _, _, err = ResendVerificationToken(ctx, "notfound@test.com")
 		if err == nil || err.Error() != genericMsg {
 			t.Errorf("expected generic error, got %v", err)
 		}
@@ -45,14 +45,14 @@ func TestResendVerificationToken(t *testing.T) {
 		defer mock.Close()
 
 		mock.ExpectBegin()
-		mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at").
+		mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token").
 			WithArgs("verified@test.com").
-			WillReturnRows(mock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at"}).
-				AddRow(1, true, 0, nil))
+			WillReturnRows(mock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
+				AddRow(1, true, 0, nil, nil))
 		mock.ExpectRollback()
 
 		genericMsg := "If this email is registered and unverified, a new verification link will be sent."
-		_, err = ResendVerificationToken(ctx, "verified@test.com")
+		_, _, _, err = ResendVerificationToken(ctx, "verified@test.com")
 		if err == nil || err.Error() != genericMsg {
 			t.Errorf("expected generic error, got %v", err)
 		}
@@ -71,14 +71,14 @@ func TestResendVerificationToken(t *testing.T) {
 
 		now := time.Now()
 		mock.ExpectBegin()
-		mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at").
+		mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token").
 			WithArgs("wait@test.com").
-			WillReturnRows(mock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at"}).
-				AddRow(1, false, 0, &now))
+			WillReturnRows(mock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
+				AddRow(1, false, 0, &now, "old-token"))
 		mock.ExpectRollback()
 
 		genericMsg := "If this email is registered and unverified, a new verification link will be sent."
-		_, err = ResendVerificationToken(ctx, "wait@test.com")
+		_, _, _, err = ResendVerificationToken(ctx, "wait@test.com")
 		if err == nil || err.Error() != genericMsg {
 			t.Errorf("expected generic error, got %v", err)
 		}
@@ -96,16 +96,16 @@ func TestResendVerificationToken(t *testing.T) {
 		defer mock.Close()
 
 		mock.ExpectBegin()
-		mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at").
+		mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token").
 			WithArgs("success@test.com").
-			WillReturnRows(mock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at"}).
-				AddRow(1, false, 0, nil))
+			WillReturnRows(mock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
+				AddRow(1, false, 0, nil, "old-token"))
 		mock.ExpectExec("UPDATE users").
 			WithArgs(pgxmock.AnyArg(), 1).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()
 
-		token, err := ResendVerificationToken(ctx, "success@test.com")
+		token, _, _, err := ResendVerificationToken(ctx, "success@test.com")
 		if err != nil {
 			t.Errorf("expected no error, got %v", err)
 		}

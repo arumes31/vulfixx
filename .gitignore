@@ -41,10 +41,8 @@ docs/**/*.md
 !requirements.txt
 coverage
 subagents.yaml
-data/
-*.db
-results/
-*.json
+data/*.json
+results/*.json
 !go.json
 !composer.json
 !package.json

@@ -23,11 +23,22 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 	log.Printf("ALERT: Processing multi-channel alert for %s (CVE: %s)\n", redactEmail(email), cve.CVEID)
 	
 	sev, color := getSeverityInfo(cve.CVSSScore)
-	actionToken, _ := auth.GenerateToken() // Simplified for now, should handle error
+	actionToken, err := auth.GenerateToken()
+	if err != nil {
+		log.Printf("ALERT: Failed to generate action token for %s: %v", cve.CVEID, err)
+		return false
+	}
 	
 	// Store action token in Redis for buttons
-	actionData, _ := json.Marshal(map[string]interface{}{"user_id": sub.UserID, "cve_id": cve.ID, "keyword": sub.Keyword})
-	w.Redis.Set(context.Background(), "alert_action:"+actionToken, actionData, 48*time.Hour)
+	actionData, err := json.Marshal(map[string]interface{}{"user_id": sub.UserID, "cve_id": cve.ID, "keyword": sub.Keyword})
+	if err != nil {
+		log.Printf("ALERT: Failed to marshal action data for %s: %v", cve.CVEID, err)
+		return false
+	}
+	if err := w.Redis.Set(context.Background(), "alert_action:"+actionToken, actionData, 48*time.Hour).Err(); err != nil {
+		log.Printf("ALERT: Failed to store action token in Redis for %s: %v", cve.CVEID, err)
+		return false
+	}
 
 	baseURL := os.Getenv("BASE_URL")
 	if baseURL == "" { baseURL = "http://localhost:8080" }
@@ -199,16 +210,28 @@ func (w *Worker) sendBrowserPush(userID int, cve *models.CVE) bool {
 	return false 
 }
 
-func (w *Worker) postJSON(url string, payload interface{}) (bool, string) {
-	data, _ := json.Marshal(payload)
+func (w *Worker) postJSON(webhookURL string, payload interface{}) (bool, string) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return false, fmt.Sprintf("failed to marshal payload: %v", err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(data)))
+	req, err := http.NewRequestWithContext(ctx, "POST", webhookURL, strings.NewReader(string(data)))
+	if err != nil {
+		return false, fmt.Sprintf("failed to create request: %v", err)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
-	if err != nil { return false, err.Error() }
-	defer resp.Body.Close()
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 { return true, "" }
+	if err != nil {
+		return false, err.Error()
+	}
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
+	}
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return true, ""
+	}
 	return false, fmt.Sprintf("status %d", resp.StatusCode)
 }
 
