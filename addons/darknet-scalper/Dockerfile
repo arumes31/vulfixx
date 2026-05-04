@@ -1,6 +1,6 @@
 # Stage 1: Build the Go binary
 FROM golang:alpine AS builder
-RUN apk add --no-cache git build-base
+RUN apk add --no-cache git build-base tesseract-ocr-dev leptonica-dev
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
@@ -27,7 +27,7 @@ RUN apk add --no-cache \
     dumb-init \
     tesseract-ocr \
     tesseract-ocr-data-eng \
-    libtesseract-dev \
+    tesseract-ocr-dev \
     leptonica-dev
 
 # Create a non-root user
