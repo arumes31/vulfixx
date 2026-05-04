@@ -30,11 +30,10 @@ RUN apk add --no-cache \
 RUN adduser -D scalper
 
 WORKDIR /app
-COPY --from=builder /app/scalper .
+COPY --chown=scalper:scalper --from=builder /app/scalper .
 COPY --from=builder /go/bin/obfs4proxy /usr/bin/obfs4proxy
-COPY entrypoint.sh /entrypoint.sh
-RUN chown -R scalper:scalper /app /entrypoint.sh && \
-    chmod +x /entrypoint.sh /app/scalper
+COPY --chown=scalper:scalper entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh /app/scalper
 
 # Improvement 4: Persistence moved to PostgreSQL (stateless container)
 # RUN touch /app/darknet_intel.db && chown scalper:scalper /app/darknet_intel.db
