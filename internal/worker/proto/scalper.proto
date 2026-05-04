@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package scalper;
+
+option go_package = "cve-tracker/internal/worker/proto";
+
+service ScalperService {
+  rpc Scan(ScanRequest) returns (ScanResponse);
+  rpc Backfill(BackfillRequest) returns (BackfillResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+message ScanRequest {
+  string query = 1;
+  int32 depth = 2; // (18) Multi-depth crawling
+  bool force_refresh = 3;
+  int32 page_size = 4;
+  string page_token = 5;
+}
+
+message ScanResponse {
+  string query = 1;
+  int32 total_hits = 2;
+  repeated Hit hits = 3;
+  bool is_cached = 4;
+  string next_page_token = 5;
+}
+
+message Hit {
+  string title = 1;
+  string url = 2;
+  string engine = 3;
+  string snippet = 4;
+  string translation = 5;
+  string language = 6; // (23) Language detection
+  string source_link = 7;
+  bool is_honey_link = 8; // (97) Honey-link detection
+}
+
+message BackfillRequest {
+  repeated string cve_ids = 1;
+  int32 priority = 2; // (9) Priority-based queuing
+}
+
+message BackfillResponse {
+  string status = 1;
+  int32 queued_count = 2;
+}
+
+message HealthRequest {}
+message HealthResponse {
+  string status = 1;
+  float tor_latency_ms = 2;
+}

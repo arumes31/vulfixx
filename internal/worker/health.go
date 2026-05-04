@@ -3,7 +3,9 @@ package worker
 import (
 	"context"
 	"fmt"
+	"html/template"
 	"log"
+	"os"
 	"time"
 )
 
@@ -28,6 +30,7 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 	log.Println("Worker: Running self-health checks...")
 
 	tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync"}
+	w.checkNotificationHealth(ctx)
 	for _, task := range tasks {
 		var lastRun time.Time
 		err := w.Pool.QueryRow(ctx, "SELECT last_run FROM worker_sync_stats WHERE task_name = $1", task).Scan(&lastRun)
@@ -57,12 +60,53 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 				w.alertMu.Unlock()
 
 				if canAlert {
-					_ = w.Mailer.SendEmail(w.AdminEmail, "Vulfixx Health Alert", msg)
+					baseURL := os.Getenv("BASE_URL")
+					if baseURL == "" {
+						baseURL = "http://localhost:8080"
+						log.Printf("Worker Health ALERT: BASE_URL environment variable is unset. Falling back to %s (Environment: %s). Links in alerts may be broken.", baseURL, os.Getenv("GO_ENV")) // #nosec G706
+					}
+					content := fmt.Sprintf(`
+						<div style="background-color: #ff4d4d1a; padding: 20px; border-radius: 16px; border: 1px solid #ff4d4d33; color: #ff4d4d; margin-bottom: 20px;">
+							<strong>⚠️ Critical System Event</strong>
+						</div>
+						<p style="font-size: 16px; line-height: 1.6;">The following health event was detected in the Vulfixx environment:</p>
+						<div style="background-color: #1c2026; padding: 20px; border-radius: 16px; border: 1px solid #232931; font-family: monospace; font-size: 14px;">
+							%s
+						</div>
+						<div style="margin-top: 30px; text-align: center;">
+							<a href="%s/dashboard" class="btn">Access Command Center</a>
+						</div>
+					`, msg, baseURL)
+
+					body := WrapInModernLayout(EmailTemplateData{
+						Title: "Vulfixx Health Alert",
+						Body:  template.HTML(content), // #nosec G203
+					})
+					if err := w.Mailer.SendEmail(w.AdminEmail, "Vulfixx Health Alert", body); err != nil {
+						log.Printf("Worker: Failed to send health alert to %s: %v", w.AdminEmail, err)
+					}
 				}
 			}
 		}
 	}
 	w.updateTaskStats(ctx, "health_check")
+}
+
+func (w *Worker) checkNotificationHealth(ctx context.Context) {
+	var failureCount int
+	err := w.Pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM notification_delivery_logs 
+		WHERE status = 'failure' AND delivery_time > NOW() - INTERVAL '24 hours'
+	`).Scan(&failureCount)
+	
+	if err != nil {
+		log.Printf("Worker Health ERROR: notification health query failed: %v", err)
+		return
+	}
+	if failureCount > 0 {
+		log.Printf("Worker Health WARNING: %d notification delivery failures in the last 24 hours!", failureCount)
+		// Could send a consolidated alert here if failureCount > threshold
+	}
 }
 
 func (w *Worker) updateTaskStats(ctx context.Context, taskName string) {

@@ -124,7 +124,7 @@ func (a *App) CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.LogActivity(r.Context(), userID, "team_created", fmt.Sprintf("Created team %q", name), r.RemoteAddr, r.UserAgent())
+	a.LogActivity(r.Context(), userID, "team_created", fmt.Sprintf("Created team %q", name), a.GetClientIP(r), r.UserAgent())
 	a.SendResponse(w, r, true, "Team created successfully", "/teams", "")
 }
 
@@ -159,7 +159,7 @@ func (a *App) JoinTeamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if cmdTag.RowsAffected() > 0 {
-		a.LogActivity(r.Context(), userID, "team_joined", fmt.Sprintf("Joined team ID %d", teamID), r.RemoteAddr, r.UserAgent())
+		a.LogActivity(r.Context(), userID, "team_joined", fmt.Sprintf("Joined team ID %d", teamID), a.GetClientIP(r), r.UserAgent())
 		a.SendResponse(w, r, true, "Joined workspace successfully", "/teams", "")
 	} else {
 		a.SendResponse(w, r, true, "Already a member of this workspace", "/teams", "")
@@ -230,7 +230,7 @@ func (a *App) LeaveTeamHandler(w http.ResponseWriter, r *http.Request) {
 		_ = a.SetActiveTeamID(w, r, 0)
 	}
 
-	a.LogActivity(r.Context(), userID, "team_left", fmt.Sprintf("Left team ID %d", teamID), r.RemoteAddr, r.UserAgent())
+	a.LogActivity(r.Context(), userID, "team_left", fmt.Sprintf("Left team ID %d", teamID), a.GetClientIP(r), r.UserAgent())
 	a.SendResponse(w, r, true, "Left workspace", "/teams", "")
 }
 

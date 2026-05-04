@@ -19,9 +19,33 @@ tmp/
 # Coverage artifacts – never commit generated profiles
 coverage/
 coverage.*
+coverage.txt
 *.coverprofile
 *_cov
 *_coverage
 *_coverage.txt
 coverage_stats.txt
 **/coverage.out
+
+# Custom exclusions
+.swarm/
+scratch/
+covages
+# Narrowed documentation ignores
+vendor/**/*.md
+docs/**/*.md
+!README.md
+!CHANGELOG.md
+!LICENSE
+!CONTRIBUTING.md
+!requirements.txt
+coverage
+subagents.yaml
+data/
+*.db
+results/
+*.json
+!go.json
+!composer.json
+!package.json
+!package-lock.json

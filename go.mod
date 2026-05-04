@@ -3,6 +3,7 @@ module cve-tracker
 go 1.26.2
 
 require (
+	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/getsentry/sentry-go v0.46.1
 	github.com/gorilla/csrf v1.7.3
@@ -14,10 +15,13 @@ require (
 	github.com/redis/go-redis/v9 v9.19.0
 	golang.org/x/crypto v0.50.0
 	golang.org/x/time v0.15.0
+	google.golang.org/grpc v1.80.0
+	google.golang.org/protobuf v1.36.11
 	rsc.io/qr v0.2.0
 )
 
 require (
+	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/boombuler/barcode v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/gorilla/securecookie v1.1.2 // indirect
@@ -26,7 +30,9 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/yuin/gopher-lua v1.1.2 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
+	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260120221211-b8f7ae30c516 // indirect
 )

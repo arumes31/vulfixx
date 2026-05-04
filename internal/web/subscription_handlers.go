@@ -183,7 +183,7 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 			a.SendResponse(w, r, false, "", "", "Internal server error")
 			return
 		}
-		a.LogActivity(ctx, userID, "subscription_added", "Added keyword: "+jsonData.Keyword, r.RemoteAddr, r.UserAgent())
+		a.LogActivity(ctx, userID, "subscription_added", "Added keyword: "+jsonData.Keyword, a.GetClientIP(r), r.UserAgent())
 		a.SendResponse(w, r, true, "Telemetry monitor initialized", "/subscriptions", "")
 		return
 	}
@@ -210,7 +210,7 @@ func (a *App) DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) 
 		a.SendResponse(w, r, false, "", "", "Error deleting subscription")
 		return
 	}
-	a.LogActivity(r.Context(), userID, "subscription_deleted", "Deleted subscription ID: "+subIDStr, r.RemoteAddr, r.UserAgent())
+	a.LogActivity(r.Context(), userID, "subscription_deleted", "Deleted subscription ID: "+subIDStr, a.GetClientIP(r), r.UserAgent())
 	a.SendResponse(w, r, true, "Telemetry pipeline removed", "/subscriptions", "")
 }
 
@@ -354,7 +354,7 @@ func (a *App) HandleAlertAction(w http.ResponseWriter, r *http.Request) {
 		if err := a.Redis.Del(ctx, "alert_action:"+token).Err(); err != nil {
 			log.Printf("Error deleting alert action from redis: %v", err)
 		}
-		a.LogActivity(ctx, data.UserID, "remediation", fmt.Sprintf("Acknowledged CVE ID %d via email", data.CVEID), r.RemoteAddr, r.UserAgent())
+		a.LogActivity(ctx, data.UserID, "remediation", fmt.Sprintf("Acknowledged CVE ID %d via email", data.CVEID), a.GetClientIP(r), r.UserAgent())
 		a.RenderTemplate(w, r, "message.html", map[string]interface{}{
 			"Title":   "Alert Acknowledged",
 			"Message": "Vulnerability has been marked as 'In Progress'. View it in your dashboard for further analysis.",
@@ -373,7 +373,7 @@ func (a *App) HandleAlertAction(w http.ResponseWriter, r *http.Request) {
 		if err := a.Redis.Del(ctx, "alert_action:"+token).Err(); err != nil {
 			log.Printf("Error deleting alert action from redis: %v", err)
 		}
-		a.LogActivity(ctx, data.UserID, "alert_action", fmt.Sprintf("Muted keyword '%s' via email", data.Keyword), r.RemoteAddr, r.UserAgent())
+		a.LogActivity(ctx, data.UserID, "alert_action", fmt.Sprintf("Muted keyword '%s' via email", data.Keyword), a.GetClientIP(r), r.UserAgent())
 		a.RenderTemplate(w, r, "message.html", map[string]interface{}{
 			"Title":   "Keyword Muted",
 			"Message": fmt.Sprintf("You will no longer receive alerts for the keyword '%s'.", data.Keyword),

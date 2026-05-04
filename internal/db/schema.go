@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS users (
     onboarding_completed BOOLEAN DEFAULT FALSE,
     max_subscriptions INTEGER DEFAULT 5,
     max_assets INTEGER DEFAULT 10,
+    verification_resend_count INTEGER DEFAULT 0,
+    last_verification_resend_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -34,6 +36,7 @@ CREATE TABLE IF NOT EXISTS cves (
     cvss_score NUMERIC(4,1),
     vector_string TEXT,
     cisa_kev BOOLEAN DEFAULT FALSE,
+    exploit_available BOOLEAN DEFAULT FALSE,
     epss_score NUMERIC(6,5),
     cwe_id VARCHAR(50),
     cwe_name TEXT,
@@ -43,6 +46,8 @@ CREATE TABLE IF NOT EXISTS cves (
     greynoise_last_updated TIMESTAMP WITH TIME ZONE,
     osv_data JSONB DEFAULT '{}',
     osv_last_updated TIMESTAMP WITH TIME ZONE,
+    inthewild_data JSONB DEFAULT '{}',
+    inthewild_last_updated TIMESTAMP WITH TIME ZONE,
     osint_data JSONB DEFAULT '{}',
     published_date TIMESTAMP WITH TIME ZONE,
     updated_date TIMESTAMP WITH TIME ZONE,
@@ -51,9 +56,26 @@ CREATE TABLE IF NOT EXISTS cves (
     vendor VARCHAR(255),
     product VARCHAR(255),
     affected_products JSONB DEFAULT '[]',
+    darknet_mentions INTEGER DEFAULT 0,
+    darknet_last_seen TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS darknet_intel_hits (
+    id SERIAL PRIMARY KEY,
+    cve_id VARCHAR(50) NOT NULL,
+    engine VARCHAR(50),
+    title TEXT,
+    url TEXT UNIQUE, -- deduplication by URL (57)
+    snippet TEXT,
+    translation TEXT,
+    language VARCHAR(10), -- (23)
+    source_link TEXT,
+    is_honey_link BOOLEAN DEFAULT FALSE, -- (97)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_darknet_intel_hits_cve_id ON darknet_intel_hits(cve_id);
 
 CREATE TABLE IF NOT EXISTS sync_state (
     key VARCHAR(100) PRIMARY KEY,
@@ -100,11 +122,38 @@ CREATE TABLE IF NOT EXISTS user_subscriptions (
     keyword VARCHAR(255),
     min_severity NUMERIC(4,1),
     webhook_url TEXT,
+    slack_webhook_url TEXT,
+    teams_webhook_url TEXT,
     enable_email BOOLEAN DEFAULT TRUE,
     enable_webhook BOOLEAN DEFAULT TRUE,
+    enable_slack BOOLEAN DEFAULT FALSE,
+    enable_teams BOOLEAN DEFAULT FALSE,
+    enable_browser_push BOOLEAN DEFAULT FALSE,
     filter_logic TEXT DEFAULT '',
+    aggregation_mode VARCHAR(20) DEFAULT 'instant',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_user_subscriptions_user_xor_team CHECK ((user_id IS NULL) <> (team_id IS NULL))
+);
+
+CREATE TABLE IF NOT EXISTS notification_delivery_logs (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    subscription_id INTEGER REFERENCES user_subscriptions(id) ON DELETE CASCADE,
+    cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,
+    channel VARCHAR(20) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    error_message TEXT,
+    delivery_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS browser_push_subscriptions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    endpoint TEXT NOT NULL,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, endpoint)
 );
 
 CREATE TABLE IF NOT EXISTS user_cve_status (
@@ -211,6 +260,12 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'onboarding_completed') THEN
         ALTER TABLE users ADD COLUMN onboarding_completed BOOLEAN DEFAULT FALSE;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'verification_resend_count') THEN
+        ALTER TABLE users ADD COLUMN verification_resend_count INTEGER DEFAULT 0;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'last_verification_resend_at') THEN
+        ALTER TABLE users ADD COLUMN last_verification_resend_at TIMESTAMP WITH TIME ZONE;
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'teams' AND column_name = 'max_subscriptions') THEN
         ALTER TABLE teams ADD COLUMN max_subscriptions INTEGER DEFAULT 10;
     END IF;
@@ -247,6 +302,12 @@ BEGIN
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'updated_at') THEN
             ALTER TABLE cves ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'darknet_mentions') THEN
+            ALTER TABLE cves ADD COLUMN darknet_mentions INTEGER DEFAULT 0;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'darknet_last_seen') THEN
+            ALTER TABLE cves ADD COLUMN darknet_last_seen TIMESTAMP WITH TIME ZONE;
+        END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'vector_string') THEN
             ALTER TABLE cves ADD COLUMN vector_string TEXT;
         END IF;
@@ -273,6 +334,23 @@ BEGIN
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'greynoise_classification') THEN
             ALTER TABLE cves ADD COLUMN greynoise_classification VARCHAR(50);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'inthewild_data') THEN
+            ALTER TABLE cves ADD COLUMN inthewild_data JSONB DEFAULT '{}';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'inthewild_last_updated') THEN
+            ALTER TABLE cves ADD COLUMN inthewild_last_updated TIMESTAMP WITH TIME ZONE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'exploit_available') THEN
+            ALTER TABLE cves ADD COLUMN exploit_available BOOLEAN DEFAULT FALSE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'enable_slack') THEN
+            ALTER TABLE user_subscriptions ADD COLUMN enable_slack BOOLEAN DEFAULT FALSE;
+            ALTER TABLE user_subscriptions ADD COLUMN enable_teams BOOLEAN DEFAULT FALSE;
+            ALTER TABLE user_subscriptions ADD COLUMN enable_browser_push BOOLEAN DEFAULT FALSE;
+            ALTER TABLE user_subscriptions ADD COLUMN slack_webhook_url TEXT;
+            ALTER TABLE user_subscriptions ADD COLUMN teams_webhook_url TEXT;
+            ALTER TABLE user_subscriptions ADD COLUMN aggregation_mode VARCHAR(20) DEFAULT 'instant';
         END IF;
     END IF;
 

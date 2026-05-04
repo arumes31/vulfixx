@@ -11,11 +11,92 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/pashagolub/pgxmock/v3"
 	"github.com/redis/go-redis/v9"
 )
+
+func TestWorker_matchCVE(t *testing.T) {
+	cve := &models.CVE{
+		CVEID:       "CVE-123",
+		Description: "A test vulnerability",
+		CVSSScore:   5.0,
+	}
+
+	tests := []struct {
+		name string
+		sub  models.UserSubscription
+		want bool
+	}{
+		{"match_keyword", models.UserSubscription{Keyword: "test"}, true},
+		{"no_match_keyword", models.UserSubscription{Keyword: "foo"}, false},
+		{"match_severity", models.UserSubscription{MinSeverity: 4.0}, true},
+		{"no_match_severity", models.UserSubscription{MinSeverity: 6.0}, false},
+		{"complex_filter", models.UserSubscription{FilterLogic: "regex: test"}, true},
+		{"complex_filter_false", models.UserSubscription{FilterLogic: "regex: foo"}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := matchCVE(cve, tt.sub); got != tt.want {
+				t.Errorf("matchCVE() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWorker_processAlerts_Coverage(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create mock pool: %v", err)
+	}
+	defer mock.Close()
+	mock.MatchExpectationsInOrder(false)
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	w := NewWorker(mock, rdb, &EmailSenderMock{}, http.DefaultClient)
+
+	cve := models.CVE{CVEID: "CVE-TEST"}
+	data, _ := json.Marshal(cve)
+
+	// We expect evaluateSubscriptions to be called for the valid item, which does a query
+	mock.ExpectQuery("SELECT s.id, s.user_id").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"id", "user_id", "keyword", "min_severity", "webhook_url", "enable_email", "enable_webhook", "filter_logic", "email"}))
+	mock.ExpectQuery("SELECT ak.keyword, a.user_id").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"keyword", "user_id", "email", "name"}))
+
+	// Invalid JSON item first
+	rdb.LPush(context.Background(), "cve_alerts_queue", "{invalid")
+	// Valid item
+	rdb.LPush(context.Background(), "cve_alerts_queue", data)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		for {
+			llen, _ := rdb.LLen(context.Background(), "cve_alerts_queue").Result()
+			if llen == 0 {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	w.processAlerts(ctx)
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
 
 func TestWorkerAlert_EvaluateSubscriptions(t *testing.T) {
 	mock, err := db.SetupTestDB()
@@ -215,6 +296,27 @@ func TestWorkerAlert_ProcessUserBuffer(t *testing.T) {
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+	t.Run("JSON_Marshal_Error", func(t *testing.T) {
+		// Placeholder for testing marshaling errors if data becomes complex
+	})
+
+	t.Run("Redis_RPush_Error", func(t *testing.T) {
+		mr2, err := miniredis.Run()
+		if err != nil {
+			t.Fatalf("failed to start miniredis: %v", err)
+		}
+		rdb2 := redis.NewClient(&redis.Options{Addr: mr2.Addr()})
+		mr2.Close() // Force connection error
+		
+		w2 := &Worker{Redis: rdb2}
+		cve := &models.CVE{CVSSScore: 7.0}
+		sub := models.UserSubscription{}
+		
+		success := w2.bufferAlert(context.Background(), 1, cve, sub, "user@example.com", "Asset")
+		if success {
+			t.Errorf("expected bufferAlert to fail for redis error")
 		}
 	})
 }

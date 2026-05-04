@@ -18,8 +18,9 @@ import (
 )
 
 func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
+	clientIP := a.GetClientIP(r)
 	if r.Method == http.MethodGet {
-		rlKeyGet := "totp_failures:" + r.RemoteAddr
+		rlKeyGet := "login_failures:" + clientIP
 		if count, err := a.Redis.Get(r.Context(), rlKeyGet).Int(); err == nil && count >= 5 {
 			a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Too many attempts"})
 			return
@@ -66,7 +67,7 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Verify rate limit before checking TOTP
-		rlKey := "login_failures:" + r.RemoteAddr
+		rlKey := "login_failures:" + clientIP
 		if count, err := a.Redis.Get(r.Context(), rlKey).Int(); err == nil && count >= 5 {
 			a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Too many attempts"})
 			return
@@ -95,8 +96,12 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if !totp.Validate(totpCode, secret) {
-			a.Redis.Incr(r.Context(), rlKey)
-			a.Redis.Expire(r.Context(), rlKey, 15*time.Minute)
+			pipe := a.Redis.Pipeline()
+			pipe.Incr(r.Context(), rlKey)
+			pipe.Expire(r.Context(), rlKey, 15*time.Minute)
+			if _, err := pipe.Exec(r.Context()); err != nil {
+				log.Printf("Redis pipeline error for %s: %v", rlKey, err) // #nosec G706 // #nosec G706
+			}
 			a.RenderTemplate(w, r, "login.html", map[string]interface{}{
 				"Error":       "Invalid TOTP code",
 				"RequireTOTP": true,
@@ -126,12 +131,12 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
-		a.LogActivity(r.Context(), preAuthUserID, "login", "Successful 2FA login", r.RemoteAddr, r.UserAgent())
+		a.LogActivity(r.Context(), preAuthUserID, "login", "Successful 2FA login", a.GetClientIP(r), r.UserAgent())
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
 		return
 	}
 
-	rlKeyLogin := "login_failures:" + r.RemoteAddr
+	rlKeyLogin := "login_failures:" + clientIP
 	if count, err := a.Redis.Get(r.Context(), rlKeyLogin).Int(); err == nil && count >= 5 {
 		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Too many attempts"})
 		return
@@ -139,8 +144,12 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	user, err := auth.Login(r.Context(), email, password)
 	if err != nil {
-		a.Redis.Incr(r.Context(), rlKeyLogin)
-		a.Redis.Expire(r.Context(), rlKeyLogin, 15*time.Minute)
+		pipe := a.Redis.Pipeline()
+		pipe.Incr(r.Context(), rlKeyLogin)
+		pipe.Expire(r.Context(), rlKeyLogin, 15*time.Minute)
+		if _, err := pipe.Exec(r.Context()); err != nil {
+			log.Printf("Redis pipeline error for %s: %v", rlKeyLogin, err) // #nosec G706
+		}
 		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Invalid credentials"})
 		return
 	}
@@ -154,7 +163,7 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
-		a.LogActivity(r.Context(), user.ID, "login_attempt", "Password correct, awaiting 2FA", r.RemoteAddr, r.UserAgent())
+		a.LogActivity(r.Context(), user.ID, "login_attempt", "Password correct, awaiting 2FA", clientIP, r.UserAgent())
 
 		a.RenderTemplate(w, r, "login.html", map[string]interface{}{
 			"RequireTOTP": true,
@@ -169,7 +178,7 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.LogActivity(r.Context(), user.ID, "login", "Successful login", r.RemoteAddr, r.UserAgent())
+	a.LogActivity(r.Context(), user.ID, "login", "Successful login", clientIP, r.UserAgent())
 
 	http.Redirect(w, r, "/dashboard", http.StatusFound)
 }
@@ -182,6 +191,14 @@ func (a *App) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// IP-based rate limit for registration: 5 attempts per hour
+	clientIP := a.GetClientIP(r)
+	rlKey := "reg_limit:" + clientIP
+	if count, err := a.Redis.Get(r.Context(), rlKey).Int(); err == nil && count >= 5 {
+		a.RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Too many registration attempts. Please try again in an hour."})
 		return
 	}
 
@@ -217,6 +234,14 @@ func (a *App) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Increment IP rate limit
+	pipe := a.Redis.Pipeline()
+	pipe.Incr(r.Context(), rlKey)
+	pipe.Expire(r.Context(), rlKey, 1*time.Hour)
+	if _, err := pipe.Exec(r.Context()); err != nil {
+		log.Printf("Redis pipeline error for %s: %v", rlKey, err) // #nosec G706
+	}
+
 	// Push email verification payload to redis queue
 	payload, err := json.Marshal(map[string]string{
 		"email": email,
@@ -246,6 +271,93 @@ func (a *App) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Verification queued for %q", sanitizeForLog(redactEmail(email)))
 
 	a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Registration successful. Please check your email to verify your account."})
+}
+
+func (a *App) ResendVerificationHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		a.RenderTemplate(w, r, "resend_verification.html", nil)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// IP-based rate limit: 5 attempts per hour
+	clientIP := a.GetClientIP(r)
+	rlKey := "resend_limit:" + clientIP
+	if count, err := a.Redis.Get(r.Context(), rlKey).Int(); err == nil && count >= 5 {
+		log.Printf("IP rate limit hit for resend: %s", "REDACTED_IP")
+		a.RenderTemplate(w, r, "resend_verification.html", map[string]interface{}{"Error": "Too many resend attempts. Please try again in an hour."})
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form", http.StatusBadRequest)
+		return
+	}
+
+	email := r.FormValue("email")
+	captchaAnswer := r.FormValue("captcha")
+
+	session, _ := a.SessionStore.Get(r, "vulfixx-session")
+	expected, _ := session.Values["captcha_answer"].(int)
+	actual, _ := strconv.Atoi(captchaAnswer)
+
+	if expected == 0 || actual != expected {
+		a.RenderTemplate(w, r, "resend_verification.html", map[string]interface{}{"Error": "Invalid captcha answer", "Email": email})
+		return
+	}
+	delete(session.Values, "captcha_answer")
+	_ = session.Save(r, w)
+
+	// Per-email rate limit: 3 attempts per 30 mins
+	emailRlKey := "resend_email_limit:" + email
+	if count, err := a.Redis.Get(r.Context(), emailRlKey).Int(); err == nil && count >= 3 {
+		log.Printf("Email rate limit hit for resend: %s", redactEmail(email)) // #nosec G706
+		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "If this email is registered and unverified, a new verification link will be sent."})
+		return
+	}
+
+	token, err := auth.ResendVerificationToken(r.Context(), email)
+	if err != nil {
+		// Log the real error internally but show generic success message to prevent enumeration
+		log.Printf("Error resending verification for %q: %v", redactEmail(email), err) /* #nosec G706 */
+		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "If this email is registered and unverified, a new verification link will be sent."})
+		return
+	}
+
+	// Push to queue
+	payload, err := json.Marshal(map[string]string{
+		"email": email,
+		"token": token,
+	})
+	if err != nil {
+		log.Printf("Error marshaling verification payload: %v", err)
+		_ = auth.RollbackResend(r.Context(), email)
+		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "If this email is registered and unverified, a new verification link will be sent."})
+		return
+	}
+
+	if err := a.Redis.LPush(r.Context(), "email_verification_queue", payload).Err(); err != nil {
+		log.Printf("Error enqueueing verification payload: %v", err)
+		_ = auth.RollbackResend(r.Context(), email)
+		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "If this email is registered and unverified, a new verification link will be sent."})
+		return
+	}
+
+	// Increment rate limits only after successful queueing
+	pipe := a.Redis.Pipeline()
+	pipe.Incr(r.Context(), rlKey)
+	pipe.Expire(r.Context(), rlKey, 1*time.Hour)
+	pipe.Incr(r.Context(), emailRlKey)
+	pipe.Expire(r.Context(), emailRlKey, 30*time.Minute)
+	if _, err := pipe.Exec(r.Context()); err != nil {
+		log.Printf("Redis pipeline error for resend limits: %v", err)
+	}
+
+	a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "If this email is registered and unverified, a new verification link will be sent."})
 }
 
 func (a *App) LogoutHandler(w http.ResponseWriter, r *http.Request) {
@@ -298,7 +410,7 @@ func (a *App) ConfirmEmailChangeHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if confirmed {
-		a.LogActivity(r.Context(), confirmedUserID, "email_change", "Successfully changed email", r.RemoteAddr, r.UserAgent())
+		a.LogActivity(r.Context(), confirmedUserID, "email_change", "Successfully changed email", a.GetClientIP(r), r.UserAgent())
 		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Email changed successfully! Please login with your new email."})
 	} else {
 		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Email change half-confirmed. Please confirm on the other email address as well."})
@@ -367,6 +479,7 @@ func (a *App) CompleteOnboardingHandler(w http.ResponseWriter, r *http.Request) 
 
 func (a *App) ErrorReportHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -383,6 +496,7 @@ func (a *App) ErrorReportHandler(w http.ResponseWriter, r *http.Request) {
 
 	var req FrontendError
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 

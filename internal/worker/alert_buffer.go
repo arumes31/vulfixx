@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"html/template"
 	"log"
 	"net/url"
 	"os"
@@ -18,9 +19,8 @@ var (
 )
 
 func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, sub models.UserSubscription, email, assetName string) bool {
-	// Severity-Based Routing:
-	// Critical (>= 9.0) gets immediate delivery.
-	if cve.CVSSScore >= 9.0 {
+	// Mode-Based Routing:
+	if sub.AggregationMode == "instant" || sub.AggregationMode == "" || cve.CVSSScore >= 9.0 {
 		return w.sendAlert(sub, cve, email, assetName)
 	}
 
@@ -43,8 +43,16 @@ func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, s
 	}
 
 	processingKey := fmt.Sprintf("alert_processing:%d", userID)
+	bufferTime := bufferTimeStandard
+	if sub.AggregationMode == "hourly" {
+		bufferTime = 1 * time.Hour
+	} else if sub.AggregationMode == "daily" {
+		bufferTime = 24 * time.Hour
+	} else if cve.CVSSScore >= 7.0 {
+		bufferTime = bufferTimeHigh
+	}
 	// Lock TTL = buffer time + processing buffer
-	set, err := w.Redis.SetNX(ctx, processingKey, "true", bufferTimeStandard+10*time.Minute).Result()
+	set, err := w.Redis.SetNX(ctx, processingKey, "true", bufferTime+10*time.Minute).Result()
 	if err != nil {
 		log.Printf("Error setting alert processing lock for key %s: %v", processingKey, err)
 		// Rollback the pushed alert
@@ -54,10 +62,6 @@ func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, s
 		return false
 	}
 	if set {
-		bufferTime := bufferTimeStandard
-		if cve.CVSSScore >= 7.0 {
-			bufferTime = bufferTimeHigh
-		}
 		/* #nosec G118 */
 		go func(bTime time.Duration, pKey string, uid int) {
 			bgCtx := context.Background()
@@ -149,9 +153,8 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 		} else if r, ok := data.CVE.OSINTData["reddit"].([]interface{}); ok && len(r) > 0 {
 			hasOSINT = true
 		}
-		// Also invoke webhook for each item individually since it's a digest
-		cveCopy := data.CVE
-		w.sendAlert(data.Sub, &cveCopy, data.Email, data.AssetName)
+		// In digest mode, we skip individual webhooks/slack/teams calls here
+		// to avoid flooding. We will send a consolidated digest instead.
 
 		items = append(items, AlertItem{
 			CVEID:     data.CVE.CVEID,
@@ -159,7 +162,7 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 			AssetName: data.AssetName,
 			Buzz:      data.CVE.GitHubPoCCount,
 			HasOSINT:  hasOSINT,
-			CVE:       &cveCopy,
+			CVE:       &data.CVE,
 		})
 	}
 	rowsHTML := ""
@@ -206,22 +209,31 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 		baseURLStr = parsedBase.String()
 	}
 
-	body := fmt.Sprintf(`
-		<div style="font-family: 'Inter', sans-serif; max-width: 600px; margin: auto; background: #101418; color: #dfe2eb; padding: 40px; border-radius: 12px; border: 1px solid #232931;">
-			<h2 style="color: #00daf3; margin-top: 0;">Intelligence Brief: %d New Threats</h2>
-			<table style="width: 100%%; border-collapse: collapse; margin-bottom: 30px;">
+	content := fmt.Sprintf(`
+		<p>Our threat monitoring systems have detected <strong>%d new vulnerabilities</strong> matching your intelligence profiles.</p>
+		
+		<div style="margin: 30px 0;">
+			<table width="100%%" style="border-collapse: collapse; background-color: #1c2026; border-radius: 16px; border: 1px solid #232931; overflow: hidden;">
 				<thead>
-					<tr style="font-size: 11px; text-transform: uppercase; opacity: 0.5; text-align: left;">
-						<th style="padding: 10px 15px;">Vulnerability</th>
-						<th style="padding: 10px 15px; text-align: center;">Buzz</th>
-						<th style="padding: 10px 15px; text-align: right;">CVSS</th>
+					<tr style="background-color: #232931; color: #ffffff; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;">
+						<th style="padding: 15px; text-align: left;">CVE ID</th>
+						<th style="padding: 15px; text-align: center;">Status</th>
+						<th style="padding: 15px; text-align: right;">CVSS</th>
 					</tr>
 				</thead>
 				<tbody>%s</tbody>
 			</table>
-			<a href="%s/dashboard" style="display: block; width: 100%%; background: #00daf3; color: #101418; text-align: center; padding: 15px 0; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 14px; text-transform: uppercase;">Review All Threats</a>
+		</div>
+
+		<div style="text-align: center; margin-top: 30px;">
+			<a href="%s/dashboard" class="btn">Analyze All Threats</a>
 		</div>
 	`, len(items), rowsHTML, baseURLStr)
+
+	body := WrapInModernLayout(EmailTemplateData{
+		Title: fmt.Sprintf("Intelligence Brief: %d New Threats", len(items)),
+		Body:  template.HTML(content), // #nosec G203
+	})
 
 	if len(uniqueEmails) == 0 {
 		log.Printf("Error: No recipient email found for user %d digest", userID)
@@ -230,7 +242,47 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 
 	for email := range uniqueEmails {
 		if err := w.Mailer.SendEmail(email, "Threat Brief: Multiple Vulnerabilities Detected", body); err != nil {
-			log.Printf("Failed to send threat brief to %s: %v", maskEmail(email), err)
+			log.Printf("Failed to send threat brief to %s: %v", redactEmail(email), err)
+			w.logDelivery(userID, 0, 0, "email", false, err.Error())
+		} else {
+			w.logDelivery(userID, 0, 0, "email", true, "")
+		}
+	}
+
+	// Also send consolidated alerts to other channels if enabled
+	if len(blobs) > 1 {
+		type SlackTarget struct {
+			URL   string
+			SubID int
+		}
+		slackTargets := make(map[string]SlackTarget)
+
+		for _, b := range blobs {
+			var data alertData
+			if err := json.Unmarshal([]byte(b), &data); err != nil {
+				log.Printf("Error unmarshaling alert blob for Slack digest: %v", err)
+				w.logDelivery(userID, 0, 0, "slack", false, err.Error())
+				continue
+			}
+			if data.Sub.EnableSlack && data.Sub.SlackWebhookURL != "" {
+				slackTargets[data.Sub.SlackWebhookURL] = SlackTarget{URL: data.Sub.SlackWebhookURL, SubID: data.Sub.ID}
+			}
+		}
+
+		for _, target := range slackTargets {
+			msg := fmt.Sprintf("🛡️ *Intelligence Brief: %d New Threats Detected*\n\n", len(items))
+			for _, it := range items {
+				if it.AssetName != "" {
+					msg += fmt.Sprintf("• *%s* (CVSS: %.1f) - %s\n", it.CVEID, it.Score, it.AssetName)
+				} else {
+					msg += fmt.Sprintf("• *%s* (CVSS: %.1f)\n", it.CVEID, it.Score)
+				}
+			}
+			msg += fmt.Sprintf("\n<%s/dashboard|Analyze in Command Console>", baseURLStr)
+			
+			payload := map[string]interface{}{"text": msg}
+			success, errMsg := w.postJSON(target.URL, payload)
+			w.logDelivery(userID, target.SubID, 0, "slack", success, errMsg)
 		}
 	}
 }

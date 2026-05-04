@@ -43,6 +43,12 @@ func TestWorkerSync_NVD(t *testing.T) {
 						}{
 							{Lang: "en", Value: "Test vulnerability"},
 						},
+						References: []struct {
+							URL  string   `json:"url"`
+							Tags []string `json:"tags"`
+						}{
+							{URL: "https://www.exploit-db.com/exploits/123", Tags: []string{"Exploit"}},
+						},
 						Metrics: struct {
 							CvssMetricV31 []struct {
 								CvssData struct {
@@ -102,7 +108,7 @@ func TestWorkerSync_NVD(t *testing.T) {
 			WillReturnError(pgx.ErrNoRows)
 
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO cves")).
-			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 7.5, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 7.5, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), true).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO sync_state")).

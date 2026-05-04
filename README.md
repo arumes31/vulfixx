@@ -20,7 +20,7 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 - **Dynamic Resource Quotas**: Tiered limits for subscriptions and assets per user/team to optimize performance and resource utilization.
 - **Audit Logs for Remediation**: Comprehensive chronological tracking of all vulnerability status changes and manual acknowledgments.
 - **Community OSINT Intelligence**: Automated discovery of technical discussions on Hacker News and Reddit for every threat with **Social Sentiment Heat Scores**.
-- **Vendor Advisory Aggregator**: Intelligent classification and deep-linking to official security bulletins from Microsoft, Cisco, Ubuntu, Red Hat, and more.
+- **Zero-Bloat Vendor Advisories**: Enhanced multi-format synchronization (RSS 1.0, 2.0, and Atom) for official bulletins from CISA, Microsoft, Cisco, Ubuntu, Red Hat, and more, with a strict "matched-only" policy to prevent data bloat.
 - **Social Buzz & Threat Trending**: GitHub-integrated "Buzz" meter that tracks community interest and public PoC presence.
 - **EPSS Integration**: Exploit Prediction Scoring System (EPSS) integration for probability-based risk assessment.
 - **Smart Alert Batching**: Redis-backed intelligence buffering that groups related threats into unified reports.
@@ -73,6 +73,7 @@ The application follows a modular architecture designed to prevent monolithic fi
 - **`sync_nvd.go`**: NVD CVE data synchronization with incremental backoff.
 - **`sync_github.go`**: GitHub Social Buzz and PoC discovery tracking.
 - **`sync_cisa.go`**: Automated CISA KEV catalog synchronization.
+- **`sync_advisory_rss.go`**: Generalized multi-format synchronization (RSS 1.0, 2.0, and Atom) for official bulletins from CISA, Microsoft, AWS, VMware, Oracle, GitHub, CERT-EU, FortiGuard, Cisco, Red Hat, Ubuntu, and ZDI. Implements a **"matched-only" policy** via `processAdvisoryFeed` (must contain valid CVE-ID) and `integrateAdvisoryCVE` (only syncs if the CVE already exists in the database) to prevent data bloat.
 - **`sync_epss.go`**: Probability-based risk scoring (FIRST EPSS).
 - **`cron_worker.go`**: Scheduled tasks (Weekly summaries).
 
@@ -143,6 +144,34 @@ The application follows a modular architecture designed to prevent monolithic fi
 | `ADMIN_TOTP_SECRET`| Seed administrator TOTP secret (base32) | `YOUR_SECRET` |
 | `NVD_API_KEY`| NIST NVD API Key (for higher rate limits) | `(empty)` |
 | `NVD_API_URL`| Custom NVD API endpoint (optional) | `https://...` |
+
+### Darknet Scalper Configuration
+
+The Darknet Scalper addon can be customized using the following environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PORT` | gRPC Server port | `9090` |
+| `DATABASE_URL` | PostgreSQL connection string | `(empty)` |
+| `REDIS_URL` | Redis connection URL | `(empty)` |
+| `SCALPER_TOR_PROXY` | Tor SOCKS5/HTTP proxy URL | `socks5://localhost:9050` |
+| `SCALPER_USER_AGENTS` | Comma-separated list of User-Agents | (Static list) |
+| `SCALPER_AHMIA_URL` | Ahmia search base URL | `https://ahmia.fi/search/?q=` |
+| `SCALPER_AHMIA_SLEEP` | Sleep duration after navigation | `5s` |
+| `SCALPER_AHMIA_TIMEOUT` | Overall search timeout | `30s` |
+| `SCALPER_WORKER_POP_TIMEOUT`| Redis BLPop timeout | `5s` |
+| `SCALPER_REDLOCK_EXPIRY` | Redlock lock duration | `10m` |
+| `SCALPER_REDLOCK_EXTEND` | Redlock extension interval | `3m` |
+| `SCALPER_RETRY_INTERVAL` | Worker retry delay on error | `1s` |
+| `SCALPER_DEFAULT_DEPTH` | Default crawl depth for workers | `2` |
+| `SCALPER_ENRICH_TIMEOUT` | Enrichment HTTP request timeout | `30s` |
+| `SCALPER_ENRICH_SNIPPET_LEN`| Maximum length of hit snippets | `500` |
+| `SCALPER_ENRICH_MAX_LINKS` | Max links to enrich per search result | `3` |
+| `SCALPER_DOWNLOAD_MAX_SIZE` | Max file download size in bytes | `10485760` |
+| `SCALPER_DOWNLOAD_TIMEOUT` | File download HTTP timeout | `20s` |
+| `SCALPER_LATENCY_TIMEOUT` | Tor latency check timeout | `5s` |
+| `SCALPER_HONEY_LURES` | Comma-separated list of honey-link lures| (Static list) |
+| `SCALPER_ENABLE_OCR` | Enable/disable OCR processing of images | `true` |
 
 > **Security Warning:** The default seed values for `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and `ADMIN_TOTP_SECRET` are insecure and must be changed before deploying to production. Please generate a strong password and a unique base32 TOTP secret. It is highly recommended to rotate the seeded admin credentials and remove defaults from any production configuration.
 

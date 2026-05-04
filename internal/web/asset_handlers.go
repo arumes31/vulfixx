@@ -201,7 +201,7 @@ func (a *App) AssetsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		a.LogActivity(ctx, userID, "asset_registered", fmt.Sprintf("Registered asset %q", name), r.RemoteAddr, r.UserAgent())
+		a.LogActivity(ctx, userID, "asset_registered", fmt.Sprintf("Registered asset %q", name), a.GetClientIP(r), r.UserAgent())
 		a.SendResponse(w, r, true, "Asset registered successfully", "/assets", "")
 		return
 	}
@@ -235,6 +235,6 @@ func (a *App) DeleteAssetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.LogActivity(r.Context(), userID, "asset_deleted", fmt.Sprintf("Deleted asset ID %d", assetID), r.RemoteAddr, r.UserAgent())
+	a.LogActivity(r.Context(), userID, "asset_deleted", fmt.Sprintf("Deleted asset ID %d", assetID), a.GetClientIP(r), r.UserAgent())
 	a.SendResponse(w, r, true, "Asset removed successfully", "/assets", "")
 }

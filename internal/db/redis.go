@@ -9,6 +9,7 @@ import (
 
 type RedisProvider interface {
 	redis.Cmdable
+	Pipeline() redis.Pipeliner
 	Close() error
 }
 

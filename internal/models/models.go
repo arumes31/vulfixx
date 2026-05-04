@@ -39,6 +39,9 @@ type CVE struct {
 	OSINTData      JSONBMap               `json:"osint_data"`
 	OSVLastUpdated *time.Time             `json:"osv_last_updated,omitempty"`
 	GreyNoiseLastUpdated *time.Time       `json:"greynoise_last_updated,omitempty"`
+	InTheWildData        JSONBMap               `json:"inthewild_data"`
+	InTheWildLastUpdated *time.Time             `json:"inthewild_last_updated,omitempty"`
+	ExploitAvailable     bool                   `json:"exploit_available"`
 	Status         string                 `json:"status"`
 	Notes          string                 `json:"notes"`
 	References     []string               `json:"references"`
@@ -46,9 +49,45 @@ type CVE struct {
 	Vendor         string                 `json:"vendor"`
 	Product        string                 `json:"product"`
 	AffectedProducts AffectedProducts     `json:"affected_products"`
+	DarknetMentions  int                    `json:"darknet_mentions"`
+	DarknetLastSeen  *time.Time             `json:"darknet_last_seen,omitempty"`
+	DarknetHits      DarknetHits            `json:"darknet_hits,omitempty"`
 	PublishedDate  time.Time              `json:"published_date"`
 	UpdatedDate    time.Time              `json:"updated_date"`
 	CreatedAt      time.Time              `json:"created_at"`
+}
+
+type DarknetHit struct {
+	Title       string    `json:"title"`
+	URL         string    `json:"url"`
+	Engine      string    `json:"engine"`
+	Snippet     string    `json:"snippet"`
+	Language    string    `json:"language"`
+	IsHoneyLink bool      `json:"is_honey_link"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type DarknetHits []DarknetHit
+
+// Scan implements the sql.Scanner interface for JSONB.
+func (d *DarknetHits) Scan(value interface{}) error {
+	if value == nil {
+		*d = nil
+		return nil
+	}
+	b, ok := value.([]byte)
+	if !ok {
+		return fmt.Errorf("type assertion to []byte failed")
+	}
+	return json.Unmarshal(b, d)
+}
+
+// Value implements the driver.Valuer interface for JSONB.
+func (d DarknetHits) Value() (driver.Value, error) {
+	if d == nil {
+		return nil, nil
+	}
+	return json.Marshal(d)
 }
 
 type CVEConfigurations []CVEConfiguration
@@ -359,16 +398,42 @@ type TeamMember struct {
 }
 
 type UserSubscription struct {
-	ID            int       `json:"id"`
-	UserID        int       `json:"user_id"`
-	TeamID        *int      `json:"team_id"`
-	Keyword       string    `json:"keyword"`
-	MinSeverity   float64   `json:"min_severity"`
-	WebhookURL    string    `json:"webhook_url"`
-	EnableEmail   bool      `json:"enable_email"`
-	EnableWebhook bool      `json:"enable_webhook"`
-	FilterLogic   string    `json:"filter_logic"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID                int       `json:"id"`
+	UserID            int       `json:"user_id"`
+	TeamID            *int      `json:"team_id"`
+	Keyword           string    `json:"keyword"`
+	MinSeverity       float64   `json:"min_severity"`
+	WebhookURL        string    `json:"-"`
+	SlackWebhookURL   string    `json:"-"`
+	TeamsWebhookURL   string    `json:"-"`
+	EnableEmail       bool      `json:"enable_email"`
+	EnableWebhook     bool      `json:"enable_webhook"`
+	EnableSlack       bool      `json:"enable_slack"`
+	EnableTeams       bool      `json:"enable_teams"`
+	EnableBrowserPush bool      `json:"enable_browser_push"`
+	FilterLogic       string    `json:"filter_logic"`
+	AggregationMode   string    `json:"aggregation_mode"` // instant, hourly, daily
+	CreatedAt         time.Time `json:"created_at"`
+}
+
+type BrowserPushSubscription struct {
+	ID        int       `json:"id"`
+	UserID    int       `json:"user_id"`
+	Endpoint  string    `json:"endpoint"`
+	P256dh    string    `json:"p256dh"`
+	Auth      string    `json:"auth"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type NotificationDeliveryLog struct {
+	ID             int       `json:"id"`
+	UserID         int       `json:"user_id"`
+	SubscriptionID int       `json:"subscription_id"`
+	CVEID          int       `json:"cve_id"`
+	Channel        string    `json:"channel"` // email, webhook, slack, teams, browser
+	Status         string    `json:"status"`  // success, failure
+	ErrorMessage   string    `json:"error_message"`
+	DeliveryTime   time.Time `json:"delivery_time"`
 }
 
 type UserCVEStatus struct {

@@ -11,6 +11,7 @@ import (
 
 	"log"
 	"strings"
+	"time"
 
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
@@ -87,6 +88,81 @@ func VerifyEmail(ctx context.Context, token string) error {
 		return errors.New("invalid or expired token")
 	}
 	return nil
+}
+
+func ResendVerificationToken(ctx context.Context, email string) (string, error) {
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var userID int
+	var isVerified bool
+	var resendCount int
+	var lastResend *time.Time
+
+	genericMsg := "If this email is registered and unverified, a new verification link will be sent."
+
+	err = tx.QueryRow(ctx, "SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at FROM users WHERE email = $1 FOR UPDATE", email).
+		Scan(&userID, &isVerified, &resendCount, &lastResend)
+	if err != nil {
+		return "", errors.New(genericMsg)
+	}
+
+	if isVerified {
+		return "", errors.New(genericMsg)
+	}
+
+	if lastResend != nil {
+		// Progressive backoff: 10m + (count * 20m)
+		waitTime := 10*time.Minute + time.Duration(resendCount)*20*time.Minute
+		if time.Since(*lastResend) < waitTime {
+			return "", errors.New(genericMsg)
+		}
+	}
+
+	newToken, err := GenerateToken()
+	if err != nil {
+		log.Printf("Error generating token for resend (email: %s): %v", maskEmail(email), err)
+		return "", errors.New(genericMsg)
+	}
+
+	_, err = tx.Exec(ctx, `
+		UPDATE users 
+		SET email_verify_token = $1, 
+		    verification_resend_count = verification_resend_count + 1, 
+		    last_verification_resend_at = CURRENT_TIMESTAMP 
+		WHERE id = $2
+	`, newToken, userID)
+	if err != nil {
+		log.Printf("Error updating verification token for user %s: %v", maskEmail(email), err)
+		return "", errors.New(genericMsg)
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		log.Printf("Error committing resend transaction for user %s: %v", maskEmail(email), err)
+		return "", errors.New(genericMsg)
+	}
+
+	return newToken, nil
+}
+
+func RollbackResend(ctx context.Context, email string) error {
+	_, err := db.Pool.Exec(ctx, `
+		UPDATE users 
+		SET verification_resend_count = GREATEST(0, verification_resend_count - 1)
+		WHERE email = $1 AND is_email_verified = FALSE
+	`, email)
+	return err
+}
+
+func maskEmail(email string) string {
+	at := strings.Index(email, "@")
+	if at <= 1 {
+		return email
+	}
+	return email[:1] + "***" + email[at:]
 }
 
 func Login(ctx context.Context, email, password string) (*models.User, error) {

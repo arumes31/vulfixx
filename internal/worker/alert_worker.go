@@ -75,7 +75,7 @@ func isQuantifier(op syntax.Op) bool {
 
 func (w *Worker) processAlerts(ctx context.Context) {
 	for {
-		result, err := w.Redis.BRPop(ctx, 0, "cve_alerts_queue").Result()
+		result, err := w.Redis.BRPop(ctx, 1*time.Second, "cve_alerts_queue").Result()
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -95,7 +95,9 @@ func (w *Worker) processAlerts(ctx context.Context) {
 
 func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 	rows, err := w.Pool.Query(ctx, `
-		SELECT s.id, s.user_id, s.keyword, s.min_severity, s.webhook_url, s.enable_email, s.enable_webhook, s.filter_logic, u.email
+		SELECT s.id, s.user_id, s.keyword, s.min_severity, s.webhook_url, s.slack_webhook_url, s.teams_webhook_url, 
+		       s.enable_email, s.enable_webhook, s.enable_slack, s.enable_teams, s.enable_browser_push,
+		       s.filter_logic, s.aggregation_mode, u.email
 		FROM user_subscriptions s
 		JOIN users u ON s.user_id = u.id
 		WHERE u.is_email_verified = TRUE
@@ -112,10 +114,16 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 	for rows.Next() {
 		var sub models.UserSubscription
 		var email string
-		if err := rows.Scan(&sub.ID, &sub.UserID, &sub.Keyword, &sub.MinSeverity, &sub.WebhookURL, &sub.EnableEmail, &sub.EnableWebhook, &sub.FilterLogic, &email); err != nil {
+		var slackURL, teamsURL string
+		if err := rows.Scan(&sub.ID, &sub.UserID, &sub.Keyword, &sub.MinSeverity, 
+			&sub.WebhookURL, &slackURL, &teamsURL,
+			&sub.EnableEmail, &sub.EnableWebhook, &sub.EnableSlack, &sub.EnableTeams, &sub.EnableBrowserPush,
+			&sub.FilterLogic, &sub.AggregationMode, &email); err != nil {
 			log.Printf("Error scanning subscription row: %v", err)
 			continue
 		}
+		sub.SlackWebhookURL = models.DecryptWebhook(slackURL)
+		sub.TeamsWebhookURL = models.DecryptWebhook(teamsURL)
 		if matchCVE(cve, sub) {
 			if w.notifyIfNew(ctx, sub.UserID, cve, sub, email, "") {
 				notifiedUsers[sub.UserID] = true
@@ -252,6 +260,19 @@ func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, s
 		return false
 	}
 
+	// 21. Alert Flood Protection (Rate limiting per user/hour)
+	floodKey := fmt.Sprintf("flood_protection:%d", userID)
+	count, _ := w.Redis.Incr(ctx, floodKey).Result()
+	if count == 1 {
+		w.Redis.Expire(ctx, floodKey, 1*time.Hour)
+	}
+	if count > 50 { // Max 50 alerts per hour
+		if count == 51 {
+			log.Printf("Flood Protection: Throttling alerts for user %d", userID)
+		}
+		return false
+	}
+
 	// Ensure we have full details if the job only provided minimal data
 	// If the job unmarshaled from Redis has CVEID, we assume it's full.
 	if cve.CVEID == "" {
@@ -260,6 +281,7 @@ func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, s
 			FROM cves WHERE id = $1
 		`, cve.ID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.VectorString, &cve.CISAKEV, &cve.EPSSScore, &cve.CWEID, &cve.GitHubPoCCount, &cve.PublishedDate, &cve.References)
 		if err != nil {
+			w.Redis.Decr(ctx, floodKey)
 			log.Printf("Failed to fetch full CVE details for alert: %v", err)
 			return false
 		}
@@ -268,6 +290,7 @@ func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, s
 	cve.OSINTData = w.fetchOSINTLinks(ctx, cve.CVEID)
 
 	if !w.bufferAlert(ctx, userID, cve, sub, email, assetName) {
+		w.Redis.Decr(ctx, floodKey)
 		return false
 	}
 

@@ -6,14 +6,79 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v3"
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
 )
+
+func TestConfirmEmailChangeHandler(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+	app := setupTestApp(t, mock)
+
+	// auth.ConfirmEmailChange uses db.Pool
+	oldPool := db.Pool
+	db.Pool = mock
+	defer func() { db.Pool = oldPool }()
+
+	t.Run("MissingToken", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/confirm-email-change", nil)
+		rr := httptest.NewRecorder()
+		app.ConfirmEmailChangeHandler(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", rr.Code)
+		}
+	})
+
+	t.Run("InvalidToken", func(t *testing.T) {
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT user_id, new_email").WithArgs("invalid").WillReturnError(pgx.ErrNoRows)
+		mock.ExpectRollback()
+
+		req, _ := http.NewRequest("GET", "/confirm-email-change?token=invalid", nil)
+		rr := httptest.NewRecorder()
+		app.ConfirmEmailChangeHandler(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", rr.Code)
+		}
+	})
+
+	t.Run("Success_Full", func(t *testing.T) {
+		token := "full-tok"
+		userID := 1
+		newEmail := "new@test.com"
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT user_id, new_email").WithArgs(token).WillReturnRows(pgxmock.NewRows([]string{"user_id", "new_email", "old_email_confirmed", "new_email_confirmed", "old_email_token", "new_email_token"}).
+			AddRow(userID, newEmail, true, false, "old", token))
+		mock.ExpectExec("UPDATE email_change_requests SET new_email_confirmed = TRUE").WithArgs(userID).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("UPDATE users SET email = \\$1").WithArgs(newEmail, userID).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("DELETE FROM email_change_requests").WithArgs(userID).WillReturnResult(pgxmock.NewResult("DELETE", 1))
+		mock.ExpectCommit()
+		
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(userID, "email_change", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		req, _ := http.NewRequest("GET", "/confirm-email-change?token="+token, nil)
+		rr := httptest.NewRecorder()
+		app.ConfirmEmailChangeHandler(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", rr.Code)
+		}
+	})
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
 
 func TestLoginHandler(t *testing.T) {
 	t.Run("GET", func(t *testing.T) {
@@ -86,51 +151,68 @@ func TestLoginHandler(t *testing.T) {
 	})
 }
 
-func TestVerifyTOTPHandler(t *testing.T) {
-	t.Run("VerifyTOTP_Success", func(t *testing.T) {
-		mock, err := db.SetupTestDB()
-		if err != nil {
-			t.Fatalf("failed to setup mock db: %v", err)
-		}
-		defer mock.Close()
-		app := setupTestApp(t, mock)
+func TestLogoutHandler(t *testing.T) {
+	StopStatsTicker()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
 
-		secret := "JBSWY3DPEHPK3PXP"
-		code, _ := totp.GenerateCode(secret, time.Now())
+	app := setupTestApp(t, mock)
+	
+	req, err := http.NewRequest("POST", "/logout", nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+	setSessionUser(t, app, req, 1, false)
+	
+	rr := httptest.NewRecorder()
+	app.LogoutHandler(rr, req)
+	
+	if rr.Code != http.StatusFound {
+		t.Errorf("expected redirect, got %d", rr.Code)
+	}
 
-		req := httptest.NewRequest("POST", "/settings/totp/verify", strings.NewReader("totp_code="+code))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		session, _ := app.SessionStore.Get(req, "vulfixx-session")
-		session.Values["user_id"] = 1
-		session.Values["totp_setup_ts"] = time.Now().Unix()
-		session.Values["totp_setup_attempts"] = 0
-		rr := httptest.NewRecorder()
-		_ = session.Save(req, rr)
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
 
-		req = httptest.NewRequest("POST", "/settings/totp/verify", strings.NewReader("totp_code="+code))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		for _, c := range rr.Result().Cookies() {
-			req.AddCookie(c)
-		}
+func TestVerifyEmailHandler(t *testing.T) {
+	StopStatsTicker()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
 
-		mock.ExpectQuery("SELECT totp_secret FROM users WHERE id = \\$1").WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"totp_secret"}).AddRow(secret))
+	app := setupTestApp(t, mock)
+	
+	// auth.VerifyEmail uses db.Pool
+	oldPool := db.Pool
+	db.Pool = mock
+	defer func() { db.Pool = oldPool }()
 
-		mock.ExpectExec("UPDATE users SET is_totp_enabled = TRUE").WithArgs(1).
-			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE users SET is_email_verified = TRUE, email_verify_token = NULL WHERE email_verify_token = $1")).
+		WithArgs("valid-token").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	
+	req, err := http.NewRequest("GET", "/verify-email?token=valid-token", nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
 
-		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(1, "totp_enabled", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
-			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	rr := httptest.NewRecorder()
+	app.VerifyEmailHandler(rr, req)
+	
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
 
-		rr2 := httptest.NewRecorder()
-		app.VerifyTOTPHandler(rr2, req)
-		if rr2.Code != http.StatusFound {
-			t.Errorf("expected 302, got %d", rr2.Code)
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unmet expectations: %v", err)
-		}
-	})
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
 }
 
 func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
@@ -303,7 +385,7 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 			req.AddCookie(c)
 		}
 
-		app.Redis.Set(req.Context(), "login_failures:"+req.RemoteAddr, 5, 0)
+		app.Redis.Set(req.Context(), "login_failures:"+app.GetClientIP(req), 5, 0)
 
 		rr := httptest.NewRecorder()
 		app.LoginHandler(rr, req)

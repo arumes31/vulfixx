@@ -1,0 +1,86 @@
+{{template "base" .}}
+
+{{define "content"}}
+<div class="flex items-center justify-center min-h-[80vh]">
+    <div class="glass border border-white/10 rounded-[2.5rem] p-10 max-w-md w-full shadow-2xl relative overflow-hidden">
+        <div class="relative z-10">
+            <div class="text-center mb-10">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 mb-6">
+                    <span class="material-symbols-outlined text-4xl text-primary">mail</span>
+                </div>
+                <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60 mb-2">Resend Verification</h1>
+                <p class="text-slate-400">Enter your email to receive a new link</p>
+            </div>
+
+            {{if .Error}}
+            <div role="alert" aria-atomic="true" class="bg-red-500/10 border border-red-500/20 text-red-400 px-6 py-4 rounded-2xl mb-8 flex items-center gap-3">
+                <span class="material-symbols-outlined text-xl">error</span>
+                <p class="text-sm">{{.Error}}</p>
+            </div>
+            {{end}}
+
+            {{if .Message}}
+            <div role="status" aria-live="polite" class="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-6 py-4 rounded-2xl mb-8 flex items-center gap-3">
+                <span class="material-symbols-outlined text-xl">check_circle</span>
+                <p class="text-sm">{{.Message}}</p>
+            </div>
+            {{end}}
+
+            <form action="/resend-verification" method="POST" class="space-y-6">
+                <input type="hidden" name="gorilla.csrf.Token" value="{{.csrfToken}}">
+                
+                <div>
+                    <label for="resend-email" class="block text-sm font-medium text-slate-400 mb-2 ml-1">Email Address</label>
+                    <div class="relative group">
+                        <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary transition-colors">mail</span>
+                        <input id="resend-email" type="email" name="email" value="{{.Email}}" required 
+                               class="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white focus:outline-none focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all"
+                               placeholder="name@company.com">
+                    </div>
+                </div>
+
+                <div>
+                    <label for="captcha-input" class="block text-sm font-medium text-slate-400 mb-2 ml-1">Verification</label>
+                    <div class="flex gap-4 items-center">
+                        <div id="captcha-container" role="button" tabindex="0" aria-label="Refresh captcha" class="cursor-pointer bg-slate-900/80 rounded-xl overflow-hidden border border-white/5 h-[48px] min-w-[120px] flex items-center justify-center" title="Click to refresh">
+                            <img id="captcha-img" src="/captcha" alt="Captcha image showing math challenge" class="h-full w-full object-contain">
+                        </div>
+                        <div class="relative flex-1">
+                            <input id="captcha-input" type="text" inputmode="numeric" pattern="\d*" name="captcha" required 
+                                   class="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-3 px-4 text-white focus:outline-none focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all text-center font-bold tracking-widest"
+                                   placeholder="Result">
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full bg-gradient-to-r from-primary to-blue-600 text-white font-bold py-4 rounded-2xl shadow-lg shadow-primary/20 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200">
+                    Send Link
+                </button>
+            </form>
+
+            <div class="mt-10 text-center">
+                <p class="text-slate-500 text-sm">
+                    Back to login? <a href="/login" class="text-primary hover:text-primary-hover font-medium underline-offset-4 hover:underline transition-colors">Log in</a>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script nonce="{{.Nonce}}">
+    const refreshCaptcha = () => {
+        const img = document.getElementById('captcha-img');
+        if (img) img.src = '/captcha?t=' + Date.now();
+    };
+    const container = document.getElementById('captcha-container');
+    if (container) {
+        container.addEventListener('click', refreshCaptcha);
+        container.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                refreshCaptcha();
+            }
+        });
+    }
+</script>
+{{end}}
