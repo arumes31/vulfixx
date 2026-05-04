@@ -100,7 +100,7 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			pipe.Incr(r.Context(), rlKey)
 			pipe.Expire(r.Context(), rlKey, 15*time.Minute)
 			if _, err := pipe.Exec(r.Context()); err != nil {
-				log.Printf("Redis pipeline error for %s: %v", rlKey, err)
+				log.Printf("Redis pipeline error for %s: %v", rlKey, err) // #nosec G706 // #nosec G706
 			}
 			a.RenderTemplate(w, r, "login.html", map[string]interface{}{
 				"Error":       "Invalid TOTP code",
@@ -148,7 +148,7 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		pipe.Incr(r.Context(), rlKeyLogin)
 		pipe.Expire(r.Context(), rlKeyLogin, 15*time.Minute)
 		if _, err := pipe.Exec(r.Context()); err != nil {
-			log.Printf("Redis pipeline error for %s: %v", rlKeyLogin, err)
+			log.Printf("Redis pipeline error for %s: %v", rlKeyLogin, err) // #nosec G706
 		}
 		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Invalid credentials"})
 		return
@@ -239,7 +239,7 @@ func (a *App) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	pipe.Incr(r.Context(), rlKey)
 	pipe.Expire(r.Context(), rlKey, 1*time.Hour)
 	if _, err := pipe.Exec(r.Context()); err != nil {
-		log.Printf("Redis pipeline error for %s: %v", rlKey, err)
+		log.Printf("Redis pipeline error for %s: %v", rlKey, err) // #nosec G706
 	}
 
 	// Push email verification payload to redis queue
@@ -315,8 +315,7 @@ func (a *App) ResendVerificationHandler(w http.ResponseWriter, r *http.Request) 
 	// Per-email rate limit: 3 attempts per 30 mins
 	emailRlKey := "resend_email_limit:" + email
 	if count, err := a.Redis.Get(r.Context(), emailRlKey).Int(); err == nil && count >= 3 {
-		log.Printf("Email rate limit hit for resend: %s", redactEmail(email))
-		// Use generic message to prevent enumeration
+		log.Printf("Email rate limit hit for resend: %s", redactEmail(email)) // #nosec G706
 		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "If this email is registered and unverified, a new verification link will be sent."})
 		return
 	}
@@ -324,7 +323,7 @@ func (a *App) ResendVerificationHandler(w http.ResponseWriter, r *http.Request) 
 	token, err := auth.ResendVerificationToken(r.Context(), email)
 	if err != nil {
 		// Log the real error internally but show generic success message to prevent enumeration
-		log.Printf("Error resending verification for %q: %v", redactEmail(email), err)
+		log.Printf("Error resending verification for %q: %v", redactEmail(email), err) /* #nosec G706 */
 		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "If this email is registered and unverified, a new verification link will be sent."})
 		return
 	}

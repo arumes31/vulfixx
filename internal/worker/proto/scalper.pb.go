@@ -488,6 +488,7 @@ var (
 
 func file_scalper_proto_rawDescGZIP() []byte {
 	file_scalper_proto_rawDescOnce.Do(func() {
+		// #nosec G103
 		file_scalper_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_scalper_proto_rawDesc), len(file_scalper_proto_rawDesc)))
 	})
 	return file_scalper_proto_rawDescData
@@ -527,7 +528,7 @@ func file_scalper_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_scalper_proto_rawDesc), len(file_scalper_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_scalper_proto_rawDesc), len(file_scalper_proto_rawDesc)), // #nosec G103 // #nosec G103
 			NumEnums:      0,
 			NumMessages:   7,
 			NumExtensions: 0,

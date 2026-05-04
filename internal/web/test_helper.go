@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"os"
 	"regexp"
 	"testing"
 
@@ -33,7 +32,7 @@ func (m *MockMailer) SendEmail(to, subject, body string) error {
 
 func setupTestApp(t *testing.T, mock pgxmock.PgxPoolIface) *App {
 	t.Helper()
-	os.Setenv("GO_ENV", "test")
+	t.Setenv("GO_ENV", "test")
 	// Locate the templates/ directory
 	if dir := findTemplatesDir(); dir == "" {
 		t.Fatalf("could not find templates directory")

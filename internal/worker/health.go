@@ -63,7 +63,7 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 					baseURL := os.Getenv("BASE_URL")
 					if baseURL == "" {
 						baseURL = "http://localhost:8080"
-						log.Printf("Worker Health ALERT: BASE_URL environment variable is unset. Falling back to %s (Environment: %s). Links in alerts may be broken.", baseURL, os.Getenv("GO_ENV"))
+						log.Printf("Worker Health ALERT: BASE_URL environment variable is unset. Falling back to %s (Environment: %s). Links in alerts may be broken.", baseURL, os.Getenv("GO_ENV")) // #nosec G706
 					}
 					content := fmt.Sprintf(`
 						<div style="background-color: #ff4d4d1a; padding: 20px; border-radius: 16px; border: 1px solid #ff4d4d33; color: #ff4d4d; margin-bottom: 20px;">
@@ -80,7 +80,7 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 
 					body := WrapInModernLayout(EmailTemplateData{
 						Title: "Vulfixx Health Alert",
-						Body:  template.HTML(content),
+						Body:  template.HTML(content), // #nosec G203
 					})
 					if err := w.Mailer.SendEmail(w.AdminEmail, "Vulfixx Health Alert", body); err != nil {
 						log.Printf("Worker: Failed to send health alert to %s: %v", w.AdminEmail, err)

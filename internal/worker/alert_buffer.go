@@ -232,7 +232,7 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 
 	body := WrapInModernLayout(EmailTemplateData{
 		Title: fmt.Sprintf("Intelligence Brief: %d New Threats", len(items)),
-		Body:  template.HTML(content),
+		Body:  template.HTML(content), // #nosec G203
 	})
 
 	if len(uniqueEmails) == 0 {

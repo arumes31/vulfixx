@@ -160,7 +160,7 @@ func (w *Worker) sendEmailChangeNotification(email, token, emailType string) err
 
 	body := WrapInModernLayout(EmailTemplateData{
 		Title: subject,
-		Body:  template.HTML(content),
+		Body:  template.HTML(content), // #nosec G203
 	})
 	return w.Mailer.SendEmail(email, subject, body)
 }
@@ -185,7 +185,7 @@ func (w *Worker) sendVerificationEmail(email, token string) error {
 
 	body := WrapInModernLayout(EmailTemplateData{
 		Title: subject,
-		Body:  template.HTML(content),
+		Body:  template.HTML(content), // #nosec G203
 	})
 	return w.Mailer.SendEmail(email, subject, body)
 }

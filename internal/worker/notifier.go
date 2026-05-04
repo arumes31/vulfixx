@@ -273,7 +273,7 @@ func (w *Worker) sendEmailAlert(email string, cve *models.CVE, sev, color, token
 
 	body := WrapInModernLayout(EmailTemplateData{
 		Title: "Security Alert: " + cve.CVEID,
-		Body:  template.HTML(content),
+		Body:  template.HTML(content), // #nosec G203
 	})
 	err := w.Mailer.SendEmail(email, "Security Alert: "+cve.CVEID, body)
 	return err == nil

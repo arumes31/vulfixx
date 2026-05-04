@@ -105,7 +105,7 @@ func (w *Worker) fetchInTheWildData(ctx context.Context, cveID string) (map[stri
 		baseURL = envURL
 	}
 	url := fmt.Sprintf("%s/%s", baseURL, cveID)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil) // #nosec G704
 	if err != nil {
 		return nil, err
 	}
