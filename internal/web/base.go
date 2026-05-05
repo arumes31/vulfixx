@@ -220,6 +220,9 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 	userID, ok := a.GetUserID(r)
 	data["UserLoggedIn"] = ok
 	if ok && userID > 0 {
+		// Prevent caching of authenticated pages
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, private")
+		w.Header().Set("Pragma", "no-cache")
 		data["UserID"] = userID
 		data["IsAdmin"] = a.IsAdmin(r)
 

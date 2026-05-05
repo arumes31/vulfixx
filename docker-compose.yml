@@ -12,13 +12,13 @@ services:
       - DB_NAME=cvetracker
       - DB_PORT=5432
       - REDIS_URL=redis:6379
-      - SESSION_KEY=supersecretkey-change-me-in-prod
+      - SESSION_KEY=${SESSION_KEY}
       - SMTP_HOST=${SMTP_HOST:-smtp.example.com}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USER=${SMTP_USER:-user@example.com}
       - SMTP_PASS=${SMTP_PASS:-password}
       - BASE_URL=${BASE_URL:-http://localhost:8080}
-      - CSRF_KEY=${CSRF_KEY:-MOCK_CSRF_KEY_32_BYTES_FOR_TEST!}
+      - CSRF_KEY=${CSRF_KEY}
       - ADMIN_EMAIL=${ADMIN_EMAIL}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - ADMIN_TOTP_SECRET=${ADMIN_TOTP_SECRET}
@@ -36,8 +36,8 @@ services:
       - POSTGRES_USER=cveuser
       - POSTGRES_PASSWORD=cvepass
       - POSTGRES_DB=cvetracker
-    ports:
-      - "5432:5432"
+    # ports:
+    #   - "5432:5432"  # Only expose for local development; not for production
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -45,8 +45,8 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    # ports:
+    #   - "6379:6379"  # Only expose for local development; not for production
     volumes:
       - ./data/redis:/data
     restart: unless-stopped

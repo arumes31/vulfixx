@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"cve-tracker/internal/models"
 	"database/sql"
 	"encoding/json"
@@ -41,6 +42,11 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	endDate := r.URL.Query().Get("end_date")
 	searchAll := r.URL.Query().Get("all") == "true"
 	statusFilter := r.URL.Query().Get("status")
+	// Whitelist valid statuses to prevent unexpected DB comparisons
+	validStatuses := map[string]bool{"active": true, "in_progress": true, "resolved": true, "ignored": true}
+	if statusFilter != "" && !validStatuses[statusFilter] {
+		statusFilter = ""
+	}
 	kevOnly := r.URL.Query().Get("kev") == "true"
 	minCvssStr := r.URL.Query().Get("min_cvss")
 	maxCvssStr := r.URL.Query().Get("max_cvss")
@@ -93,7 +99,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	if searchQuery != "" {
 		whereClause += fmt.Sprintf(" AND (c.cve_id ILIKE $%d OR c.description ILIKE $%d) ", argIdx, argIdx)
-		args = append(args, "%"+searchQuery+"%")
+		args = append(args, "%"+escapeLikePattern(searchQuery)+"%")
 		argIdx++
 	}
 	if kevOnly {
@@ -121,10 +127,30 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fullMetricsQuery := metricsQuery + whereClause
-	err := a.Pool.QueryRow(r.Context(), fullMetricsQuery, args...).Scan(&totalItems, &kevCount, &critCount, &progressCount)
-	if err != nil {
-		log.Printf("Dashboard metrics error: %v", err)
+
+	// Generate deterministic cache key (userID, teamID, fullMetricsQuery, args)
+	cacheKeyStr := fmt.Sprintf("%d:%d:%s:%v", userID, activeTeamID, fullMetricsQuery, args)
+	cacheKeyHash := sha256.Sum256([]byte(cacheKeyStr))
+	cacheKey := fmt.Sprintf("dashboard_metrics:%x", cacheKeyHash)
+
+	if cachedData, err := a.Redis.Get(r.Context(), cacheKey).Result(); err == nil {
+		var metrics [4]int
+		if err := json.Unmarshal([]byte(cachedData), &metrics); err == nil {
+			totalItems, kevCount, critCount, progressCount = metrics[0], metrics[1], metrics[2], metrics[3]
+			goto MetricsCached
+		}
 	}
+
+	if err := a.Pool.QueryRow(r.Context(), fullMetricsQuery, args...).Scan(&totalItems, &kevCount, &critCount, &progressCount); err != nil {
+		log.Printf("Dashboard metrics error: %v", err)
+	} else {
+		metricsToCache := [4]int{totalItems, kevCount, critCount, progressCount}
+		if dataToCache, err := json.Marshal(metricsToCache); err == nil {
+			a.Redis.SetEx(r.Context(), cacheKey, dataToCache, 60*time.Second)
+		}
+	}
+
+MetricsCached:
 
 	notesJoinCond := "ucn.user_id = $1 AND ucn.team_id IS NULL"
 	if teamArgIdx != -1 {
@@ -133,7 +159,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	query := fmt.Sprintf(`
 		SELECT DISTINCT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, COALESCE(c."references", '{}'), ucn.notes,
-		COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0), COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'), COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]')
+		COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0), COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'), COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]'), COALESCE(c.priority, 'P3') as priority
 		FROM cves c
 		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s
 		LEFT JOIN cve_notes ucn ON c.id = ucn.cve_id AND %s
@@ -160,7 +186,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var c models.CVE
 		var notes sql.NullString
-		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &notes, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.Vendor, &c.Product, &c.AffectedProducts); err != nil {
+		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &notes, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.Vendor, &c.Product, &c.AffectedProducts, &c.Priority); err != nil {
 			log.Printf("Error scanning dashboard CVE row (CVEID=%s): %v", c.CVEID, err)
 			continue
 		}
@@ -577,6 +603,12 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	pageSize := 20
 	offset := (page - 1) * pageSize
 
+	cursorStr := r.URL.Query().Get("cursor")
+	cursorIDStr := r.URL.Query().Get("cursor_id")
+	if cursorStr != "" && cursorIDStr != "" {
+		offset = 0 // override offset when using cursor pagination
+	}
+
 	searchQuery := strings.TrimSpace(r.URL.Query().Get("q"))
 	vendorQuery := strings.TrimSpace(r.URL.Query().Get("vendor"))
 	productQuery := strings.TrimSpace(r.URL.Query().Get("product"))
@@ -669,25 +701,25 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	if searchQuery != "" {
 		whereClause += fmt.Sprintf(" AND (c.cve_id ILIKE $%d OR c.description ILIKE $%d) ", argIdx, argIdx)
-		args = append(args, "%"+searchQuery+"%")
+		args = append(args, "%"+escapeLikePattern(searchQuery)+"%")
 		argIdx++
 	}
 
 	if vendorQuery != "" {
-		whereClause += fmt.Sprintf(" AND (c.vendor ILIKE $%d OR EXISTS (SELECT 1 FROM jsonb_array_elements(c.affected_products) AS p WHERE p->>'vendor' ILIKE $%d)) ", argIdx, argIdx)
-		args = append(args, "%"+vendorQuery+"%")
+		whereClause += fmt.Sprintf(" AND (c.vendor ILIKE $%d OR c.affected_products::text ILIKE $%d) ", argIdx, argIdx)
+		args = append(args, "%"+escapeLikePattern(vendorQuery)+"%")
 		argIdx++
 	}
 
 	if productQuery != "" {
-		whereClause += fmt.Sprintf(" AND (c.product ILIKE $%d OR EXISTS (SELECT 1 FROM jsonb_array_elements(c.affected_products) AS p WHERE p->>'product' ILIKE $%d)) ", argIdx, argIdx)
-		args = append(args, "%"+productQuery+"%")
+		whereClause += fmt.Sprintf(" AND (c.product ILIKE $%d OR c.affected_products::text ILIKE $%d) ", argIdx, argIdx)
+		args = append(args, "%"+escapeLikePattern(productQuery)+"%")
 		argIdx++
 	}
 
 	if cveIDQuery != "" {
 		whereClause += fmt.Sprintf(" AND c.cve_id ILIKE $%d ", argIdx)
-		args = append(args, "%"+cveIDQuery+"%")
+		args = append(args, "%"+escapeLikePattern(cveIDQuery)+"%")
 		argIdx++
 	}
 
@@ -718,7 +750,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	if cweQuery != "" {
 		whereClause += fmt.Sprintf(" AND (c.cwe_id ILIKE $%d OR c.cwe_name ILIKE $%d) ", argIdx, argIdx)
-		args = append(args, "%"+cweQuery+"%")
+		args = append(args, "%"+escapeLikePattern(cweQuery)+"%")
 		argIdx++
 	}
 
@@ -763,7 +795,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 			c.published_date, c.updated_date, 'active' as status, COALESCE(c."references", '{}'),
 			COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0),
 			COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'),
-			COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]')
+			COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]'), COALESCE(c.priority, 'P3') as priority
 		FROM cves c
 	`
 	// Dynamic Sort
@@ -783,6 +815,49 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		sortOrder = "ASC"
 	}
 
+	if cursorStr != "" && cursorIDStr != "" {
+		cursorID, err := strconv.Atoi(cursorIDStr)
+		if err == nil && cursorID > 0 {
+			op := "<"
+			if sortOrder == "ASC" {
+				op = ">"
+			}
+			
+			// Validate cursorStr based on sort column
+			var parseErr error
+			switch sortCol {
+			case "c.published_date":
+				_, parseErr = time.Parse(time.RFC3339Nano, cursorStr)
+				if parseErr != nil {
+					_, parseErr = time.Parse(time.RFC3339, cursorStr)
+				}
+				if parseErr != nil {
+					_, parseErr = time.Parse("2006-01-02 15:04:05.999999-07", cursorStr)
+				}
+			case "c.cvss_score", "c.epss_score":
+				_, parseErr = strconv.ParseFloat(cursorStr, 64)
+			}
+			if parseErr != nil {
+				http.Error(w, "Invalid cursor value", http.StatusBadRequest)
+				return
+			}
+
+			var castType string
+			switch sortCol {
+			case "c.published_date":
+				castType = "::timestamptz"
+			case "c.cvss_score", "c.epss_score":
+				castType = "::numeric"
+			default:
+				castType = ""
+			}
+			keysetCond := fmt.Sprintf(" AND (%s %s $%d%s OR (%s = $%d%s AND c.id < $%d)) ", sortCol, op, argIdx, castType, sortCol, argIdx+1, castType, argIdx+2)
+			whereClause += keysetCond
+			args = append(args, cursorStr, cursorStr, cursorID)
+			argIdx += 3
+		}
+	}
+
 	query += whereClause
 	query += fmt.Sprintf(" ORDER BY %s %s NULLS LAST, c.id DESC LIMIT $%d OFFSET $%d ", sortCol, sortOrder, argIdx, argIdx+1)
 	finalArgs := append(args, pageSize, offset)
@@ -795,7 +870,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		for rows.Next() {
 			var c models.CVE
-			err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.Vendor, &c.Product, &c.AffectedProducts)
+			err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.Vendor, &c.Product, &c.AffectedProducts, &c.Priority)
 			if err != nil {
 				log.Printf("Error scanning public CVE: %v", err)
 				continue
@@ -979,10 +1054,10 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 			COALESCE(epss_score, 0), COALESCE(cwe_id, ''), COALESCE(cwe_name, ''), COALESCE(github_poc_count, 0),
 			COALESCE(greynoise_hits, 0), COALESCE(greynoise_classification, ''), osv_data,
 			configurations, COALESCE(vendor, ''), COALESCE(product, ''), COALESCE(affected_products, '[]'),
-			COALESCE(darknet_mentions, 0), darknet_last_seen
+			COALESCE(darknet_mentions, 0), darknet_last_seen, COALESCE(priority, 'P3') as priority
 		FROM cves
 		WHERE cve_id = $1
-	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.Configurations, &c.Vendor, &c.Product, &c.AffectedProducts, &c.DarknetMentions, &c.DarknetLastSeen)
+	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.Configurations, &c.Vendor, &c.Product, &c.AffectedProducts, &c.DarknetMentions, &c.DarknetLastSeen, &c.Priority)
 
 	c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
 

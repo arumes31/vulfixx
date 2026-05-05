@@ -94,6 +94,22 @@ func (w *Worker) processAlerts(ctx context.Context) {
 }
 
 func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
+	notifiedUsers := make(map[int]bool)
+	// Pre-fetch all users who have already been notified about this CVE to avoid N+1 queries
+	historyRows, err := w.Pool.Query(ctx, "SELECT user_id FROM alert_history WHERE cve_id = $1", cve.ID)
+	if err != nil {
+		log.Printf("Error fetching alert history for CVE %d: %v", cve.ID, err)
+		notifiedUsers = nil
+	} else {
+		defer historyRows.Close()
+		for historyRows.Next() {
+			var uid int
+			if err := historyRows.Scan(&uid); err == nil {
+				notifiedUsers[uid] = true
+			}
+		}
+	}
+
 	rows, err := w.Pool.Query(ctx, `
 		SELECT s.id, s.user_id, s.keyword, s.min_severity, s.webhook_url, s.slack_webhook_url, s.teams_webhook_url, 
 		       s.enable_email, s.enable_webhook, s.enable_slack, s.enable_teams, s.enable_browser_push,
@@ -109,8 +125,6 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		return
 	}
 	defer rows.Close()
-
-	notifiedUsers := make(map[int]bool)
 	for rows.Next() {
 		var sub models.UserSubscription
 		var email string
@@ -124,8 +138,11 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		}
 		sub.SlackWebhookURL, _ = models.DecryptWebhook(slackURL)
 		sub.TeamsWebhookURL, _ = models.DecryptWebhook(teamsURL)
+		if notifiedUsers[sub.UserID] {
+			continue
+		}
 		if matchCVE(cve, sub) {
-			if w.notifyIfNew(ctx, sub.UserID, cve, sub, email, "") {
+			if w.notifyIfNewWithCache(ctx, sub.UserID, cve, sub, email, "", notifiedUsers) {
 				notifiedUsers[sub.UserID] = true
 			}
 		}
@@ -156,7 +173,7 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		}
 		if getKeywordRegex(keyword).MatchString(cve.Description) {
 			sub := models.UserSubscription{EnableEmail: true, EnableWebhook: true}
-			if w.notifyIfNew(ctx, userID, cve, sub, email, assetName) {
+			if w.notifyIfNewWithCache(ctx, userID, cve, sub, email, assetName, notifiedUsers) {
 				notifiedUsers[userID] = true
 			}
 		}
@@ -252,13 +269,33 @@ func evaluateComplexFilter(logic string, cve *models.CVE) bool {
 	return true
 }
 
+// notifyIfNew checks if the user has already been notified about this CVE.
+// Left for backward compatibility; prefer notifyIfNewWithCache in batch loops.
 func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, sub models.UserSubscription, email, assetName string) bool {
-	// Check if already notified
 	var exists bool
 	_ = w.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM alert_history WHERE user_id = $1 AND cve_id = $2)", userID, cve.ID).Scan(&exists)
 	if exists {
 		return false
 	}
+	return w.notifyIfNewWithCache(ctx, userID, cve, sub, email, assetName, nil)
+}
+
+// notifyIfNewWithCache allows bypassing the DB existence check if a pre-fetched cache is available.
+func (w *Worker) notifyIfNewWithCache(ctx context.Context, userID int, cve *models.CVE, sub models.UserSubscription, email, assetName string, notifiedCache map[int]bool) bool {
+	if notifiedCache != nil && notifiedCache[userID] {
+		return false
+	}
+	// Note: We don't do an EXISTS check here because we assume the cache is authoritative or
+	// we will rely on the ON CONFLICT DO NOTHING during insertion if cache is nil.
+	// However, for safety when cache is nil, we should still check.
+	if notifiedCache == nil {
+		var exists bool
+		_ = w.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM alert_history WHERE user_id = $1 AND cve_id = $2)", userID, cve.ID).Scan(&exists)
+		if exists {
+			return false
+		}
+	}
+
 
 	// 21. Alert Flood Protection (Rate limiting per user/hour)
 	floodKey := fmt.Sprintf("flood_protection:%d", userID)

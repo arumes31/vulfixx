@@ -413,6 +413,21 @@ input[type=number] {
             url.searchParams.set('page', nextPage);
             url.searchParams.set('ajax', 'true');
 
+            // Add keyset pagination cursors
+            const rows = tbody.querySelectorAll('tr[data-cve-url]');
+            if (rows.length > 0) {
+                const lastRow = rows[rows.length - 1];
+                let sortCol = document.getElementById('sort-field').value || 'published';
+                if (sortCol === 'id') sortCol = 'id_sort';
+                const cursorVal = lastRow.getAttribute('data-cursor-' + sortCol);
+                const cursorId = lastRow.getAttribute('data-cursor-id');
+                if (cursorVal && cursorId) {
+                    url.searchParams.set('cursor', cursorVal);
+                    url.searchParams.set('cursor_id', cursorId);
+                }
+            }
+
+
             fetch(url)
                 .then(response => {
                     if (!response.ok) throw new Error(`HTTP error ${response.status}`);
@@ -842,10 +857,26 @@ input[type=number] {
 
 {{define "cve_rows"}}
     {{range .CVEs}}
-    <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer focus:bg-white/[0.05] focus:outline-none" data-cve-url="/cve/{{.CVEID}}" tabindex="0" aria-label="View details for {{.CVEID}}">
+    <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer focus:bg-white/[0.05] focus:outline-none" 
+        data-cve-url="/cve/{{.CVEID}}" 
+        data-cursor-id="{{.ID}}"
+        data-cursor-published="{{if not .PublishedDate.IsZero}}{{.PublishedDate.Format "2006-01-02T15:04:05Z07:00"}}{{end}}"
+        data-cursor-severity="{{.CVSSScore}}"
+        data-cursor-epss="{{.EPSSScore}}"
+        data-cursor-id_sort="{{.CVEID}}"
+        tabindex="0" aria-label="View details for {{.CVEID}}">
         <td class="p-6">
             <div class="flex items-center gap-3">
                 <a href="/cve/{{.CVEID}}" class="text-sm font-black text-white group-hover:text-primary transition-colors">{{.CVEID}}</a>
+                {{if eq .Priority "P0"}}
+                <span class="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded border border-red-500/30 font-bold uppercase shadow-[0_0_10px_rgba(239,68,68,0.2)]">P0</span>
+                {{else if eq .Priority "P1"}}
+                <span class="text-[10px] bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded border border-orange-500/30 font-bold uppercase">P1</span>
+                {{else if eq .Priority "P2"}}
+                <span class="text-[10px] bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded border border-yellow-500/30 font-bold uppercase">P2</span>
+                {{else}}
+                <span class="text-[10px] bg-green-500/20 text-green-400 px-2 py-0.5 rounded border border-green-500/30 font-bold uppercase">P3</span>
+                {{end}}
             </div>
         </td>
         <td class="p-6">

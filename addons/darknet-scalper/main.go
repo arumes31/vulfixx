@@ -206,38 +206,11 @@ func (s *scalperServer) Scan(ctx context.Context, req *proto.ScanRequest) (*prot
 	if !req.ForceRefresh && pool != nil {
 		hits, count := fetchHitsFromDB(req.Query)
 		if count > 0 {
-			// Basic pagination logic
-			start := 0
-			if req.PageToken != "" {
-				fmt.Sscanf(req.PageToken, "%d", &start)
-			}
-			
-			pageSize := int(req.PageSize)
-			if pageSize <= 0 {
-				pageSize = 10
-			}
-			
-			end := start + pageSize
-			if end > count {
-				end = count
-			}
-			
-			var paginatedHits []*proto.Hit
-			if start < count {
-				paginatedHits = hits[start:end]
-			}
-			
-			nextPageToken := ""
-			if end < count {
-				nextPageToken = fmt.Sprintf("%d", end)
-			}
-
 			return &proto.ScanResponse{
 				Query:         req.Query,
 				TotalHits:     int32(count),
-				Hits:          paginatedHits,
+				Hits:          hits,
 				IsCached:      true,
-				NextPageToken: nextPageToken,
 			}, nil
 		}
 	}
@@ -249,29 +222,11 @@ func (s *scalperServer) Scan(ctx context.Context, req *proto.ScanRequest) (*prot
 		saveHitsToDB(results)
 	}
 
-	// Pagination for fresh results
-	pageSize := int(req.PageSize)
-	if pageSize <= 0 {
-		pageSize = 10
-	}
-	
-	totalHits := len(results.Hits)
-	end := pageSize
-	if end > totalHits {
-		end = totalHits
-	}
-	
-	nextPageToken := ""
-	if totalHits > pageSize {
-		nextPageToken = fmt.Sprintf("%d", pageSize)
-	}
-
 	return &proto.ScanResponse{
 		Query:         req.Query,
-		TotalHits:     int32(totalHits),
-		Hits:          results.Hits[:end],
+		TotalHits:     int32(len(results.Hits)),
+		Hits:          results.Hits,
 		IsCached:      false,
-		NextPageToken: nextPageToken,
 	}, nil
 }
 

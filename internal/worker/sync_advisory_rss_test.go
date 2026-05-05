@@ -242,13 +242,21 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 
 		httpClient := &MockHTTPClient{
 			DoFunc: func(req *http.Request) (*http.Response, error) {
+				if strings.Contains(req.URL.String(), "CiscoSecurityAdvisory.xml") {
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(xmlContentMulti)),
+					}, nil
+				}
 				return &http.Response{
 					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(strings.NewReader(xmlContentMulti)),
+					Body:       io.NopCloser(strings.NewReader(`<?xml version="1.0"?><rss><channel></channel></rss>`)),
 				}, nil
 			},
 		}
 		wMulti := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
+
+		mock.MatchExpectationsInOrder(false)
 
 		// Expectations for CVE-2024-0001
 		mock.ExpectBegin()

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net"
 	"testing"
 	"vulfixx-scalper/proto"
 )
@@ -38,6 +39,16 @@ func TestParseAhmiaHTML(t *testing.T) {
 }
 
 func TestScalperService_Health(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+
+	oldProxy := config.TorProxy
+	config.TorProxy = "socks5://" + l.Addr().String()
+	defer func() { config.TorProxy = oldProxy }()
+
 	server := &scalperServer{}
 	resp, err := server.Health(context.Background(), &proto.HealthRequest{})
 	if err != nil {

@@ -115,10 +115,10 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 		form.Add("captcha", "10")
 
 		mock.ExpectBegin()
-		mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at FROM users").
+		mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token FROM users").
 			WithArgs(email).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at"}).
-				AddRow(1, false, 0, nil))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
+				AddRow(1, false, 0, nil, nil))
 		mock.ExpectExec("UPDATE users SET email_verify_token").WithArgs(pgxmock.AnyArg(), 1).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()
 
@@ -147,10 +147,10 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 
 		lastResend := time.Now()
 		mock.ExpectBegin()
-		mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at FROM users").
+		mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token FROM users").
 			WithArgs(email).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at"}).
-				AddRow(1, false, 1, &lastResend))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
+				AddRow(1, false, 1, &lastResend, nil))
 		mock.ExpectRollback()
 
 		resp, err := client.PostForm(ts.URL+"/resend-verification", form)

@@ -38,6 +38,10 @@ func (a *App) SecurityHeadersMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Content-Security-Policy", fmt.Sprintf("default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-%s' 'sha256-a+IQusSRj4qXz45cvE+Njfb/a8pp2kYO/7cH1IbDGFs='; font-src 'self' data:; img-src 'self' data:;", nonce))
 
+		// Restrict access to powerful browser APIs not needed by this application
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()")
+		w.Header().Set("X-Permitted-Cross-Domain-Policies", "none")
+
 		next.ServeHTTP(w, r)
 	})
 }

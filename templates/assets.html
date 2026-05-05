@@ -30,6 +30,15 @@
                 </select>
             </div>
             <div class="space-y-2">
+                <label for="asset_priority" class="block text-xs text-gray-500 uppercase font-bold tracking-widest">Priority</label>
+                <select id="asset_priority" name="priority" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-primary transition focus:outline-none appearance-none">
+                    <option value="P3">P3 - Low</option>
+                    <option value="P2">P2 - Medium</option>
+                    <option value="P1">P1 - High</option>
+                    <option value="P0">P0 - Critical</option>
+                </select>
+            </div>
+            <div class="space-y-2">
                 <label for="team_id" class="block text-xs text-gray-500 uppercase font-bold tracking-widest">Workspace</label>
                 <select id="team_id" name="team_id" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-primary transition focus:outline-none appearance-none">
                     <option value="0">Private (Individual)</option>
@@ -66,6 +75,15 @@
                                 <span class="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded border border-primary/30 font-bold uppercase">{{.TeamName}}</span>
                                 {{else}}
                                 <span class="text-[10px] bg-gray-500/10 text-gray-500 px-2 py-0.5 rounded border border-white/5 font-bold uppercase">Private</span>
+                                {{end}}
+                                {{if eq .Priority "P0"}}
+                                <span class="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded border border-red-500/30 font-bold uppercase shadow-[0_0_10px_rgba(239,68,68,0.2)]">{{.Priority}}</span>
+                                {{else if eq .Priority "P1"}}
+                                <span class="text-[10px] bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded border border-orange-500/30 font-bold uppercase">{{.Priority}}</span>
+                                {{else if eq .Priority "P2"}}
+                                <span class="text-[10px] bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded border border-yellow-500/30 font-bold uppercase">{{.Priority}}</span>
+                                {{else if .Priority}}
+                                <span class="text-[10px] bg-green-500/20 text-green-400 px-2 py-0.5 rounded border border-green-500/30 font-bold uppercase">{{.Priority}}</span>
                                 {{end}}
                             </div>
                             <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">{{.Type}}</span>

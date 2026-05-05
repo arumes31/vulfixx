@@ -48,30 +48,30 @@ func TestEmailChangeFlow_Coverage(t *testing.T) {
 		oldTok := "old-tok"
 		newTok := "new-tok"
 		newEmail := "new@example.com"
-		userID := int64(1)
+		userID := 1
 
 		// 1. Confirm old token
 		mock.ExpectBegin()
-		mock.ExpectQuery("SELECT user_id, new_email").
+		mock.ExpectQuery("SELECT user_id, new_email, old_email_confirmed, new_email_confirmed, old_email_token, new_email_token").
 			WithArgs(oldTok).
 			WillReturnRows(pgxmock.NewRows([]string{"user_id", "new_email", "old_email_confirmed", "new_email_confirmed", "old_email_token", "new_email_token"}).
-				AddRow(userID, newEmail, false, false, oldTok, newTok))
+				AddRow(1, newEmail, false, false, oldTok, newTok))
 		mock.ExpectExec("UPDATE email_change_requests SET old_email_confirmed = TRUE").
 			WithArgs(userID).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()
 
 		confirmed, email, uid, err := ConfirmEmailChange(ctx, oldTok)
-		if err != nil || confirmed || email != "" || int64(uid) != userID {
+		if err != nil || confirmed || email != "" || uid != userID {
 			t.Errorf("expected half-confirmation, got err=%v, confirmed=%v, email=%q, uid=%d", err, confirmed, email, uid)
 		}
 
 		// 2. Confirm new token
 		mock.ExpectBegin()
-		mock.ExpectQuery("SELECT user_id, new_email").
+		mock.ExpectQuery("SELECT user_id, new_email, old_email_confirmed, new_email_confirmed, old_email_token, new_email_token").
 			WithArgs(newTok).
 			WillReturnRows(pgxmock.NewRows([]string{"user_id", "new_email", "old_email_confirmed", "new_email_confirmed", "old_email_token", "new_email_token"}).
-				AddRow(userID, newEmail, true, false, oldTok, newTok))
+				AddRow(1, newEmail, true, false, oldTok, newTok))
 		mock.ExpectExec("UPDATE email_change_requests SET new_email_confirmed = TRUE").
 			WithArgs(userID).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
@@ -84,7 +84,7 @@ func TestEmailChangeFlow_Coverage(t *testing.T) {
 		mock.ExpectCommit()
 
 		confirmed, email, uid, err = ConfirmEmailChange(ctx, newTok)
-		if err != nil || !confirmed || email != newEmail || int64(uid) != userID {
+		if err != nil || !confirmed || email != newEmail || uid != userID {
 			t.Errorf("expected full-confirmation, got err=%v, confirmed=%v, email=%q, uid=%d", err, confirmed, email, uid)
 		}
 	})

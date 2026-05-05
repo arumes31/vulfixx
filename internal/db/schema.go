@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS cves (
     affected_products JSONB DEFAULT '[]',
     darknet_mentions INTEGER DEFAULT 0,
     darknet_last_seen TIMESTAMP WITH TIME ZONE,
+    priority VARCHAR(2) DEFAULT 'P3',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -105,6 +106,7 @@ CREATE TABLE IF NOT EXISTS assets (
     team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     type VARCHAR(100),
+    priority VARCHAR(2) DEFAULT 'P3',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_assets_user_xor_team CHECK ((user_id IS NULL) <> (team_id IS NULL))
 );
@@ -371,9 +373,37 @@ BEGIN
             ALTER TABLE user_activity_logs ADD COLUMN retention_expires_at TIMESTAMP WITH TIME ZONE;
         END IF;
     END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'priority') THEN
+        ALTER TABLE cves ADD COLUMN priority VARCHAR(2) DEFAULT 'P3';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'assets' AND column_name = 'priority') THEN
+        ALTER TABLE assets ADD COLUMN priority VARCHAR(2) DEFAULT 'P3';
+    END IF;
 END $$;
 
+CREATE OR REPLACE FUNCTION calculate_cve_priority() RETURNS TRIGGER AS $$
+BEGIN
+    IF COALESCE(NEW.cvss_score, 0.0) >= 9.0 OR NEW.cisa_kev = TRUE OR COALESCE(NEW.epss_score, 0.0) >= 0.5 THEN
+        NEW.priority := 'P0';
+    ELSIF COALESCE(NEW.cvss_score, 0.0) >= 7.0 OR COALESCE(NEW.epss_score, 0.0) >= 0.1 THEN
+        NEW.priority := 'P1';
+    ELSIF COALESCE(NEW.cvss_score, 0.0) >= 4.0 THEN
+        NEW.priority := 'P2';
+    ELSE
+        NEW.priority := 'P3';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_calculate_cve_priority ON cves;
+CREATE TRIGGER trigger_calculate_cve_priority
+BEFORE INSERT OR UPDATE ON cves
+FOR EACH ROW EXECUTE FUNCTION calculate_cve_priority();
+
 -- 5. Indexes
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE INDEX IF NOT EXISTS idx_user_activity_logs_user_id_created_at ON user_activity_logs (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_user_activity_logs_created_at ON user_activity_logs (created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_email_change_requests_old_token ON email_change_requests (old_email_token);
@@ -386,11 +416,24 @@ CREATE INDEX IF NOT EXISTS idx_user_cve_status_team_id ON user_cve_status(team_i
 CREATE INDEX IF NOT EXISTS idx_cve_notes_team_id ON cve_notes(team_id);
 CREATE INDEX IF NOT EXISTS idx_cves_vendor ON cves(vendor);
 CREATE INDEX IF NOT EXISTS idx_cves_product ON cves(product);
-CREATE INDEX IF NOT EXISTS idx_cves_affected_products ON cves USING GIN (affected_products);
+DROP INDEX IF EXISTS idx_cves_affected_products;
+CREATE INDEX IF NOT EXISTS idx_cves_affected_products_trgm ON cves USING GIN ((affected_products::text) gin_trgm_ops);
 
 -- Partial Unique Indexes for status and notes
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_status ON user_cve_status (user_id, cve_id) WHERE team_id IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_team_status ON user_cve_status (team_id, cve_id) WHERE team_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_notes ON cve_notes (user_id, cve_id) WHERE team_id IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_team_notes ON cve_notes (team_id, cve_id) WHERE team_id IS NOT NULL;
+
+-- Composite Covering Indexes for fast dashboard JOINs
+CREATE INDEX IF NOT EXISTS idx_user_status_covering ON user_cve_status (user_id, cve_id, status);
+CREATE INDEX IF NOT EXISTS idx_team_status_covering ON user_cve_status (team_id, cve_id, status);
+CREATE INDEX IF NOT EXISTS idx_user_notes_covering ON cve_notes (user_id, cve_id);
+CREATE INDEX IF NOT EXISTS idx_team_notes_covering ON cve_notes (team_id, cve_id);
+
+-- Trigram Indexes for fast ILIKE search performance
+CREATE INDEX IF NOT EXISTS idx_cves_description_trgm ON cves USING GIN (description gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_cves_vendor_trgm ON cves USING GIN (vendor gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_cves_product_trgm ON cves USING GIN (product gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_cves_cve_id_trgm ON cves USING GIN (cve_id gin_trgm_ops);
 `
