@@ -168,26 +168,261 @@ func (m JSONBMap) Value() (driver.Value, error) {
 	return json.Marshal(m)
 }
 
+// descriptionPatterns is a list of compiled regex patterns used to extract vendor/product
+// from CVE descriptions when CPE configuration data is not available. Compiled at init time.
+var descriptionPatterns []*regexp.Regexp
+
+// knownVendorKeywords maps lowercase keywords found in descriptions to (vendor, product) pairs.
+// Used as a last-resort heuristic when neither CPE nor regex patterns match.
+var knownVendorKeywords []struct {
+	keyword string
+	vendor  string
+	product string
+}
+
+func init() {
+	// Pre-compile all description regex patterns for performance
+	patterns := []string{
+		// "vulnerability in Vendor Product"
+		`(?i)(?:vulnerability|flaw|issue|bug|weakness) in (?:the )?([A-Za-z][A-Za-z0-9_\-\.]+) ([A-Za-z][A-Za-z0-9_\-\.]+)`,
+		// "detected in Vendor Product"
+		`(?i)(?:detected|discovered|identified|reported) in (?:the )?([A-Za-z][A-Za-z0-9_\-\.]+) ([A-Za-z][A-Za-z0-9_\-\.]+)`,
+		// "affects Vendor Product"
+		`(?i)(?:affects?|impacts?) (?:the )?([A-Za-z][A-Za-z0-9_\-\.]+) ([A-Za-z][A-Za-z0-9_\-\.]+)`,
+		// "found in Vendor Product"
+		`(?i)found in (?:the )?([A-Za-z][A-Za-z0-9_\-\.]+) ([A-Za-z][A-Za-z0-9_\-\.]+)`,
+		// "Vendor Product before/prior to version"
+		`(?i)([A-Za-z][A-Za-z0-9_\-\.]+) ([A-Za-z][A-Za-z0-9_\-\.]+) (?:before|prior to|through|up to) (?:version )?[\d]`,
+		// "in Vendor Product version/before"
+		`(?i) in ([A-Za-z][A-Za-z0-9_\-\.]+) ([A-Za-z][A-Za-z0-9_\-\.]+) (?:version|v\.?|before|prior|through|up to) `,
+		// "Vendor Product versions X through Y"
+		`(?i)([A-Za-z][A-Za-z0-9_\-\.]+) ([A-Za-z][A-Za-z0-9_\-\.]+) versions? `,
+		// "XSS/SQLi/RCE/etc in Vendor Product"
+		`(?i)(?:XSS|SQL injection|remote code execution|buffer overflow|path traversal|SSRF|CSRF|RCE|directory traversal|code injection|command injection) (?:in|via) (?:the )?([A-Za-z][A-Za-z0-9_\-\.]+) ([A-Za-z][A-Za-z0-9_\-\.]+)`,
+		// "allows ... via Vendor Product"
+		`(?i)allows? .{0,80}via (?:the )?([A-Za-z][A-Za-z0-9_\-\.]+) ([A-Za-z][A-Za-z0-9_\-\.]+)`,
+		// "Vendor's Product"
+		`(?i)([A-Za-z][A-Za-z0-9_\-\.]+)'s ([A-Za-z][A-Za-z0-9_\-\.]+)`,
+	}
+	for _, p := range patterns {
+		descriptionPatterns = append(descriptionPatterns, regexp.MustCompile(p))
+	}
+
+	// Known vendor keyword pairs for last-resort description scanning
+	knownVendorKeywords = []struct {
+		keyword string
+		vendor  string
+		product string
+	}{
+		{"microsoft windows", "Microsoft", "Windows"},
+		{"microsoft office", "Microsoft", "Office"},
+		{"microsoft exchange", "Microsoft", "Exchange Server"},
+		{"microsoft edge", "Microsoft", "Edge"},
+		{"microsoft .net", "Microsoft", ".NET Framework"},
+		{"microsoft sharepoint", "Microsoft", "SharePoint"},
+		{"microsoft outlook", "Microsoft", "Outlook"},
+		{"microsoft teams", "Microsoft", "Teams"},
+		{"microsoft azure", "Microsoft", "Azure"},
+		{"active directory", "Microsoft", "Active Directory"},
+		{"internet explorer", "Microsoft", "Internet Explorer"},
+		{"google chrome", "Google", "Chrome"},
+		{"google android", "Google", "Android"},
+		{"google kubernetes", "Google", "Kubernetes Engine"},
+		{"mozilla firefox", "Mozilla", "Firefox"},
+		{"mozilla thunderbird", "Mozilla", "Thunderbird"},
+		{"apple safari", "Apple", "Safari"},
+		{"apple macos", "Apple", "macOS"},
+		{"apple ios", "Apple", "iOS"},
+		{"apple ipados", "Apple", "iPadOS"},
+		{"apple watchos", "Apple", "watchOS"},
+		{"apple tvos", "Apple", "tvOS"},
+		{"apple xcode", "Apple", "Xcode"},
+		{"linux kernel", "Linux", "Kernel"},
+		{"apache http", "Apache", "HTTP Server"},
+		{"apache tomcat", "Apache", "Tomcat"},
+		{"apache struts", "Apache", "Struts"},
+		{"apache log4j", "Apache", "Log4j"},
+		{"apache kafka", "Apache", "Kafka"},
+		{"apache solr", "Apache", "Solr"},
+		{"apache activemq", "Apache", "ActiveMQ"},
+		{"apache camel", "Apache", "Camel"},
+		{"apache airflow", "Apache", "Airflow"},
+		{"apache superset", "Apache", "Superset"},
+		{"nginx", "Nginx", "Nginx"},
+		{"wordpress", "WordPress", "WordPress"},
+		{"drupal", "Drupal", "Drupal"},
+		{"joomla", "Joomla", "Joomla"},
+		{"jenkins", "Jenkins", "Jenkins"},
+		{"gitlab", "GitLab", "GitLab"},
+		{"grafana", "Grafana", "Grafana"},
+		{"elasticsearch", "Elastic", "Elasticsearch"},
+		{"kibana", "Elastic", "Kibana"},
+		{"logstash", "Elastic", "Logstash"},
+		{"docker", "Docker", "Docker"},
+		{"kubernetes", "Kubernetes", "Kubernetes"},
+		{"vmware vcenter", "VMware", "vCenter Server"},
+		{"vmware esxi", "VMware", "ESXi"},
+		{"vmware workstation", "VMware", "Workstation"},
+		{"vmware fusion", "VMware", "Fusion"},
+		{"vmware horizon", "VMware", "Horizon"},
+		{"vmware nsx", "VMware", "NSX"},
+		{"vmware aria", "VMware", "Aria"},
+		{"fortinet fortigate", "Fortinet", "FortiGate"},
+		{"fortinet fortios", "Fortinet", "FortiOS"},
+		{"fortinet fortimanager", "Fortinet", "FortiManager"},
+		{"fortinet fortianalyzer", "Fortinet", "FortiAnalyzer"},
+		{"fortinet forticlient", "Fortinet", "FortiClient"},
+		{"fortinet fortiweb", "Fortinet", "FortiWeb"},
+		{"fortinet fortimail", "Fortinet", "FortiMail"},
+		{"fortinet fortisiem", "Fortinet", "FortiSIEM"},
+		{"fortinet fortiproxy", "Fortinet", "FortiProxy"},
+		{"fortinet fortiswitch", "Fortinet", "FortiSwitch"},
+		{"fortinet fortiap", "Fortinet", "FortiAP"},
+		{"palo alto pan-os", "Palo Alto Networks", "PAN-OS"},
+		{"palo alto panorama", "Palo Alto Networks", "Panorama"},
+		{"palo alto cortex", "Palo Alto Networks", "Cortex"},
+		{"palo alto globalprotect", "Palo Alto Networks", "GlobalProtect"},
+		{"cisco ios xe", "Cisco", "IOS XE"},
+		{"cisco ios xr", "Cisco", "IOS XR"},
+		{"cisco ios", "Cisco", "IOS"},
+		{"cisco nexus", "Cisco", "Nexus"},
+		{"cisco asa", "Cisco", "ASA"},
+		{"cisco firepower", "Cisco", "Firepower"},
+		{"cisco webex", "Cisco", "WebEx"},
+		{"cisco meraki", "Cisco", "Meraki"},
+		{"cisco anyconnect", "Cisco", "AnyConnect"},
+		{"cisco umbrella", "Cisco", "Umbrella"},
+		{"cisco duo", "Cisco", "Duo"},
+		{"citrix netscaler", "Citrix", "NetScaler"},
+		{"citrix adc", "Citrix", "ADC"},
+		{"citrix xenserver", "Citrix", "XenServer"},
+		{"citrix xenapp", "Citrix", "XenApp"},
+		{"citrix virtual apps", "Citrix", "Virtual Apps and Desktops"},
+		{"sophos", "Sophos", "Sophos"},
+		{"juniper junos", "Juniper", "Junos OS"},
+		{"juniper srx", "Juniper", "SRX"},
+		{"oracle java", "Oracle", "Java"},
+		{"oracle weblogic", "Oracle", "WebLogic Server"},
+		{"oracle mysql", "Oracle", "MySQL"},
+		{"oracle database", "Oracle", "Database"},
+		{"oracle peoplesoft", "Oracle", "PeopleSoft"},
+		{"oracle e-business", "Oracle", "E-Business Suite"},
+		{"sap netweaver", "SAP", "NetWeaver"},
+		{"sap hana", "SAP", "HANA"},
+		{"sap business", "SAP", "Business Suite"},
+		{"ibm websphere", "IBM", "WebSphere"},
+		{"ibm db2", "IBM", "Db2"},
+		{"ibm cognos", "IBM", "Cognos"},
+		{"ibm qradar", "IBM", "QRadar"},
+		{"ibm mq", "IBM", "MQ"},
+		{"dell idrac", "Dell", "iDRAC"},
+		{"dell emc", "Dell", "EMC"},
+		{"dell powerstore", "Dell", "PowerStore"},
+		{"hp ilo", "HP", "iLO"},
+		{"hpe ilo", "HPE", "iLO"},
+		{"synology", "Synology", "DiskStation Manager"},
+		{"qnap", "QNAP", "QTS"},
+		{"sonicwall", "SonicWall", "SonicOS"},
+		{"zyxel", "Zyxel", "Zyxel"},
+		{"zoom", "Zoom", "Zoom"},
+		{"slack", "Salesforce", "Slack"},
+		{"redis", "Redis", "Redis"},
+		{"postgresql", "PostgreSQL", "PostgreSQL"},
+		{"mongodb", "MongoDB", "MongoDB"},
+		{"openssl", "OpenSSL", "OpenSSL"},
+		{"node.js", "Node.js", "Node.js"},
+		{"python", "Python", "Python"},
+		{"php", "PHP", "PHP"},
+		{"spring framework", "VMware", "Spring Framework"},
+		{"spring boot", "VMware", "Spring Boot"},
+		{"next.js", "Vercel", "Next.js"},
+		{"react", "Meta", "React"},
+		{"tensorflow", "Google", "TensorFlow"},
+		{"pytorch", "Meta", "PyTorch"},
+		{"veeam", "Veeam", "Veeam"},
+		{"ivanti", "Ivanti", "Ivanti"},
+		{"atlassian confluence", "Atlassian", "Confluence"},
+		{"atlassian jira", "Atlassian", "Jira"},
+		{"atlassian bitbucket", "Atlassian", "Bitbucket"},
+		{"hashicorp vault", "HashiCorp", "Vault"},
+		{"hashicorp terraform", "HashiCorp", "Terraform"},
+		{"hashicorp consul", "HashiCorp", "Consul"},
+		{"mattermost", "Mattermost", "Mattermost"},
+		{"nextcloud", "Nextcloud", "Nextcloud"},
+		{"typo3", "TYPO3", "TYPO3"},
+		{"roundcube", "Roundcube", "Roundcube"},
+		{"keycloak", "Red Hat", "Keycloak"},
+		{"traefik", "Traefik Labs", "Traefik"},
+		{"aruba", "HPE Aruba", "ArubaOS"},
+		{"tp-link", "TP-Link", "TP-Link"},
+		{"d-link", "D-Link", "D-Link"},
+		{"netgear", "NETGEAR", "NETGEAR"},
+		{"hikvision", "Hikvision", "Hikvision"},
+		{"dahua", "Dahua", "Dahua"},
+	}
+}
+
+// noiseWords are words that should never match as vendor or product from regex.
+var noiseWords = map[string]bool{
+	"the": true, "this": true, "that": true, "and": true, "with": true,
+	"from": true, "for": true, "not": true, "are": true, "was": true,
+	"were": true, "been": true, "being": true, "have": true, "has": true,
+	"had": true, "does": true, "did": true, "will": true, "would": true,
+	"could": true, "should": true, "may": true, "might": true, "can": true,
+	"via": true, "due": true, "which": true, "where": true, "when": true,
+	"how": true, "its": true, "certain": true, "some": true, "any": true,
+	"all": true, "each": true, "other": true, "such": true, "remote": true,
+	"local": true, "allow": true, "allows": true, "attacker": true,
+	"attackers": true, "user": true, "users": true, "malicious": true,
+	"crafted": true, "specially": true, "arbitrary": true, "code": true,
+	"execute": true, "execution": true, "denial": true, "service": true,
+	"cross-site": true, "scripting": true, "injection": true, "overflow": true,
+	"buffer": true, "stack": true, "heap": true, "null": true, "pointer": true,
+	"multiple": true, "several": true, "various": true, "version": true,
+	"versions": true, "before": true, "after": true, "prior": true,
+	"through": true, "unauthenticated": true, "authenticated": true,
+	"unauthorized": true, "improper": true, "insufficient": true,
+	"incorrect": true, "unspecified": true, "unknown": true, "exist": true,
+	"exists": true, "leading": true, "resulting": true, "cause": true,
+	"causes": true, "caused": true, "request": true, "data": true,
+}
+
 func (c *CVE) GetDetectedProduct() (vendor, product string) {
+	// 1. Primary: extract from CPE configuration data (highest confidence)
 	products := c.GetAffectedProducts()
 	if len(products) > 0 {
 		return products[0].Vendor, products[0].Product
 	}
 
-	// Fallback to regex pattern on description
-	re := regexp.MustCompile(`(?i)(?:detected in|affects|found in|vulnerability in) (?:the )?([a-zA-Z0-9_\-\.]{2,}) ([a-zA-Z0-9_\-\.]{2,})`)
-	matches := re.FindStringSubmatch(c.Description)
-	if len(matches) >= 3 {
-		v := matches[1]
-		p := matches[2]
-		// Avoid noise words
-		noise := map[string]bool{"the": true, "this": true, "that": true, "and": true, "with": true, "from": true}
-		if !noise[strings.ToLower(v)] && !noise[strings.ToLower(p)] {
-			return v, p
+	desc := c.Description
+
+	// 2. Secondary: known vendor keyword matching on description (high confidence)
+	descLower := strings.ToLower(desc)
+	for _, kw := range knownVendorKeywords {
+		if strings.Contains(descLower, kw.keyword) {
+			return kw.vendor, kw.product
 		}
 	}
+
+	// 3. Tertiary: regex pattern matching on description (medium confidence)
+	for _, re := range descriptionPatterns {
+		matches := re.FindStringSubmatch(desc)
+		if len(matches) >= 3 {
+			v := strings.TrimRight(matches[1], ".'\"")
+			p := strings.TrimRight(matches[2], ".'\"")
+			if len(v) < 2 || len(p) < 2 {
+				continue
+			}
+			if noiseWords[strings.ToLower(v)] || noiseWords[strings.ToLower(p)] {
+				continue
+			}
+			return NormalizeName(v), NormalizeName(p)
+		}
+	}
+
 	return "", ""
 }
+
 
 func (c *CVE) GetCPEs() []string {
 	var cpes []string
@@ -287,21 +522,185 @@ func ParseCPE(cpe string) (vendor, product, version, part string) {
 }
 
 var nameAliases = map[string]string{
+	// Microsoft
 	"microsoft":                  "Microsoft",
 	"microsoft_corp":             "Microsoft",
-	"oracle_corp":                "Oracle",
-	"linux_kernel":               "Linux Kernel",
+	"microsoft_corporation":      "Microsoft",
+	// Apple
+	"apple":                      "Apple",
 	"apple_inc":                  "Apple",
+	"apple_inc.":                 "Apple",
+	// Google
+	"google":                     "Google",
 	"google_inc":                 "Google",
+	"google_inc.":                "Google",
+	"google_llc":                 "Google",
+	"alphabet":                   "Google",
+	// Linux
+	"linux":                      "Linux",
+	"linux_kernel":               "Linux Kernel",
+	"torvalds":                   "Linux",
+	// Apache
+	"apache":                     "Apache",
 	"apache_software_foundation": "Apache",
+	// Red Hat / Fedora
 	"redhat":                     "Red Hat",
+	"red_hat":                    "Red Hat",
+	"fedoraproject":              "Fedora",
+	// Debian / Ubuntu
+	"debian":                     "Debian",
 	"debian_linux":               "Debian",
 	"canonical":                  "Ubuntu",
+	"canonical_ltd":              "Ubuntu",
+	// Oracle
+	"oracle":                     "Oracle",
+	"oracle_corp":                "Oracle",
+	"oracle_corporation":         "Oracle",
+	// IBM
+	"ibm":                        "IBM",
+	"ibm_corporation":            "IBM",
+	// Cisco
+	"cisco":                      "Cisco",
+	"cisco_systems":              "Cisco",
+	"cisco_systems_inc":          "Cisco",
+	// VMware / Broadcom
+	"vmware":                     "VMware",
+	"vmware_inc":                 "VMware",
+	"broadcom":                   "Broadcom",
+	// Fortinet
+	"fortinet":                   "Fortinet",
+	"fortinet_inc":               "Fortinet",
+	// Palo Alto Networks
+	"paloaltonetworks":           "Palo Alto Networks",
+	"palo_alto_networks":         "Palo Alto Networks",
+	// Juniper
+	"juniper":                    "Juniper",
+	"juniper_networks":           "Juniper",
+	// Citrix
+	"citrix":                     "Citrix",
+	"citrix_systems":             "Citrix",
+	// Dell / HP / HPE
+	"dell":                       "Dell",
+	"dell_inc":                   "Dell",
+	"hp":                         "HP",
+	"hp_inc":                     "HP",
+	"hewlett_packard_enterprise": "HPE",
+	"hpe":                        "HPE",
+	// SAP
+	"sap":                        "SAP",
+	"sap_se":                     "SAP",
+	// Mozilla
+	"mozilla":                    "Mozilla",
+	"mozilla_foundation":         "Mozilla",
+	// Samsung / Huawei
+	"samsung":                    "Samsung",
+	"huawei":                     "Huawei",
+	// Atlassian
+	"atlassian":                  "Atlassian",
+	"atlassian_pty":              "Atlassian",
+	// F5
+	"f5":                         "F5",
+	"f5_networks":                "F5",
+	// SonicWall
+	"sonicwall":                  "SonicWall",
+	"sonicwall_inc":              "SonicWall",
+	// Sophos
+	"sophos":                     "Sophos",
+	"sophos_ltd":                 "Sophos",
+	// Zyxel
+	"zyxel":                      "Zyxel",
+	"zyxel_communications":       "Zyxel",
+	// Network gear
+	"netgear":                    "NETGEAR",
+	"tp-link":                    "TP-Link",
+	"d-link":                     "D-Link",
+	"dlink":                      "D-Link",
+	// NAS / IoT
+	"synology":                   "Synology",
+	"qnap":                       "QNAP",
+	"qnap_systems":               "QNAP",
+	"hikvision":                  "Hikvision",
+	"dahua":                      "Dahua",
+	// Cloud / DevOps
+	"hashicorp":                  "HashiCorp",
+	"docker":                     "Docker",
+	"docker_inc":                 "Docker",
+	"gitlab":                     "GitLab",
+	"github":                     "GitHub",
+	"elastic":                    "Elastic",
+	"elasticsearch":              "Elastic",
+	"grafana":                    "Grafana",
+	"jenkins":                    "Jenkins",
+	// Security vendors
+	"ivanti":                     "Ivanti",
+	"ivanti_inc":                 "Ivanti",
+	"veeam":                      "Veeam",
+	"trendmicro":                 "Trend Micro",
+	"trend_micro":                "Trend Micro",
+	"mcafee":                     "McAfee",
+	"kaspersky":                  "Kaspersky",
+	"crowdstrike":                "CrowdStrike",
+	"symantec":                   "Symantec",
+	// CMS
+	"wordpress":                  "WordPress",
+	"automattic":                 "WordPress",
+	"drupal":                     "Drupal",
+	"joomla":                     "Joomla",
+	"typo3":                      "TYPO3",
+	// Databases
+	"postgresql":                 "PostgreSQL",
+	"mongodb":                    "MongoDB",
+	"mongodb_inc":                "MongoDB",
+	"redis":                      "Redis",
+	"redis_ltd":                  "Redis",
+	// Other
+	"openssl":                    "OpenSSL",
+	"openssl_project":            "OpenSSL",
+	"nodejs":                     "Node.js",
+	"node.js":                    "Node.js",
+	"python":                     "Python",
+	"python_software_foundation": "Python",
+	"php":                        "PHP",
+	"php_group":                  "PHP",
+	"zoom":                       "Zoom",
+	"zoom_video_communications":  "Zoom",
+	"mattermost":                 "Mattermost",
+	"nextcloud":                  "Nextcloud",
+	"roundcube":                  "Roundcube",
+	"nginx":                      "Nginx",
+}
+
+// acronyms contains words that should be preserved as-is (all uppercase or special casing).
+var acronyms = map[string]string{
+	"ibm": "IBM", "sap": "SAP", "hp": "HP", "hpe": "HPE",
+	"aws": "AWS", "gcp": "GCP", "api": "API", "ssl": "SSL", "tls": "TLS",
+	"ssh": "SSH", "dns": "DNS", "tcp": "TCP", "udp": "UDP", "ftp": "FTP",
+	"rce": "RCE", "xss": "XSS", "csrf": "CSRF", "ssrf": "SSRF", "sql": "SQL",
+	"nsx": "NSX", "asa": "ASA", "ios": "IOS", "adc": "ADC",
+	"pan-os": "PAN-OS", "esxi": "ESXi", "idrac": "iDRAC", "ilo": "iLO",
+	"vmware": "VMware", "macos": "macOS", "ipados": "iPadOS",
+	"webex": "WebEx", "gitlab": "GitLab", "github": "GitHub",
+	"wordpress": "WordPress", "javascript": "JavaScript", "typescript": "TypeScript",
+	"postgresql": "PostgreSQL", "mongodb": "MongoDB", "openssl": "OpenSSL",
+	"activemq": "ActiveMQ", "netweaver": "NetWeaver", "qradar": "QRadar",
+	"fortios": "FortiOS", "fortigate": "FortiGate", "fortimanager": "FortiManager",
+	"fortianalyzer": "FortiAnalyzer", "forticlient": "FortiClient",
+	"fortiweb": "FortiWeb", "fortimail": "FortiMail", "fortisiem": "FortiSIEM",
+	"fortiproxy": "FortiProxy", "fortiswitch": "FortiSwitch", "fortiap": "FortiAP",
+	"sonicwall": "SonicWall", "netscaler": "NetScaler",
+	"log4j": "Log4j", "vcenter": "vCenter",
+	"qnap": "QNAP", "netgear": "NETGEAR",
 }
 
 func NormalizeName(name string) string {
 	low := strings.ToLower(name)
 	if alias, ok := nameAliases[low]; ok {
+		return alias
+	}
+	// Also check with underscores replaced
+	lowFlat := strings.ToLower(strings.ReplaceAll(name, "_", " "))
+	lowFlat = strings.TrimSpace(lowFlat)
+	if alias, ok := nameAliases[strings.ReplaceAll(lowFlat, " ", "_")]; ok {
 		return alias
 	}
 	return capitalize(strings.ReplaceAll(name, "_", " "))
@@ -313,7 +712,11 @@ func capitalize(s string) string {
 	}
 	words := strings.Fields(s)
 	for i, w := range words {
-		if len(w) > 0 {
+		low := strings.ToLower(w)
+		// Check if the word is a known acronym or special-cased word
+		if acr, ok := acronyms[low]; ok {
+			words[i] = acr
+		} else if len(w) > 0 {
 			words[i] = strings.ToUpper(w[0:1]) + strings.ToLower(w[1:])
 		}
 	}
