@@ -34,7 +34,63 @@
         .onboarding-overlay.active {
             opacity: 1;
             pointer-events: auto;
+            cursor: pointer;
         }
+        /* Modal System - must be above onboarding overlay (z-90) */
+        #modal-container {
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+        }
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+        }
+        .modal-content {
+            background: #181c22;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 1.5rem;
+            max-width: 32rem;
+            width: 90%;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+        }
+        /* Toast System */
+        #toast-container {
+            position: fixed;
+            top: 1.5rem;
+            right: 1.5rem;
+            z-index: 300;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .toast {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.25rem;
+            border-radius: 0.75rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            background: #1c2026;
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #dfe2eb;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            animation: toast-in 0.3s ease-out;
+        }
+        .toast-success { border-color: #00daf340; color: #00daf3; }
+        .toast-error { border-color: #ef444440; color: #ef4444; }
+        .toast.fade-out { animation: toast-out 0.3s ease-in forwards; }
+        @keyframes toast-in { from { opacity: 0; transform: translateX(1rem); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(-0.5rem); } }
     </style>
 </head>
 <body class="bg-[#0a0e14] text-on-surface font-sans selection:bg-primary selection:text-on-primary" 
@@ -196,7 +252,7 @@
 
     <div id="toast-container"></div>
     <div id="modal-container" class="hidden"></div>
-    <div id="onboarding-overlay" class="onboarding-overlay"></div>
+    <div id="onboarding-overlay" class="onboarding-overlay" onclick="if(typeof vulfixx!=='undefined'&&vulfixx.completeOnboarding)vulfixx.completeOnboarding()"></div>
 
     <script nonce="{{.Nonce}}">
         const vulfixx = {
@@ -231,7 +287,7 @@
             modal: (title, content, actions = []) => {
                 const container = document.getElementById('modal-container');
                 container.innerHTML = `
-                    <div class="modal-backdrop z-50">
+                    <div class="modal-backdrop">
                         <div class="modal-content p-8 space-y-6" role="dialog" aria-modal="true" aria-labelledby="modal-title">
                             <div class="flex justify-between items-center">
                                 <h2 id="modal-title" class="text-2xl font-bold text-white"></h2>
@@ -403,6 +459,10 @@
                     }
 
                     vulfixx.modal(step.title, step.content, [
+                        {
+                            label: 'Skip Tour',
+                            onClick: () => vulfixx.completeOnboarding()
+                        },
                         {
                             label: currentStep < steps.length - 1 ? "Next" : "Get Started",
                             primary: true,
