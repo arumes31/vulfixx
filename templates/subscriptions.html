@@ -24,7 +24,8 @@
                     {{.CSRFField}}
                     <div class="space-y-2">
                         <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Target Infrastructure</label>
-                        <input type="text" name="keyword" placeholder="e.g. Cisco, nginx, vcenter" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
+                        <input type="text" name="keyword" placeholder="e.g. Fortigate, FortiOS, FortiManager" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
+                        <p class="text-[10px] text-gray-500">Track multiple products by separating them with commas.</p>
                     </div>
                     
                     <div class="space-y-2">
@@ -258,6 +259,7 @@
                 <div class="space-y-2">
                     <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Target Infrastructure</label>
                     <input type="text" name="keyword" value="${subData.keyword || ''}" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
+                    <p class="text-[10px] text-gray-500">Track multiple products by separating them with commas.</p>
                 </div>
                 <div class="space-y-2">
                     <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Minimum CVSS Severity</label>
