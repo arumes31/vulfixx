@@ -4,6 +4,7 @@ import (
 	"context"
 	"cve-tracker/internal/models"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"regexp"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 var regexCache sync.Map
@@ -80,8 +83,9 @@ func (w *Worker) processAlerts(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			log.Println("Error reading from alerts queue:", err)
-			time.Sleep(1 * time.Second)
+			if !errors.Is(err, redis.Nil) {
+				log.Println("Error reading from alerts queue:", err)
+			}
 			continue
 		}
 		var cve models.CVE
