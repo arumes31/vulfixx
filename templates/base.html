@@ -421,26 +421,39 @@
             },
 
             startOnboarding: () => {
+                // Check localStorage opt-out first
+                if (localStorage.getItem('vulfixx_onboarding_dismissed') === 'true') return;
+
                 const steps = [
                     {
                         title: "Welcome to Vulfixx!",
-                        content: "This is your advanced threat intelligence dashboard. Let's take a quick tour of your new command center.",
+                        content: "Your advanced threat intelligence command center is ready. Let's take a quick tour of the key features that keep your infrastructure protected.",
                         target: "main h1"
                     },
                     {
-                        title: "Live Intelligence Feed",
-                        content: "Stay ahead of attackers with real-time global CVE statistics and daily vulnerability counts.",
-                        target: "aside .bg-\\[\\#1c2026\\]\\/50"
+                        title: "Dashboard",
+                        content: "Your central overview — live severity charts, status breakdowns, and a filterable CVE table with priority classification (P0–P3). Everything you need at a glance.",
+                        target: "aside a[href='/dashboard']"
                     },
                     {
-                        title: "Targeted Monitoring",
-                        content: "Configure high-fidelity subscriptions for your specific technology stack (e.g., 'Exchange', 'Fortinet') to receive instant alerts.",
-                        target: "a[href='/subscriptions']"
+                        title: "Subscriptions",
+                        content: "Set up keyword monitors (e.g., 'Fortinet', 'Exchange') with severity thresholds. Vulfixx will continuously alert you via Email, Webhook, Slack, or Teams until you mark the CVE as 'In Progress' or 'Resolved'.",
+                        target: "aside a[href='/subscriptions']"
                     },
                     {
                         title: "Asset Inventory",
-                        content: "Register your servers, software, and network components to automatically map them against known vulnerabilities.",
-                        target: "a[href='/assets']"
+                        content: "Register your servers, software, and network components. Vulfixx automatically maps new vulnerabilities against your registered assets for proactive defense.",
+                        target: "aside a[href='/assets']"
+                    },
+                    {
+                        title: "Alert History",
+                        content: "Review every alert that was sent to you. You can acknowledge or mute alerts directly from your email — acknowledged CVEs move to 'In Progress' and stop recurring alerts.",
+                        target: "aside a[href='/alerts']"
+                    },
+                    {
+                        title: "Persistent Alerts",
+                        content: "Vulfixx keeps sending alerts for a vulnerability until you take action. Set its status to 'In Progress' or 'Resolved' to stop notifications. This ensures nothing slips through the cracks.",
+                        target: "aside a[href='/dashboard']"
                     }
                 ];
 
@@ -448,8 +461,8 @@
 
                 const showStep = () => {
                     const step = steps[currentStep];
-                    
-                    // Highlight the target element
+
+                    // Clear previous highlights
                     document.querySelectorAll('.onboarding-highlight').forEach(el => el.classList.remove('onboarding-highlight'));
                     const targetEl = document.querySelector(step.target);
                     if (targetEl) {
@@ -458,31 +471,71 @@
                         document.getElementById('onboarding-overlay').classList.add('active');
                     }
 
-                    vulfixx.modal(step.title, step.content, [
+                    // Build step counter
+                    const stepLabel = `Step ${currentStep + 1} of ${steps.length}`;
+
+                    // Build content with step counter
+                    const contentEl = document.createElement('div');
+                    contentEl.innerHTML = `
+                        <p class="text-gray-300 text-sm leading-relaxed mb-4">${step.content}</p>
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] font-bold uppercase tracking-widest text-gray-600">${stepLabel}</span>
+                            <div class="flex gap-1">
+                                ${steps.map((_, i) => `<span class="w-2 h-2 rounded-full ${i === currentStep ? 'bg-primary' : i < currentStep ? 'bg-primary/40' : 'bg-gray-700'}"></span>`).join('')}
+                            </div>
+                        </div>
+                    `;
+
+                    // Add "Never show again" checkbox on the last step
+                    const isLast = currentStep === steps.length - 1;
+
+                    const actions = [
                         {
                             label: 'Skip Tour',
-                            onClick: () => vulfixx.completeOnboarding()
+                            onClick: () => vulfixx.completeOnboarding(false)
                         },
                         {
-                            label: currentStep < steps.length - 1 ? "Next" : "Get Started",
+                            label: isLast ? "Get Started" : "Next →",
                             primary: true,
                             onClick: () => {
                                 currentStep++;
                                 if (currentStep < steps.length) {
                                     showStep();
                                 } else {
-                                    vulfixx.completeOnboarding();
+                                    vulfixx.completeOnboarding(false);
                                 }
                             }
                         }
-                    ]);
+                    ];
+
+                    vulfixx.modal(step.title, contentEl, actions);
+
+                    // After modal renders, inject the "never show again" checkbox
+                    setTimeout(() => {
+                        const modalBody = document.querySelector('.modal-body');
+                        if (modalBody && !modalBody.querySelector('#never-show-onboarding')) {
+                            const neverShowDiv = document.createElement('div');
+                            neverShowDiv.className = 'flex items-center gap-2 mt-4 pt-3 border-t border-white/5';
+                            neverShowDiv.innerHTML = `
+                                <input type="checkbox" id="never-show-onboarding" class="w-4 h-4 accent-primary cursor-pointer">
+                                <label for="never-show-onboarding" class="text-[11px] text-gray-500 cursor-pointer select-none">Don't show this tour again</label>
+                            `;
+                            modalBody.appendChild(neverShowDiv);
+                        }
+                    }, 50);
                 };
 
                 showStep();
             },
 
-            completeOnboarding: async () => {
+            completeOnboarding: async (neverShow) => {
                 try {
+                    // Check the "never show again" checkbox state
+                    const checkbox = document.getElementById('never-show-onboarding');
+                    if (neverShow || (checkbox && checkbox.checked)) {
+                        localStorage.setItem('vulfixx_onboarding_dismissed', 'true');
+                    }
+
                     document.querySelectorAll('.onboarding-highlight').forEach(el => el.classList.remove('onboarding-highlight'));
                     document.getElementById('onboarding-overlay').classList.remove('active');
                     
