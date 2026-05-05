@@ -6,8 +6,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN go build -o scalper .
-RUN go install gitlab.com/yawning/obfs4.git/obfs4proxy@v0.0.14
-
+RUN go install gitlab.com/yawning/obfs4.git/obfs4proxy@latest
 # Stage 2: Final hardened image
 FROM alpine:3.19
 
