@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"cve-tracker/internal/models"
 
@@ -86,7 +87,7 @@ func (a *App) CreateTeamHandler(w http.ResponseWriter, r *http.Request) {
 		a.SendResponse(w, r, false, "", "", "Team name is required")
 		return
 	}
-	if len(name) > 100 {
+	if utf8.RuneCountInString(name) > 100 {
 		a.SendResponse(w, r, false, "", "", "Team name too long (max 100 characters)")
 		return
 	}

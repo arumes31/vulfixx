@@ -822,6 +822,26 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 			if sortOrder == "ASC" {
 				op = ">"
 			}
+			
+			// Validate cursorStr based on sort column
+			var parseErr error
+			switch sortCol {
+			case "c.published_date":
+				_, parseErr = time.Parse(time.RFC3339Nano, cursorStr)
+				if parseErr != nil {
+					_, parseErr = time.Parse(time.RFC3339, cursorStr)
+				}
+				if parseErr != nil {
+					_, parseErr = time.Parse("2006-01-02 15:04:05.999999-07", cursorStr)
+				}
+			case "c.cvss_score", "c.epss_score":
+				_, parseErr = strconv.ParseFloat(cursorStr, 64)
+			}
+			if parseErr != nil {
+				http.Error(w, "Invalid cursor value", http.StatusBadRequest)
+				return
+			}
+
 			var castType string
 			switch sortCol {
 			case "c.published_date":
@@ -831,7 +851,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 			default:
 				castType = ""
 			}
-			keysetCond := fmt.Sprintf(" AND (%s %s $%d%s OR (%s = $%d%s AND c.id < $%d)) ", sortCol, op, argIdx, castType, sortCol, argIdx, castType, argIdx+1)
+			keysetCond := fmt.Sprintf(" AND (%s %s $%d%s OR (%s = $%d%s AND c.id < $%d)) ", sortCol, op, argIdx, castType, sortCol, argIdx+1, castType, argIdx+2)
 			whereClause += keysetCond
 			args = append(args, cursorStr, cursorStr, cursorID)
 			argIdx += 3

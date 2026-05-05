@@ -99,6 +99,7 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 	historyRows, err := w.Pool.Query(ctx, "SELECT user_id FROM alert_history WHERE cve_id = $1", cve.ID)
 	if err != nil {
 		log.Printf("Error fetching alert history for CVE %d: %v", cve.ID, err)
+		notifiedUsers = nil
 	} else {
 		defer historyRows.Close()
 		for historyRows.Next() {

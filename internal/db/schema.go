@@ -384,11 +384,11 @@ END $$;
 
 CREATE OR REPLACE FUNCTION calculate_cve_priority() RETURNS TRIGGER AS $$
 BEGIN
-    IF NEW.cvss_score >= 9.0 OR NEW.cisa_kev = TRUE OR NEW.epss_score >= 0.5 THEN
+    IF COALESCE(NEW.cvss_score, 0.0) >= 9.0 OR NEW.cisa_kev = TRUE OR COALESCE(NEW.epss_score, 0.0) >= 0.5 THEN
         NEW.priority := 'P0';
-    ELSIF NEW.cvss_score >= 7.0 OR NEW.epss_score >= 0.1 THEN
+    ELSIF COALESCE(NEW.cvss_score, 0.0) >= 7.0 OR COALESCE(NEW.epss_score, 0.0) >= 0.1 THEN
         NEW.priority := 'P1';
-    ELSIF NEW.cvss_score >= 4.0 THEN
+    ELSIF COALESCE(NEW.cvss_score, 0.0) >= 4.0 THEN
         NEW.priority := 'P2';
     ELSE
         NEW.priority := 'P3';

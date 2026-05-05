@@ -52,7 +52,7 @@ func TestEmailChangeFlow_Coverage(t *testing.T) {
 
 		// 1. Confirm old token
 		mock.ExpectBegin()
-		mock.ExpectQuery("SELECT user_id, new_email, old_email_confirmed, new_email_confirmed").
+		mock.ExpectQuery("SELECT user_id, new_email, old_email_confirmed, new_email_confirmed, old_email_token, new_email_token").
 			WithArgs(oldTok).
 			WillReturnRows(pgxmock.NewRows([]string{"user_id", "new_email", "old_email_confirmed", "new_email_confirmed", "old_email_token", "new_email_token"}).
 				AddRow(1, newEmail, false, false, oldTok, newTok))
@@ -68,7 +68,7 @@ func TestEmailChangeFlow_Coverage(t *testing.T) {
 
 		// 2. Confirm new token
 		mock.ExpectBegin()
-		mock.ExpectQuery("SELECT user_id, new_email, old_email_confirmed, new_email_confirmed").
+		mock.ExpectQuery("SELECT user_id, new_email, old_email_confirmed, new_email_confirmed, old_email_token, new_email_token").
 			WithArgs(newTok).
 			WillReturnRows(pgxmock.NewRows([]string{"user_id", "new_email", "old_email_confirmed", "new_email_confirmed", "old_email_token", "new_email_token"}).
 				AddRow(1, newEmail, true, false, oldTok, newTok))

@@ -363,7 +363,10 @@ func (w *Worker) sendGenericWebhook(webhookURL string, cve *models.CVE, asset, e
 	dialer := &net.Dialer{Timeout: webhookTimeout}
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-			ips, _ := net.DefaultResolver.LookupIPAddr(ctx, parsedURL.Hostname())
+			ips, err := net.DefaultResolver.LookupIPAddr(ctx, parsedURL.Hostname())
+			if err != nil {
+				return nil, fmt.Errorf("DNS lookup failed: %w", err)
+			}
 			var safeIP net.IP
 			for _, ipAddr := range ips {
 				if addr, ok := netip.AddrFromSlice(ipAddr.IP); ok {

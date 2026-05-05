@@ -179,8 +179,15 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	session.Options.MaxAge = -1
 	if err := session.Save(r, w); err != nil {
 		log.Printf("Error invalidating old session: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
 	}
-	newSession, _ := a.SessionStore.Get(r, "vulfixx-session")
+	newSession, err := a.SessionStore.Get(r, "vulfixx-session")
+	if err != nil {
+		log.Printf("Error getting new session: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 	newSession.Values["user_id"] = user.ID
 	newSession.Values["is_admin"] = user.IsAdmin
 	if err := newSession.Save(r, w); err != nil {

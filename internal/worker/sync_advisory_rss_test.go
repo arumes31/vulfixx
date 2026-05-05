@@ -256,6 +256,8 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		}
 		wMulti := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
+		mock.MatchExpectationsInOrder(false)
+
 		// Expectations for CVE-2024-0001
 		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
