@@ -106,18 +106,19 @@ func TestDashboardHandler(t *testing.T) {
 			req.AddCookie(c)
 		}
 
-		mock.ExpectQuery("SELECT.*COUNT.*DISTINCT").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit", "prog"}).AddRow(100, 10, 5, 2))
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT DISTINCT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, COALESCE(c.\"references\", '{}'), ucn.notes, COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0), COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'), COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]'), COALESCE(c.priority, 'P3') as priority")).
+		mock.ExpectQuery("SELECT.*COUNT.*total_cves.*kev_count.*critical_count.*in_progress_count.*sev_crit.*sev_high.*sev_med.*sev_low.*stat_active.*stat_prog.*stat_res.*stat_ign").
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit", "prog", "sev_crit", "sev_high", "sev_med", "sev_low", "stat_active", "stat_prog", "stat_res", "stat_ign"}).
+				AddRow(100, 10, 5, 2, 5, 1, 0, 0, 1, 0, 0, 0))
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, COALESCE(c.\"references\", '{}'), ucn.notes, COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0), COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'), COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]'), COALESCE(c.priority, 'P3') as priority")).
 			WithArgs(1, 20, 0).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "vendor", "product", "affected_products", "priority"}).
 				AddRow(1, "CVE-2024-0001", "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, "", 0.123, "CWE-79", "XSS", 1, 0, "", []byte("{}"), "", "", []byte("[]"), "P1"))
 
-		mock.ExpectQuery("SELECT.*COUNT.*DISTINCT.*cvss_score").
+		mock.ExpectQuery("SELECT cwe_id.*COUNT.*cnt.*FROM cves").
 			WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(0, 1, 0, 0))
-
-		mock.ExpectQuery("SELECT.*COUNT.*DISTINCT.*status").WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"active", "prog", "res", "ign"}).AddRow(1, 0, 0, 0))
+			WillReturnRows(pgxmock.NewRows([]string{"cwe_id", "name", "cnt"}).AddRow("CWE-79", "XSS", 1))
 
 		expectBaseQueries(mock, 1)
 		rr2 := httptest.NewRecorder()

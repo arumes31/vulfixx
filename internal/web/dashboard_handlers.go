@@ -57,10 +57,23 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		maxCvss = 10.0
 	}
 
-	var totalItems, kevCount, critCount, progressCount int
+	var metrics struct {
+		Total      int
+		Kev        int
+		Critical   int
+		InProgress int
+		SevCrit    int
+		SevHigh    int
+		SevMed     int
+		SevLow     int
+		StatActive int
+		StatProg   int
+		StatRes    int
+		StatIgn    int
+	}
 
 	args := []any{userID}
-	argIdx := 2 // $1 is always userID
+	argIdx := 2
 
 	teamArgIdx := -1
 	statusJoinCond := "ucs.user_id = $1 AND ucs.team_id IS NULL"
@@ -71,22 +84,17 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		argIdx++
 	}
 
-	metricsQuery := fmt.Sprintf(`
-		SELECT
-			COUNT(DISTINCT c.id) as total_cves,
-			COUNT(DISTINCT CASE WHEN c.cisa_kev = true THEN c.id END) as kev_count,
-			COUNT(DISTINCT CASE WHEN c.cvss_score >= 9.0 THEN c.id END) as critical_count,
-			COUNT(DISTINCT CASE WHEN ucs.status = 'in_progress' THEN c.id END) as in_progress_count
-		FROM cves c
-		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s
-	`, statusJoinCond)
-
 	whereClause := " WHERE (1=1) "
 	if !searchAll {
-		metricsQuery += " INNER JOIN user_subscriptions us ON us.user_id = $1 "
+		whereClause += fmt.Sprintf(` AND (
+			EXISTS (
+				SELECT 1 FROM user_subscriptions us 
+				WHERE (us.user_id = $1 OR us.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
+				  AND c.cvss_score >= us.min_severity 
+				  AND (us.keyword = '' OR c.description ILIKE '%%' || us.keyword || '%%')
+			)
+		) `)
 		whereClause += " AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) "
-		whereClause += " AND c.cvss_score >= us.min_severity "
-		whereClause += " AND (us.keyword = '' OR c.description ILIKE '%%' || us.keyword || '%%') "
 	} else {
 		if statusFilter == "" || statusFilter == "active" {
 			whereClause += " AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) "
@@ -126,31 +134,54 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		argIdx++
 	}
 
-	fullMetricsQuery := metricsQuery + whereClause
+	consolidatedMetricsQuery := fmt.Sprintf(`
+		SELECT
+			COUNT(c.id) as total_cves,
+			COUNT(CASE WHEN c.cisa_kev = true THEN 1 END) as kev_count,
+			COUNT(CASE WHEN c.cvss_score >= 9.0 THEN 1 END) as critical_count,
+			COUNT(CASE WHEN ucs.status = 'in_progress' THEN 1 END) as in_progress_count,
+			-- Severity
+			COUNT(CASE WHEN c.cvss_score >= 9.0 THEN 1 END) as sev_crit,
+			COUNT(CASE WHEN c.cvss_score >= 7.0 AND c.cvss_score < 9.0 THEN 1 END) as sev_high,
+			COUNT(CASE WHEN c.cvss_score >= 4.0 AND c.cvss_score < 7.0 THEN 1 END) as sev_med,
+			COUNT(CASE WHEN c.cvss_score < 4.0 THEN 1 END) as sev_low,
+			-- Status
+			COUNT(CASE WHEN COALESCE(ucs.status, 'active') = 'active' THEN 1 END) as stat_active,
+			COUNT(CASE WHEN ucs.status = 'in_progress' THEN 1 END) as stat_prog,
+			COUNT(CASE WHEN ucs.status = 'resolved' THEN 1 END) as stat_res,
+			COUNT(CASE WHEN ucs.status = 'ignored' THEN 1 END) as stat_ign
+		FROM cves c
+		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s
+		%s
+	`, statusJoinCond, whereClause)
 
-	// Generate deterministic cache key (userID, teamID, fullMetricsQuery, args)
-	cacheKeyStr := fmt.Sprintf("%d:%d:%s:%v", userID, activeTeamID, fullMetricsQuery, args)
+	// Generate deterministic cache key
+	cacheKeyStr := fmt.Sprintf("%d:%d:%s:%v", userID, activeTeamID, consolidatedMetricsQuery, args)
 	cacheKeyHash := sha256.Sum256([]byte(cacheKeyStr))
-	cacheKey := fmt.Sprintf("dashboard_metrics:%x", cacheKeyHash)
+	cacheKey := fmt.Sprintf("dashboard_metrics_v2:%x", cacheKeyHash)
 
 	if cachedData, err := a.Redis.Get(r.Context(), cacheKey).Result(); err == nil {
-		var metrics [4]int
 		if err := json.Unmarshal([]byte(cachedData), &metrics); err == nil {
-			totalItems, kevCount, critCount, progressCount = metrics[0], metrics[1], metrics[2], metrics[3]
 			goto MetricsCached
 		}
 	}
 
-	if err := a.Pool.QueryRow(r.Context(), fullMetricsQuery, args...).Scan(&totalItems, &kevCount, &critCount, &progressCount); err != nil {
-		log.Printf("Dashboard metrics error: %v", err)
+	if err := a.Pool.QueryRow(r.Context(), consolidatedMetricsQuery, args...).Scan(
+		&metrics.Total, &metrics.Kev, &metrics.Critical, &metrics.InProgress,
+		&metrics.SevCrit, &metrics.SevHigh, &metrics.SevMed, &metrics.SevLow,
+		&metrics.StatActive, &metrics.StatProg, &metrics.StatRes, &metrics.StatIgn,
+	); err != nil {
+		log.Printf("Dashboard consolidated metrics error: %v", err)
 	} else {
-		metricsToCache := [4]int{totalItems, kevCount, critCount, progressCount}
-		if dataToCache, err := json.Marshal(metricsToCache); err == nil {
+		if dataToCache, err := json.Marshal(metrics); err == nil {
 			a.Redis.SetEx(r.Context(), cacheKey, dataToCache, 60*time.Second)
 		}
 	}
 
 MetricsCached:
+	totalItems, kevCount, critCount, progressCount := metrics.Total, metrics.Kev, metrics.Critical, metrics.InProgress
+	severityCounts := SeverityCounts{Critical: metrics.SevCrit, High: metrics.SevHigh, Medium: metrics.SevMed, Low: metrics.SevLow}
+	statusCounts := StatusCounts{Active: metrics.StatActive, InProgress: metrics.StatProg, Resolved: metrics.StatRes, Ignored: metrics.StatIgn}
 
 	notesJoinCond := "ucn.user_id = $1 AND ucn.team_id IS NULL"
 	if teamArgIdx != -1 {
@@ -158,16 +189,12 @@ MetricsCached:
 	}
 
 	query := fmt.Sprintf(`
-		SELECT DISTINCT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, COALESCE(c."references", '{}'), ucn.notes,
+		SELECT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, COALESCE(c."references", '{}'), ucn.notes,
 		COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0), COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'), COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]'), COALESCE(c.priority, 'P3') as priority
 		FROM cves c
 		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s
 		LEFT JOIN cve_notes ucn ON c.id = ucn.cve_id AND %s
 	`, statusJoinCond, notesJoinCond)
-
-	if !searchAll {
-		query += " INNER JOIN user_subscriptions us ON us.user_id = $1 "
-	}
 
 	query += whereClause
 	query += fmt.Sprintf(" ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $%d OFFSET $%d ", argIdx, argIdx+1)
@@ -210,55 +237,10 @@ MetricsCached:
 		totalPages = 1
 	}
 
-	// Fetch severity distribution
-	var severityCounts SeverityCounts
-	severityQuery := fmt.Sprintf(`
-		SELECT 
-			COUNT(DISTINCT CASE WHEN c.cvss_score >= 9.0 THEN c.id END),
-			COUNT(DISTINCT CASE WHEN c.cvss_score >= 7.0 AND c.cvss_score < 9.0 THEN c.id END),
-			COUNT(DISTINCT CASE WHEN c.cvss_score >= 4.0 AND c.cvss_score < 7.0 THEN c.id END),
-			COUNT(DISTINCT CASE WHEN c.cvss_score < 4.0 THEN c.id END)
-		FROM cves c
-		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s
-	`, statusJoinCond)
-
-	if !searchAll {
-		severityQuery += " INNER JOIN user_subscriptions us ON us.user_id = $1 "
-	}
-	severityQuery += whereClause
-
-	err = a.Pool.QueryRow(r.Context(), severityQuery, args...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
-	if err != nil {
-		log.Printf("Severity distribution error: %v", err)
-	}
-
-	// Fetch status distribution
-	var statusCounts StatusCounts
-	statusQuery := fmt.Sprintf(`
-		SELECT 
-			COUNT(DISTINCT CASE WHEN COALESCE(ucs.status, 'active') = 'active' THEN c.id END),
-			COUNT(DISTINCT CASE WHEN ucs.status = 'in_progress' THEN c.id END),
-			COUNT(DISTINCT CASE WHEN ucs.status = 'resolved' THEN c.id END),
-			COUNT(DISTINCT CASE WHEN ucs.status = 'ignored' THEN c.id END)
-		FROM cves c
-		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s
-	`, statusJoinCond)
-
-	if !searchAll {
-		statusQuery += " INNER JOIN user_subscriptions us ON us.user_id = $1 "
-	}
-	statusQuery += whereClause
-
-	err = a.Pool.QueryRow(r.Context(), statusQuery, args...).Scan(&statusCounts.Active, &statusCounts.InProgress, &statusCounts.Resolved, &statusCounts.Ignored)
-	if err != nil {
-		log.Printf("Status distribution error: %v", err)
-	}
+	// Distribution counts are now fetched in the consolidated metrics query above
 
 	var topCWEs []CWEStat
-	cweBaseQuery := "SELECT cwe_id, COALESCE(MAX(cwe_name), 'Unknown'), COUNT(DISTINCT c.id) as cnt FROM cves c "
-	if !searchAll {
-		cweBaseQuery += " INNER JOIN user_subscriptions us ON us.user_id = $1 "
-	}
+	cweBaseQuery := "SELECT cwe_id, COALESCE(MAX(cwe_name), 'Unknown'), COUNT(c.id) as cnt FROM cves c "
 	cweBaseQuery += fmt.Sprintf(" LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s ", statusJoinCond)
 	cweQuery := cweBaseQuery + whereClause + " AND cwe_id IS NOT NULL AND cwe_id != '' GROUP BY cwe_id ORDER BY cnt DESC LIMIT 15"
 
