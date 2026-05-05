@@ -94,9 +94,15 @@ CREATE TABLE IF NOT EXISTS user_subscriptions (
     keyword VARCHAR(255),
     min_severity NUMERIC(4,1),
     webhook_url TEXT,
+    slack_webhook_url TEXT,
+    teams_webhook_url TEXT,
     enable_email BOOLEAN DEFAULT TRUE,
     enable_webhook BOOLEAN DEFAULT TRUE,
+    enable_slack BOOLEAN DEFAULT FALSE,
+    enable_teams BOOLEAN DEFAULT FALSE,
+    enable_browser_push BOOLEAN DEFAULT FALSE,
     filter_logic TEXT DEFAULT '',
+    aggregation_mode VARCHAR(20) DEFAULT 'instant',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_user_subscriptions_user_xor_team CHECK ((user_id IS NULL) <> (team_id IS NULL))
 );

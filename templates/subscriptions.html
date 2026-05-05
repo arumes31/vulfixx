@@ -38,7 +38,7 @@
                         <label class="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/10 transition-all">
                             <div class="flex items-center gap-3">
                                 <span class="material-symbols-outlined text-gray-400">mail</span>
-                                <span class="text-xs font-bold text-gray-300">Direct Email</span>
+                                <span class="text-xs font-bold text-gray-300">Email</span>
                             </div>
                             <input type="checkbox" name="enable_email" value="true" checked class="sr-only peer">
                             <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-primary after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6 peer-focus-visible:ring-2 peer-focus-visible:ring-primary peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#10141a]"></div>
@@ -47,16 +47,62 @@
                         <label class="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/10 transition-all">
                             <div class="flex items-center gap-3">
                                 <span class="material-symbols-outlined text-gray-400">webhook</span>
-                                <span class="text-xs font-bold text-gray-300">Webhook Sync</span>
+                                <span class="text-xs font-bold text-gray-300">Webhook</span>
                             </div>
                             <input type="checkbox" name="enable_webhook" value="true" class="sr-only peer">
                             <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-blue-500 after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#10141a]"></div>
+                        </label>
+
+                        <label class="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/10 transition-all">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-gray-400">tag</span>
+                                <span class="text-xs font-bold text-gray-300">Slack</span>
+                            </div>
+                            <input type="checkbox" name="enable_slack" value="true" class="sr-only peer">
+                            <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-green-500 after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6 peer-focus-visible:ring-2 peer-focus-visible:ring-green-500 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#10141a]"></div>
+                        </label>
+
+                        <label class="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/10 transition-all">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-gray-400">group_work</span>
+                                <span class="text-xs font-bold text-gray-300">Teams</span>
+                            </div>
+                            <input type="checkbox" name="enable_teams" value="true" class="sr-only peer">
+                            <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-purple-500 after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6 peer-focus-visible:ring-2 peer-focus-visible:ring-purple-500 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#10141a]"></div>
+                        </label>
+
+                        <label class="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/10 transition-all">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-gray-400">notifications_active</span>
+                                <span class="text-xs font-bold text-gray-300">Browser Push</span>
+                            </div>
+                            <input type="checkbox" name="enable_browser_push" value="true" class="sr-only peer">
+                            <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-orange-500 after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6 peer-focus-visible:ring-2 peer-focus-visible:ring-orange-500 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#10141a]"></div>
                         </label>
                     </div>
 
                     <div id="webhook-field" class="space-y-2 hidden">
                         <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Webhook URL</label>
-                        <input type="url" name="webhook_url" placeholder="https://hooks.slack.com/..." class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
+                        <input type="url" name="webhook_url" placeholder="https://hooks.example.com/..." class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
+                    </div>
+
+                    <div id="slack-webhook-field" class="space-y-2 hidden">
+                        <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Slack Webhook URL</label>
+                        <input type="url" name="slack_webhook_url" placeholder="https://hooks.slack.com/services/..." class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
+                    </div>
+
+                    <div id="teams-webhook-field" class="space-y-2 hidden">
+                        <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Teams Webhook URL</label>
+                        <input type="url" name="teams_webhook_url" placeholder="https://outlook.office.com/webhook/..." class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Alert Frequency</label>
+                        <select name="aggregation_mode" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all appearance-none cursor-pointer">
+                            <option value="instant" class="bg-[#10141a]">Instant (Real-time)</option>
+                            <option value="hourly" class="bg-[#10141a]">Hourly Digest</option>
+                            <option value="daily" class="bg-[#10141a]">Daily Summary</option>
+                        </select>
                     </div>
 
                     <button type="submit" class="w-full bg-primary text-on-primary font-black uppercase tracking-widest text-xs py-4 rounded-2xl shadow-lg shadow-primary/20 hover:bg-primary/80 transition-all active:scale-95">
@@ -71,8 +117,8 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {{if .Subscriptions}}
                     {{range .Subscriptions}}
-                    <div class="glass border border-white/10 p-6 rounded-3xl relative group hover:border-primary/30 transition-all">
-                        <div class="flex justify-between items-start mb-6">
+                    <div class="glass border border-white/10 p-6 rounded-3xl relative group hover:border-primary/30 transition-all" data-sub-id="{{.ID}}">
+                        <div class="flex justify-between items-start mb-4">
                             <div class="flex items-center gap-4">
                                 <div class="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-primary border border-white/10">
                                     <span class="material-symbols-outlined" aria-hidden="true">analytics</span>
@@ -82,23 +128,43 @@
                                     <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">CVSS &ge; {{.MinSeverity}}</span>
                                 </div>
                             </div>
-                            <form action="/subscriptions/delete" method="POST" onsubmit="return confirm('Are you sure you want to delete this monitor?');" class="inline">
-                                {{$.CSRFField}}
-                                <input type="hidden" name="id" value="{{.ID}}">
-                                <button type="submit" aria-label="Delete monitor" title="Delete monitor" class="w-8 h-8 rounded-full flex items-center justify-center text-red-400/50 hover:bg-red-400/10 hover:text-red-400 transition-all">
-                                    <span class="material-symbols-outlined text-xl">delete</span>
+                            <div class="flex items-center gap-1">
+                                <button type="button" aria-label="Edit monitor" title="Edit monitor"
+                                    class="edit-sub-btn w-8 h-8 rounded-full flex items-center justify-center text-primary/50 hover:bg-primary/10 hover:text-primary transition-all"
+                                    data-sub='{"id":{{.ID}},"keyword":"{{.Keyword}}","min_severity":{{.MinSeverity}},"enable_email":{{.EnableEmail}},"enable_webhook":{{.EnableWebhook}},"enable_slack":{{.EnableSlack}},"enable_teams":{{.EnableTeams}},"enable_browser_push":{{.EnableBrowserPush}},"aggregation_mode":"{{.AggregationMode}}"}'>
+                                    <span class="material-symbols-outlined text-xl">edit</span>
                                 </button>
-                            </form>
+                                <form action="/subscriptions/delete" method="POST" onsubmit="return confirm('Are you sure you want to delete this monitor?');" class="inline">
+                                    {{$.CSRFField}}
+                                    <input type="hidden" name="id" value="{{.ID}}">
+                                    <button type="submit" aria-label="Delete monitor" title="Delete monitor" class="w-8 h-8 rounded-full flex items-center justify-center text-red-400/50 hover:bg-red-400/10 hover:text-red-400 transition-all">
+                                        <span class="material-symbols-outlined text-xl">delete</span>
+                                    </button>
+                                </form>
+                            </div>
                         </div>
 
-                        <div class="flex items-center gap-3">
-                            <span class="flex items-center gap-1.5 text-[10px] font-bold {{if .EnableEmail}}text-primary{{else}}text-gray-700{{end}} uppercase">
-                                <span class="material-symbols-outlined text-[14px]">mail</span> Email
+                        <div class="flex items-center gap-2 flex-wrap mb-3">
+                            <span class="flex items-center gap-1 text-[10px] font-bold {{if .EnableEmail}}text-primary{{else}}text-gray-700{{end}} uppercase px-2 py-1 rounded-lg {{if .EnableEmail}}bg-primary/10{{else}}bg-white/5{{end}}">
+                                <span class="material-symbols-outlined text-[13px]">mail</span> Email
                             </span>
-                            <span class="w-1 h-1 rounded-full bg-gray-800"></span>
-                            <span class="flex items-center gap-1.5 text-[10px] font-bold {{if .EnableWebhook}}text-blue-400{{else}}text-gray-700{{end}} uppercase">
-                                <span class="material-symbols-outlined text-[14px]">webhook</span> Webhook
+                            <span class="flex items-center gap-1 text-[10px] font-bold {{if .EnableWebhook}}text-blue-400{{else}}text-gray-700{{end}} uppercase px-2 py-1 rounded-lg {{if .EnableWebhook}}bg-blue-400/10{{else}}bg-white/5{{end}}">
+                                <span class="material-symbols-outlined text-[13px]">webhook</span> Webhook
                             </span>
+                            <span class="flex items-center gap-1 text-[10px] font-bold {{if .EnableSlack}}text-green-400{{else}}text-gray-700{{end}} uppercase px-2 py-1 rounded-lg {{if .EnableSlack}}bg-green-400/10{{else}}bg-white/5{{end}}">
+                                <span class="material-symbols-outlined text-[13px]">tag</span> Slack
+                            </span>
+                            <span class="flex items-center gap-1 text-[10px] font-bold {{if .EnableTeams}}text-purple-400{{else}}text-gray-700{{end}} uppercase px-2 py-1 rounded-lg {{if .EnableTeams}}bg-purple-400/10{{else}}bg-white/5{{end}}">
+                                <span class="material-symbols-outlined text-[13px]">group_work</span> Teams
+                            </span>
+                            <span class="flex items-center gap-1 text-[10px] font-bold {{if .EnableBrowserPush}}text-orange-400{{else}}text-gray-700{{end}} uppercase px-2 py-1 rounded-lg {{if .EnableBrowserPush}}bg-orange-400/10{{else}}bg-white/5{{end}}">
+                                <span class="material-symbols-outlined text-[13px]">notifications_active</span> Push
+                            </span>
+                        </div>
+
+                        <div class="flex items-center gap-2 text-[10px] text-gray-600">
+                            <span class="material-symbols-outlined text-[13px]">schedule</span>
+                            <span class="uppercase font-bold tracking-widest">{{if eq .AggregationMode "hourly"}}Hourly Digest{{else if eq .AggregationMode "daily"}}Daily Summary{{else}}Instant{{end}}</span>
                         </div>
                     </div>
                     {{end}}
@@ -122,36 +188,46 @@
 
 <script nonce="{{.Nonce}}">
 (function() {
-    async function submitSubscription(e, form) {
+    function getCSRFToken() {
+        try {
+            return JSON.parse(document.getElementById('subscription-data').textContent).csrfToken;
+        } catch(e) {
+            return document.querySelector('input[name="gorilla.csrf.Token"]')?.value || '';
+        }
+    }
+
+    function collectFormData(form) {
         const formData = new FormData(form);
         const jsonData = {};
         formData.forEach((value, key) => {
-            if (key === 'enable_email' || key === 'enable_webhook') {
+            if (['enable_email','enable_webhook','enable_slack','enable_teams','enable_browser_push'].includes(key)) {
                 jsonData[key] = value === 'true';
             } else if (key === 'min_severity') {
                 jsonData[key] = parseFloat(value);
-            } else {
+            } else if (key !== 'gorilla.csrf.Token') {
                 jsonData[key] = value;
             }
         });
+        // Ensure unchecked checkboxes are false
+        ['enable_email','enable_webhook','enable_slack','enable_teams','enable_browser_push'].forEach(k => {
+            if (!(k in jsonData)) jsonData[k] = false;
+        });
+        if (!jsonData.aggregation_mode) jsonData.aggregation_mode = 'instant';
+        return jsonData;
+    }
 
-        // Ensure checkboxes are false if not present
-        if (!jsonData.enable_email) jsonData.enable_email = false;
-        if (!jsonData.enable_webhook) jsonData.enable_webhook = false;
-
-        const subData = JSON.parse(document.getElementById('subscription-data').textContent);
-        
+    async function submitSubscription(e, form) {
+        const jsonData = collectFormData(form);
         try {
             const response = await fetch('/subscriptions', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRF-Token': subData.csrfToken
+                    'X-CSRF-Token': getCSRFToken()
                 },
                 body: JSON.stringify(jsonData)
             });
-
             const result = await response.json();
             if (result.success) {
                 vulfixx.toast(result.message || 'Monitor initialized successfully', 'success');
@@ -165,23 +241,119 @@
         }
     }
 
+    function toggleWebhookField(toggleInput, fieldId) {
+        const field = document.getElementById(fieldId);
+        if (!field) return;
+        toggleInput?.addEventListener('change', function() {
+            field.classList.toggle('hidden', !this.checked);
+            const urlInput = field.querySelector('input[type="url"]');
+            if (urlInput) urlInput.required = this.checked;
+        });
+    }
+
+    function openEditModal(subData) {
+        const content = document.createElement('div');
+        content.innerHTML = `
+            <form id="edit-sub-form" class="space-y-5">
+                <div class="space-y-2">
+                    <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Target Infrastructure</label>
+                    <input type="text" name="keyword" value="${subData.keyword || ''}" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Minimum CVSS Severity</label>
+                    <input type="number" step="0.1" name="min_severity" value="${subData.min_severity || 7.0}" min="0.0" max="10.0" required class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all font-mono">
+                </div>
+                <div class="space-y-3">
+                    <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Notification Pipelines</label>
+                    ${makeToggle('enable_email', 'mail', 'Email', subData.enable_email, 'primary')}
+                    ${makeToggle('enable_webhook', 'webhook', 'Webhook', subData.enable_webhook, 'blue-500')}
+                    ${makeToggle('enable_slack', 'tag', 'Slack', subData.enable_slack, 'green-500')}
+                    ${makeToggle('enable_teams', 'group_work', 'Teams', subData.enable_teams, 'purple-500')}
+                    ${makeToggle('enable_browser_push', 'notifications_active', 'Browser Push', subData.enable_browser_push, 'orange-500')}
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Alert Frequency</label>
+                    <select name="aggregation_mode" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all appearance-none cursor-pointer">
+                        <option value="instant" ${subData.aggregation_mode === 'instant' ? 'selected' : ''} class="bg-[#10141a]">Instant (Real-time)</option>
+                        <option value="hourly" ${subData.aggregation_mode === 'hourly' ? 'selected' : ''} class="bg-[#10141a]">Hourly Digest</option>
+                        <option value="daily" ${subData.aggregation_mode === 'daily' ? 'selected' : ''} class="bg-[#10141a]">Daily Summary</option>
+                    </select>
+                </div>
+            </form>
+        `;
+
+        vulfixx.modal('Edit Monitor', content, [
+            {
+                label: 'Cancel',
+                onClick: () => vulfixx.closeModal()
+            },
+            {
+                label: 'Save Changes',
+                primary: true,
+                onClick: async () => {
+                    const form = document.getElementById('edit-sub-form');
+                    const jsonData = collectFormData(form);
+                    jsonData.id = subData.id;
+                    try {
+                        const response = await fetch('/subscriptions/update', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'X-CSRF-Token': getCSRFToken()
+                            },
+                            body: JSON.stringify(jsonData)
+                        });
+                        const result = await response.json();
+                        if (result.success) {
+                            vulfixx.toast(result.message || 'Monitor updated', 'success');
+                            vulfixx.closeModal();
+                            setTimeout(() => vulfixx.navigate('/subscriptions'), 800);
+                        } else {
+                            vulfixx.toast(result.error || 'Failed to update', 'error');
+                        }
+                    } catch (err) {
+                        vulfixx.toast('An unexpected error occurred', 'error');
+                    }
+                }
+            }
+        ]);
+    }
+
+    function makeToggle(name, icon, label, checked, color) {
+        return `
+            <label class="flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/5 cursor-pointer hover:bg-white/10 transition-all">
+                <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-gray-400">${icon}</span>
+                    <span class="text-xs font-bold text-gray-300">${label}</span>
+                </div>
+                <input type="checkbox" name="${name}" value="true" ${checked ? 'checked' : ''} class="sr-only peer">
+                <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-${color} after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6"></div>
+            </label>
+        `;
+    }
+
     function initSubscriptions() {
         document.getElementById('subscription-form')?.addEventListener('submit', (e) => {
             e.preventDefault();
             submitSubscription(e, e.target);
         });
 
-        const webhookToggle = document.querySelector('input[name="enable_webhook"]');
-        const webhookURLInput = document.querySelector('input[name="webhook_url"]');
-        
-        webhookToggle?.addEventListener('change', function() {
-            const field = document.getElementById('webhook-field');
-            if (field) {
-                field.classList.toggle('hidden', !this.checked);
-                if (webhookURLInput) {
-                    webhookURLInput.required = this.checked;
+        // Toggle webhook URL fields visibility
+        toggleWebhookField(document.querySelector('#subscription-form input[name="enable_webhook"]'), 'webhook-field');
+        toggleWebhookField(document.querySelector('#subscription-form input[name="enable_slack"]'), 'slack-webhook-field');
+        toggleWebhookField(document.querySelector('#subscription-form input[name="enable_teams"]'), 'teams-webhook-field');
+
+        // Edit buttons
+        document.querySelectorAll('.edit-sub-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                try {
+                    const subData = JSON.parse(this.dataset.sub);
+                    openEditModal(subData);
+                } catch(e) {
+                    console.error('Error parsing subscription data:', e);
                 }
-            }
+            });
         });
     }
 
