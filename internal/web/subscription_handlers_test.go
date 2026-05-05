@@ -188,10 +188,10 @@ func TestSubscriptionHandlers_Detailed(t *testing.T) {
 	app := setupTestApp(t, mock)
 
 	t.Run("SubscriptionsHandler_GET", func(t *testing.T) {
-		mock.ExpectQuery("(?is)SELECT us.id, us.keyword, us.min_severity, us.webhook_url, us.enable_email, us.enable_webhook,.*FROM user_subscriptions").
+		mock.ExpectQuery("(?is)SELECT us.id, us.keyword, us.min_severity, us.webhook_url,.*FROM user_subscriptions").
 			WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "keyword", "min_severity", "webhook_url", "enable_email", "enable_webhook", "team_id"}).
-				AddRow(1, "test", 5.0, "", true, true, nil))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "keyword", "min_severity", "webhook_url", "slack_webhook_url", "teams_webhook_url", "enable_email", "enable_webhook", "enable_slack", "enable_teams", "enable_browser_push", "aggregation_mode", "team_id"}).
+				AddRow(1, "test", 5.0, "", "", "", true, true, false, false, false, "instant", nil))
 		
 		expectBaseQueries(mock, 1)
 
@@ -224,7 +224,7 @@ func TestSubscriptionHandlers_Detailed(t *testing.T) {
 		mock.ExpectBegin()
 		mock.ExpectQuery("SELECT max_subscriptions FROM users WHERE id = \\$1 FOR UPDATE").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"max_subscriptions"}).AddRow(5))
 		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM user_subscriptions WHERE user_id = \\$1").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
-		mock.ExpectExec("INSERT INTO user_subscriptions").WithArgs(1, "new-keyword", 7.5, "", true, false).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec("INSERT INTO user_subscriptions").WithArgs(1, "new-keyword", 7.5, "", "", "", true, false, false, false, false, "instant").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		mock.ExpectCommit()
 		
 		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(1, "subscription_added", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))

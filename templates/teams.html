@@ -90,7 +90,13 @@
     {{end}}
 </div>
 
+{{.CSRFField}}
+
 <script nonce="{{.Nonce}}">
+    function getCSRFToken() {
+        return document.querySelector('input[name="gorilla.csrf.Token"]')?.value || '';
+    }
+
     function toggleMenu(id) {
         document.querySelectorAll('.action-menu-dropdown').forEach(el => {
             if (el.id !== id) {
@@ -158,11 +164,12 @@
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Requested-With': 'XMLHttpRequest'
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-Token': getCSRFToken()
             },
             body: new URLSearchParams({
                 'invite_code': code,
-                '{{.csrfKey}}': '{{.csrfToken}}'
+                'gorilla.csrf.Token': getCSRFToken()
             })
         });
         
@@ -211,11 +218,12 @@
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Requested-With': 'XMLHttpRequest'
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-Token': getCSRFToken()
             },
             body: new URLSearchParams({
                 'name': name,
-                '{{.csrfKey}}': '{{.csrfToken}}'
+                'gorilla.csrf.Token': getCSRFToken()
             })
         });
         
@@ -241,11 +249,12 @@
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Requested-With': 'XMLHttpRequest'
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-Token': getCSRFToken()
             },
             body: new URLSearchParams({
                 'team_id': id,
-                '{{.csrfKey}}': '{{.csrfToken}}'
+                'gorilla.csrf.Token': getCSRFToken()
             })
         });
         

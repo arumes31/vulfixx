@@ -145,6 +145,9 @@ The application follows a modular architecture designed to prevent monolithic fi
 | `ADMIN_TOTP_SECRET`| Seed administrator TOTP secret (base32) | `YOUR_SECRET` |
 | `NVD_API_KEY`| NIST NVD API Key (for higher rate limits) | `(empty)` |
 | `NVD_API_URL`| Custom NVD API endpoint (optional) | `https://...` |
+| `APP_ENV` | Application environment (`development`, `production`) | `production` |
+| `PORT` | Application server port | `8080` |
+| `SENTRY_DSN` | Sentry DSN for error reporting | `(empty)` |
 
 ### Darknet Scalper Configuration
 
@@ -175,8 +178,6 @@ The Darknet Scalper addon can be customized using the following environment vari
 | `SCALPER_ENABLE_OCR` | Enable/disable OCR processing of images | `true` |
 
 > **Security Warning:** The default seed values for `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and `ADMIN_TOTP_SECRET` are insecure and must be changed before deploying to production. Please generate a strong password and a unique base32 TOTP secret. It is highly recommended to rotate the seeded admin credentials and remove defaults from any production configuration.
-
-   *Note: The above is a partial list of key configurations. See `docker-compose.yml` for all available options.*
 ## Development
 
 ### Running Tests

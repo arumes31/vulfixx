@@ -33,7 +33,14 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == "GET" {
 		query := `
-			SELECT us.id, us.keyword, us.min_severity, us.webhook_url, us.enable_email, us.enable_webhook,
+			SELECT us.id, us.keyword, us.min_severity, us.webhook_url,
+			       COALESCE(us.slack_webhook_url, '') as slack_webhook_url,
+			       COALESCE(us.teams_webhook_url, '') as teams_webhook_url,
+			       us.enable_email, us.enable_webhook,
+			       COALESCE(us.enable_slack, false) as enable_slack,
+			       COALESCE(us.enable_teams, false) as enable_teams,
+			       COALESCE(us.enable_browser_push, false) as enable_browser_push,
+			       COALESCE(us.aggregation_mode, 'instant') as aggregation_mode,
 			       us.team_id
 			FROM user_subscriptions us
 			WHERE us.user_id = $1 OR us.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
@@ -48,7 +55,11 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 		var subs []models.UserSubscription
 		for rows.Next() {
 			var s models.UserSubscription
-			if err := rows.Scan(&s.ID, &s.Keyword, &s.MinSeverity, &s.WebhookURL, &s.EnableEmail, &s.EnableWebhook, &s.TeamID); err != nil {
+			if err := rows.Scan(&s.ID, &s.Keyword, &s.MinSeverity, &s.WebhookURL,
+				&s.SlackWebhookURL, &s.TeamsWebhookURL,
+				&s.EnableEmail, &s.EnableWebhook,
+				&s.EnableSlack, &s.EnableTeams, &s.EnableBrowserPush,
+				&s.AggregationMode, &s.TeamID); err != nil {
 				log.Printf("Error scanning subscription: %v", err)
 				continue
 			}
@@ -65,11 +76,17 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == "POST" {
 		var jsonData struct {
-			Keyword      string  `json:"keyword"`
-			MinSeverity  float64 `json:"min_severity"`
-			WebhookURL   string  `json:"webhook_url"`
-			EnableEmail  bool    `json:"enable_email"`
-			EnableWebhook bool   `json:"enable_webhook"`
+			Keyword         string  `json:"keyword"`
+			MinSeverity     float64 `json:"min_severity"`
+			WebhookURL      string  `json:"webhook_url"`
+			SlackWebhookURL string  `json:"slack_webhook_url"`
+			TeamsWebhookURL string  `json:"teams_webhook_url"`
+			EnableEmail     bool    `json:"enable_email"`
+			EnableWebhook   bool    `json:"enable_webhook"`
+			EnableSlack     bool    `json:"enable_slack"`
+			EnableTeams     bool    `json:"enable_teams"`
+			EnableBrowserPush bool  `json:"enable_browser_push"`
+			AggregationMode string  `json:"aggregation_mode"`
 		}
 
 		if strings.Contains(r.Header.Get("Content-Type"), "application/json") {
@@ -85,8 +102,14 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 			jsonData.Keyword = strings.TrimSpace(r.FormValue("keyword"))
 			jsonData.MinSeverity, _ = strconv.ParseFloat(r.FormValue("min_severity"), 64)
 			jsonData.WebhookURL = strings.TrimSpace(r.FormValue("webhook_url"))
+			jsonData.SlackWebhookURL = strings.TrimSpace(r.FormValue("slack_webhook_url"))
+			jsonData.TeamsWebhookURL = strings.TrimSpace(r.FormValue("teams_webhook_url"))
 			jsonData.EnableEmail = r.FormValue("enable_email") == "on" || r.FormValue("enable_email") == "true"
 			jsonData.EnableWebhook = r.FormValue("enable_webhook") == "on" || r.FormValue("enable_webhook") == "true"
+			jsonData.EnableSlack = r.FormValue("enable_slack") == "on" || r.FormValue("enable_slack") == "true"
+			jsonData.EnableTeams = r.FormValue("enable_teams") == "on" || r.FormValue("enable_teams") == "true"
+			jsonData.EnableBrowserPush = r.FormValue("enable_browser_push") == "on" || r.FormValue("enable_browser_push") == "true"
+			jsonData.AggregationMode = strings.TrimSpace(r.FormValue("aggregation_mode"))
 		}
 
 		if jsonData.Keyword == "" {
@@ -136,6 +159,15 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Default aggregation_mode if not set
+		if jsonData.AggregationMode == "" {
+			jsonData.AggregationMode = "instant"
+		}
+		if jsonData.AggregationMode != "instant" && jsonData.AggregationMode != "hourly" && jsonData.AggregationMode != "daily" {
+			a.SendResponse(w, r, false, "", "", "Invalid aggregation mode")
+			return
+		}
+
 		ctx := r.Context()
 		tx, err := a.Pool.Begin(ctx)
 		if err != nil {
@@ -169,9 +201,14 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		_, err = tx.Exec(ctx, `
-			INSERT INTO user_subscriptions (user_id, keyword, min_severity, webhook_url, enable_email, enable_webhook)
-			VALUES ($1, $2, $3, $4, $5, $6)
-		`, userID, jsonData.Keyword, jsonData.MinSeverity, jsonData.WebhookURL, jsonData.EnableEmail, jsonData.EnableWebhook)
+			INSERT INTO user_subscriptions (user_id, keyword, min_severity, webhook_url, slack_webhook_url, teams_webhook_url,
+			    enable_email, enable_webhook, enable_slack, enable_teams, enable_browser_push, aggregation_mode)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		`, userID, jsonData.Keyword, jsonData.MinSeverity, jsonData.WebhookURL,
+			jsonData.SlackWebhookURL, jsonData.TeamsWebhookURL,
+			jsonData.EnableEmail, jsonData.EnableWebhook,
+			jsonData.EnableSlack, jsonData.EnableTeams, jsonData.EnableBrowserPush,
+			jsonData.AggregationMode)
 		if err != nil {
 			log.Printf("Error saving subscription: %v", err)
 			a.SendResponse(w, r, false, "", "", "Error saving subscription")
@@ -212,6 +249,94 @@ func (a *App) DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	a.LogActivity(r.Context(), userID, "subscription_deleted", "Deleted subscription ID: "+subIDStr, a.GetClientIP(r), r.UserAgent())
 	a.SendResponse(w, r, true, "Telemetry pipeline removed", "/subscriptions", "")
+}
+
+func (a *App) UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		a.SendResponse(w, r, false, "", "", "Method not allowed")
+		return
+	}
+	userID, ok := a.GetUserID(r)
+	if !ok {
+		a.SendResponse(w, r, false, "", "", "Unauthorized")
+		return
+	}
+
+	var jsonData struct {
+		ID              int     `json:"id"`
+		Keyword         string  `json:"keyword"`
+		MinSeverity     float64 `json:"min_severity"`
+		WebhookURL      string  `json:"webhook_url"`
+		SlackWebhookURL string  `json:"slack_webhook_url"`
+		TeamsWebhookURL string  `json:"teams_webhook_url"`
+		EnableEmail     bool    `json:"enable_email"`
+		EnableWebhook   bool    `json:"enable_webhook"`
+		EnableSlack     bool    `json:"enable_slack"`
+		EnableTeams     bool    `json:"enable_teams"`
+		EnableBrowserPush bool  `json:"enable_browser_push"`
+		AggregationMode string  `json:"aggregation_mode"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&jsonData); err != nil {
+		a.SendResponse(w, r, false, "", "", "Error decoding JSON")
+		return
+	}
+
+	if jsonData.ID == 0 {
+		a.SendResponse(w, r, false, "", "", "Subscription ID is required")
+		return
+	}
+	if jsonData.Keyword == "" {
+		a.SendResponse(w, r, false, "", "", "Keyword is required")
+		return
+	}
+	if len(jsonData.Keyword) > 100 {
+		a.SendResponse(w, r, false, "", "", "Target infrastructure keyword too long (max 100 characters)")
+		return
+	}
+	if jsonData.MinSeverity < 0 || jsonData.MinSeverity > 10 {
+		a.SendResponse(w, r, false, "", "", "Invalid severity score (must be 0-10)")
+		return
+	}
+	if jsonData.AggregationMode == "" {
+		jsonData.AggregationMode = "instant"
+	}
+	if jsonData.AggregationMode != "instant" && jsonData.AggregationMode != "hourly" && jsonData.AggregationMode != "daily" {
+		a.SendResponse(w, r, false, "", "", "Invalid aggregation mode")
+		return
+	}
+
+	// Verify ownership
+	var ownerID int
+	err := a.Pool.QueryRow(r.Context(), "SELECT user_id FROM user_subscriptions WHERE id = $1", jsonData.ID).Scan(&ownerID)
+	if err != nil {
+		a.SendResponse(w, r, false, "", "", "Subscription not found")
+		return
+	}
+	if ownerID != userID {
+		a.SendResponse(w, r, false, "", "", "Unauthorized")
+		return
+	}
+
+	_, err = a.Pool.Exec(r.Context(), `
+		UPDATE user_subscriptions
+		SET keyword = $1, min_severity = $2, webhook_url = $3, slack_webhook_url = $4, teams_webhook_url = $5,
+		    enable_email = $6, enable_webhook = $7, enable_slack = $8, enable_teams = $9,
+		    enable_browser_push = $10, aggregation_mode = $11
+		WHERE id = $12 AND user_id = $13
+	`, jsonData.Keyword, jsonData.MinSeverity, jsonData.WebhookURL,
+		jsonData.SlackWebhookURL, jsonData.TeamsWebhookURL,
+		jsonData.EnableEmail, jsonData.EnableWebhook,
+		jsonData.EnableSlack, jsonData.EnableTeams, jsonData.EnableBrowserPush,
+		jsonData.AggregationMode, jsonData.ID, userID)
+	if err != nil {
+		log.Printf("Error updating subscription: %v", err)
+		a.SendResponse(w, r, false, "", "", "Error updating subscription")
+		return
+	}
+
+	a.LogActivity(r.Context(), userID, "subscription_updated", fmt.Sprintf("Updated subscription ID: %d", jsonData.ID), a.GetClientIP(r), r.UserAgent())
+	a.SendResponse(w, r, true, "Monitor updated successfully", "/subscriptions", "")
 }
 
 func (a *App) RSSFeedHandler(w http.ResponseWriter, r *http.Request) {

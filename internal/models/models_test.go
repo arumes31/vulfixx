@@ -80,8 +80,8 @@ func TestGetDetectedProduct(t *testing.T) {
 	}{
 		{
 			description: "A security vulnerability has been detected in alexta69 MeTube up to 2026.04.09.",
-			wantVendor:  "alexta69",
-			wantProduct: "MeTube",
+			wantVendor:  "Alexta69",
+			wantProduct: "Metube",
 		},
 		{
 			description: "This affects the Linux Kernel before version 5.10.",
@@ -102,6 +102,36 @@ func TestGetDetectedProduct(t *testing.T) {
 			description: "CPE test",
 			wantVendor:  "Microsoft",
 			wantProduct: "Office",
+		},
+		// New test: keyword-based detection
+		{
+			description: "A remote code execution vulnerability exists in Apache Tomcat.",
+			wantVendor:  "Apache",
+			wantProduct: "Tomcat",
+		},
+		// New test: Fortinet product
+		{
+			description: "An OS command injection vulnerability in Fortinet FortiManager versions 7.0.0 through 7.4.2.",
+			wantVendor:  "Fortinet",
+			wantProduct: "FortiManager",
+		},
+		// New test: Cisco product
+		{
+			description: "A vulnerability in Cisco IOS XE Software could allow an unauthenticated attacker to execute arbitrary code.",
+			wantVendor:  "Cisco",
+			wantProduct: "IOS XE",
+		},
+		// New test: VMware product
+		{
+			description: "VMware vCenter Server contains a heap-overflow vulnerability.",
+			wantVendor:  "VMware",
+			wantProduct: "vCenter Server",
+		},
+		// New test: generic description-based
+		{
+			description: "SQL injection in Grafana allows remote attackers.",
+			wantVendor:  "Grafana",
+			wantProduct: "Grafana",
 		},
 	}
 

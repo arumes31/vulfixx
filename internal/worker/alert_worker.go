@@ -122,7 +122,13 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		JOIN users u ON s.user_id = u.id
 		WHERE u.is_email_verified = TRUE
 		  AND s.min_severity <= $1
-		  AND (s.keyword = '' OR $2 ILIKE '%' || REPLACE(REPLACE(REPLACE(s.keyword, '\', '\\'), '%', '\%'), '_', '\_') || '%' ESCAPE '\')
+		  AND (
+		      s.keyword = '' OR 
+		      EXISTS (
+		          SELECT 1 FROM unnest(string_to_array(s.keyword, ',')) AS kw 
+		          WHERE $2 ILIKE '%' || REPLACE(REPLACE(REPLACE(TRIM(kw), '\', '\\'), '%', '\%'), '_', '\_') || '%' ESCAPE '\'
+		      )
+		  )
 	`, cve.CVSSScore, cve.Description)
 	if err != nil {
 		log.Println("Error fetching subscriptions:", err)
@@ -185,8 +191,18 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 }
 
 func matchCVE(cve *models.CVE, sub models.UserSubscription) bool {
-	if sub.Keyword != "" && !getKeywordRegex(sub.Keyword).MatchString(cve.Description) {
-		return false
+	if sub.Keyword != "" {
+		matched := false
+		for _, kw := range strings.Split(sub.Keyword, ",") {
+			kw = strings.TrimSpace(kw)
+			if kw != "" && getKeywordRegex(kw).MatchString(cve.Description) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
 	}
 	if sub.MinSeverity > 0 && cve.CVSSScore < sub.MinSeverity {
 		return false
