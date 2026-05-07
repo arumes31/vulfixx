@@ -355,8 +355,13 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 
 		vendor, product := model.GetDetectedProduct()
 		if vendor == "" && (config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama") {
+			llmModel := config.AppConfig.GeminiModel
+			if config.AppConfig.LLMProvider == "ollama" {
+				llmModel = config.AppConfig.LLMModel
+			}
+
 			// Call LLM as fallback
-			products, err := llm.ExtractVendorProduct(ctx, config.AppConfig.LLMProvider, config.AppConfig.GeminiAPIKey, config.AppConfig.LLMEndpoint, config.AppConfig.GeminiModel, model.Description)
+			products, err := llm.ExtractVendorProduct(ctx, config.AppConfig.LLMProvider, config.AppConfig.GeminiAPIKey, config.AppConfig.LLMEndpoint, llmModel, model.Description)
 			if err == nil && len(products) > 0 {
 				// Use the first one as primary
 				vendor, product = products[0].Vendor, products[0].Product

@@ -103,8 +103,13 @@ func (w *Worker) enrichMissingIntelligence(ctx context.Context) {
 		vendor, product := c.GetDetectedProduct()
 		var extractedProducts []llm.ProductResult
 		if vendor == "" && (config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama") {
+			model := config.AppConfig.GeminiModel
+			if config.AppConfig.LLMProvider == "ollama" {
+				model = config.AppConfig.LLMModel
+			}
+
 			// Call LLM as fallback for missing data
-			products, err := llm.ExtractVendorProduct(ctx, config.AppConfig.LLMProvider, config.AppConfig.GeminiAPIKey, config.AppConfig.LLMEndpoint, config.AppConfig.GeminiModel, c.Description)
+			products, err := llm.ExtractVendorProduct(ctx, config.AppConfig.LLMProvider, config.AppConfig.GeminiAPIKey, config.AppConfig.LLMEndpoint, model, c.Description)
 			if err == nil && len(products) > 0 {
 				vendor, product = products[0].Vendor, products[0].Product
 				extractedProducts = products

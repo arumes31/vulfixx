@@ -36,6 +36,7 @@ type Config struct {
 	GeminiModel     string
 	LLMProvider     string // "ollama" or "gemini"
 	LLMEndpoint     string // e.g. "http://ollama:11434"
+	LLMModel        string // e.g. "phi3" or "llama3"
 }
 
 var (
@@ -68,6 +69,7 @@ func LoadConfig() {
 		GeminiModel:     getEnv("GEMINI_MODEL", "gemini-1.5-flash"),
 		LLMProvider:     getEnv("LLM_PROVIDER", "ollama"),
 		LLMEndpoint:     getEnv("LLM_ENDPOINT", "http://ollama:11434"),
+		LLMModel:        getEnv("LLM_MODEL", "phi3"),
 	}
 
 	port, err := strconv.Atoi(getEnv("SMTP_PORT", "587"))
