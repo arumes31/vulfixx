@@ -2,6 +2,8 @@ package worker
 
 import (
 	"context"
+	"cve-tracker/internal/config"
+	"cve-tracker/internal/llm"
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"errors"
@@ -352,6 +354,39 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 		}
 
 		vendor, product := model.GetDetectedProduct()
+		if vendor == "" && (config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama") {
+			// Call LLM as fallback
+			products, err := llm.ExtractVendorProduct(ctx, config.AppConfig.LLMProvider, config.AppConfig.GeminiAPIKey, config.AppConfig.LLMEndpoint, config.AppConfig.GeminiModel, model.Description)
+			if err == nil && len(products) > 0 {
+				// Use the first one as primary
+				vendor, product = products[0].Vendor, products[0].Product
+				log.Printf("Worker: LLM refined detection for %s: found %d products. Primary: %s / %s", model.CVEID, len(products), vendor, product)
+
+				// Add all to affected_products if not already there
+				existing := model.GetAffectedProducts()
+				for _, p := range products {
+					found := false
+					for _, ep := range existing {
+						if ep.Vendor == p.Vendor && ep.Product == p.Product {
+							found = true
+							break
+						}
+					}
+					if !found {
+						existing = append(existing, models.AffectedProduct{
+							Vendor:      p.Vendor,
+							Product:     p.Product,
+							Version:     p.Version,
+							Type:        "a",
+							Unconfirmed: true,
+						})
+					}
+				}
+				model.AffectedProducts = existing
+			} else if err != nil {
+				log.Printf("Worker: LLM extraction failed for %s: %v", model.CVEID, err)
+			}
+		}
 		model.Vendor = vendor
 		model.Product = product
 		model.AffectedProducts = model.GetAffectedProducts()
