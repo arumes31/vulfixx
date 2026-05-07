@@ -131,11 +131,9 @@ func (w *Worker) syncOSV(ctx context.Context) {
 					// If primary vendor/product is missing, use OSV as authoritative
 					if cve.Vendor == "" {
 						cve.Vendor = vendor
-						changed = true
 					}
 					if cve.Product == "" {
 						cve.Product = product
-						changed = true
 					}
 					changed = true
 				}

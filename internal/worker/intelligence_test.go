@@ -121,9 +121,9 @@ func TestWorker_Intelligence(t *testing.T) {
 	w := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
 	t.Run("EnrichMissingIntelligence", func(t *testing.T) {
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cve_id, description, configurations FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' ORDER BY cvss_score DESC, cisa_kev DESC LIMIT 1000")).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "configurations"}).
-				AddRow(1, "CVE-INTEL-1", "Test desc", []byte(`{}`)))
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cve_id, description, configurations, references FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' ORDER BY cvss_score DESC, cisa_kev DESC LIMIT 1000")).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "configurations", "references"}).
+				AddRow(1, "CVE-INTEL-1", "Test desc", []byte(`{}`), []string{}))
 		
 		// Note: The task actually calls updateTaskStats with "intelligence_enrichment"
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO worker_sync_stats (task_name, last_run) VALUES ($1, NOW()) ON CONFLICT (task_name) DO UPDATE SET last_run = NOW(), updated_at = NOW()")).
