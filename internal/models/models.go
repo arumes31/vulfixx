@@ -145,6 +145,25 @@ func (c CVEConfigurations) Value() (driver.Value, error) {
 	return json.Marshal(c)
 }
 
+func (c *CVE) AddAffectedProduct(vendor, product, version string, unconfirmed bool) {
+	for i, p := range c.AffectedProducts {
+		if p.Vendor == vendor && p.Product == product {
+			// If we already have a version, don't overwrite it with an empty one
+			if p.Version == "" && version != "" {
+				c.AffectedProducts[i].Version = version
+			}
+			return
+		}
+	}
+	c.AffectedProducts = append(c.AffectedProducts, AffectedProduct{
+		Vendor:      vendor,
+		Product:     product,
+		Version:     version,
+		Type:        "a",
+		Unconfirmed: unconfirmed,
+	})
+}
+
 type JSONBMap map[string]interface{}
 
 // Scan implements the sql.Scanner interface for JSONB.
