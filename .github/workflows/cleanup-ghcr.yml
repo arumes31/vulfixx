@@ -23,41 +23,45 @@ jobs:
           OWNER: ${{ github.repository_owner }}
           DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: |
-          echo "Fetching versions for package: $REPO"
+          PACKAGES=("$REPO" "$REPO-scalper" "$REPO-ollama-init")
           
-          # Try user endpoint first (for personal accounts)
-          VERSIONS_JSON=$(gh api -H "Accept: application/vnd.github+json" "/user/packages/container/$REPO/versions?per_page=100" 2>/dev/null || \
-                         gh api -H "Accept: application/vnd.github+json" "/orgs/$OWNER/packages/container/$REPO/versions?per_page=100" 2>/dev/null)
-          
-          if [ -z "$VERSIONS_JSON" ] || [ "$VERSIONS_JSON" == "[]" ]; then
-            echo "No versions found or access denied."
-            exit 0
-          fi
-          
-          # Filter logic:
-          # 1. Exclude versions with "latest" or "main" tags
-          # 2. Sort by creation date descending
-          # 3. Skip the first 10 most recent versions
-          IDS_TO_DELETE=$(echo "$VERSIONS_JSON" | jq -r '
-            sort_by(.created_at) | reverse |
-            map(select(.metadata.container.tags | (contains(["latest"]) | not) and (contains(["main"]) | not))) |
-            .[10:] | .[].id
-          ')
-          
-          if [ -z "$IDS_TO_DELETE" ]; then
-            echo "No versions to delete (kept 10 most recent and protected tags: latest, main)."
-            exit 0
-          fi
-          
-          for ID in $IDS_TO_DELETE; do
-            TAGS=$(echo "$VERSIONS_JSON" | jq -r ".[] | select(.id == $ID) | .metadata.container.tags | join(\", \")")
-            echo "Targeting version ID: $ID (Tags: $TAGS)"
-            if [ "$DRY_RUN" == "false" ]; then
-              echo "Deleting version $ID..."
-              # Try user delete endpoint first, then org
-              gh api --method DELETE -H "Accept: application/vnd.github+json" "/user/packages/container/$REPO/versions/$ID" 2>/dev/null || \
-              gh api --method DELETE -H "Accept: application/vnd.github+json" "/orgs/$OWNER/packages/container/$REPO/versions/$ID" 2>/dev/null
-            else
-              echo "[DRY RUN] Would delete version $ID"
+          for PACKAGE in "${PACKAGES[@]}"; do
+            echo "--- Processing package: $PACKAGE ---"
+            
+            # Fetch versions
+            VERSIONS_JSON=$(gh api -H "Accept: application/vnd.github+json" "/user/packages/container/$PACKAGE/versions?per_page=100" 2>/dev/null || \
+                           gh api -H "Accept: application/vnd.github+json" "/orgs/$OWNER/packages/container/$PACKAGE/versions?per_page=100" 2>/dev/null)
+            
+            if [ -z "$VERSIONS_JSON" ] || [ "$VERSIONS_JSON" == "[]" ]; then
+              echo "No versions found or access denied for $PACKAGE."
+              continue
             fi
+            
+            # Filter logic:
+            # 1. Exclude versions with "latest" or "main" tags
+            # 2. Sort by creation date descending
+            # 3. Skip the first 10 most recent versions
+            IDS_TO_DELETE=$(echo "$VERSIONS_JSON" | jq -r '
+              sort_by(.created_at) | reverse |
+              map(select(.metadata.container.tags | (contains(["latest"]) | not) and (contains(["main"]) | not))) |
+              .[10:] | .[].id
+            ')
+            
+            if [ -z "$IDS_TO_DELETE" ]; then
+              echo "No versions to delete for $PACKAGE (kept 10 most recent and protected tags: latest, main)."
+              continue
+            fi
+            
+            for ID in $IDS_TO_DELETE; do
+              TAGS=$(echo "$VERSIONS_JSON" | jq -r ".[] | select(.id == $ID) | .metadata.container.tags | join(\", \")")
+              echo "Targeting version ID: $ID (Tags: $TAGS) in $PACKAGE"
+              if [ "$DRY_RUN" == "false" ]; then
+                echo "Deleting version $ID from $PACKAGE..."
+                # Try user delete endpoint first, then org
+                gh api --method DELETE -H "Accept: application/vnd.github+json" "/user/packages/container/$PACKAGE/versions/$ID" 2>/dev/null || \
+                gh api --method DELETE -H "Accept: application/vnd.github+json" "/orgs/$OWNER/packages/container/$PACKAGE/versions/$ID" 2>/dev/null
+              else
+                echo "[DRY RUN] Would delete version $ID from $PACKAGE"
+              fi
+            done
           done
