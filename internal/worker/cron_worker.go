@@ -171,7 +171,7 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows) {
 		var extractedProducts []llm.ProductResult
 		if vendor == "" && (config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama") {
 			// Call LLM as fallback for missing data with isolated timeout
-			llmCtx, cancel := context.WithTimeout(ctx, 130*time.Second)
+			llmCtx, cancel := context.WithTimeout(ctx, 610*time.Second)
 			products, err := llm.ExtractVendorProduct(llmCtx, config.AppConfig.LLMProvider, config.AppConfig.GeminiAPIKey, config.AppConfig.LLMEndpoint, model, c.Description)
 			cancel()
 			if err != nil {
