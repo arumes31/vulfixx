@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/xml"
 	"errors"
@@ -119,12 +120,13 @@ func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
 		log.Printf("Worker: [ERROR] Failed to create request for %s: %v", feed.Name, err)
 		return
 	}
-	req.Header.Set("User-Agent", "Vulfixx-CVE-Tracker/2.0 (Security-Intelligence-Bot)")
-	req.Header.Set("Accept", "application/xml, application/rss+xml, application/atom+xml, text/xml")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Vulfixx/2.0")
+	req.Header.Set("Accept", "application/atom+xml, application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.7")
+	req.Header.Set("Accept-Encoding", "gzip, deflate")
 
 	resp, err := w.HTTP.Do(req)
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to fetch feed for %s: %v", feed.Name, err)
+		log.Printf("Worker: [ERROR] HTTP request failed for %s: %v", feed.Name, err)
 		return
 	}
 	defer resp.Body.Close()
@@ -134,7 +136,18 @@ func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
 		return
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxFeedBodySize))
+	var reader io.Reader = resp.Body
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		gz, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			log.Printf("Worker: [ERROR] Failed to create gzip reader for %s: %v", feed.Name, err)
+			return
+		}
+		defer gz.Close()
+		reader = gz
+	}
+
+	body, err := io.ReadAll(io.LimitReader(reader, maxFeedBodySize))
 	if err != nil {
 		log.Printf("Worker: [ERROR] Failed to read feed body for %s: %v", feed.Name, err)
 		return
