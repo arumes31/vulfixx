@@ -24,6 +24,10 @@ services:
       - ADMIN_TOTP_SECRET=${ADMIN_TOTP_SECRET}
       - SCALPER_URL=http://scalper:9090
       - SCALPER_GRPC_URL=scalper:9090
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - LLM_ENDPOINT=${LLM_ENDPOINT:-http://ollama:11434}
+      - LLM_MODEL=${LLM_MODEL:-phi3-vulfixx}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     depends_on:
       - db
       - redis
@@ -69,6 +73,12 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
+    restart: unless-stopped
+    
+  ollama:
+    image: ghcr.io/arumes31/vulfixx-ollama-init:latest
+    volumes:
+      - ./data/ollama:/root/.ollama
     restart: unless-stopped
 
 volumes:
