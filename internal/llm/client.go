@@ -240,7 +240,8 @@ Description: ` + description
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
-		"temperature": 0,
+		"temperature":     0,
+		"response_format": map[string]string{"type": "json_object"},
 	}
 
 	jsonData, err := json.Marshal(payload)

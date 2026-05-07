@@ -121,7 +121,7 @@ func (w *Worker) enrichSingleCVE(ctx context.Context, id int) {
 		return
 	}
 	defer rows.Close()
-	w.processEnrichmentRows(ctx, rows)
+	w.processEnrichmentRows(ctx, rows, 1)
 }
 
 func (w *Worker) enrichMissingIntelligence(ctx context.Context) {
@@ -135,12 +135,19 @@ func (w *Worker) enrichMissingIntelligence(ctx context.Context) {
 	}
 	defer rows.Close()
 
-	w.processEnrichmentRows(ctx, rows)
+	// Get total for progress tracking
+	var total int
+	_ = w.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM (SELECT id FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' LIMIT 1000) sub").Scan(&total)
+	if total == 0 { total = 1 }
+
+	w.processEnrichmentRows(ctx, rows, total)
 }
 
-func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows) {
+func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows, total int) {
 	start := time.Now()
 	var count int
+	var llmCount int
+	var heuristicCount int
 	var consecutiveFailures int
 
 	for rows.Next() {
@@ -177,6 +184,7 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows) {
 				if len(products) > 0 {
 					vendor, product = products[0].Vendor, products[0].Product
 					extractedProducts = products
+					llmCount++
 					log.Printf("Worker: [CRON] LLM enriched existing CVE %s: found %d products", c.CVEID, len(products))
 				}
 			}
@@ -192,6 +200,7 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows) {
 				product = hProduct
 			}
 			if vendor != "" || product != "" {
+				heuristicCount++
 				log.Printf("Worker: [CRON] Heuristic fallback for existing CVE %s: %s / %s", c.CVEID, vendor, product)
 			}
 		}
@@ -223,11 +232,17 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows) {
 				count++
 			}
 		}
+
+		if count > 0 && count%10 == 0 {
+			avg := time.Since(start) / time.Duration(count)
+			percent := (float64(count) / float64(total)) * 100
+			log.Printf("Worker: [CRON] Intelligence progress: %d/%d (%.1f%%) processed (%d LLM, %d Heuristic). Avg: %v/CVE", count, total, percent, llmCount, heuristicCount, avg.Truncate(time.Millisecond))
+		}
 	}
 
 	w.updateTaskStats(ctx, "intelligence_enrichment")
 	if count > 0 {
-		log.Printf("Worker: [CRON] Intelligence enrichment complete. Enriched %d records. Duration: %v", count, time.Since(start))
+		log.Printf("Worker: [CRON] Intelligence enrichment complete. Enriched %d records (%d LLM, %d Heuristic). Duration: %v", count, llmCount, heuristicCount, time.Since(start))
 	}
 }
 
