@@ -116,7 +116,7 @@ func (w *Worker) startIntelligenceEnrichmentTask(ctx context.Context) {
 }
 
 func (w *Worker) enrichSingleCVE(ctx context.Context, id int) {
-	rows, err := w.Pool.Query(ctx, "SELECT id, cve_id, description, configurations FROM cves WHERE id = $1", id)
+	rows, err := w.Pool.Query(ctx, "SELECT id, cve_id, description, configurations, references FROM cves WHERE id = $1", id)
 	if err != nil {
 		return
 	}
@@ -128,7 +128,7 @@ func (w *Worker) enrichMissingIntelligence(ctx context.Context) {
 	log.Println("Worker: [CRON] Starting intelligence enrichment for missing vendor data...")
 	
 	// Suggestion 3: Priority-based selection (highest CVSS first)
-	rows, err := w.Pool.Query(ctx, "SELECT id, cve_id, description, configurations FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' ORDER BY cvss_score DESC, cisa_kev DESC LIMIT 1000")
+	rows, err := w.Pool.Query(ctx, "SELECT id, cve_id, description, configurations, references FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' ORDER BY cvss_score DESC, cisa_kev DESC LIMIT 1000")
 	if err != nil {
 		log.Printf("Worker: [CRON] Error querying CVEs for enrichment: %v", err)
 		return
@@ -152,7 +152,7 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows, total int
 
 	for rows.Next() {
 		var c models.CVE
-		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.Configurations); err != nil {
+		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.Configurations, &c.References); err != nil {
 			continue
 		}
 
@@ -174,7 +174,7 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows, total int
 		if (config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama" || config.AppConfig.ArliAIAPIKey != "") {
 			// Call LLM as primary for missing data with isolated timeout
 			llmCtx, cancel := context.WithTimeout(ctx, time.Duration(config.AppConfig.LLMTimeout+10)*time.Second)
-			products, err := llm.ExtractVendorProduct(llmCtx, c.Description)
+			products, err := llm.ExtractVendorProduct(llmCtx, c.Description, c.References)
 			cancel()
 			if err != nil {
 				log.Printf("Worker: [CRON] LLM extraction failed for %s: %v", c.CVEID, err)
