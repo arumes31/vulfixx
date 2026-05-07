@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"google.golang.org/genai"
@@ -29,8 +30,8 @@ type ExtractionResponse struct {
 // This ensures that only one LLM request is processed at a time across the entire application.
 var llmSemaphore = make(chan struct{}, 1)
 
-// ExtractVendorProduct chooses the appropriate provider (Gemini or Ollama) to extract all vendor/product/version names.
-func ExtractVendorProduct(ctx context.Context, provider, apiKey, endpoint, model, description string) ([]ProductResult, error) {
+// ExtractVendorProduct chooses the appropriate provider (Gemini, Ollama, or ArliAI) to extract all vendor/product/version names.
+func ExtractVendorProduct(ctx context.Context, description string) ([]ProductResult, error) {
 	// Acquire semaphore (queue up if another job is running)
 	select {
 	case llmSemaphore <- struct{}{}:
@@ -39,13 +40,15 @@ func ExtractVendorProduct(ctx context.Context, provider, apiKey, endpoint, model
 		return nil, ctx.Err()
 	}
 
-	switch provider {
+	switch config.AppConfig.LLMProvider {
 	case "gemini":
-		return extractWithGemini(ctx, apiKey, model, description)
+		return extractWithGemini(ctx, config.AppConfig.GeminiAPIKey, config.AppConfig.GeminiModel, description)
 	case "ollama":
-		return extractWithOllama(ctx, endpoint, model, description)
+		return extractWithOllama(ctx, config.AppConfig.LLMEndpoint, config.AppConfig.LLMModel, description)
+	case "arliai":
+		return extractWithArliAI(ctx, config.AppConfig.ArliAIAPIKey, config.AppConfig.ArliAIModel, config.AppConfig.ArliAIEndpoint, description)
 	default:
-		return nil, fmt.Errorf("unsupported llm provider: %s", provider)
+		return nil, fmt.Errorf("unsupported llm provider: %s", config.AppConfig.LLMProvider)
 	}
 }
 
@@ -195,6 +198,102 @@ Description: ` + description
 	var res ExtractionResponse
 	if err := json.Unmarshal([]byte(ollamaResp.Response), &res); err != nil {
 		return nil, fmt.Errorf("failed to parse ollama json response: %w, text: %s", err, ollamaResp.Response)
+	}
+
+	return res.Products, nil
+}
+func extractWithArliAI(ctx context.Context, apiKey, model, endpoint, description string) ([]ProductResult, error) {
+	if apiKey == "" {
+		return nil, fmt.Errorf("arliai api key is required")
+	}
+
+	prompt := `Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from this CVE description. 
+
+RULES:
+1. Return results ONLY as a JSON object with a key "products" containing a list of objects.
+2. If a version is described as "prior to", "before", "through", or "and earlier", format it as a range (e.g. "< 1.2.3" or "<= 4.5").
+3. DO NOT hallucinate modern product names for legacy software. Use the exact names from the text.
+4. If multiple products are mentioned, list them all.
+
+EXAMPLES:
+Input: "Vulnerability in Cisco IOS before 15.1"
+Output: {"products": [{"vendor": "Cisco", "product": "IOS", "version": "< 15.1"}]}
+
+Input: "Azure Service Fabric for Linux RCE affects version 9.1 before 9.1.2498.1, 10.0 before 10.0.2345.1, and 10.1 before 10.1.2308.1"
+Output: {"products": [
+  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "9.1 < 9.1.2498.1"},
+  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "10.0 < 10.0.2345.1"},
+  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "10.1 < 10.1.2308.1"}
+]}
+
+Description: ` + description
+
+	if os.Getenv("LLM_DEBUG") == "true" {
+		log.Printf("LLM: [DEBUG] ArliAI Prompt: %s", prompt)
+	}
+
+	payload := map[string]interface{}{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "user", "content": prompt},
+		},
+		"temperature": 0,
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint+"/chat/completions", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	client := &http.Client{Timeout: time.Duration(config.AppConfig.LLMTimeout) * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("arliai api error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var chatResp struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+		return nil, err
+	}
+
+	if len(chatResp.Choices) == 0 {
+		return nil, fmt.Errorf("arliai returned no choices")
+	}
+
+	content := chatResp.Choices[0].Message.Content
+	if os.Getenv("LLM_DEBUG") == "true" {
+		log.Printf("LLM: [DEBUG] ArliAI Raw Response: %s", content)
+	}
+
+	// Clean JSON if the model wrapped it in markdown code blocks
+	content = strings.TrimPrefix(content, "```json")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
+	content = strings.TrimSpace(content)
+
+	var res ExtractionResponse
+	if err := json.Unmarshal([]byte(content), &res); err != nil {
+		return nil, fmt.Errorf("failed to parse arliai json: %w (content: %s)", err, content)
 	}
 
 	return res.Products, nil

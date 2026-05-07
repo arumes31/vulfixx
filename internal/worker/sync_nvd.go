@@ -354,28 +354,21 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 		}
 
 		var vendor, product string
-		if (config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama") {
-			llmModel := config.AppConfig.GeminiModel
-			if config.AppConfig.LLMProvider == "ollama" {
-				llmModel = config.AppConfig.LLMModel
-			}
+		// Call LLM as primary with isolated timeout
+		llmCtx, cancel := context.WithTimeout(ctx, time.Duration(config.AppConfig.LLMTimeout+10)*time.Second)
+		products, err := llm.ExtractVendorProduct(llmCtx, model.Description)
+		cancel()
+		if err == nil && len(products) > 0 {
+			// Use the first one as primary
+			vendor, product = products[0].Vendor, products[0].Product
+			log.Printf("Worker: LLM extraction for %s: found %d products. Primary: %s / %s", model.CVEID, len(products), vendor, product)
 
-			// Call LLM as primary with isolated timeout
-			llmCtx, cancel := context.WithTimeout(ctx, time.Duration(config.AppConfig.LLMTimeout+10)*time.Second)
-			products, err := llm.ExtractVendorProduct(llmCtx, config.AppConfig.LLMProvider, config.AppConfig.GeminiAPIKey, config.AppConfig.LLMEndpoint, llmModel, model.Description)
-			cancel()
-			if err == nil && len(products) > 0 {
-				// Use the first one as primary
-				vendor, product = products[0].Vendor, products[0].Product
-				log.Printf("Worker: LLM extraction for %s: found %d products. Primary: %s / %s", model.CVEID, len(products), vendor, product)
-
-				// Add all to affected_products
-				for _, p := range products {
-					model.AddAffectedProduct(p.Vendor, p.Product, p.Version, true)
-				}
-			} else if err != nil {
-				log.Printf("Worker: LLM extraction failed for %s: %v", model.CVEID, err)
+			// Add all to affected_products
+			for _, p := range products {
+				model.AddAffectedProduct(p.Vendor, p.Product, p.Version, true)
 			}
+		} else if err != nil {
+			log.Printf("Worker: LLM extraction failed for %s: %v", model.CVEID, err)
 		}
 
 		// Heuristic Fallback: If LLM is disabled, failed to find anything, or returned partial data
