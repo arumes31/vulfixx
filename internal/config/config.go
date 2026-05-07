@@ -69,7 +69,7 @@ func LoadConfig() {
 		GeminiModel:     getEnv("GEMINI_MODEL", "gemini-1.5-flash"),
 		LLMProvider:     getEnv("LLM_PROVIDER", "ollama"),
 		LLMEndpoint:     getEnv("LLM_ENDPOINT", "http://ollama:11434"),
-		LLMModel:        getEnv("LLM_MODEL", "phi3"),
+		LLMModel:        getEnv("LLM_MODEL", "phi3-vulfixx"),
 	}
 
 	port, err := strconv.Atoi(getEnv("SMTP_PORT", "587"))

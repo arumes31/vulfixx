@@ -26,6 +26,7 @@ services:
       - SCALPER_GRPC_URL=scalper:9090
       - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
       - LLM_ENDPOINT=${LLM_ENDPOINT:-http://ollama:11434}
+      - LLM_MODEL=${LLM_MODEL:-phi3-vulfixx}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
     depends_on:
       - db
@@ -75,7 +76,7 @@ services:
     restart: unless-stopped
     
   ollama:
-    image: ollama/ollama:latest
+    build: ./addons/ollama-init
     volumes:
       - ./data/ollama:/root/.ollama
     restart: unless-stopped
