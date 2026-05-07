@@ -19,16 +19,17 @@ func TestUI_DashboardStructure(t *testing.T) {
 		t.Fatalf("failed to setup mock db: %v", err)
 	}
 	defer mock.Close()
-	mock.MatchExpectationsInOrder(false)
+	mock.MatchExpectationsInOrder(true)
 	app := setupTestApp(t, mock)
 
 	// Mock data for dashboard
 	// Use (?is) for case-insensitive and dot-matches-newline matching
-	mock.ExpectQuery("(?is)SELECT.*COUNT.*total_cves").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit", "prog"}).AddRow(10, 2, 1, 0))
-	mock.ExpectQuery("(?is)SELECT DISTINCT c.id").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "vendor", "product", "affected_products", "priority"}).
-			AddRow(1, "CVE-2024-UI", "UI Test", 9.0, "", true, time.Now(), time.Now(), "active", []string{}, "", 0.5, "CWE-1", "XSS", 0, 0, "", []byte(`{}`), "V", "P", []byte(`[]`), "P0"))
-	mock.ExpectQuery("(?is)SELECT.*COUNT.*cvss_score").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(1, 0, 0, 0))
-	mock.ExpectQuery("(?is)SELECT.*COUNT.*status").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"active", "prog", "res", "ign"}).AddRow(1, 0, 0, 0))
+	mock.ExpectQuery("(?is)SELECT.*total_cves.*kev_count.*critical_count.*in_progress_count.*sev_crit.*sev_high.*sev_med.*sev_low.*stat_active.*stat_prog.*stat_res.*stat_ign").
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit", "prog", "sev_crit", "sev_high", "sev_med", "sev_low", "stat_active", "stat_prog", "stat_res", "stat_ign"}).
+			AddRow(10, 2, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0))
+	mock.ExpectQuery("(?is)SELECT.*c.id, c.cve_id").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "vendor", "product", "affected_products", "priority"}).
+		AddRow(1, "CVE-2024-UI", "UI Test", 9.0, "", true, time.Now(), time.Now(), "active", []string{}, "", 0.5, "CWE-1", "XSS", 0, 0, "", []byte(`{}`), "V", "P", []byte(`[]`), "P0"))
 	mock.ExpectQuery("(?is)SELECT cwe_id.*FROM cves").WithArgs(pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"cwe_id", "cwe_name", "cnt"}).AddRow("CWE-79", "XSS", 1))
 
 	expectBaseQueries(mock, 1)
