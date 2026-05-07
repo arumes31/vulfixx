@@ -35,6 +35,10 @@ func NewWorker(pool db.DBPool, redis db.RedisProvider, mailer EmailSender, http 
 
 func (w *Worker) Start(ctx context.Context) {
 	log.Println("Worker: Starting background tasks...")
+	
+	// Test LLM connectivity on startup if provider is configured
+	w.TestLLMConnectivity(ctx)
+
 	var wg sync.WaitGroup
 
 	runTask := func(task func(context.Context)) {
