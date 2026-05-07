@@ -42,9 +42,9 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 
 		w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
 
-		mock.ExpectQuery("(?i)SELECT id, cve_id, description, configurations FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' ORDER BY cvss_score DESC, cisa_kev DESC LIMIT 1000").WillReturnRows(
-			pgxmock.NewRows([]string{"id", "cve_id", "description", "configurations"}).
-				AddRow(1, "CVE-123", "test", json.RawMessage(`[]`)),
+		mock.ExpectQuery("(?i)SELECT id, cve_id, description, configurations, references FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' ORDER BY cvss_score DESC, cisa_kev DESC LIMIT 1000").WillReturnRows(
+			pgxmock.NewRows([]string{"id", "cve_id", "description", "configurations", "references"}).
+				AddRow(1, "CVE-123", "test", json.RawMessage(`[]`), []string{}),
 		)
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("intelligence_enrichment").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
