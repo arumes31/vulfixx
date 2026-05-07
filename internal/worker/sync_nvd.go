@@ -361,7 +361,7 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			}
 
 			// Call LLM as fallback with isolated timeout
-			llmCtx, cancel := context.WithTimeout(ctx, 610*time.Second)
+			llmCtx, cancel := context.WithTimeout(ctx, time.Duration(config.AppConfig.LLMTimeout+10)*time.Second)
 			products, err := llm.ExtractVendorProduct(llmCtx, config.AppConfig.LLMProvider, config.AppConfig.GeminiAPIKey, config.AppConfig.LLMEndpoint, llmModel, model.Description)
 			cancel()
 			if err == nil && len(products) > 0 {

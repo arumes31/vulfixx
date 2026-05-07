@@ -37,6 +37,7 @@ type Config struct {
 	LLMProvider     string // "ollama" or "gemini"
 	LLMEndpoint     string // e.g. "http://ollama:11434"
 	LLMModel        string // e.g. "phi3" or "llama3"
+	LLMTimeout      int    // timeout in seconds
 }
 
 var (
@@ -70,6 +71,7 @@ func LoadConfig() {
 		LLMProvider:     getEnv("LLM_PROVIDER", "ollama"),
 		LLMEndpoint:     getEnv("LLM_ENDPOINT", "http://ollama:11434"),
 		LLMModel:        getEnv("LLM_MODEL", "phi3-vulfixx"),
+		LLMTimeout:      getEnvInt("LLM_TIMEOUT", 600),
 	}
 
 	port, err := strconv.Atoi(getEnv("SMTP_PORT", "587"))
@@ -179,6 +181,19 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	valStr := getEnv(key, "")
+	if valStr == "" {
+		return fallback
+	}
+	val, err := strconv.Atoi(valStr)
+	if err != nil {
+		logPrintf("Invalid %s: %v. Defaulting to %d", key, err, fallback)
+		return fallback
+	}
+	return val
 }
 
 func generateRandomKey(n int) string {
