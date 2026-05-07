@@ -360,8 +360,10 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 				llmModel = config.AppConfig.LLMModel
 			}
 
-			// Call LLM as fallback
-			products, err := llm.ExtractVendorProduct(ctx, config.AppConfig.LLMProvider, config.AppConfig.GeminiAPIKey, config.AppConfig.LLMEndpoint, llmModel, model.Description)
+			// Call LLM as fallback with isolated timeout
+			llmCtx, cancel := context.WithTimeout(ctx, 130*time.Second)
+			products, err := llm.ExtractVendorProduct(llmCtx, config.AppConfig.LLMProvider, config.AppConfig.GeminiAPIKey, config.AppConfig.LLMEndpoint, llmModel, model.Description)
+			cancel()
 			if err == nil && len(products) > 0 {
 				// Use the first one as primary
 				vendor, product = products[0].Vendor, products[0].Product
