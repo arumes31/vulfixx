@@ -24,8 +24,20 @@ type ExtractionResponse struct {
 	Products []ProductResult `json:"products"`
 }
 
+// Global semaphore to limit LLM concurrency to 1.
+// This ensures that only one LLM request is processed at a time across the entire application.
+var llmSemaphore = make(chan struct{}, 1)
+
 // ExtractVendorProduct chooses the appropriate provider (Gemini or Ollama) to extract all vendor/product/version names.
 func ExtractVendorProduct(ctx context.Context, provider, apiKey, endpoint, model, description string) ([]ProductResult, error) {
+	// Acquire semaphore (queue up if another job is running)
+	select {
+	case llmSemaphore <- struct{}{}:
+		defer func() { <-llmSemaphore }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
 	switch provider {
 	case "gemini":
 		return extractWithGemini(ctx, apiKey, model, description)
@@ -125,7 +137,7 @@ Description: %s`, description)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("ollama request failed: %w (is ollama running at %s?)", err, endpoint)
