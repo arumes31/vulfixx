@@ -2,6 +2,7 @@ package worker
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 )
 
@@ -36,7 +37,9 @@ func NewEmailSender(host, port, user, password, from string) EmailSender {
 
 func (s *RealEmailSender) SendEmail(toEmail, subject, body string) error {
 	if s.Host == "" || s.From == "" || s.Port == "" {
-		return fmt.Errorf("SMTP configuration missing (host, port, and from are required)")
+		err := fmt.Errorf("SMTP configuration missing (host, port, and from are required)")
+		log.Printf("Worker: %v", err)
+		return err
 	}
 
 	// Validate subject, email, and from address to prevent header injection

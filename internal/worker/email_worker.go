@@ -37,6 +37,7 @@ func (w *Worker) processEmailVerification(ctx context.Context) {
 		}
 		email, _ := payload["email"].(string)
 		token, _ := payload["token"].(string)
+		log.Printf("Worker: Picked up verification email for %s", maskEmail(email))
 		if email == "" || token == "" {
 			log.Printf("Worker: Invalid email verification payload: email=%q, token=%q", maskEmail(email), redactToken(token))
 			continue
@@ -64,6 +65,8 @@ func (w *Worker) processEmailVerification(ctx context.Context) {
 			if zErr := w.Redis.ZAdd(ctx, "email_verification_delayed", redis.Z{Score: score, Member: string(newPayload)}).Err(); zErr != nil {
 				log.Printf("Worker: Failed to enqueue verification retry for %s: %v", maskEmail(email), zErr)
 			}
+		} else {
+			log.Printf("Worker: Successfully sent verification email to %s", maskEmail(email))
 		}
 	}
 }
@@ -88,6 +91,7 @@ func (w *Worker) processEmailChange(ctx context.Context) {
 		email, _ := payload["email"].(string)
 		token, _ := payload["token"].(string)
 		emailType, _ := payload["type"].(string)
+		log.Printf("Worker: Picked up email change notification (%s) for %s", emailType, maskEmail(email))
 		if email == "" || token == "" {
 			log.Printf("Worker: Invalid email change payload: email=%q, token=%q", maskEmail(email), redactToken(token))
 			continue
@@ -115,6 +119,8 @@ func (w *Worker) processEmailChange(ctx context.Context) {
 			if zErr := w.Redis.ZAdd(ctx, "email_change_delayed", redis.Z{Score: score, Member: string(newPayload)}).Err(); zErr != nil {
 				log.Printf("Worker: Failed to enqueue email change retry for %s: %v", maskEmail(email), zErr)
 			}
+		} else {
+			log.Printf("Worker: Successfully sent email change notification to %s", maskEmail(email))
 		}
 	}
 }
