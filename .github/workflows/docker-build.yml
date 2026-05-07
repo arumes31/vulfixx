@@ -108,7 +108,7 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -152,7 +152,7 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Scalper
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}-scalper
           tags: |
@@ -196,7 +196,7 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Ollama Init
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}-ollama-init
           tags: |
