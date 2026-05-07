@@ -419,6 +419,13 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			continue
 		}
 
+		// Trigger on-demand enrichment for new/updated CVE
+		select {
+		case w.enrichmentQueue <- model.ID:
+		default:
+			// Queue full, will be picked up by background cron
+		}
+
 		// Check for alerts after successful upsert (only if not backfilling)
 		if !isBackfill {
 			if err := w.enqueueAlertsForCVE(ctx, model); err != nil {

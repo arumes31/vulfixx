@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
-	"time"
-
 	"github.com/pashagolub/pgxmock/v3"
 )
 
@@ -44,7 +42,7 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 
 		w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
 
-		mock.ExpectQuery("SELECT id, cve_id, description, configurations FROM cves").WillReturnRows(
+		mock.ExpectQuery("(?i)SELECT id, cve_id, description, configurations FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' ORDER BY cvss_score DESC, cisa_kev DESC LIMIT 1000").WillReturnRows(
 			pgxmock.NewRows([]string{"id", "cve_id", "description", "configurations"}).
 				AddRow(1, "CVE-123", "test", json.RawMessage(`[]`)),
 		)
@@ -88,10 +86,8 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		
-		// waitUntilNextRun is called first
-		mock.ExpectQuery("SELECT last_run FROM worker_sync_stats").WithArgs("intelligence_enrichment").WillReturnRows(pgxmock.NewRows([]string{"last_run"}).AddRow(time.Now()))
-		// enrichMissingIntelligence is called next
-		mock.ExpectQuery("SELECT id, cve_id, description, configurations FROM cves").WillReturnError(context.Canceled)
+		// Check queue size for interval
+		mock.ExpectQuery("(?i)SELECT COUNT\\(\\*\\) FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = ''").WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(100))
 		
 		w.startIntelligenceEnrichmentTask(ctx)
 

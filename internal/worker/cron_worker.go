@@ -11,6 +11,12 @@ import (
 	"time"
 )
 
+type Rows interface {
+	Next() bool
+	Scan(dest ...any) error
+	Close()
+}
+
 func (w *Worker) runWeeklySummaryWithLock(ctx context.Context) {
 	tx, err := w.Pool.Begin(ctx)
 	if err != nil {
@@ -65,52 +71,111 @@ func (w *Worker) runWeeklySummaryWithLock(ctx context.Context) {
 }
 
 func (w *Worker) startIntelligenceEnrichmentTask(ctx context.Context) {
-	w.waitUntilNextRun(ctx, "intelligence_enrichment", 24*time.Hour, 10*time.Minute)
-	w.enrichMissingIntelligence(ctx)
+	log.Println("Worker: [CRON] Intelligence enrichment task started")
+	
+	// Check queue size to determine initial interval
+	var missingCount int
+	err := w.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = ''").Scan(&missingCount)
+	if err != nil && errors.Is(err, context.Canceled) {
+		return
+	}
+	
+	interval := 24 * time.Hour
+	if missingCount > 5000 {
+		interval = 4 * time.Hour
+		log.Printf("Worker: [CRON] Large backlog (%d), setting enrichment interval to %v", missingCount, interval)
+	}
 
-	ticker := time.NewTicker(24 * time.Hour)
-	defer ticker.Stop()
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			log.Println("Worker: [CRON] Intelligence enrichment task shutting down")
 			return
-		case <-ticker.C:
+		case id := <-w.enrichmentQueue:
+			// On-demand enrichment
+			w.enrichSingleCVE(ctx, id)
+		case <-timer.C:
+			// Check context before enrichment call
+			if ctx.Err() != nil {
+				return
+			}
 			w.enrichMissingIntelligence(ctx)
+			
+			// Re-evaluate interval based on remaining backlog
+			_ = w.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = ''").Scan(&missingCount)
+			newInterval := 24 * time.Hour
+			if missingCount > 5000 {
+				newInterval = 4 * time.Hour
+			}
+			timer.Reset(newInterval)
 		}
+	}
+}
+
+func (w *Worker) enrichSingleCVE(ctx context.Context, id int) {
+	rows, err := w.Pool.Query(ctx, "SELECT id, cve_id, description, configurations FROM cves WHERE id = $1", id)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	if rows.Next() {
+		w.processEnrichmentRows(ctx, rows)
 	}
 }
 
 func (w *Worker) enrichMissingIntelligence(ctx context.Context) {
 	log.Println("Worker: [CRON] Starting intelligence enrichment for missing vendor data...")
-	start := time.Now()
-
-	rows, err := w.Pool.Query(ctx, "SELECT id, cve_id, description, configurations FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' LIMIT 1000")
+	
+	// Suggestion 3: Priority-based selection (highest CVSS first)
+	rows, err := w.Pool.Query(ctx, "SELECT id, cve_id, description, configurations FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' ORDER BY cvss_score DESC, cisa_kev DESC LIMIT 1000")
 	if err != nil {
 		log.Printf("Worker: [CRON] Error querying CVEs for enrichment: %v", err)
 		return
 	}
 	defer rows.Close()
 
+	w.processEnrichmentRows(ctx, rows)
+}
+
+func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows) {
+	start := time.Now()
 	var count int
+	var consecutiveFailures int
+
+	model := config.AppConfig.GeminiModel
+	if config.AppConfig.LLMProvider == "ollama" {
+		model = config.AppConfig.LLMModel
+	}
+
 	for rows.Next() {
 		var c models.CVE
 		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.Configurations); err != nil {
 			continue
 		}
 
+		// Suggestion 2: Adaptive Backoff
+		if consecutiveFailures >= 3 {
+			log.Printf("Worker: [CRON] 3 consecutive LLM failures. Backing off for 15 minutes.")
+			time.Sleep(15 * time.Minute)
+			consecutiveFailures = 0 // reset after sleep
+		}
+
 		vendor, product := c.GetDetectedProduct()
 		var extractedProducts []llm.ProductResult
 		if vendor == "" && (config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama") {
-			model := config.AppConfig.GeminiModel
-			if config.AppConfig.LLMProvider == "ollama" {
-				model = config.AppConfig.LLMModel
-			}
-
 			// Call LLM as fallback for missing data
 			products, err := llm.ExtractVendorProduct(ctx, config.AppConfig.LLMProvider, config.AppConfig.GeminiAPIKey, config.AppConfig.LLMEndpoint, model, c.Description)
-			if err == nil && len(products) > 0 {
+			if err != nil {
+				log.Printf("Worker: [CRON] LLM extraction failed for %s: %v", c.CVEID, err)
+				consecutiveFailures++
+				continue
+			}
+			consecutiveFailures = 0 // reset on success
+
+			if len(products) > 0 {
 				vendor, product = products[0].Vendor, products[0].Product
 				extractedProducts = products
 				log.Printf("Worker: [CRON] LLM enriched existing CVE %s: found %d products", c.CVEID, len(products))
@@ -147,7 +212,9 @@ func (w *Worker) enrichMissingIntelligence(ctx context.Context) {
 	}
 
 	w.updateTaskStats(ctx, "intelligence_enrichment")
-	log.Printf("Worker: [CRON] Intelligence enrichment complete. Enriched %d records. Duration: %v", count, time.Since(start))
+	if count > 0 {
+		log.Printf("Worker: [CRON] Intelligence enrichment complete. Enriched %d records. Duration: %v", count, time.Since(start))
+	}
 }
 
 func (w *Worker) startWeeklySummaryTask(ctx context.Context) {
