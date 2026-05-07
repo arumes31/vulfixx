@@ -143,11 +143,6 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows) {
 	var count int
 	var consecutiveFailures int
 
-	model := config.AppConfig.GeminiModel
-	if config.AppConfig.LLMProvider == "ollama" {
-		model = config.AppConfig.LLMModel
-	}
-
 	for rows.Next() {
 		var c models.CVE
 		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.Configurations); err != nil {
@@ -169,10 +164,10 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows) {
 
 		var vendor, product string
 		var extractedProducts []llm.ProductResult
-		if (config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama") {
+		if (config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama" || config.AppConfig.ArliAIAPIKey != "") {
 			// Call LLM as primary for missing data with isolated timeout
 			llmCtx, cancel := context.WithTimeout(ctx, time.Duration(config.AppConfig.LLMTimeout+10)*time.Second)
-			products, err := llm.ExtractVendorProduct(llmCtx, config.AppConfig.LLMProvider, config.AppConfig.GeminiAPIKey, config.AppConfig.LLMEndpoint, model, c.Description)
+			products, err := llm.ExtractVendorProduct(llmCtx, c.Description)
 			cancel()
 			if err != nil {
 				log.Printf("Worker: [CRON] LLM extraction failed for %s: %v", c.CVEID, err)
@@ -188,9 +183,15 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows) {
 		}
 
 		// Heuristic Fallback
-		if vendor == "" {
-			vendor, product = c.GetDetectedProduct()
-			if vendor != "" {
+		if vendor == "" || product == "" {
+			hVendor, hProduct := c.GetDetectedProduct()
+			if hVendor != "" && vendor == "" {
+				vendor = hVendor
+			}
+			if hProduct != "" && product == "" {
+				product = hProduct
+			}
+			if vendor != "" || product != "" {
 				log.Printf("Worker: [CRON] Heuristic fallback for existing CVE %s: %s / %s", c.CVEID, vendor, product)
 			}
 		}

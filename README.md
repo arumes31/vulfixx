@@ -167,12 +167,26 @@ The application follows a modular architecture designed to prevent monolithic fi
 | `APP_ENV` | Application environment (`development`, `production`) | `production` |
 | `PORT` | Application server port | `8080` |
 | `SENTRY_DSN` | Sentry DSN for error reporting | `(empty)` |
-| `LLM_PROVIDER`| LLM provider (`ollama`, `gemini`) | `ollama` |
-| `LLM_ENDPOINT`| API endpoint for local LLM | `http://ollama:11434` |
-| `LLM_MODEL` | Model name (e.g. `phi3`, `llama3`) | `phi3` |
-| `GEMINI_API_KEY`| API Key for Gemini provider | `(empty)` |
+| `LLM_PROVIDER`| LLM provider (`ollama`, `gemini`, `arliai`) | `ollama` |
+| `LLM_ENDPOINT`| API endpoint for local LLM (Ollama) | `http://ollama:11434` |
+| `LLM_MODEL` | Model name for Ollama (e.g. `phi3-vulfixx`, `llama3`) | `phi3-vulfixx` |
+| `LLM_TIMEOUT` | Intelligence extraction timeout (seconds) | `600` |
+| `GEMINI_API_KEY`| API Key for Google Gemini provider | `(empty)` |
 | `GEMINI_MODEL` | Gemini model version | `gemini-1.5-flash` |
+| `ARLIAI_API_KEY`| API Key for ArliAI (Qwen/Llama provider) | `(empty)` |
+| `ARLIAI_MODEL` | ArliAI model (e.g. `Qwen2.5-72B-Instruct`) | `Qwen2.5-72B-Instruct` |
+| `ARLIAI_ENDPOINT`| ArliAI API base URL | `https://api.arliai.com/v1` |
 | `LLM_DEBUG` | Enable raw LLM prompt/response logging (`true`/`false`) | `false` |
+
+### Ollama Server Tuning (Ollama container only)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OLLAMA_KEEP_ALIVE` | How long the model stays in RAM (e.g., `24h`) | `24h` |
+| `OLLAMA_LOAD_TIMEOUT` | Max time allowed for model loading/ops | `600s` |
+| `OLLAMA_NUM_PARALLEL` | Concurrent request slots | `4` |
+| `OLLAMA_MAX_LOADED_MODELS` | Max models kept in memory | `1` |
+| `OLLAMA_DEBUG` | Enable verbose Ollama server logs | `1` |
 
 ### Darknet Scalper Configuration
 

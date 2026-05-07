@@ -27,7 +27,10 @@ services:
       - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
       - LLM_ENDPOINT=${LLM_ENDPOINT:-http://ollama:11434}
       - LLM_MODEL=${LLM_MODEL:-phi3-vulfixx}
+      - LLM_TIMEOUT=${LLM_TIMEOUT:-600}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+      - LLM_DEBUG=${LLM_DEBUG:-false}
     depends_on:
       - db
       - redis
@@ -76,7 +79,7 @@ services:
     restart: unless-stopped
     
   ollama:
-    image: ghcr.io/arumes31/vulfixx-ollama-init:latest
+    image: ghcr.io/arumes31/vulfixx-ollama:v2_test
     volumes:
       - ./data/ollama:/root/.ollama
     environment:

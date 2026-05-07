@@ -38,6 +38,9 @@ type Config struct {
 	LLMEndpoint     string // e.g. "http://ollama:11434"
 	LLMModel        string // e.g. "phi3" or "llama3"
 	LLMTimeout      int    // timeout in seconds
+	ArliAIAPIKey    string
+	ArliAIModel     string
+	ArliAIEndpoint  string
 }
 
 var (
@@ -72,6 +75,9 @@ func LoadConfig() {
 		LLMEndpoint:     getEnv("LLM_ENDPOINT", "http://ollama:11434"),
 		LLMModel:        getEnv("LLM_MODEL", "phi3-vulfixx"),
 		LLMTimeout:      getEnvInt("LLM_TIMEOUT", 600),
+		ArliAIAPIKey:    getEnv("ARLIAI_API_KEY", ""),
+		ArliAIModel:     getEnv("ARLIAI_MODEL", "Qwen2.5-72B-Instruct"),
+		ArliAIEndpoint:  getEnv("ARLIAI_ENDPOINT", "https://api.arliai.com/v1"),
 	}
 
 	port, err := strconv.Atoi(getEnv("SMTP_PORT", "587"))

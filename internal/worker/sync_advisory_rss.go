@@ -30,15 +30,14 @@ var advisoryFeeds = []AdvisoryFeed{
 	{Name: "CISA ICS Advisories", URL: "https://www.cisa.gov/cybersecurity-advisories/ics-advisories.xml"},
 	{Name: "Microsoft Security Advisories", URL: "https://api.msrc.microsoft.com/update-guide/rss"},
 	{Name: "AWS Security Bulletins", URL: "https://aws.amazon.com/security/security-bulletins/rss/"},
-	{Name: "VMware Security Advisories", URL: "https://www.vmware.com/security/advisories.xml"},
 	{Name: "Oracle Security Alerts", URL: "https://www.oracle.com/ocom/groups/public/@otn/documents/webcontent/rss-otn-sec.xml"},
 	{Name: "GitHub Advisory Database", URL: "https://github.com/advisories.atom"},
-	{Name: "CERT-EU Advisories", URL: "https://cert.europa.eu/publications/security-advisories/feed/"},
+	{Name: "CERT-EU Advisories", URL: "https://cert.europa.eu/publications/security-advisories-rss"},
 	{Name: "FortiGuard PSIRT", URL: "https://filestore.fortinet.com/fortiguard/rss/ir.xml"},
 	{Name: "Cisco PSIRT", URL: "https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisory.xml"},
 	{Name: "Red Hat Security", URL: "https://access.redhat.com/security/data/metrics/rhsa.rss"},
 	{Name: "Ubuntu Security", URL: "https://ubuntu.com/security/notices/rss.xml"},
-	{Name: "ZDI Advisories", URL: "https://www.zerodayinitiative.com/rss/advisories/"},
+	{Name: "ZDI Advisories", URL: "https://www.zerodayinitiative.com/rss/published/"},
 }
 
 // Support for multiple feed formats (RSS 2.0, RSS 1.0/RDF, Atom)
@@ -120,6 +119,8 @@ func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
 		log.Printf("Worker: [ERROR] Failed to create request for %s: %v", feed.Name, err)
 		return
 	}
+	req.Header.Set("User-Agent", "Vulfixx-CVE-Tracker/2.0 (Security-Intelligence-Bot)")
+	req.Header.Set("Accept", "application/xml, application/rss+xml, application/atom+xml, text/xml")
 
 	resp, err := w.HTTP.Do(req)
 	if err != nil {

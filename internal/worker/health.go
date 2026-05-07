@@ -100,14 +100,9 @@ func (w *Worker) TestLLMConnectivity(ctx context.Context) {
 	}
 	log.Printf("Worker: Testing LLM connectivity (%s)...", config.AppConfig.LLMProvider)
 
-	model := config.AppConfig.GeminiModel
-	if config.AppConfig.LLMProvider == "ollama" {
-		model = config.AppConfig.LLMModel
-	}
-
 	testDescription := "This is a test description for a vulnerability in a hypothetical product called Vulfixx version 1.0.0."
 	start := time.Now()
-	products, err := llm.ExtractVendorProduct(ctx, config.AppConfig.LLMProvider, config.AppConfig.GeminiAPIKey, config.AppConfig.LLMEndpoint, model, testDescription)
+	products, err := llm.ExtractVendorProduct(ctx, testDescription)
 
 	if err != nil {
 		log.Printf("Worker: [LLM TEST FAILED] %v (Duration: %v)", err, time.Since(start))
