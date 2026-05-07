@@ -137,7 +137,7 @@ Description: %s`, description)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 120 * time.Second}
+	client := &http.Client{Timeout: 600 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("ollama request failed: %w (is ollama running at %s?)", err, endpoint)
