@@ -107,9 +107,9 @@ func TestWorkerSync_NVD(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT value FROM sync_state WHERE key = 'nvd_backfill_index'")).
 			WillReturnError(pgx.ErrNoRows)
 
-		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO cves")).
+		mock.ExpectQuery("(?i)INSERT INTO cves").
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 7.5, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), true).
-			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO sync_state")).
 			WithArgs(pgxmock.AnyArg()).

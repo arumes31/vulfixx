@@ -43,14 +43,14 @@ func TestWorker_ExploitDetection(t *testing.T) {
 	}
 	
 	// Expect UPSERT with exploit_available = true (arg 13)
-	mock.ExpectExec("INSERT INTO cves").
+	mock.ExpectQuery("(?i)INSERT INTO cves").
 		WithArgs(
 			"CVE-EXPLOIT", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), 
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), 
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), 
 			true, // ExploitAvailable
 		).
-		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 	
 	w.upsertCVEs(context.Background(), entries, true)
 	

@@ -83,11 +83,13 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 		}
 		defer mock.Close()
 		w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
+		
+		// Setup expectations with a live context
+		mock.ExpectQuery("(?i)SELECT COUNT\\(\\*\\) FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = ''").WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(100))
+		
+		// Run with a context that we cancel immediately to verify shutdown
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		
-		// Check queue size for interval
-		mock.ExpectQuery("(?i)SELECT COUNT\\(\\*\\) FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = ''").WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(100))
 		
 		w.startIntelligenceEnrichmentTask(ctx)
 

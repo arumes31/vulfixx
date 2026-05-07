@@ -121,9 +121,7 @@ func (w *Worker) enrichSingleCVE(ctx context.Context, id int) {
 		return
 	}
 	defer rows.Close()
-	if rows.Next() {
-		w.processEnrichmentRows(ctx, rows)
-	}
+	w.processEnrichmentRows(ctx, rows)
 }
 
 func (w *Worker) enrichMissingIntelligence(ctx context.Context) {
@@ -159,8 +157,14 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows) {
 		// Suggestion 2: Adaptive Backoff
 		if consecutiveFailures >= 3 {
 			log.Printf("Worker: [CRON] 3 consecutive LLM failures. Backing off for 15 minutes.")
-			time.Sleep(15 * time.Minute)
-			consecutiveFailures = 0 // reset after sleep
+			backoffTimer := time.NewTimer(15 * time.Minute)
+			select {
+			case <-backoffTimer.C:
+				consecutiveFailures = 0 // reset after sleep
+			case <-ctx.Done():
+				backoffTimer.Stop()
+				return
+			}
 		}
 
 		vendor, product := c.GetDetectedProduct()
