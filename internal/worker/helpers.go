@@ -3,6 +3,7 @@ package worker
 import (
 	"crypto/tls"
 	"fmt"
+	"log"
 	"net"
 	"net/mail"
 	"net/smtp"
@@ -95,7 +96,9 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 	if p, err := strconv.Atoi(port); err != nil || p < 1 || p > 65535 {
 		return fmt.Errorf("invalid port %q: must be numeric and between 1 and 65535", port)
 	}
+	host = sanitizeHeader(host)
 	addr := net.JoinHostPort(host, port)
+	log.Printf("Worker: Dialing SMTP server at %s", addr)
 	// #nosec G704 -- Host and port are from controlled environment variables
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
@@ -116,6 +119,7 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 
 	hasTLS := false
 	if ok, _ := client.Extension("STARTTLS"); ok {
+		log.Printf("Worker: SMTP STARTTLS supported, starting upgrade")
 		config := &tls.Config{
 			ServerName: host,
 		}
@@ -127,28 +131,36 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 			return fmt.Errorf("set deadline after tls: %w", err)
 		}
 		hasTLS = true
+		log.Printf("Worker: SMTP STARTTLS successful")
 	}
 
 	if user != "" && password != "" {
 		if !hasTLS {
 			return fmt.Errorf("TLS is required for authentication but not supported by host %s", host)
 		}
+		log.Printf("Worker: Attempting SMTP authentication for user %s", maskEmail(user))
 		auth := smtp.PlainAuth("", user, password, host)
 		if err := client.Auth(auth); err != nil {
 			return fmt.Errorf("auth: %w", err)
 		}
+		log.Printf("Worker: SMTP authentication successful")
+	} else if user != "" {
+		log.Printf("Worker: SMTP_USER provided but SMTP_PASS is empty, skipping authentication")
 	}
 
 	// #nosec G707 -- Email addresses are sanitized via sanitizeEmail() before use
+	log.Printf("Worker: Sending MAIL FROM: %s", maskEmail(cleanFrom))
 	if err := client.Mail(cleanFrom); err != nil {
 		return err
 	}
 	for _, addr := range cleanTo {
+		log.Printf("Worker: Sending RCPT TO: %s", maskEmail(addr))
 		if err := client.Rcpt(addr); err != nil {
 			return err
 		}
 	}
 
+	log.Printf("Worker: Sending DATA")
 	w, err := client.Data()
 	if err != nil {
 		return err
@@ -161,6 +173,7 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 	if err != nil {
 		return err
 	}
+	log.Printf("Worker: SMTP data transfer complete")
 
 	return nil
 }
