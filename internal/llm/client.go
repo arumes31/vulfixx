@@ -210,7 +210,7 @@ func extractWithArliAI(ctx context.Context, apiKey, model, endpoint, description
 		return nil, fmt.Errorf("arliai api key is required")
 	}
 
-	prompt := `Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from this CVE description. 
+	systemPrompt := `Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from this CVE description. 
 
 RULES:
 1. Return results ONLY as a JSON object with a key "products" containing a list of objects.
@@ -222,23 +222,26 @@ EXAMPLES:
 Input: "Vulnerability in Cisco IOS before 15.1"
 Output: {"products": [{"vendor": "Cisco", "product": "IOS", "version": "< 15.1"}]}
 
+Input: "The debug command in Sendmail is enabled"
+Output: {"products": [{"vendor": "Sendmail", "product": "Sendmail", "version": null}]}
+
 Input: "Azure Service Fabric for Linux RCE affects version 9.1 before 9.1.2498.1, 10.0 before 10.0.2345.1, and 10.1 before 10.1.2308.1"
 Output: {"products": [
   {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "9.1 < 9.1.2498.1"},
   {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "10.0 < 10.0.2345.1"},
   {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "10.1 < 10.1.2308.1"}
-]}
-
-Description: ` + description
+]}`
 
 	if os.Getenv("LLM_DEBUG") == "true" {
-		log.Printf("LLM: [DEBUG] ArliAI Prompt: %s", prompt)
+		log.Printf("LLM: [DEBUG] ArliAI System Prompt: %s", systemPrompt)
+		log.Printf("LLM: [DEBUG] ArliAI Description: %s", description)
 	}
 
 	payload := map[string]interface{}{
 		"model": model,
 		"messages": []map[string]string{
-			{"role": "user", "content": prompt},
+			{"role": "system", "content": systemPrompt},
+			{"role": "user", "content": "Description: " + description},
 		},
 		"temperature":     0,
 		"response_format": map[string]string{"type": "json_object"},
