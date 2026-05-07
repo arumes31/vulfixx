@@ -113,6 +113,7 @@ func extractWithOllama(ctx context.Context, endpoint, model, description string)
 	}
 
 	prompt := fmt.Sprintf(`Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from this CVE description. 
+If the description says "prior to" or "before", include that in the version (e.g., "< 1.2.3"). 
 Return the result ONLY as a JSON object with a key "products" containing a list of objects with "vendor", "product", and "version".
 Description: %s`, description)
 

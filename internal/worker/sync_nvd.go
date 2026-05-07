@@ -353,45 +353,36 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			ExploitAvailable: exploitAvailable,
 		}
 
-		vendor, product := model.GetDetectedProduct()
-		if vendor == "" && (config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama") {
+		var vendor, product string
+		if (config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama") {
 			llmModel := config.AppConfig.GeminiModel
 			if config.AppConfig.LLMProvider == "ollama" {
 				llmModel = config.AppConfig.LLMModel
 			}
 
-			// Call LLM as fallback with isolated timeout
+			// Call LLM as primary with isolated timeout
 			llmCtx, cancel := context.WithTimeout(ctx, time.Duration(config.AppConfig.LLMTimeout+10)*time.Second)
 			products, err := llm.ExtractVendorProduct(llmCtx, config.AppConfig.LLMProvider, config.AppConfig.GeminiAPIKey, config.AppConfig.LLMEndpoint, llmModel, model.Description)
 			cancel()
 			if err == nil && len(products) > 0 {
 				// Use the first one as primary
 				vendor, product = products[0].Vendor, products[0].Product
-				log.Printf("Worker: LLM refined detection for %s: found %d products. Primary: %s / %s", model.CVEID, len(products), vendor, product)
+				log.Printf("Worker: LLM extraction for %s: found %d products. Primary: %s / %s", model.CVEID, len(products), vendor, product)
 
-				// Add all to affected_products if not already there
-				existing := model.GetAffectedProducts()
+				// Add all to affected_products
 				for _, p := range products {
-					found := false
-					for _, ep := range existing {
-						if ep.Vendor == p.Vendor && ep.Product == p.Product {
-							found = true
-							break
-						}
-					}
-					if !found {
-						existing = append(existing, models.AffectedProduct{
-							Vendor:      p.Vendor,
-							Product:     p.Product,
-							Version:     p.Version,
-							Type:        "a",
-							Unconfirmed: true,
-						})
-					}
+					model.AddAffectedProduct(p.Vendor, p.Product, p.Version, true)
 				}
-				model.AffectedProducts = existing
 			} else if err != nil {
 				log.Printf("Worker: LLM extraction failed for %s: %v", model.CVEID, err)
+			}
+		}
+
+		// Heuristic Fallback: If LLM is disabled or failed to find anything
+		if vendor == "" {
+			vendor, product = model.GetDetectedProduct()
+			if vendor != "" {
+				log.Printf("Worker: Heuristic fallback detection for %s: %s / %s", model.CVEID, vendor, product)
 			}
 		}
 		model.Vendor = vendor

@@ -167,24 +167,31 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows) {
 			}
 		}
 
-		vendor, product := c.GetDetectedProduct()
+		var vendor, product string
 		var extractedProducts []llm.ProductResult
-		if vendor == "" && (config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama") {
-			// Call LLM as fallback for missing data with isolated timeout
+		if (config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama") {
+			// Call LLM as primary for missing data with isolated timeout
 			llmCtx, cancel := context.WithTimeout(ctx, time.Duration(config.AppConfig.LLMTimeout+10)*time.Second)
 			products, err := llm.ExtractVendorProduct(llmCtx, config.AppConfig.LLMProvider, config.AppConfig.GeminiAPIKey, config.AppConfig.LLMEndpoint, model, c.Description)
 			cancel()
 			if err != nil {
 				log.Printf("Worker: [CRON] LLM extraction failed for %s: %v", c.CVEID, err)
 				consecutiveFailures++
-				continue
+			} else {
+				consecutiveFailures = 0 // reset on success
+				if len(products) > 0 {
+					vendor, product = products[0].Vendor, products[0].Product
+					extractedProducts = products
+					log.Printf("Worker: [CRON] LLM enriched existing CVE %s: found %d products", c.CVEID, len(products))
+				}
 			}
-			consecutiveFailures = 0 // reset on success
+		}
 
-			if len(products) > 0 {
-				vendor, product = products[0].Vendor, products[0].Product
-				extractedProducts = products
-				log.Printf("Worker: [CRON] LLM enriched existing CVE %s: found %d products", c.CVEID, len(products))
+		// Heuristic Fallback
+		if vendor == "" {
+			vendor, product = c.GetDetectedProduct()
+			if vendor != "" {
+				log.Printf("Worker: [CRON] Heuristic fallback for existing CVE %s: %s / %s", c.CVEID, vendor, product)
 			}
 		}
 
