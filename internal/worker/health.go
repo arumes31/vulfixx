@@ -2,6 +2,8 @@ package worker
 
 import (
 	"context"
+	"cve-tracker/internal/config"
+	"cve-tracker/internal/llm"
 	"fmt"
 	"html/template"
 	"log"
@@ -90,6 +92,33 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 		}
 	}
 	w.updateTaskStats(ctx, "health_check")
+}
+
+func (w *Worker) TestLLMConnectivity(ctx context.Context) {
+	if config.AppConfig.LLMProvider == "" {
+		return
+	}
+	log.Printf("Worker: Testing LLM connectivity (%s)...", config.AppConfig.LLMProvider)
+
+	model := config.AppConfig.GeminiModel
+	if config.AppConfig.LLMProvider == "ollama" {
+		model = config.AppConfig.LLMModel
+	}
+
+	testDescription := "This is a test description for a vulnerability in a hypothetical product called Vulfixx version 1.0.0."
+	start := time.Now()
+	products, err := llm.ExtractVendorProduct(ctx, config.AppConfig.LLMProvider, config.AppConfig.GeminiAPIKey, config.AppConfig.LLMEndpoint, model, testDescription)
+
+	if err != nil {
+		log.Printf("Worker: [LLM TEST FAILED] %v (Duration: %v)", err, time.Since(start))
+		return
+	}
+
+	if len(products) > 0 {
+		log.Printf("Worker: [LLM TEST SUCCESS] Extracted %d products. Primary: %s / %s (Duration: %v)", len(products), products[0].Vendor, products[0].Product, time.Since(start))
+	} else {
+		log.Printf("Worker: [LLM TEST WARNING] LLM reachable but returned no products for test description. (Duration: %v)", time.Since(start))
+	}
 }
 
 func (w *Worker) checkNotificationHealth(ctx context.Context) {
