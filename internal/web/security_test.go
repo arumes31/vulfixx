@@ -281,27 +281,19 @@ func TestDashboardNoErrorLeakOnMalformedQuery(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/dashboard?"+v.Encode(), nil)
 	setSessionUser(t, app, req, 1, false)
 
-	// 1. metricsQuery
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(DISTINCT c.id) as total_cves")).
+	// 1. metricsQuery (consolidated)
+	mock.ExpectQuery("(?is)SELECT.*total_cves.*").
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
-		WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit", "prog"}).AddRow(100, 10, 5, 2))
+		WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit", "prog", "sev_crit", "sev_high", "sev_med", "sev_low", "stat_active", "stat_prog", "stat_res", "stat_ign"}).
+			AddRow(100, 10, 5, 2, 5, 1, 0, 0, 1, 0, 0, 0))
 	
 	// 2. query (CVE list)
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT DISTINCT c.id, c.cve_id")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.cve_id")).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "vendor", "product", "affected_products"}).
-			AddRow(1, "CVE-1", "Desc", 5.0, "", false, time.Now(), time.Now(), "active", []string{}, "", 0.1, "", "", 0, 0, "", []byte(`{}`), "V", "P", []byte(`[]`)))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "vendor", "product", "affected_products", "priority"}).
+			AddRow(1, "CVE-1", "Desc", 5.0, "", false, time.Now(), time.Now(), "active", []string{}, "", 0.1, "", "", 0, 0, "", []byte(`{}`), "V", "P", []byte(`[]`), "P2"))
 
-	// 3. severityQuery
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(DISTINCT CASE WHEN c.cvss_score >= 9.0 THEN c.id END)")).
-		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
-		WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(0, 0, 1, 0))
-	
-	// 4. statusQuery
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(DISTINCT CASE WHEN COALESCE(ucs.status, 'active') = 'active' THEN c.id END)")).
-		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
-		WillReturnRows(pgxmock.NewRows([]string{"active", "prog", "res", "ign"}).AddRow(1, 0, 0, 0))
-	
+
 	// 5. cweQuery
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT cwe_id, COALESCE(MAX(cwe_name), 'Unknown')")).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
