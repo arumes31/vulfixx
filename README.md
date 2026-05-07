@@ -52,6 +52,25 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 - **Vendor Name Normalization**: Centralized alias mapping system that unifies inconsistent vendor names (e.g., `microsoft_corp` → `Microsoft`) for professional-grade reporting.
 - **Intelligence Sync Optimization**: High-throughput synchronization engine with batch processing (200 CVEs/run) and **automated 30-day refresh cycles** for existing records.
 - **OSV & GreyNoise Integration**: Enhanced monitoring for Open Source Vulnerabilities (OSV) and GreyNoise threat intelligence with automated stale-data detection.
+- **LLM-Powered Detection**: Advanced extraction of **Vendor**, **Product**, and **Affected Versions** from complex descriptions using Local LLMs (Ollama) or Cloud APIs (Gemini).
+
+## 🤖 LLM Intelligence (Optional)
+
+Vulfixx can use Large Language Models to "fill in the blanks" when official NVD metadata is missing or incomplete. This is especially useful for older CVEs or non-standard reports.
+
+### Local LLM Setup (Recommended)
+By default, Vulfixx is configured to use **Ollama** for private, local, and free CPU-based extraction.
+1. Start the services: `docker-compose up -d`.
+2. Download a model to the local container:
+   ```bash
+   docker exec -it vulfixx-ollama-1 ollama pull phi3
+   ```
+3. The worker will now automatically use the local model for any CVE missing vendor/product data.
+
+### Cloud LLM Setup
+If you prefer higher performance, you can use **Google Gemini**:
+1. Obtain a Gemini API Key from Google AI Studio.
+2. Set `LLM_PROVIDER=gemini` and `GEMINI_API_KEY=your_key` in your environment.
 
 ## 🏗️ Architecture
 The application follows a modular architecture designed to prevent monolithic files and improve domain separation.
@@ -148,6 +167,12 @@ The application follows a modular architecture designed to prevent monolithic fi
 | `APP_ENV` | Application environment (`development`, `production`) | `production` |
 | `PORT` | Application server port | `8080` |
 | `SENTRY_DSN` | Sentry DSN for error reporting | `(empty)` |
+| `LLM_PROVIDER`| LLM provider (`ollama`, `gemini`) | `ollama` |
+| `LLM_ENDPOINT`| API endpoint for local LLM | `http://ollama:11434` |
+| `LLM_MODEL` | Model name (e.g. `phi3`, `llama3`) | `phi3` |
+| `GEMINI_API_KEY`| API Key for Gemini provider | `(empty)` |
+| `GEMINI_MODEL` | Gemini model version | `gemini-1.5-flash` |
+| `LLM_DEBUG` | Enable raw LLM prompt/response logging (`true`/`false`) | `false` |
 
 ### Darknet Scalper Configuration
 

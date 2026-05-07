@@ -2,6 +2,8 @@ package worker
 
 import (
 	"context"
+	"cve-tracker/internal/config"
+	"cve-tracker/internal/llm"
 	"cve-tracker/internal/models"
 	"database/sql"
 	"errors"
@@ -99,7 +101,37 @@ func (w *Worker) enrichMissingIntelligence(ctx context.Context) {
 		}
 
 		vendor, product := c.GetDetectedProduct()
+		var extractedProducts []llm.ProductResult
+		if vendor == "" && (config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama") {
+			// Call LLM as fallback for missing data
+			products, err := llm.ExtractVendorProduct(ctx, config.AppConfig.LLMProvider, config.AppConfig.GeminiAPIKey, config.AppConfig.LLMEndpoint, config.AppConfig.GeminiModel, c.Description)
+			if err == nil && len(products) > 0 {
+				vendor, product = products[0].Vendor, products[0].Product
+				extractedProducts = products
+				log.Printf("Worker: [CRON] LLM enriched existing CVE %s: found %d products", c.CVEID, len(products))
+			}
+		}
+
 		affected := c.GetAffectedProducts()
+		// If we extracted products via LLM, add them to affected_products
+		for _, p := range extractedProducts {
+			found := false
+			for _, ap := range affected {
+				if ap.Vendor == p.Vendor && ap.Product == p.Product {
+					found = true
+					break
+				}
+			}
+			if !found {
+				affected = append(affected, models.AffectedProduct{
+					Vendor:      p.Vendor,
+					Product:     p.Product,
+					Version:     p.Version,
+					Type:        "a",
+					Unconfirmed: true,
+				})
+			}
+		}
 
 		if vendor != "" || product != "" || len(affected) > 0 {
 			_, err := w.Pool.Exec(ctx, "UPDATE cves SET vendor = $1, product = $2, affected_products = $3, updated_at = NOW() WHERE id = $4", vendor, product, affected, c.ID)

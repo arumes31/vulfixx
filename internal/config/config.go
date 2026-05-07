@@ -32,6 +32,10 @@ type Config struct {
 	SecureCookie    bool
 	AppPort         string
 	SentryDSN       string
+	GeminiAPIKey    string
+	GeminiModel     string
+	LLMProvider     string // "ollama" or "gemini"
+	LLMEndpoint     string // e.g. "http://ollama:11434"
 }
 
 var (
@@ -60,6 +64,10 @@ func LoadConfig() {
 		AdminTOTPSecret: getEnv("ADMIN_TOTP_SECRET", ""),
 		AppPort:         getEnv("PORT", "8080"),
 		SentryDSN:       getEnv("SENTRY_DSN", ""),
+		GeminiAPIKey:    getEnv("GEMINI_API_KEY", ""),
+		GeminiModel:     getEnv("GEMINI_MODEL", "gemini-1.5-flash"),
+		LLMProvider:     getEnv("LLM_PROVIDER", "ollama"),
+		LLMEndpoint:     getEnv("LLM_ENDPOINT", "http://ollama:11434"),
 	}
 
 	port, err := strconv.Atoi(getEnv("SMTP_PORT", "587"))

@@ -394,9 +394,14 @@ func (c *CVE) GetDetectedProduct() (vendor, product string) {
 		return products[0].Vendor, products[0].Product
 	}
 
+	// 2. Secondary: Check if we already have stored values (populated by LLM or manual entry)
+	if c.Vendor != "" && c.Product != "" {
+		return c.Vendor, c.Product
+	}
+
 	desc := c.Description
 
-	// 2. Secondary: known vendor keyword matching on description (high confidence)
+	// 3. Tertiary: known vendor keyword matching on description (high confidence)
 	descLower := strings.ToLower(desc)
 	for _, kw := range knownVendorKeywords {
 		if strings.Contains(descLower, kw.keyword) {
@@ -404,7 +409,7 @@ func (c *CVE) GetDetectedProduct() (vendor, product string) {
 		}
 	}
 
-	// 3. Tertiary: regex pattern matching on description (medium confidence)
+	// 4. Quaternary: regex pattern matching on description (medium confidence)
 	for _, re := range descriptionPatterns {
 		matches := re.FindStringSubmatch(desc)
 		if len(matches) >= 3 {
