@@ -102,7 +102,7 @@ func (w *Worker) TestLLMConnectivity(ctx context.Context) {
 
 	testDescription := "This is a test description for a vulnerability in a hypothetical product called Vulfixx version 1.0.0."
 	start := time.Now()
-	products, err := llm.ExtractVendorProduct(ctx, testDescription)
+	products, err := llm.ExtractVendorProduct(ctx, testDescription, nil)
 
 	if err != nil {
 		log.Printf("Worker: [LLM TEST FAILED] %v (Duration: %v)", err, time.Since(start))
