@@ -79,6 +79,9 @@ services:
     image: ghcr.io/arumes31/vulfixx-ollama-init:latest
     volumes:
       - ./data/ollama:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_LOAD_TIMEOUT=600s
     restart: unless-stopped
 
 volumes:
