@@ -378,10 +378,16 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			}
 		}
 
-		// Heuristic Fallback: If LLM is disabled or failed to find anything
-		if vendor == "" {
-			vendor, product = model.GetDetectedProduct()
-			if vendor != "" {
+		// Heuristic Fallback: If LLM is disabled, failed to find anything, or returned partial data
+		if vendor == "" || product == "" {
+			hVendor, hProduct := model.GetDetectedProduct()
+			if hVendor != "" && vendor == "" {
+				vendor = hVendor
+			}
+			if hProduct != "" && product == "" {
+				product = hProduct
+			}
+			if vendor != "" || product != "" {
 				log.Printf("Worker: Heuristic fallback detection for %s: %s / %s", model.CVEID, vendor, product)
 			}
 		}

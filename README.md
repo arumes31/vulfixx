@@ -169,10 +169,21 @@ The application follows a modular architecture designed to prevent monolithic fi
 | `SENTRY_DSN` | Sentry DSN for error reporting | `(empty)` |
 | `LLM_PROVIDER`| LLM provider (`ollama`, `gemini`) | `ollama` |
 | `LLM_ENDPOINT`| API endpoint for local LLM | `http://ollama:11434` |
-| `LLM_MODEL` | Model name (e.g. `phi3`, `llama3`) | `phi3` |
+| `LLM_MODEL` | Model name (e.g. `phi3-vulfixx`, `llama3`) | `phi3-vulfixx` |
+| `LLM_TIMEOUT` | Intelligence extraction timeout (seconds) | `600` |
 | `GEMINI_API_KEY`| API Key for Gemini provider | `(empty)` |
 | `GEMINI_MODEL` | Gemini model version | `gemini-1.5-flash` |
 | `LLM_DEBUG` | Enable raw LLM prompt/response logging (`true`/`false`) | `false` |
+
+### Ollama Server Tuning (Ollama container only)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OLLAMA_KEEP_ALIVE` | How long the model stays in RAM (e.g., `24h`) | `24h` |
+| `OLLAMA_LOAD_TIMEOUT` | Max time allowed for model loading/ops | `600s` |
+| `OLLAMA_NUM_PARALLEL` | Concurrent request slots | `4` |
+| `OLLAMA_MAX_LOADED_MODELS` | Max models kept in memory | `1` |
+| `OLLAMA_DEBUG` | Enable verbose Ollama server logs | `1` |
 
 ### Darknet Scalper Configuration
 

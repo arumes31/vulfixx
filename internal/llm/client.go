@@ -86,7 +86,21 @@ func extractWithGemini(ctx context.Context, apiKey, model, description string) (
 		Temperature:      genai.Ptr[float32](0.0),
 	}
 
-	prompt := fmt.Sprintf("Extract ALL affected vendor(s), product name(s), and version(s) from this CVE description: %s", description)
+	prompt := `Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from this CVE description. 
+
+RULES:
+1. If a version is described as "prior to", "before", "through", or "and earlier", format it as a range (e.g. "< 1.2.3" or "<= 4.5").
+2. DO NOT hallucinate modern product names for legacy software. Use the exact names from the text.
+3. If multiple products are mentioned, list them all.
+
+Input: "Azure Service Fabric for Linux RCE affects version 9.1 before 9.1.2498.1, 10.0 before 10.0.2345.1, and 10.1 before 10.1.2308.1"
+Output: {"products": [
+  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "9.1 < 9.1.2498.1"},
+  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "10.0 < 10.0.2345.1"},
+  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "10.1 < 10.1.2308.1"}
+]}
+
+Description: ` + description
 	if os.Getenv("LLM_DEBUG") == "true" {
 		log.Printf("LLM: [DEBUG] Gemini Prompt: %s", prompt)
 	}
@@ -112,10 +126,26 @@ func extractWithOllama(ctx context.Context, endpoint, model, description string)
 		endpoint = "http://localhost:11434"
 	}
 
-	prompt := fmt.Sprintf(`Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from this CVE description. 
-If the description says "prior to" or "before", include that in the version (e.g., "< 1.2.3"). 
-Return the result ONLY as a JSON object with a key "products" containing a list of objects with "vendor", "product", and "version".
-Description: %s`, description)
+	prompt := `Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from this CVE description. 
+
+RULES:
+1. Return results ONLY as a JSON object with a key "products" containing a list of objects.
+2. If a version is described as "prior to", "before", "through", or "and earlier", format it as a range (e.g. "< 1.2.3" or "<= 4.5").
+3. DO NOT hallucinate modern product names for legacy software. Use the exact names from the text.
+4. If multiple products are mentioned, list them all.
+
+EXAMPLES:
+Input: "Vulnerability in Cisco IOS before 15.1"
+Output: {"products": [{"vendor": "Cisco", "product": "IOS", "version": "< 15.1"}]}
+
+Input: "Azure Service Fabric for Linux RCE affects version 9.1 before 9.1.2498.1, 10.0 before 10.0.2345.1, and 10.1 before 10.1.2308.1"
+Output: {"products": [
+  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "9.1 < 9.1.2498.1"},
+  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "10.0 < 10.0.2345.1"},
+  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "10.1 < 10.1.2308.1"}
+]}
+
+Description: ` + description
 
 	if os.Getenv("LLM_DEBUG") == "true" {
 		log.Printf("LLM: [DEBUG] Ollama Prompt: %s", prompt)

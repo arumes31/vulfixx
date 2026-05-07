@@ -188,9 +188,15 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows) {
 		}
 
 		// Heuristic Fallback
-		if vendor == "" {
-			vendor, product = c.GetDetectedProduct()
-			if vendor != "" {
+		if vendor == "" || product == "" {
+			hVendor, hProduct := c.GetDetectedProduct()
+			if hVendor != "" && vendor == "" {
+				vendor = hVendor
+			}
+			if hProduct != "" && product == "" {
+				product = hProduct
+			}
+			if vendor != "" || product != "" {
 				log.Printf("Worker: [CRON] Heuristic fallback for existing CVE %s: %s / %s", c.CVEID, vendor, product)
 			}
 		}
