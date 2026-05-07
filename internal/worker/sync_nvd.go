@@ -412,11 +412,19 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 				affected_products = EXCLUDED.affected_products,
 				exploit_available = EXCLUDED.exploit_available,
 				updated_at = CURRENT_TIMESTAMP
+			RETURNING id
 		`
-		_, err = w.Pool.Exec(ctx, query, model.CVEID, model.Description, model.CVSSScore, model.VectorString, model.CWEID, model.References, model.Configurations, model.PublishedDate, model.UpdatedDate, model.Vendor, model.Product, model.AffectedProducts, model.ExploitAvailable)
+		err = w.Pool.QueryRow(ctx, query, model.CVEID, model.Description, model.CVSSScore, model.VectorString, model.CWEID, model.References, model.Configurations, model.PublishedDate, model.UpdatedDate, model.Vendor, model.Product, model.AffectedProducts, model.ExploitAvailable).Scan(&model.ID)
 		if err != nil {
 			log.Printf("Worker: Error upserting CVE %s: %v", cve.ID, err)
 			continue
+		}
+
+		// Trigger on-demand enrichment for new/updated CVE
+		select {
+		case w.enrichmentQueue <- model.ID:
+		default:
+			// Queue full, will be picked up by background cron
 		}
 
 		// Check for alerts after successful upsert (only if not backfilling)

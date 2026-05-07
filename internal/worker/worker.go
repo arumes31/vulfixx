@@ -20,6 +20,7 @@ type Worker struct {
 	alertTimestamps    map[string]time.Time
 	alertMu            sync.Mutex
 	alertResendBackoff time.Duration
+	enrichmentQueue    chan int
 }
 
 func NewWorker(pool db.DBPool, redis db.RedisProvider, mailer EmailSender, http HTTPClient) *Worker {
@@ -30,6 +31,7 @@ func NewWorker(pool db.DBPool, redis db.RedisProvider, mailer EmailSender, http 
 		HTTP:               http,
 		alertTimestamps:    make(map[string]time.Time),
 		alertResendBackoff: 4 * time.Hour,
+		enrichmentQueue:    make(chan int, 1000),
 	}
 }
 
