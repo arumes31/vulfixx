@@ -356,7 +356,7 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 		var vendor, product string
 		// Call LLM as primary with isolated timeout
 		llmCtx, cancel := context.WithTimeout(ctx, time.Duration(config.AppConfig.LLMTimeout+10)*time.Second)
-		products, err := llm.ExtractVendorProduct(llmCtx, model.Description)
+		products, err := llm.ExtractVendorProduct(llmCtx, model.Description, model.References)
 		cancel()
 		if err == nil && len(products) > 0 {
 			// Use the first one as primary

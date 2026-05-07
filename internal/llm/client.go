@@ -34,7 +34,7 @@ var ErrRateLimit = errors.New("llm rate limit exceeded")
 var llmSemaphore = make(chan struct{}, 1)
 
 // ExtractVendorProduct chooses the appropriate provider (Gemini, Ollama, or ArliAI) to extract all vendor/product/version names.
-func ExtractVendorProduct(ctx context.Context, description string) ([]ProductResult, error) {
+func ExtractVendorProduct(ctx context.Context, description string, references []string) ([]ProductResult, error) {
 	// Acquire semaphore (queue up if another job is running)
 	select {
 	case llmSemaphore <- struct{}{}:
@@ -43,13 +43,15 @@ func ExtractVendorProduct(ctx context.Context, description string) ([]ProductRes
 		return nil, ctx.Err()
 	}
 
+	fullContext := fmt.Sprintf("%s\n\nReferences:\n%s", description, strings.Join(references, "\n"))
+
 	switch config.AppConfig.LLMProvider {
 	case "gemini":
-		return extractWithGemini(ctx, config.AppConfig.GeminiAPIKey, config.AppConfig.GeminiModel, description)
+		return extractWithGemini(ctx, config.AppConfig.GeminiAPIKey, config.AppConfig.GeminiModel, fullContext)
 	case "ollama":
-		return extractWithOllama(ctx, config.AppConfig.LLMEndpoint, config.AppConfig.LLMModel, description)
+		return extractWithOllama(ctx, config.AppConfig.LLMEndpoint, config.AppConfig.LLMModel, fullContext)
 	case "arliai":
-		return extractWithArliAI(ctx, config.AppConfig.ArliAIAPIKey, config.AppConfig.ArliAIModel, config.AppConfig.ArliAIEndpoint, description)
+		return extractWithArliAI(ctx, config.AppConfig.ArliAIAPIKey, config.AppConfig.ArliAIModel, config.AppConfig.ArliAIEndpoint, fullContext)
 	default:
 		return nil, fmt.Errorf("unsupported llm provider: %s", config.AppConfig.LLMProvider)
 	}
@@ -92,19 +94,20 @@ func extractWithGemini(ctx context.Context, apiKey, model, description string) (
 		Temperature:      genai.Ptr[float32](0.0),
 	}
 
-	prompt := `Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from this CVE description. 
+	prompt := `Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from the provided description and reference URLs.
 
 RULES:
-1. If a version is described as "prior to", "before", "through", or "and earlier", format it as a range (e.g. "< 1.2.3" or "<= 4.5").
-2. DO NOT hallucinate modern product names for legacy software. Use the exact names from the text.
-3. If multiple products are mentioned, list them all.
+1. Use the Reference URLs to disambiguate generic names (e.g. if description says "ftpd" but references point to "wu-ftpd", use "wu-ftpd").
+2. If a version is described as "prior to", "before", "through", or "and earlier", format it as a range (e.g. "< 1.2.3" or "<= 4.5").
+3. DO NOT hallucinate modern product names for legacy software. Use the exact names from the text.
+4. If multiple products are mentioned, list them all.
 
-Input: "Azure Service Fabric for Linux RCE affects version 9.1 before 9.1.2498.1, 10.0 before 10.0.2345.1, and 10.1 before 10.1.2308.1"
-Output: {"products": [
-  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "9.1 < 9.1.2498.1"},
-  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "10.0 < 10.0.2345.1"},
-  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "10.1 < 10.1.2308.1"}
-]}
+EXAMPLES:
+Input: "Vulnerability in Cisco IOS before 15.1"
+Output: {"products": [{"vendor": "Cisco", "product": "IOS", "version": "< 15.1"}]}
+
+Input: "The debug command in Sendmail is enabled"
+Output: {"products": [{"vendor": "Sendmail", "product": "Sendmail", "version": null}]}
 
 Description: ` + description
 	if os.Getenv("LLM_DEBUG") == "true" {
@@ -132,17 +135,21 @@ func extractWithOllama(ctx context.Context, endpoint, model, description string)
 		endpoint = "http://localhost:11434"
 	}
 
-	prompt := `Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from this CVE description. 
+	prompt := `Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from the provided description and reference URLs.
 
 RULES:
 1. Return results ONLY as a JSON object with a key "products" containing a list of objects.
-2. If a version is described as "prior to", "before", "through", or "and earlier", format it as a range (e.g. "< 1.2.3" or "<= 4.5").
-3. DO NOT hallucinate modern product names for legacy software. Use the exact names from the text.
-4. If multiple products are mentioned, list them all.
+2. Use the Reference URLs to disambiguate generic names (e.g. if description says "ftpd" but references point to "wu-ftpd", use "wu-ftpd").
+3. If a version is described as "prior to", "before", "through", or "and earlier", format it as a range (e.g. "< 1.2.3" or "<= 4.5").
+4. DO NOT hallucinate modern product names for legacy software. Use the exact names from the text.
+5. If multiple products are mentioned, list them all.
 
 EXAMPLES:
 Input: "Vulnerability in Cisco IOS before 15.1"
 Output: {"products": [{"vendor": "Cisco", "product": "IOS", "version": "< 15.1"}]}
+
+Input: "The debug command in Sendmail is enabled"
+Output: {"products": [{"vendor": "Sendmail", "product": "Sendmail", "version": null}]}
 
 Input: "Azure Service Fabric for Linux RCE affects version 9.1 before 9.1.2498.1, 10.0 before 10.0.2345.1, and 10.1 before 10.1.2308.1"
 Output: {"products": [
@@ -210,13 +217,14 @@ func extractWithArliAI(ctx context.Context, apiKey, model, endpoint, description
 		return nil, fmt.Errorf("arliai api key is required")
 	}
 
-	systemPrompt := `Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from this CVE description. 
+	systemPrompt := `Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from the provided description and reference URLs.
 
 RULES:
 1. Return results ONLY as a JSON object with a key "products" containing a list of objects.
-2. If a version is described as "prior to", "before", "through", or "and earlier", format it as a range (e.g. "< 1.2.3" or "<= 4.5").
-3. DO NOT hallucinate modern product names for legacy software. Use the exact names from the text.
-4. If multiple products are mentioned, list them all.
+2. Use the Reference URLs to disambiguate generic names (e.g. if description says "ftpd" but references point to "wu-ftpd", use "wu-ftpd").
+3. If a version is described as "prior to", "before", "through", or "and earlier", format it as a range (e.g. "< 1.2.3" or "<= 4.5").
+4. DO NOT hallucinate modern product names for legacy software. Use the exact names from the text.
+5. If multiple products are mentioned, list them all.
 
 EXAMPLES:
 Input: "Vulnerability in Cisco IOS before 15.1"
