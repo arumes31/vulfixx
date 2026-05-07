@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -25,6 +26,8 @@ type ProductResult struct {
 type ExtractionResponse struct {
 	Products []ProductResult `json:"products"`
 }
+
+var ErrRateLimit = errors.New("llm rate limit exceeded")
 
 // Global semaphore to limit LLM concurrency to 1.
 // This ensures that only one LLM request is processed at a time across the entire application.
@@ -253,48 +256,74 @@ Description: ` + description
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	client := &http.Client{Timeout: time.Duration(config.AppConfig.LLMTimeout) * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
+	
+	var lastErr error
+	for i := 0; i < 3; i++ {
+		if i > 0 {
+			// Backoff before retry
+			wait := time.Duration(i*2) * time.Second
+			log.Printf("LLM: [RETRY] ArliAI hit limit, waiting %v before retry %d/3...", wait, i)
+			time.Sleep(wait)
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == 403 || resp.StatusCode == 429 {
+			body, _ := io.ReadAll(resp.Body)
+			if strings.Contains(string(body), "parallel") || strings.Contains(string(body), "rate") || strings.Contains(string(body), "limit") {
+				lastErr = ErrRateLimit
+				// Reset request body for retry if possible (re-create request)
+				req, _ = http.NewRequestWithContext(ctx, "POST", endpoint+"/chat/completions", bytes.NewBuffer(jsonData))
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("Authorization", "Bearer "+apiKey)
+				continue
+			}
+			return nil, fmt.Errorf("arliai api error (status %d): %s", resp.StatusCode, string(body))
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("arliai api error (status %d): %s", resp.StatusCode, string(body))
+		}
+
+		var chatResp struct {
+			Choices []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			} `json:"choices"`
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+			return nil, err
+		}
+
+		if len(chatResp.Choices) == 0 {
+			return nil, fmt.Errorf("arliai returned no choices")
+		}
+
+		content := chatResp.Choices[0].Message.Content
+		if os.Getenv("LLM_DEBUG") == "true" {
+			log.Printf("LLM: [DEBUG] ArliAI Raw Response: %s", content)
+		}
+
+		// Clean JSON if the model wrapped it in markdown code blocks
+		content = strings.TrimPrefix(content, "```json")
+		content = strings.TrimPrefix(content, "```")
+		content = strings.TrimSuffix(content, "```")
+		content = strings.TrimSpace(content)
+
+		var res ExtractionResponse
+		if err := json.Unmarshal([]byte(content), &res); err != nil {
+			return nil, fmt.Errorf("failed to parse arliai json: %w (content: %s)", err, content)
+		}
+
+		return res.Products, nil
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("arliai api error (status %d): %s", resp.StatusCode, string(body))
-	}
-
-	var chatResp struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
-		return nil, err
-	}
-
-	if len(chatResp.Choices) == 0 {
-		return nil, fmt.Errorf("arliai returned no choices")
-	}
-
-	content := chatResp.Choices[0].Message.Content
-	if os.Getenv("LLM_DEBUG") == "true" {
-		log.Printf("LLM: [DEBUG] ArliAI Raw Response: %s", content)
-	}
-
-	// Clean JSON if the model wrapped it in markdown code blocks
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-	content = strings.TrimSpace(content)
-
-	var res ExtractionResponse
-	if err := json.Unmarshal([]byte(content), &res); err != nil {
-		return nil, fmt.Errorf("failed to parse arliai json: %w (content: %s)", err, content)
-	}
-
-	return res.Products, nil
+	return nil, lastErr
 }
