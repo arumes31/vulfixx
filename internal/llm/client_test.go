@@ -30,7 +30,9 @@ func TestExtractWithOllama(t *testing.T) {
 		resp := map[string]string{
 			"response": `{"products": [{"vendor": "Apache", "product": "Tomcat", "version": "9.0.x"}, {"vendor": "Oracle", "product": "JDK", "version": "17"}]}`,
 		}
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			t.Errorf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
