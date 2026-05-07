@@ -21,6 +21,7 @@ cat <<EOF > /tmp/Modelfile
 FROM phi3:latest
 PARAMETER num_ctx 8192
 PARAMETER num_batch 2048
+PARAMETER num_predict 512
 PARAMETER temperature 0.0
 PARAMETER stop "<|endoftext|>"
 PARAMETER stop "<|end|>"

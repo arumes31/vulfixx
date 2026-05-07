@@ -79,6 +79,8 @@ services:
     build: ./addons/ollama-init
     volumes:
       - ./data/ollama:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
     restart: unless-stopped
 
 volumes:
