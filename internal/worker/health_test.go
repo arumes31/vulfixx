@@ -20,6 +20,7 @@ func TestWorker_health_Coverage(t *testing.T) {
 	w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
 
 	t.Run("checkWorkerHealth", func(t *testing.T) {
+		mock.ExpectQuery("SELECT COUNT(.*) FROM notification_delivery_logs").WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 		tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync"}
 		for _, task := range tasks {
 			mock.ExpectQuery("SELECT last_run FROM worker_sync_stats").WithArgs(task).WillReturnError(errors.New("no rows"))
