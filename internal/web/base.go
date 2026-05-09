@@ -270,10 +270,29 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 		activeTeamID, ok := a.GetActiveTeamID(r)
 		if ok && activeTeamID != 0 {
 			var teamName string
-			err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
-			if err != nil {
-				log.Printf("Error fetching active team name: %v", err)
-			} else {
+
+			// Performance Optimization: Check if we already fetched this team in the UserTeams query above.
+			// This prevents a redundant database query on every page load for team members.
+			if userTeams, ok := data["UserTeams"].([]map[string]interface{}); ok {
+				for _, t := range userTeams {
+					if id, idOk := t["ID"].(int); idOk && id == activeTeamID {
+						if name, nameOk := t["Name"].(string); nameOk {
+							teamName = name
+						}
+						break
+					}
+				}
+			}
+
+			// Fallback: If not found in the cached list (e.g. edge cases where membership changed mid-request), query DB.
+			if teamName == "" {
+				err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
+				if err != nil {
+					log.Printf("Error fetching active team name: %v", err)
+				}
+			}
+
+			if teamName != "" {
 				data["ActiveTeamName"] = teamName
 			}
 			data["ActiveTeamID"] = activeTeamID
