@@ -1,0 +1,3 @@
+## 2024-05-18 - [Optimize Global Templates with Pre-fetched Data]
+**Learning:** Global layout templates fetching overlapping data can lead to N+1 style database queries on every page load. In `RenderTemplate`, there was a query fetching a user's team memberships, and immediately below it, another query fetching the name of the user's active team based on ID.
+**Action:** When working with rendering middlewares or global template data functions, prioritize reusing data fetched earlier in the same scope. I reused the `UserTeams` slice to find the active team's name in-memory, avoiding the redundant database query and saving one trip to the database for every single page load for authenticated users.

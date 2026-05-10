@@ -268,16 +268,38 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 		}
 
 		activeTeamID, ok := a.GetActiveTeamID(r)
+		foundTeam := false
 		if ok && activeTeamID != 0 {
-			var teamName string
-			err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
-			if err != nil {
-				log.Printf("Error fetching active team name: %v", err)
-			} else {
-				data["ActiveTeamName"] = teamName
+			if userTeams, ok := data["UserTeams"].([]map[string]interface{}); ok {
+				for _, t := range userTeams {
+					if tID, ok := t["ID"].(int); ok && tID == activeTeamID {
+						if tName, ok := t["Name"].(string); ok {
+							data["ActiveTeamName"] = tName
+							data["ActiveTeamID"] = activeTeamID
+							foundTeam = true
+							break
+						}
+					}
+				}
 			}
-			data["ActiveTeamID"] = activeTeamID
-		} else {
+
+			// Fallback: If active team wasn't in the pre-fetched list, query the database.
+			// This maintains perfect backward compatibility while optimizing the 99% path.
+			if !foundTeam {
+				var teamName string
+				err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
+				if err != nil {
+					// #nosec G706 -- false positive, activeTeamID is an integer and cannot contain CRLF log injection payloads
+					log.Printf("Error fetching active team name for ID %d: %v", activeTeamID, err)
+				} else {
+					data["ActiveTeamName"] = teamName
+				}
+				data["ActiveTeamID"] = activeTeamID
+				foundTeam = true // Ensure we don't fall into the reset block below
+			}
+		}
+
+		if !foundTeam {
 			data["ActiveTeamID"] = 0
 			data["ActiveTeamName"] = "Private Workspace"
 		}
