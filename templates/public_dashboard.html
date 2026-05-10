@@ -153,8 +153,8 @@
                 <button type="submit" class="flex-grow h-[50px] bg-primary text-on-primary rounded-xl font-black uppercase tracking-widest text-[10px] hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-primary/10 whitespace-nowrap">
                     Apply Filter
                 </button>
-                <button type="button" id="clear-filters" class="h-[50px] aspect-square bg-white/5 border border-white/10 rounded-xl text-gray-500 hover:text-white hover:bg-red-500/10 hover:border-red-500/20 transition-all flex items-center justify-center" title="Reset">
-                    <span class="material-symbols-outlined text-lg">filter_alt_off</span>
+                <button type="button" id="clear-filters" aria-label="Clear filters" class="h-[50px] aspect-square bg-white/5 border border-white/10 rounded-xl text-gray-500 hover:text-white hover:bg-red-500/10 hover:border-red-500/20 transition-all flex items-center justify-center" title="Reset">
+                    <span class="material-symbols-outlined text-lg" aria-hidden="true">filter_alt_off</span>
                 </button>
             </div>
         </form>
@@ -225,7 +225,7 @@
                         <th data-col="id" aria-sort="{{if eq .Sort "id"}}{{if eq .Order "asc"}}ascending{{else}}descending{{end}}{{else}}none{{end}}" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 group">
                             <button type="button" data-sort-col="id" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
                                 Vulnerability ID
-                                <span class="material-symbols-outlined text-[14px] {{if ne .Sort "id"}}opacity-0 group-hover:opacity-40{{end}} transition-all">
+                                <span class="material-symbols-outlined text-[14px] {{if ne .Sort "id"}}opacity-0 group-hover:opacity-40{{end}} transition-all" aria-hidden="true">
                                     {{if and (eq .Sort "id") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
                                 </span>
                             </button>
@@ -233,7 +233,7 @@
                         <th data-col="severity" aria-sort="{{if eq .Sort "severity"}}{{if eq .Order "asc"}}ascending{{else}}descending{{end}}{{else}}none{{end}}" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 group">
                             <button type="button" data-sort-col="severity" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
                                 Severity
-                                <span class="material-symbols-outlined text-[14px] {{if ne .Sort "severity"}}opacity-0 group-hover:opacity-40{{end}} transition-all">
+                                <span class="material-symbols-outlined text-[14px] {{if ne .Sort "severity"}}opacity-0 group-hover:opacity-40{{end}} transition-all" aria-hidden="true">
                                     {{if and (eq .Sort "severity") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
                                 </span>
                             </button>
@@ -241,7 +241,7 @@
                         <th data-col="epss" aria-sort="{{if eq .Sort "epss"}}{{if eq .Order "asc"}}ascending{{else}}descending{{end}}{{else}}none{{end}}" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 group">
                             <button type="button" data-sort-col="epss" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
                                 Exploit Telemetry
-                                <span class="material-symbols-outlined text-[14px] {{if ne .Sort "epss"}}opacity-0 group-hover:opacity-40{{end}} transition-all">
+                                <span class="material-symbols-outlined text-[14px] {{if ne .Sort "epss"}}opacity-0 group-hover:opacity-40{{end}} transition-all" aria-hidden="true">
                                     {{if and (eq .Sort "epss") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
                                 </span>
                             </button>
@@ -250,7 +250,7 @@
                         <th data-col="published" aria-sort="{{if eq .Sort "published"}}{{if eq .Order "asc"}}ascending{{else}}descending{{end}}{{else}}none{{end}}" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 group">
                             <button type="button" data-sort-col="published" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
                                 Published
-                                <span class="material-symbols-outlined text-[14px] {{if ne .Sort "published"}}opacity-0 group-hover:opacity-40{{end}} transition-all">
+                                <span class="material-symbols-outlined text-[14px] {{if ne .Sort "published"}}opacity-0 group-hover:opacity-40{{end}} transition-all" aria-hidden="true">
                                     {{if and (eq .Sort "published") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
                                 </span>
                             </button>
