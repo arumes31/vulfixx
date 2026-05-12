@@ -270,9 +270,29 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 		activeTeamID, ok := a.GetActiveTeamID(r)
 		if ok && activeTeamID != 0 {
 			var teamName string
-			err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
-			if err != nil {
-				log.Printf("Error fetching active team name: %v", err)
+			var found bool
+
+			if teamsVal, exists := data["UserTeams"]; exists {
+				if teamsList, ok := teamsVal.([]map[string]interface{}); ok {
+					for _, t := range teamsList {
+						if id, ok := t["ID"].(int); ok && id == activeTeamID {
+							if name, ok := t["Name"].(string); ok {
+								teamName = name
+								found = true
+								break
+							}
+						}
+					}
+				}
+			}
+
+			if !found {
+				err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
+				if err != nil {
+					log.Printf("Error fetching active team name: %v", err)
+				} else {
+					data["ActiveTeamName"] = teamName
+				}
 			} else {
 				data["ActiveTeamName"] = teamName
 			}
