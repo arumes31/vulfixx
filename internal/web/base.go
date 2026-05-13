@@ -270,11 +270,30 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 		activeTeamID, ok := a.GetActiveTeamID(r)
 		if ok && activeTeamID != 0 {
 			var teamName string
-			err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
-			if err != nil {
-				log.Printf("Error fetching active team name: %v", err)
-			} else {
+			foundInCache := false
+
+			// ⚡ Bolt Optimization: Reuse pre-fetched team data to avoid redundant DB query
+			if userTeams, ok := data["UserTeams"].([]map[string]interface{}); ok {
+				for _, t := range userTeams {
+					if tID, ok := t["ID"].(int); ok && tID == activeTeamID {
+						if tName, ok := t["Name"].(string); ok {
+							teamName = tName
+							foundInCache = true
+							break
+						}
+					}
+				}
+			}
+
+			if foundInCache {
 				data["ActiveTeamName"] = teamName
+			} else {
+				err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
+				if err != nil {
+					log.Printf("Error fetching active team name: %v", err)
+				} else {
+					data["ActiveTeamName"] = teamName
+				}
 			}
 			data["ActiveTeamID"] = activeTeamID
 		} else {
