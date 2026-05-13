@@ -1,0 +1,3 @@
+## 2026-05-13 - [Template Context DB Query Optimization]
+**Learning:** In the layout middleware/renderers (e.g. `RenderTemplate` in `internal/web/base.go`), repeated database queries for information already fetched within the same function scope can cause N+1 query style bottlenecks. Specifically, fetching the active team's name required a separate `QueryRow` DB call.
+**Action:** Reused the `data["UserTeams"]` (structured as `[]map[string]interface{}`) fetched earlier in the function, applying a hash map / list traversal lookup for the active team's ID instead of hitting the database. Implemented a fallback to the original database query if the data isn't in the pre-fetched list to ensure perfect backward compatibility.
