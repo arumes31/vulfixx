@@ -243,6 +243,7 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 		data["SubCount"] = subCount
 
 		// Fetch user's teams
+		var teams []map[string]interface{}
 		teamRows, err := a.Pool.Query(r.Context(), `
 			SELECT t.id, t.name 
 			FROM teams t
@@ -253,7 +254,6 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 			log.Printf("RenderTemplate teams query ERR: %v", err)
 		} else {
 			defer teamRows.Close()
-			var teams []map[string]interface{}
 			for teamRows.Next() {
 				var id int
 				var teamName string
@@ -270,9 +270,27 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 		activeTeamID, ok := a.GetActiveTeamID(r)
 		if ok && activeTeamID != 0 {
 			var teamName string
-			err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
-			if err != nil {
-				log.Printf("Error fetching active team name: %v", err)
+			var found bool
+
+			// ⚡ Bolt: Prevent unnecessary database query by reusing pre-fetched data
+			for _, team := range teams {
+				if id, ok := team["ID"].(int); ok && id == activeTeamID {
+					if name, ok := team["Name"].(string); ok {
+						teamName = name
+						found = true
+						break
+					}
+				}
+			}
+
+			// Fallback if not found in pre-fetched teams
+			if !found {
+				err = a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
+				if err != nil {
+					log.Printf("Error fetching active team name: %v", err)
+				} else {
+					data["ActiveTeamName"] = teamName
+				}
 			} else {
 				data["ActiveTeamName"] = teamName
 			}
