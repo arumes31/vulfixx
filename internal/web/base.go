@@ -273,14 +273,12 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 			found := false
 
 			// ⚡ Bolt: Check pre-fetched teams first to avoid N+1 query
-			if userTeams != nil {
-				for _, t := range userTeams {
-					if tID, ok := t["ID"].(int); ok && tID == activeTeamID {
-						if tName, ok := t["Name"].(string); ok {
-							teamName = tName
-							found = true
-							break
-						}
+			for _, t := range userTeams {
+				if tID, ok := t["ID"].(int); ok && tID == activeTeamID {
+					if tName, ok := t["Name"].(string); ok {
+						teamName = tName
+						found = true
+						break
 					}
 				}
 			}
