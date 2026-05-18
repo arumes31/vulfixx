@@ -327,6 +327,12 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 
 		httpClient := &MockHTTPClient{
 			DoFunc: func(req *http.Request) (*http.Response, error) {
+				if strings.Contains(req.URL.String(), "CiscoSecurityAdvisory.xml") || req.URL.String() == "https://tools.cisco.com/security/center/rss.x?i=44" {
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader("<?xml version=\"1.0\"?><rss><channel></channel></rss>")),
+					}, nil
+				}
 				return &http.Response{
 					StatusCode: http.StatusOK,
 					Body:       io.NopCloser(strings.NewReader(xmlContentDup)),
