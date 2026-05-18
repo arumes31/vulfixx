@@ -15,7 +15,7 @@ require (
 	github.com/redis/go-redis/v9 v9.19.0
 	golang.org/x/crypto v0.50.0
 	golang.org/x/time v0.15.0
-	google.golang.org/genai v1.56.0
+	google.golang.org/genai v1.57.0
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
 	rsc.io/qr v0.2.0
