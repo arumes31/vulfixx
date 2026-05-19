@@ -243,6 +243,7 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 		data["SubCount"] = subCount
 
 		// Fetch user's teams
+		var userTeams []map[string]interface{}
 		teamRows, err := a.Pool.Query(r.Context(), `
 			SELECT t.id, t.name 
 			FROM teams t
@@ -253,28 +254,45 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 			log.Printf("RenderTemplate teams query ERR: %v", err)
 		} else {
 			defer teamRows.Close()
-			var teams []map[string]interface{}
 			for teamRows.Next() {
 				var id int
 				var teamName string
 				if err := teamRows.Scan(&id, &teamName); err == nil {
-					teams = append(teams, map[string]interface{}{"ID": id, "Name": teamName})
+					userTeams = append(userTeams, map[string]interface{}{"ID": id, "Name": teamName})
 				}
 			}
 			if err := teamRows.Err(); err != nil {
 				log.Printf("RenderTemplate teamRows ERR: %v", err)
 			}
-			data["UserTeams"] = teams
+			data["UserTeams"] = userTeams
 		}
 
 		activeTeamID, ok := a.GetActiveTeamID(r)
 		if ok && activeTeamID != 0 {
 			var teamName string
-			err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
-			if err != nil {
-				log.Printf("Error fetching active team name: %v", err)
-			} else {
+			var found bool
+
+			// ⚡ Bolt: Optimize by reusing the locally fetched teams data instead of querying DB again
+			for _, t := range userTeams {
+				if id, ok := t["ID"].(int); ok && id == activeTeamID {
+					if name, ok := t["Name"].(string); ok {
+						teamName = name
+						found = true
+						break
+					}
+				}
+			}
+
+			if found {
 				data["ActiveTeamName"] = teamName
+			} else {
+				// Fallback if not found in cached teams
+				err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
+				if err != nil {
+					log.Printf("Error fetching active team name: %v", err)
+				} else {
+					data["ActiveTeamName"] = teamName
+				}
 			}
 			data["ActiveTeamID"] = activeTeamID
 		} else {
