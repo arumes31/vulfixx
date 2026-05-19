@@ -5,8 +5,6 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
-	"html"
-	"html/template"
 	"log"
 	"net/url"
 	"os"
@@ -165,12 +163,16 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 			CVE:       &data.CVE,
 		})
 	}
-	rowsHTML := ""
+	type templateItem struct {
+		CVEID     string
+		AssetName string
+		BuzzBadge string
+		ScoreStr  string
+	}
+
+	var tmplItems []templateItem
+
 	for _, item := range items {
-		assetInfo := ""
-		if item.AssetName != "" {
-			assetInfo = fmt.Sprintf("<br><span style='font-size: 11px; opacity: 0.6;'>Asset: %s</span>", html.EscapeString(item.AssetName))
-		}
 		buzzBadge := ""
 		if item.Buzz >= 15 {
 			buzzBadge = "🔥 High"
@@ -186,18 +188,15 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 				buzzBadge = "💬 Intel"
 			}
 		}
-		rowsHTML += fmt.Sprintf(`
-			<tr>
-				<td style="padding: 15px; border-bottom: 1px solid #232931;">
-					<strong style="color: #00daf3;">%s</strong>%s
-				</td>
-				<td style="padding: 15px; border-bottom: 1px solid #232931; text-align: center; font-size: 12px;">%s</td>
-				<td style="padding: 15px; border-bottom: 1px solid #232931; text-align: right;">
-					<span style="background: #1c2026; padding: 4px 10px; border-radius: 4px; font-weight: bold;">%.1f</span>
-				</td>
-			</tr>
-		`, html.EscapeString(item.CVEID), assetInfo, html.EscapeString(buzzBadge), item.Score)
+
+		tmplItems = append(tmplItems, templateItem{
+			CVEID:     item.CVEID,
+			AssetName: item.AssetName,
+			BuzzBadge: buzzBadge,
+			ScoreStr:  fmt.Sprintf("%.1f", item.Score),
+		})
 	}
+
 	baseURLStr := os.Getenv("BASE_URL")
 	if baseURLStr == "" {
 		baseURLStr = "http://localhost:8080"
@@ -209,11 +208,11 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 		baseURLStr = parsedBase.String()
 	}
 
-	content := fmt.Sprintf(`
-		<p>Our threat monitoring systems have detected <strong>%d new vulnerabilities</strong> matching your intelligence profiles.</p>
+	contentTmpl := `
+		<p>Our threat monitoring systems have detected <strong>{{.ItemCount}} new vulnerabilities</strong> matching your intelligence profiles.</p>
 		
 		<div style="margin: 30px 0;">
-			<table width="100%%" style="border-collapse: collapse; background-color: #1c2026; border-radius: 16px; border: 1px solid #232931; overflow: hidden;">
+			<table width="100%" style="border-collapse: collapse; background-color: #1c2026; border-radius: 16px; border: 1px solid #232931; overflow: hidden;">
 				<thead>
 					<tr style="background-color: #232931; color: #ffffff; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;">
 						<th style="padding: 15px; text-align: left;">CVE ID</th>
@@ -221,19 +220,47 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 						<th style="padding: 15px; text-align: right;">CVSS</th>
 					</tr>
 				</thead>
-				<tbody>%s</tbody>
+				<tbody>
+				{{range .Items}}
+					<tr>
+						<td style="padding: 15px; border-bottom: 1px solid #232931;">
+							<strong style="color: #00daf3;">{{.CVEID}}</strong>
+							{{if .AssetName}}
+								<br><span style='font-size: 11px; opacity: 0.6;'>Asset: {{.AssetName}}</span>
+							{{end}}
+						</td>
+						<td style="padding: 15px; border-bottom: 1px solid #232931; text-align: center; font-size: 12px;">{{.BuzzBadge}}</td>
+						<td style="padding: 15px; border-bottom: 1px solid #232931; text-align: right;">
+							<span style="background: #1c2026; padding: 4px 10px; border-radius: 4px; font-weight: bold;">{{.ScoreStr}}</span>
+						</td>
+					</tr>
+				{{end}}
+				</tbody>
 			</table>
 		</div>
 
 		<div style="text-align: center; margin-top: 30px;">
-			<a href="%s/dashboard" class="btn">Analyze All Threats</a>
+			<a href="{{.BaseURL}}/dashboard" class="btn">Analyze All Threats</a>
 		</div>
-	`, len(items), rowsHTML, baseURLStr)
+	`
 
-	body := WrapInModernLayout(EmailTemplateData{
-		Title: fmt.Sprintf("Intelligence Brief: %d New Threats", len(items)),
-		Body:  template.HTML(content), // #nosec G203
-	})
+	data := struct {
+		ItemCount int
+		Items     []templateItem
+		BaseURL   string
+	}{
+		ItemCount: len(items),
+		Items:     tmplItems,
+		BaseURL:   baseURLStr,
+	}
+
+	title := fmt.Sprintf("Intelligence Brief: %d New Threats", len(items))
+
+	body, err := RenderEmailTemplate(title, contentTmpl, data)
+	if err != nil {
+		log.Printf("Worker Digest: Failed to render email digest template: %v", err)
+		return
+	}
 
 	if len(uniqueEmails) == 0 {
 		log.Printf("Error: No recipient email found for user %d digest", userID)

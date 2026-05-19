@@ -6,8 +6,6 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
-	"html"
-	"html/template"
 	"log"
 	"net"
 	"net/http"
@@ -272,24 +270,15 @@ func (w *Worker) postJSON(webhookURL string, payload interface{}) (bool, string)
 }
 
 func (w *Worker) sendEmailAlert(email string, cve *models.CVE, sev, color, token, baseURL string) bool {
-	kevBadge := ""
-	if cve.CISAKEV {
-		kevBadge = `<div style="background: #ff4d4d; color: #ffffff; padding: 10px 15px; border-radius: 6px; margin-bottom: 25px; font-weight: bold; border-left: 5px solid #b30000;">⚠️ KNOWN EXPLOITED VULNERABILITY</div>`
-	}
 	advisories := classifyVendorAdvisories(cve.References)
-	advisoryHTML := ""
-	if len(advisories) > 0 {
-		advisoryHTML = "<div style='background: #1c2026; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ffcc00;'><strong style='opacity: 0.5;'>Vendor Advisories</strong><ul>"
-		for _, adv := range advisories {
-			u, err := url.Parse(adv)
-			if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
-				continue
-			}
-			safeAdv := html.EscapeString(adv)
-			advisoryHTML += fmt.Sprintf("<li><a href='%s' style='color: #ffcc00;'>%s</a></li>", safeAdv, safeAdv)
+	var validAdvisories []string
+	for _, adv := range advisories {
+		u, err := url.Parse(adv)
+		if err == nil && (u.Scheme == "http" || u.Scheme == "https") {
+			validAdvisories = append(validAdvisories, adv)
 		}
-		advisoryHTML += "</ul></div>"
 	}
+
 	epssDisplay := "N/A"
 	if cve.EPSSScore > 0 {
 		epssDisplay = fmt.Sprintf("%.1f%%", cve.EPSSScore*100)
@@ -297,44 +286,78 @@ func (w *Worker) sendEmailAlert(email string, cve *models.CVE, sev, color, token
 
 	escapedToken := url.QueryEscape(token)
 	
-	content := fmt.Sprintf(`
+	contentTmpl := `
 		<div style="margin-bottom: 20px;">
-			%s %s
+			{{if .CISAKEV}}
+			<div style="background: #ff4d4d; color: #ffffff; padding: 10px 15px; border-radius: 6px; margin-bottom: 25px; font-weight: bold; border-left: 5px solid #b30000;">⚠️ KNOWN EXPLOITED VULNERABILITY</div>
+			{{end}}
+
+			{{if .Advisories}}
+			<div style='background: #1c2026; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ffcc00;'><strong style='opacity: 0.5;'>Vendor Advisories</strong><ul>
+			{{range .Advisories}}
+				<li><a href='{{.}}' style='color: #ffcc00;'>{{.}}</a></li>
+			{{end}}
+			</ul></div>
+			{{end}}
 		</div>
 		<div style="background-color: #1c2026; padding: 20px; border-radius: 16px; border: 1px solid #232931; margin-bottom: 25px;">
 			<div style="font-size: 14px; opacity: 0.7; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Vulnerability Metrics</div>
 			<div style="font-size: 18px;">
-				CVSS: <span style="color: %s; font-weight: 800;">%.1f (%s)</span> 
+				CVSS: <span style="color: {{.Color}}; font-weight: 800;">{{.CVSSScore}} ({{.Sev}})</span>
 				<span style="color: #232931; margin: 0 10px;">|</span>
-				EPSS: <span style="font-weight: 800; color: #ffffff;">%s</span>
+				EPSS: <span style="font-weight: 800; color: #ffffff;">{{.EPSSDisplay}}</span>
 			</div>
 		</div>
-		<p style="font-size: 16px; line-height: 1.7; color: #dfe2eb; margin-bottom: 30px;">%s</p>
+		<p style="font-size: 16px; line-height: 1.7; color: #dfe2eb; margin-bottom: 30px;">{{.Description}}</p>
 		
 		<div style="margin-top: 30px;">
-			<table width="100%%" border="0" cellspacing="0" cellpadding="0">
+			<table width="100%" border="0" cellspacing="0" cellpadding="0">
 				<tr>
-					<td width="48%%">
-						<a href="%s/alert-action?token=%s&action=acknowledge" class="btn" style="display: block; text-align: center; padding: 14px 0; margin: 0;">ACKNOWLEDGE</a>
+					<td width="48%">
+						<a href="{{.BaseURL}}/alert-action?token={{.Token}}&action=acknowledge" class="btn" style="display: block; text-align: center; padding: 14px 0; margin: 0;">ACKNOWLEDGE</a>
 					</td>
-					<td width="4%%"></td>
-					<td width="48%%">
-						<a href="%s/alert-action?token=%s&action=mute" class="secondary-btn" style="display: block; text-align: center; padding: 14px 0; margin: 0;">MUTE KEYWORD</a>
+					<td width="4%"></td>
+					<td width="48%">
+						<a href="{{.BaseURL}}/alert-action?token={{.Token}}&action=mute" class="secondary-btn" style="display: block; text-align: center; padding: 14px 0; margin: 0;">MUTE KEYWORD</a>
 					</td>
 				</tr>
 			</table>
 		</div>
 
 		<div style="margin-top: 40px; text-align: center;">
-			<a href="%s/dashboard" style="color: #00daf3; text-decoration: none; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;">Open Security Dashboard &rarr;</a>
+			<a href="{{.BaseURL}}/dashboard" style="color: #00daf3; text-decoration: none; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;">Open Security Dashboard &rarr;</a>
 		</div>
-	`, kevBadge, advisoryHTML, color, cve.CVSSScore, sev, epssDisplay, html.EscapeString(cve.Description), baseURL, escapedToken, baseURL, escapedToken, baseURL)
+	`
 
-	body := WrapInModernLayout(EmailTemplateData{
-		Title: "Security Alert: " + cve.CVEID,
-		Body:  template.HTML(content), // #nosec G203
-	})
-	err := w.Mailer.SendEmail(email, "Security Alert: "+cve.CVEID, body)
+	data := struct {
+		CISAKEV     bool
+		Advisories  []string
+		Color       string
+		CVSSScore   string
+		Sev         string
+		EPSSDisplay string
+		Description string
+		BaseURL     string
+		Token       string
+	}{
+		CISAKEV:     cve.CISAKEV,
+		Advisories:  validAdvisories,
+		Color:       color,
+		CVSSScore:   fmt.Sprintf("%.1f", cve.CVSSScore),
+		Sev:         sev,
+		EPSSDisplay: epssDisplay,
+		Description: cve.Description,
+		BaseURL:     baseURL,
+		Token:       escapedToken,
+	}
+
+	body, err := RenderEmailTemplate("Security Alert: "+cve.CVEID, contentTmpl, data)
+	if err != nil {
+		log.Printf("Worker Notifier: Failed to render email template: %v", err)
+		return false
+	}
+
+	err = w.Mailer.SendEmail(email, "Security Alert: "+cve.CVEID, body)
 	return err == nil
 }
 

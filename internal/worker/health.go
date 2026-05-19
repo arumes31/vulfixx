@@ -5,7 +5,6 @@ import (
 	"cve-tracker/internal/config"
 	"cve-tracker/internal/llm"
 	"fmt"
-	"html/template"
 	"log"
 	"os"
 	"time"
@@ -67,23 +66,33 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 						baseURL = "http://localhost:8080"
 						log.Printf("Worker Health ALERT: BASE_URL environment variable is unset. Falling back to %s (Environment: %s). Links in alerts may be broken.", baseURL, os.Getenv("GO_ENV")) // #nosec G706
 					}
-					content := fmt.Sprintf(`
+					contentTmpl := `
 						<div style="background-color: #ff4d4d1a; padding: 20px; border-radius: 16px; border: 1px solid #ff4d4d33; color: #ff4d4d; margin-bottom: 20px;">
 							<strong>⚠️ Critical System Event</strong>
 						</div>
 						<p style="font-size: 16px; line-height: 1.6;">The following health event was detected in the Vulfixx environment:</p>
 						<div style="background-color: #1c2026; padding: 20px; border-radius: 16px; border: 1px solid #232931; font-family: monospace; font-size: 14px;">
-							%s
+							{{.Msg}}
 						</div>
 						<div style="margin-top: 30px; text-align: center;">
-							<a href="%s/dashboard" class="btn">Access Command Center</a>
+							<a href="{{.BaseURL}}/dashboard" class="btn">Access Command Center</a>
 						</div>
-					`, msg, baseURL)
+					`
 
-					body := WrapInModernLayout(EmailTemplateData{
-						Title: "Vulfixx Health Alert",
-						Body:  template.HTML(content), // #nosec G203
-					})
+					data := struct {
+						Msg     string
+						BaseURL string
+					}{
+						Msg:     msg,
+						BaseURL: baseURL,
+					}
+
+					body, err := RenderEmailTemplate("Vulfixx Health Alert", contentTmpl, data)
+					if err != nil {
+						log.Printf("Worker Health: Failed to render health alert email template: %v", err)
+						continue
+					}
+
 					if err := w.Mailer.SendEmail(w.AdminEmail, "Vulfixx Health Alert", body); err != nil {
 						log.Printf("Worker: Failed to send health alert to %s: %v", w.AdminEmail, err)
 					}
