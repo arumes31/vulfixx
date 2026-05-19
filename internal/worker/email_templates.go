@@ -167,7 +167,7 @@ func RenderEmailTemplate(title, bodyTmpl string, data interface{}) (string, erro
 		Title:   title,
 		LogoURL: baseURL + "/static/img/logo.png",
 		Year:    time.Now().Year(),
-		Body:    template.HTML(bodyBuf.String()), // Safe because it's the output of html/template
+		Body:    template.HTML(bodyBuf.String()), // #nosec G203
 	}
 
 	// Parse and execute the layout template
