@@ -1,0 +1,3 @@
+## 2026-05-20 - [Redundant N+1 Query in RenderTemplate]
+**Learning:** Found a redundant N+1 style query in `internal/web/base.go` where `RenderTemplate` was fetching the active team's name from the DB immediately after fetching a list of all user teams. Because `RenderTemplate` runs on nearly every authenticated page load, this was an unnecessary recurring cost.
+**Action:** Always check if data being queried has already been fetched earlier in the same request lifecycle/function scope. Specifically, when rendering layout data, reuse locally scoped structs/maps instead of making separate isolated DB calls.
