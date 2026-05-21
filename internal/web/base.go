@@ -243,6 +243,7 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 		data["SubCount"] = subCount
 
 		// Fetch user's teams
+		var userTeamsLocal []map[string]interface{}
 		teamRows, err := a.Pool.Query(r.Context(), `
 			SELECT t.id, t.name 
 			FROM teams t
@@ -265,16 +266,32 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 				log.Printf("RenderTemplate teamRows ERR: %v", err)
 			}
 			data["UserTeams"] = teams
+			userTeamsLocal = teams
 		}
 
 		activeTeamID, ok := a.GetActiveTeamID(r)
 		if ok && activeTeamID != 0 {
 			var teamName string
-			err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
-			if err != nil {
-				log.Printf("Error fetching active team name: %v", err)
-			} else {
+			var found bool
+			for _, t := range userTeamsLocal {
+				if idVal, ok := t["ID"].(int); ok && idVal == activeTeamID {
+					if nameVal, ok := t["Name"].(string); ok {
+						teamName = nameVal
+						found = true
+						break
+					}
+				}
+			}
+
+			if found {
 				data["ActiveTeamName"] = teamName
+			} else {
+				err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
+				if err != nil {
+					log.Printf("Error fetching active team name: %v", err)
+				} else {
+					data["ActiveTeamName"] = teamName
+				}
 			}
 			data["ActiveTeamID"] = activeTeamID
 		} else {
