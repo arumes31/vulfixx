@@ -69,7 +69,12 @@ func verifyPasswordArgon2id(hashedPassword, password string) (bool, error) {
 		return false, err
 	}
 
-	expectedHash := argon2.IDKey([]byte(password), salt, iterations, memory, parallelism, uint32(len(hash)))
+	hashLen := len(hash)
+	if hashLen <= 0 || hashLen > 64 {
+		return false, fmt.Errorf("invalid argon2id key length: %d", hashLen)
+	}
+
+	expectedHash := argon2.IDKey([]byte(password), salt, iterations, memory, parallelism, uint32(hashLen)) //#nosec G115 -- bounds checked above
 
 	if subtle.ConstantTimeCompare(hash, expectedHash) == 1 {
 		return true, nil
