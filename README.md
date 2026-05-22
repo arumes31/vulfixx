@@ -239,6 +239,16 @@ To run the Go test suite:
 go test ./...
 ```
 
+To run tests with the race detector enabled (requires CGO and a C compiler like GCC):
+```powershell
+# On Windows, install WinLibs MinGW via winget if not present:
+# winget install BrechtSanders.WinLibs.POSIX.UCRT
+
+# Then run with CGO enabled (adjust gcc path as needed):
+$env:CGO_ENABLED="1"
+go test -race ./...
+```
+
 Or use the automated test script with coverage:
 ```bash
 ./run_all_tests.sh

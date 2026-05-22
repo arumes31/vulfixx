@@ -82,7 +82,7 @@ func TestEmailWorker_Queues(t *testing.T) {
 
 		w.processEmailVerification(ctx)
 
-		if mockMailer.Count == 0 {
+		if mockMailer.Count() == 0 {
 			t.Errorf("expected email to be sent")
 		}
 
@@ -116,7 +116,7 @@ func TestEmailWorker_Queues(t *testing.T) {
 
 		w.processEmailChange(ctx)
 
-		if mockMailer.Count == 0 {
+		if mockMailer.Count() == 0 {
 			t.Errorf("expected email to be sent")
 		}
 	})

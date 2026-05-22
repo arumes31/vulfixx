@@ -106,12 +106,13 @@ func TestAsynqWorker_Flow(t *testing.T) {
 		if err := srv.Start(mux); err != nil {
 			t.Fatalf("failed to start: %v", err)
 		}
-		defer srv.Shutdown()
 
-		time.Sleep(200 * time.Millisecond)
+		// Wait briefly for processing, then shut down to guarantee worker completion before assertion.
+		time.Sleep(500 * time.Millisecond)
+		srv.Shutdown()
 
-		if mailer.Count != 1 {
-			t.Errorf("expected 1 email to be sent, got %d", mailer.Count)
+		if mailer.Count() != 1 {
+			t.Errorf("expected 1 email to be sent, got %d", mailer.Count())
 		}
 	})
 
@@ -138,12 +139,13 @@ func TestAsynqWorker_Flow(t *testing.T) {
 		if err := srv.Start(mux); err != nil {
 			t.Fatalf("failed to start: %v", err)
 		}
-		defer srv.Shutdown()
 
-		time.Sleep(200 * time.Millisecond)
+		// Wait briefly for processing, then shut down to guarantee worker completion before assertion.
+		time.Sleep(500 * time.Millisecond)
+		srv.Shutdown()
 
-		if mailer.Count != 1 {
-			t.Errorf("expected 1 email to be sent, got %d", mailer.Count)
+		if mailer.Count() != 1 {
+			t.Errorf("expected 1 email to be sent, got %d", mailer.Count())
 		}
 	})
 }

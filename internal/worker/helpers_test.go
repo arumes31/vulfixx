@@ -3,6 +3,8 @@ package worker
 import (
 	"fmt"
 	"net/http"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -30,14 +32,24 @@ func (m *MockHTTPClient) Do(req *http.Request) (*http.Response, error) {
 	return nil, fmt.Errorf("DoFunc not set")
 }
 
+// EmailSenderMockV2 is a thread-safe mock for use with concurrent Asynq workers.
 type EmailSenderMockV2 struct {
-	Count int
+	count atomic.Int32
+	mu    sync.Mutex
 	Err   error
 }
 
 func (m *EmailSenderMockV2) SendEmail(to, subject, body string) error {
-	m.Count++
-	return m.Err
+	m.count.Add(1)
+	m.mu.Lock()
+	err := m.Err
+	m.mu.Unlock()
+	return err
+}
+
+// Count returns the number of emails sent (thread-safe).
+func (m *EmailSenderMockV2) Count() int {
+	return int(m.count.Load())
 }
 
 func TestWorkerHelpers(t *testing.T) {
