@@ -183,10 +183,10 @@ func TestCVEDetailHandler_Extra(t *testing.T) {
 		app := setupTestApp(t, mock)
 
 		cveID := "CVE-2023-1234"
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cve_id, description, COALESCE(cvss_score, 0), vector_string, cisa_kev, published_date, updated_date, 'active' as status, \"references\", COALESCE(epss_score, 0), COALESCE(cwe_id, ''), COALESCE(cwe_name, ''), COALESCE(github_poc_count, 0), COALESCE(greynoise_hits, 0), COALESCE(greynoise_classification, ''), osv_data, configurations, COALESCE(vendor, ''), COALESCE(product, ''), COALESCE(affected_products, '[]'), COALESCE(darknet_mentions, 0), darknet_last_seen, COALESCE(priority, 'P3') as priority")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cve_id, description, COALESCE(cvss_score, 0), vector_string, cisa_kev, published_date, updated_date, 'active' as status, \"references\", COALESCE(epss_score, 0), COALESCE(cwe_id, ''), COALESCE(cwe_name, ''), COALESCE(github_poc_count, 0), COALESCE(greynoise_hits, 0), COALESCE(greynoise_classification, ''), osv_data, configurations, COALESCE(vendor, ''), COALESCE(product, ''), COALESCE(affected_products, '[]'), COALESCE(priority, 'P3') as priority")).
 			WithArgs(cveID).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "configurations", "vendor", "product", "affected_products", "darknet_mentions", "darknet_last_seen", "priority"}).
-				AddRow(1, cveID, "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, 0.123, "CWE-79", "XSS", 1, 0, "", []byte("{}"), []byte("[]"), "", "", []byte("[]"), 0, nil, "P0"))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "configurations", "vendor", "product", "affected_products", "priority"}).
+				AddRow(1, cveID, "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, 0.123, "CWE-79", "XSS", 1, 0, "", []byte("{}"), []byte("[]"), "", "", []byte("[]"), "P0"))
 
 		req, _ := http.NewRequest("GET", "/cve/"+cveID, nil)
 		rctx := chi.NewRouteContext()

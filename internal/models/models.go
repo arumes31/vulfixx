@@ -49,47 +49,13 @@ type CVE struct {
 	Vendor         string                 `json:"vendor"`
 	Product        string                 `json:"product"`
 	AffectedProducts AffectedProducts     `json:"affected_products"`
-	DarknetMentions  int                    `json:"darknet_mentions"`
-	DarknetLastSeen  *time.Time             `json:"darknet_last_seen,omitempty"`
-	DarknetHits      DarknetHits            `json:"darknet_hits,omitempty"`
+
 	PublishedDate  time.Time              `json:"published_date"`
 	UpdatedDate    time.Time              `json:"updated_date"`
 	CreatedAt      time.Time              `json:"created_at"`
 	Priority       string                 `json:"priority"`
 }
 
-type DarknetHit struct {
-	Title       string    `json:"title"`
-	URL         string    `json:"url"`
-	Engine      string    `json:"engine"`
-	Snippet     string    `json:"snippet"`
-	Language    string    `json:"language"`
-	IsHoneyLink bool      `json:"is_honey_link"`
-	CreatedAt   time.Time `json:"created_at"`
-}
-
-type DarknetHits []DarknetHit
-
-// Scan implements the sql.Scanner interface for JSONB.
-func (d *DarknetHits) Scan(value interface{}) error {
-	if value == nil {
-		*d = nil
-		return nil
-	}
-	b, ok := value.([]byte)
-	if !ok {
-		return fmt.Errorf("type assertion to []byte failed")
-	}
-	return json.Unmarshal(b, d)
-}
-
-// Value implements the driver.Valuer interface for JSONB.
-func (d DarknetHits) Value() (driver.Value, error) {
-	if d == nil {
-		return nil, nil
-	}
-	return json.Marshal(d)
-}
 
 type CVEConfigurations []CVEConfiguration
 

@@ -1063,10 +1063,10 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 			COALESCE(epss_score, 0), COALESCE(cwe_id, ''), COALESCE(cwe_name, ''), COALESCE(github_poc_count, 0),
 			COALESCE(greynoise_hits, 0), COALESCE(greynoise_classification, ''), osv_data,
 			configurations, COALESCE(vendor, ''), COALESCE(product, ''), COALESCE(affected_products, '[]'),
-			COALESCE(darknet_mentions, 0), darknet_last_seen, COALESCE(priority, 'P3') as priority
+			COALESCE(priority, 'P3') as priority
 		FROM cves
 		WHERE cve_id = $1
-	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.Configurations, &c.Vendor, &c.Product, &c.AffectedProducts, &c.DarknetMentions, &c.DarknetLastSeen, &c.Priority)
+	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.Configurations, &c.Vendor, &c.Product, &c.AffectedProducts, &c.Priority)
 
 	c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
 
@@ -1078,22 +1078,6 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
 		return
-	}
-
-	// Fetch Darknet Evidence if mentions exist
-	if c.DarknetMentions > 0 {
-		hrows, err := a.Pool.Query(r.Context(), "SELECT title, url, engine, snippet, language, is_honey_link, created_at FROM darknet_intel_hits WHERE cve_id = $1 ORDER BY created_at DESC LIMIT 200", c.CVEID)
-		if err != nil {
-			log.Printf("Darknet query error: %v", err)
-		} else if hrows != nil {
-			defer hrows.Close()
-			for hrows.Next() {
-				var h models.DarknetHit
-				if err := hrows.Scan(&h.Title, &h.URL, &h.Engine, &h.Snippet, &h.Language, &h.IsHoneyLink, &h.CreatedAt); err == nil {
-					c.DarknetHits = append(c.DarknetHits, h)
-				}
-			}
-		}
 	}
 
 	var prevID, nextID string

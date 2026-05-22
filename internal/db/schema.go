@@ -56,8 +56,6 @@ CREATE TABLE IF NOT EXISTS cves (
     vendor VARCHAR(255),
     product VARCHAR(255),
     affected_products JSONB DEFAULT '[]',
-    darknet_mentions INTEGER DEFAULT 0,
-    darknet_last_seen TIMESTAMP WITH TIME ZONE,
     priority VARCHAR(2) DEFAULT 'P3',
     version INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -81,22 +79,6 @@ CREATE TABLE IF NOT EXISTS cves_y2028 PARTITION OF cves FOR VALUES FROM ('2028-0
 CREATE TABLE IF NOT EXISTS cves_y2029 PARTITION OF cves FOR VALUES FROM ('2029-01-01 00:00:00+00') TO ('2030-01-01 00:00:00+00');
 CREATE TABLE IF NOT EXISTS cves_default PARTITION OF cves DEFAULT;
 
-
-CREATE TABLE IF NOT EXISTS darknet_intel_hits (
-    id SERIAL PRIMARY KEY,
-    cve_id VARCHAR(50) NOT NULL,
-    engine VARCHAR(50),
-    title TEXT,
-    url TEXT, -- deduplication by (cve_id, url) composite below
-    snippet TEXT,
-    translation TEXT,
-    language VARCHAR(10), -- (23)
-    source_link TEXT,
-    is_honey_link BOOLEAN DEFAULT FALSE, -- (97)
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(cve_id, url)
-);
-CREATE INDEX IF NOT EXISTS idx_darknet_intel_hits_cve_id ON darknet_intel_hits(cve_id);
 
 CREATE TABLE IF NOT EXISTS sync_state (
     key VARCHAR(100) PRIMARY KEY,
@@ -324,12 +306,7 @@ BEGIN
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'updated_at') THEN
             ALTER TABLE cves ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'darknet_mentions') THEN
-            ALTER TABLE cves ADD COLUMN darknet_mentions INTEGER DEFAULT 0;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'darknet_last_seen') THEN
-            ALTER TABLE cves ADD COLUMN darknet_last_seen TIMESTAMP WITH TIME ZONE;
-        END IF;
+
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'vector_string') THEN
             ALTER TABLE cves ADD COLUMN vector_string TEXT;
         END IF;

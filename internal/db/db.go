@@ -180,14 +180,14 @@ func migrate(ctx context.Context) error {
 					epss_score, cwe_id, cwe_name, github_poc_count, greynoise_hits, greynoise_classification,
 					greynoise_last_updated, osv_data, osv_last_updated, inthewild_data, inthewild_last_updated,
 					osint_data, published_date, updated_date, "references", configurations, vendor, product,
-					affected_products, darknet_mentions, darknet_last_seen, priority, created_at, updated_at
+					affected_products, priority, created_at, updated_at
 				)
 				SELECT 
 					id, cve_id, description, cvss_score, vector_string, cisa_kev, exploit_available,
 					epss_score, cwe_id, cwe_name, github_poc_count, greynoise_hits, greynoise_classification,
 					greynoise_last_updated, osv_data, osv_last_updated, inthewild_data, inthewild_last_updated,
 					osint_data, COALESCE(published_date, CURRENT_TIMESTAMP), updated_date, "references", configurations, vendor, product,
-					affected_products, darknet_mentions, darknet_last_seen, priority, created_at, updated_at
+					affected_products, priority, created_at, updated_at
 				FROM cves_old
 			`
 			if _, err := Pool.Exec(ctx, copySQL); err != nil {
