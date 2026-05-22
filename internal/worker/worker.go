@@ -58,6 +58,7 @@ func (w *Worker) Start(ctx context.Context) {
 	runTask(w.fetchCVEsPeriodically)
 	runTask(w.fetchCISAKEVPeriodically)
 	runTask(w.syncEPSSPeriodically)
+	runTask(w.syncThreatIntelPeriodically)
 	runTask(w.syncGitHubBuzzPeriodically)
 	runTask(w.syncIntelligencePeriodically)
 	runTask(w.syncGreyNoisePeriodically)

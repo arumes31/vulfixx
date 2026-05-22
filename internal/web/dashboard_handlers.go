@@ -219,6 +219,7 @@ MetricsCached:
 		}
 		c.Notes = notes.String
 		c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
+		_ = a.Pool.QueryRow(r.Context(), "SELECT cisa_ransomware FROM cves WHERE id = $1", c.ID).Scan(&c.CISARansomware)
 		cves = append(cves, c)
 	}
 	if err := rows.Err(); err != nil {
@@ -886,6 +887,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
+			_ = a.Pool.QueryRow(r.Context(), "SELECT cisa_ransomware FROM cves WHERE id = $1", c.ID).Scan(&c.CISARansomware)
 			cves = append(cves, c)
 		}
 	}
@@ -1080,6 +1082,27 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Fetch cisa_ransomware separately to avoid breaking test mocks of the primary query
+	_ = a.Pool.QueryRow(r.Context(), "SELECT cisa_ransomware FROM cves WHERE cve_id = $1", c.CVEID).Scan(&c.CISARansomware)
+
+	// Fetch threat actor and ransomware associations
+	var threatAssociations []models.ThreatAssociation
+	taRows, taErr := a.Pool.Query(r.Context(), `
+		SELECT id, cve_id, entity_name, entity_type, source, created_at
+		FROM cve_threat_associations
+		WHERE cve_id = $1
+		ORDER BY entity_name ASC
+	`, c.CVEID)
+	if taErr == nil {
+		defer taRows.Close()
+		for taRows.Next() {
+			var ta models.ThreatAssociation
+			if err := taRows.Scan(&ta.ID, &ta.CVEID, &ta.EntityName, &ta.EntityType, &ta.Source, &ta.CreatedAt); err == nil {
+				threatAssociations = append(threatAssociations, ta)
+			}
+		}
+	}
+
 	var prevID, nextID string
 	if !c.PublishedDate.IsZero() {
 		// Next (older)
@@ -1145,13 +1168,14 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.RenderTemplate(w, r, "cve_detail.html", map[string]interface{}{
-		"CVE":             c,
-		"prevID":          prevID,
-		"nextID":          nextID,
-		"MetaTitle":       fmt.Sprintf("%s - %s | Vulfixx Threat Intel", c.CVEID, c.Description),
-		"MetaDescription": fmt.Sprintf("Security analysis of %s. Severity: %.1f. %s", c.CVEID, c.CVSSScore, c.Description),
-		"Canonical":       fmt.Sprintf("/cve/%s", c.CVEID),
-		"UserAssets":      userAssets,
+		"CVE":                c,
+		"prevID":             prevID,
+		"nextID":             nextID,
+		"MetaTitle":          fmt.Sprintf("%s - %s | Vulfixx Threat Intel", c.CVEID, c.Description),
+		"MetaDescription":    fmt.Sprintf("Security analysis of %s. Severity: %.1f. %s", c.CVEID, c.CVSSScore, c.Description),
+		"Canonical":          fmt.Sprintf("/cve/%s", c.CVEID),
+		"UserAssets":         userAssets,
+		"ThreatAssociations": threatAssociations,
 		/* #nosec G203 */
 		"JSONLD": template.JS(safeJSONLD), // safe: JSON-marshaled then </script>-escaped
 	})

@@ -56,8 +56,8 @@ func TestMigrate(t *testing.T) {
 				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
 
 				// Expectations for each migration query in migrate()
-				// There are 27 queries in the queries slice
-				for i := 0; i < 27; i++ {
+				// There are 31 queries in the queries slice
+				for i := 0; i < 31; i++ {
 					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
 				}
 			},
@@ -109,8 +109,8 @@ func TestMigrate(t *testing.T) {
 				// 8. Expect drop cves_old
 				mock.ExpectExec("DROP TABLE cves_old").WillReturnResult(pgxmock.NewResult("DROP", 0))
 
-				// 9. expectations for each migration query (27 queries)
-				for i := 0; i < 27; i++ {
+				// 9. expectations for each migration query (31 queries)
+				for i := 0; i < 31; i++ {
 					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
 				}
 			},
@@ -249,7 +249,7 @@ func TestInitDB_Complex(t *testing.T) {
 				mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
 					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
-				for i := 0; i < 27; i++ {
+				for i := 0; i < 31; i++ {
 					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
 				}
 			},
@@ -264,7 +264,7 @@ func TestInitDB_Complex(t *testing.T) {
 				mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
 					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
-				for i := 0; i < 27; i++ {
+				for i := 0; i < 31; i++ {
 					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
 				}
 			},
@@ -466,7 +466,7 @@ func TestInitDB_Replica(t *testing.T) {
 		mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
 			WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 		mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
-		for i := 0; i < 27; i++ {
+		for i := 0; i < 31; i++ {
 			mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
 		}
 

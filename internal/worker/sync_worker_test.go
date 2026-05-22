@@ -173,9 +173,10 @@ func TestWorkerSync_CISA(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 			resp := CISAKEVResponse{
 				Vulnerabilities: []struct {
-					CVEID string `json:"cveID"`
+					CVEID                      string `json:"cveID"`
+					KnownRansomwareCampaignUse string `json:"knownRansomwareCampaignUse"`
 				}{
-					{CVEID: "CVE-2023-1111"},
+					{CVEID: "CVE-2023-1111", KnownRansomwareCampaignUse: "Known"},
 				},
 			}
 			_ = json.NewEncoder(rw).Encode(resp)
@@ -187,8 +188,11 @@ func TestWorkerSync_CISA(t *testing.T) {
 		defer func() { defaultCISAKEVURL = oldURL }()
 
 		mock.ExpectBegin()
-		mock.ExpectExec("UPDATE cves SET cisa_kev = false WHERE cisa_kev = true").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("UPDATE cves SET cisa_kev = false, cisa_ransomware = false WHERE cisa_kev = true OR cisa_ransomware = true").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectExec("UPDATE cves SET cisa_kev = true WHERE cve_id = ANY").
+			WithArgs([]string{"CVE-2023-1111"}).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("UPDATE cves SET cisa_ransomware = true WHERE cve_id = ANY").
 			WithArgs([]string{"CVE-2023-1111"}).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()

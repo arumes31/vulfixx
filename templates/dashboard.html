@@ -189,6 +189,9 @@
                                 {{if .CISAKEV}}
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-red-600 text-white text-[9px] font-black uppercase tracking-widest shadow-lg shadow-red-600/20" title="CISA Known Exploited Vulnerability">KEV</span>
                                 {{end}}
+                                {{if .CISARansomware}}
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 text-[9px] font-black uppercase tracking-widest animate-pulse" title="Active Ransomware Campaign Use">Ransomware</span>
+                                {{end}}
                                 {{if gt .GitHubPoCCount 0}}
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30 text-[9px] font-black uppercase tracking-widest" title="Exploit Code Available ({{.GitHubPoCCount}} GitHub PoCs)">PoC</span>
                                 {{end}}

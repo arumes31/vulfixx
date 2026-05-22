@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS cves (
     cvss_score NUMERIC(4,1),
     vector_string TEXT,
     cisa_kev BOOLEAN DEFAULT FALSE,
+    cisa_ransomware BOOLEAN DEFAULT FALSE,
     exploit_available BOOLEAN DEFAULT FALSE,
     epss_score NUMERIC(6,5),
     cwe_id VARCHAR(50),
@@ -379,6 +380,9 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'assets' AND column_name = 'priority') THEN
         ALTER TABLE assets ADD COLUMN priority VARCHAR(2) DEFAULT 'P3';
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'cisa_ransomware') THEN
+        ALTER TABLE cves ADD COLUMN cisa_ransomware BOOLEAN DEFAULT FALSE;
+    END IF;
 END $$;
 
 CREATE OR REPLACE FUNCTION calculate_cve_priority() RETURNS TRIGGER AS $$
@@ -436,4 +440,16 @@ CREATE INDEX IF NOT EXISTS idx_cves_description_trgm ON cves USING GIN (descript
 CREATE INDEX IF NOT EXISTS idx_cves_vendor_trgm ON cves USING GIN (vendor gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_cves_product_trgm ON cves USING GIN (product gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_cves_cve_id_trgm ON cves USING GIN (cve_id gin_trgm_ops);
+
+-- Threat Associations
+CREATE TABLE IF NOT EXISTS cve_threat_associations (
+    id SERIAL PRIMARY KEY,
+    cve_id VARCHAR(50) NOT NULL,
+    entity_name VARCHAR(100) NOT NULL,
+    entity_type VARCHAR(50) NOT NULL, -- 'threat_actor' or 'ransomware'
+    source VARCHAR(50) NOT NULL,       -- 'CISA-KEV', 'Trickest', 'OSINT'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cve_threats_unique ON cve_threat_associations(cve_id, entity_name, entity_type);
+CREATE INDEX IF NOT EXISTS idx_cve_threats_cve_id ON cve_threat_associations(cve_id);
 `

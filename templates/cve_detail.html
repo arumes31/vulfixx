@@ -20,6 +20,12 @@
                 {{if .CVE.CISAKEV}}
                 <span class="px-3 py-1 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/20 text-[10px] font-black uppercase tracking-widest animate-pulse">CISA KEV</span>
                 {{end}}
+                {{if .CVE.CISARansomware}}
+                <span class="px-3 py-1 rounded-full bg-red-600/20 text-red-500 border border-red-600/20 text-[10px] font-black uppercase tracking-widest animate-pulse flex items-center gap-1.5 shadow-[0_0_15px_rgba(220,38,38,0.2)]">
+                    <span class="material-symbols-outlined text-[14px]">dangerous</span>
+                    Ransomware Active
+                </span>
+                {{end}}
                 {{if gt .CVE.GreyNoiseHits 0}}
                 <span class="px-3 py-1 rounded-full bg-red-500/20 text-red-400 border border-red-500/20 text-[10px] font-black uppercase tracking-widest animate-bounce">Active Exploitation</span>
                 {{end}}
@@ -122,7 +128,78 @@
                 <div class="text-[10px] font-bold text-gray-500 uppercase leading-none">Unique IPs scanning via GreyNoise</div>
             </div>
         </div>
-    </div>
+    <!-- Threat Actors & Ransomware Campaigns Section -->
+    {{if .ThreatAssociations}}
+    <section class="space-y-6">
+        <h2 class="text-2xl font-black text-white flex items-center gap-3">
+            <span class="material-symbols-outlined text-red-500 animate-pulse">security</span>
+            Active Threat Profiles
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Threat Actors -->
+            <div class="glass p-8 rounded-[2rem] border border-white/10 space-y-4">
+                <h3 class="text-lg font-black text-white flex items-center gap-2">
+                    <span class="material-symbols-outlined text-primary">groups</span>
+                    Targeting Threat Actors
+                </h3>
+                <div class="space-y-3">
+                    {{$hasActors := false}}
+                    {{range .ThreatAssociations}}
+                        {{if eq .EntityType "threat_actor"}}
+                            {{$hasActors = true}}
+                            <div class="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5 hover:border-primary/30 transition-all">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                                        <span class="material-symbols-outlined">person_pin</span>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-bold text-white">{{.EntityName}}</div>
+                                        <div class="text-[9px] font-black uppercase tracking-widest text-gray-500">Threat Actor Group</div>
+                                    </div>
+                                </div>
+                                <span class="px-2.5 py-1 rounded bg-white/5 border border-white/10 text-[9px] font-mono text-gray-400">{{.Source}}</span>
+                            </div>
+                        {{end}}
+                    {{end}}
+                    {{if not $hasActors}}
+                        <p class="text-xs text-gray-500 italic">No specific threat actor groups associated via OSINT yet.</p>
+                    {{end}}
+                </div>
+            </div>
+
+            <!-- Ransomware Strains -->
+            <div class="glass p-8 rounded-[2rem] border border-white/10 space-y-4">
+                <h3 class="text-lg font-black text-white flex items-center gap-2">
+                    <span class="material-symbols-outlined text-red-500">lock</span>
+                    Associated Ransomware Campaigns
+                </h3>
+                <div class="space-y-3">
+                    {{$hasRansom := false}}
+                    {{range .ThreatAssociations}}
+                        {{if eq .EntityType "ransomware"}}
+                            {{$hasRansom = true}}
+                            <div class="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5 hover:border-red-500/30 transition-all">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-500">
+                                        <span class="material-symbols-outlined">enhanced_encryption</span>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-bold text-white">{{.EntityName}}</div>
+                                        <div class="text-[9px] font-black uppercase tracking-widest text-gray-500">Ransomware Strain</div>
+                                    </div>
+                                </div>
+                                <span class="px-2.5 py-1 rounded bg-white/5 border border-white/10 text-[9px] font-mono text-gray-400">{{.Source}}</span>
+                            </div>
+                        {{end}}
+                    {{end}}
+                    {{if not $hasRansom}}
+                        <p class="text-xs text-gray-500 italic">No specific ransomware strains associated via OSINT yet.</p>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+    </section>
+    {{end}}
 
     <!-- References Section -->
     <section class="space-y-6">

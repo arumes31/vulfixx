@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS cves (
     cvss_score NUMERIC(4,1),
     vector_string TEXT,
     cisa_kev BOOLEAN DEFAULT FALSE,
+    cisa_ransomware BOOLEAN DEFAULT FALSE,
     epss_score NUMERIC(6,5),
     cwe_id VARCHAR(50),
     cwe_name TEXT,
@@ -203,3 +204,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_status ON user_cve_status (use
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_team_status ON user_cve_status (team_id, cve_id) WHERE team_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_notes ON cve_notes (user_id, cve_id) WHERE team_id IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_team_notes ON cve_notes (team_id, cve_id) WHERE team_id IS NOT NULL;
+
+-- Threat Associations
+CREATE TABLE IF NOT EXISTS cve_threat_associations (
+    id SERIAL PRIMARY KEY,
+    cve_id VARCHAR(50) NOT NULL,
+    entity_name VARCHAR(100) NOT NULL,
+    entity_type VARCHAR(50) NOT NULL, -- 'threat_actor' or 'ransomware'
+    source VARCHAR(50) NOT NULL,       -- 'CISA-KEV', 'Trickest', 'OSINT'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cve_threats_unique ON cve_threat_associations(cve_id, entity_name, entity_type);
+CREATE INDEX IF NOT EXISTS idx_cve_threats_cve_id ON cve_threat_associations(cve_id);

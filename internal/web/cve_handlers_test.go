@@ -188,6 +188,14 @@ func TestCVEDetailHandler_Extra(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "configurations", "vendor", "product", "affected_products", "priority"}).
 				AddRow(1, cveID, "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, 0.123, "CWE-79", "XSS", 1, 0, "", []byte("{}"), []byte("[]"), "", "", []byte("[]"), "P0"))
 
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT cisa_ransomware FROM cves WHERE cve_id = $1")).
+			WithArgs(cveID).
+			WillReturnRows(pgxmock.NewRows([]string{"cisa_ransomware"}).AddRow(false))
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cve_id, entity_name, entity_type, source, created_at FROM cve_threat_associations WHERE cve_id = $1 ORDER BY entity_name ASC")).
+			WithArgs(cveID).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "entity_name", "entity_type", "source", "created_at"}))
+
 		req, _ := http.NewRequest("GET", "/cve/"+cveID, nil)
 		rctx := chi.NewRouteContext()
 		rctx.URLParams.Add("id", cveID)

@@ -53,6 +53,7 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 - **Intelligence Sync Optimization**: High-throughput synchronization engine with batch processing (200 CVEs/run) and **automated 30-day refresh cycles** for existing records.
 - **OSV & GreyNoise Integration**: Enhanced monitoring for Open Source Vulnerabilities (OSV) and GreyNoise threat intelligence with automated stale-data detection.
 - **LLM-Powered Detection**: Advanced extraction of **Vendor**, **Product**, and **Affected Versions** from complex descriptions using Local LLMs (Ollama) or Cloud APIs (Gemini).
+- **Ransomware & Threat Actor Intel Mapping (Strategy 1 & 3)**: Zero-cost active Ransomware Campaign & Threat Actor matching utilizing CISA KEV `"knownRansomwareCampaignUse"` extraction alongside a dynamic, high-performance OSINT public intelligence feed sync with a curated fallback baseline. Exposes premium "Ransomware Active" badges and multi-actor detail panels without any external paid API requirements.
 
 ## 🤖 LLM Intelligence (Optional)
 
@@ -92,7 +93,8 @@ The application follows a modular architecture designed to prevent monolithic fi
 - **`email_worker.go`**: SMTP delivery and verification email queue.
 - **`sync_nvd.go`**: NVD CVE data synchronization with incremental backoff.
 - **`sync_github.go`**: GitHub Social Buzz and PoC discovery tracking.
-- **`sync_cisa.go`**: Automated CISA KEV catalog synchronization.
+- **`sync_cisa.go`**: Automated CISA KEV catalog synchronization with high-visibility extraction of ransomware campaign flags (`cisa_ransomware`).
+- **`sync_threat_intel.go`**: Automated synchronization of public OSINT threat intelligence feeds mapping active Ransomware Campaigns and targeting Threat Actors to CVE records, supported by curated baseline fallback data.
 - **`sync_advisory_rss.go`**: Generalized multi-format synchronization (RSS 1.0, 2.0, and Atom) for official bulletins from CISA, Microsoft, AWS, VMware, Oracle, GitHub, CERT-EU, FortiGuard, Cisco, Red Hat, Ubuntu, and ZDI. Implements a **"matched-only" policy** via `processAdvisoryFeed` (must contain valid CVE-ID) and `integrateAdvisoryCVE` (only syncs if the CVE already exists in the database) to prevent data bloat.
 - **`sync_epss.go`**: Probability-based risk scoring (FIRST EPSS).
 - **`cron_worker.go`**: Scheduled tasks (Weekly summaries).

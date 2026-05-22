@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"context"
+	"regexp"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/go-chi/chi/v5"
@@ -111,6 +112,14 @@ func TestUI_CVEDetailStructure(t *testing.T) {
 		WithArgs(cveID).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "configurations", "vendor", "product", "affected_products", "priority"}).
 			AddRow(1, cveID, "Detailed description", 8.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N", false, time.Now(), time.Now(), "active", []string{"http://ref.com"}, 0.5, "CWE-79", "XSS", 1, 0, "", []byte(`{}`), []byte(`[]`), "V", "P", []byte(`[]`), "P2"))
+
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT cisa_ransomware FROM cves WHERE cve_id = $1")).
+		WithArgs(cveID).
+		WillReturnRows(pgxmock.NewRows([]string{"cisa_ransomware"}).AddRow(false))
+
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cve_id, entity_name, entity_type, source, created_at FROM cve_threat_associations WHERE cve_id = $1 ORDER BY entity_name ASC")).
+		WithArgs(cveID).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "entity_name", "entity_type", "source", "created_at"}))
 
 	mock.ExpectQuery("(?is)SELECT cve_id FROM cves.*WHERE published_date <").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-2024-1233"))
 	mock.ExpectQuery("(?is)SELECT cve_id FROM cves.*WHERE published_date >").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-2024-1235"))

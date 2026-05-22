@@ -176,14 +176,14 @@ func migrate(ctx context.Context) error {
 			// 4. Copy data from cves_old to partitioned cves, defaulting null published_date to current time
 			copySQL := `
 				INSERT INTO cves (
-					id, cve_id, description, cvss_score, vector_string, cisa_kev, exploit_available,
+					id, cve_id, description, cvss_score, vector_string, cisa_kev, cisa_ransomware, exploit_available,
 					epss_score, cwe_id, cwe_name, github_poc_count, greynoise_hits, greynoise_classification,
 					greynoise_last_updated, osv_data, osv_last_updated, inthewild_data, inthewild_last_updated,
 					osint_data, published_date, updated_date, "references", configurations, vendor, product,
 					affected_products, priority, created_at, updated_at
 				)
 				SELECT 
-					id, cve_id, description, cvss_score, vector_string, cisa_kev, exploit_available,
+					id, cve_id, description, cvss_score, vector_string, cisa_kev, cisa_ransomware, exploit_available,
 					epss_score, cwe_id, cwe_name, github_poc_count, greynoise_hits, greynoise_classification,
 					greynoise_last_updated, osv_data, osv_last_updated, inthewild_data, inthewild_last_updated,
 					osint_data, COALESCE(published_date, CURRENT_TIMESTAMP), updated_date, "references", configurations, vendor, product,
@@ -244,6 +244,10 @@ func migrate(ctx context.Context) error {
 		"CREATE INDEX IF NOT EXISTS idx_cves_affected_products ON cves USING GIN (affected_products jsonb_path_ops);",
 		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;",
 		"CREATE INDEX IF NOT EXISTS idx_user_activity_logs_user_type_created ON user_activity_logs (user_id, activity_type, created_at DESC);",
+		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS cisa_ransomware BOOLEAN DEFAULT FALSE;",
+		"CREATE TABLE IF NOT EXISTS cve_threat_associations (id SERIAL PRIMARY KEY, cve_id VARCHAR(50) NOT NULL, entity_name VARCHAR(100) NOT NULL, entity_type VARCHAR(50) NOT NULL, source VARCHAR(50) NOT NULL, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_cve_threats_unique ON cve_threat_associations(cve_id, entity_name, entity_type);",
+		"CREATE INDEX IF NOT EXISTS idx_cve_threats_cve_id ON cve_threat_associations(cve_id);",
 	}
 
 	for i, q := range queries {

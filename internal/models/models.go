@@ -29,6 +29,7 @@ type CVE struct {
 	CVSSScore      float64                `json:"cvss_score"`
 	VectorString   string                 `json:"vector_string"`
 	CISAKEV        bool                   `json:"cisa_kev"`
+	CISARansomware bool                   `json:"cisa_ransomware"`
 	EPSSScore      float64                `json:"epss_score"`
 	CWEID          string                 `json:"cwe_id"`
 	CWEName        string                 `json:"cwe_name"`
@@ -880,3 +881,13 @@ type ActivityLog struct {
 	RetentionExpiresAt *time.Time `json:"retention_expires_at,omitempty"`
 	DeletedAt          *time.Time `json:"deleted_at,omitempty"`
 }
+
+type ThreatAssociation struct {
+	ID         int       `json:"id"`
+	CVEID      string    `json:"cve_id"`
+	EntityName string    `json:"entity_name"`
+	EntityType string    `json:"entity_type"` // "threat_actor" or "ransomware"
+	Source     string    `json:"source"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
