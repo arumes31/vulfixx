@@ -30,8 +30,8 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS cves (
-    id SERIAL PRIMARY KEY,
-    cve_id VARCHAR(50) UNIQUE NOT NULL,
+    id SERIAL,
+    cve_id VARCHAR(50) NOT NULL,
     description TEXT,
     cvss_score NUMERIC(4,1),
     vector_string TEXT,
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS cves (
     inthewild_data JSONB DEFAULT '{}',
     inthewild_last_updated TIMESTAMP WITH TIME ZONE,
     osint_data JSONB DEFAULT '{}',
-    published_date TIMESTAMP WITH TIME ZONE,
+    published_date TIMESTAMP WITH TIME ZONE NOT NULL,
     updated_date TIMESTAMP WITH TIME ZONE,
     "references" TEXT[],
     configurations JSONB DEFAULT '[]',
@@ -59,9 +59,28 @@ CREATE TABLE IF NOT EXISTS cves (
     darknet_mentions INTEGER DEFAULT 0,
     darknet_last_seen TIMESTAMP WITH TIME ZONE,
     priority VARCHAR(2) DEFAULT 'P3',
+    version INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id, published_date),
+    UNIQUE (cve_id, published_date)
+) PARTITION BY RANGE (published_date);
+
+CREATE TABLE IF NOT EXISTS cves_y2000to2010 PARTITION OF cves FOR VALUES FROM ('2000-01-01 00:00:00+00') TO ('2010-01-01 00:00:00+00');
+CREATE TABLE IF NOT EXISTS cves_y2010to2015 PARTITION OF cves FOR VALUES FROM ('2010-01-01 00:00:00+00') TO ('2015-01-01 00:00:00+00');
+CREATE TABLE IF NOT EXISTS cves_y2015to2020 PARTITION OF cves FOR VALUES FROM ('2015-01-01 00:00:00+00') TO ('2020-01-01 00:00:00+00');
+CREATE TABLE IF NOT EXISTS cves_y2020 PARTITION OF cves FOR VALUES FROM ('2020-01-01 00:00:00+00') TO ('2021-01-01 00:00:00+00');
+CREATE TABLE IF NOT EXISTS cves_y2021 PARTITION OF cves FOR VALUES FROM ('2021-01-01 00:00:00+00') TO ('2022-01-01 00:00:00+00');
+CREATE TABLE IF NOT EXISTS cves_y2022 PARTITION OF cves FOR VALUES FROM ('2022-01-01 00:00:00+00') TO ('2023-01-01 00:00:00+00');
+CREATE TABLE IF NOT EXISTS cves_y2023 PARTITION OF cves FOR VALUES FROM ('2023-01-01 00:00:00+00') TO ('2024-01-01 00:00:00+00');
+CREATE TABLE IF NOT EXISTS cves_y2024 PARTITION OF cves FOR VALUES FROM ('2024-01-01 00:00:00+00') TO ('2025-01-01 00:00:00+00');
+CREATE TABLE IF NOT EXISTS cves_y2025 PARTITION OF cves FOR VALUES FROM ('2025-01-01 00:00:00+00') TO ('2026-01-01 00:00:00+00');
+CREATE TABLE IF NOT EXISTS cves_y2026 PARTITION OF cves FOR VALUES FROM ('2026-01-01 00:00:00+00') TO ('2027-01-01 00:00:00+00');
+CREATE TABLE IF NOT EXISTS cves_y2027 PARTITION OF cves FOR VALUES FROM ('2027-01-01 00:00:00+00') TO ('2028-01-01 00:00:00+00');
+CREATE TABLE IF NOT EXISTS cves_y2028 PARTITION OF cves FOR VALUES FROM ('2028-01-01 00:00:00+00') TO ('2029-01-01 00:00:00+00');
+CREATE TABLE IF NOT EXISTS cves_y2029 PARTITION OF cves FOR VALUES FROM ('2029-01-01 00:00:00+00') TO ('2030-01-01 00:00:00+00');
+CREATE TABLE IF NOT EXISTS cves_default PARTITION OF cves DEFAULT;
+
 
 CREATE TABLE IF NOT EXISTS darknet_intel_hits (
     id SERIAL PRIMARY KEY,
@@ -142,7 +161,7 @@ CREATE TABLE IF NOT EXISTS notification_delivery_logs (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     subscription_id INTEGER REFERENCES user_subscriptions(id) ON DELETE CASCADE,
-    cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,
+    cve_id INTEGER,
     channel VARCHAR(20) NOT NULL,
     status VARCHAR(20) NOT NULL,
     error_message TEXT,
@@ -163,7 +182,7 @@ CREATE TABLE IF NOT EXISTS user_cve_status (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
-    cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,
+    cve_id INTEGER,
     status VARCHAR(50) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_user_cve_status_user_xor_team CHECK ((user_id IS NULL) <> (team_id IS NULL))
@@ -173,7 +192,7 @@ CREATE TABLE IF NOT EXISTS cve_notes (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
-    cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,
+    cve_id INTEGER,
     notes TEXT,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_cve_notes_user_xor_team CHECK ((user_id IS NULL) <> (team_id IS NULL))
@@ -182,7 +201,7 @@ CREATE TABLE IF NOT EXISTS cve_notes (
 CREATE TABLE IF NOT EXISTS alert_history (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    cve_id INTEGER REFERENCES cves(id) ON DELETE CASCADE,
+    cve_id INTEGER,
     sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, cve_id)
 );
@@ -347,6 +366,9 @@ BEGIN
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'exploit_available') THEN
             ALTER TABLE cves ADD COLUMN exploit_available BOOLEAN DEFAULT FALSE;
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'version') THEN
+            ALTER TABLE cves ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+        END IF;
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'enable_slack') THEN
@@ -405,6 +427,7 @@ FOR EACH ROW EXECUTE FUNCTION calculate_cve_priority();
 -- 5. Indexes
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE INDEX IF NOT EXISTS idx_user_activity_logs_user_id_created_at ON user_activity_logs (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_activity_logs_user_type_created ON user_activity_logs (user_id, activity_type, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_user_activity_logs_created_at ON user_activity_logs (created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_email_change_requests_old_token ON email_change_requests (old_email_token);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_email_change_requests_new_token ON email_change_requests (new_email_token);

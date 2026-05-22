@@ -2,8 +2,12 @@ package worker
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"cve-tracker/internal/models"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -131,5 +135,55 @@ func TestWorker_SlackTeamsDelivery(t *testing.T) {
 	success, err = w.sendTeamsAlert(ts.URL, cve, "Asset1", "#ff0000", "token", "http://localhost")
 	if !success || err != "" {
 		t.Errorf("Teams delivery failed: %s", err)
+	}
+}
+
+func TestWorker_SignedWebhookDelivery(t *testing.T) {
+	os.Setenv("TEST_MODE", "1")
+	os.Setenv("WEBHOOK_SECRET", "test_signing_key_123")
+	defer func() {
+		os.Unsetenv("TEST_MODE")
+		os.Unsetenv("WEBHOOK_SECRET")
+	}()
+
+	var receivedSignature, receivedTimestamp string
+	var receivedPayload []byte
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedSignature = r.Header.Get("X-Vulfixx-Signature")
+		receivedTimestamp = r.Header.Get("X-Vulfixx-Timestamp")
+		
+		var err error
+		receivedPayload, err = io.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	w := &Worker{HTTP: http.DefaultClient}
+	cve := &models.CVE{CVEID: "CVE-2024-TEST", CVSSScore: 8.0, Description: "Test desc"}
+
+	success, errStr := w.sendGenericWebhook(ts.URL, cve, "Asset1", "test@example.com")
+	if !success {
+		t.Fatalf("Signed webhook delivery failed: %s", errStr)
+	}
+
+	if receivedSignature == "" {
+		t.Errorf("Expected X-Vulfixx-Signature header to be set")
+	}
+	if receivedTimestamp == "" {
+		t.Errorf("Expected X-Vulfixx-Timestamp header to be set")
+	}
+
+	// Verify the signature is correct
+	mac := hmac.New(sha256.New, []byte("test_signing_key_123"))
+	_, _ = mac.Write([]byte(receivedTimestamp + "." + string(receivedPayload)))
+	expectedSignature := hex.EncodeToString(mac.Sum(nil))
+
+	if receivedSignature != expectedSignature {
+		t.Errorf("Signature mismatch. Got %s, expected %s", receivedSignature, expectedSignature)
 	}
 }

@@ -18,6 +18,7 @@ func SetupTestDB() (pgxmock.PgxPoolIface, error) {
 		return nil, err
 	}
 	Pool = mock
+	ReplicaPool = mock
 	return mock, nil
 }
 

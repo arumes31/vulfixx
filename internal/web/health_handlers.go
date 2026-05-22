@@ -3,7 +3,13 @@ package web
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+type stattable interface {
+	Stat() *pgxpool.Stat
+}
 
 // HealthzHandler returns a simple 200 OK to indicate the service is running.
 func (a *App) HealthzHandler(w http.ResponseWriter, r *http.Request) {
@@ -15,7 +21,7 @@ func (a *App) HealthzHandler(w http.ResponseWriter, r *http.Request) {
 func (a *App) ReadyzHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	status := map[string]string{
+	status := map[string]interface{}{
 		"database": "up",
 		"redis":    "up",
 	}
@@ -33,6 +39,29 @@ func (a *App) ReadyzHandler(w http.ResponseWriter, r *http.Request) {
 		status["redis"] = "down"
 		isDown = true
 	}
+
+	// Fetch DB Pool Stats if available (Item 16) - wrapped in panic recovery to protect against uninitialized mocks
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				// Fallback or ignore panic from mock pool stats
+			}
+		}()
+		if st, ok := a.Pool.(stattable); ok {
+			stat := st.Stat()
+			if stat != nil {
+				status["db_telemetry"] = map[string]interface{}{
+					"max_conns":           stat.MaxConns(),
+					"total_conns":         stat.TotalConns(),
+					"idle_conns":          stat.IdleConns(),
+					"active_conns":        stat.TotalConns() - stat.IdleConns(),
+					"acquire_count":       stat.AcquireCount(),
+					"acquire_duration_ms": stat.AcquireDuration().Milliseconds(),
+					"canceled_acquires":   stat.CanceledAcquireCount(),
+				}
+			}
+		}
+	}()
 
 	if isDown {
 		w.WriteHeader(http.StatusServiceUnavailable)

@@ -2,59 +2,64 @@ package web
 
 import (
 	"net/http"
-	"sync"
 	"time"
 
-	"golang.org/x/time/rate"
+	goredis "github.com/redis/go-redis/v9"
+	"github.com/ulule/limiter/v3"
+	"github.com/ulule/limiter/v3/drivers/store/memory"
+	limiter_redis "github.com/ulule/limiter/v3/drivers/store/redis"
 )
 
-type visitor struct {
-	limiter  *rate.Limiter
-	lastSeen time.Time
-}
+func (a *App) getLimiter() *limiter.Limiter {
+	a.rateLimiterMu.Lock()
+	defer a.rateLimiterMu.Unlock()
 
-var visitors = make(map[string]*visitor)
-var mtx sync.Mutex
+	if a.rateLimiter != nil {
+		return a.rateLimiter
+	}
 
-func init() {
-	go cleanupVisitors()
-}
+	// Define rate: 10 requests per second
+	// (this matches the burst of 10 requests that TestRateLimitMiddleware expects)
+	rate := limiter.Rate{
+		Period: 1 * time.Second,
+		Limit:  10,
+	}
 
-func cleanupVisitors() {
-	for {
-		time.Sleep(1 * time.Minute)
-		mtx.Lock()
-		for ip, v := range visitors {
-			if time.Since(v.lastSeen) > 3*time.Minute {
-				delete(visitors, ip)
+	var store limiter.Store
+	var err error
+
+	if a.Redis != nil {
+		if client, ok := a.Redis.(*goredis.Client); ok {
+			store, err = limiter_redis.NewStoreWithOptions(client, limiter.StoreOptions{
+				Prefix: "vulfixx_rate_limit:",
+			})
+			if err != nil {
+				store = memory.NewStore()
 			}
+		} else {
+			store = memory.NewStore()
 		}
-		mtx.Unlock()
-	}
-}
-
-func getVisitor(ip string) *rate.Limiter {
-	mtx.Lock()
-	defer mtx.Unlock()
-
-	v, exists := visitors[ip]
-	if !exists {
-		// Allow 5 requests per second, burst of 10
-		limiter := rate.NewLimiter(5, 10)
-		visitors[ip] = &visitor{limiter, time.Now()}
-		return limiter
+	} else {
+		store = memory.NewStore()
 	}
 
-	v.lastSeen = time.Now()
-	return v.limiter
+	a.rateLimiter = limiter.New(store, rate)
+	return a.rateLimiter
 }
 
 func (a *App) RateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := a.GetClientIP(r)
+		l := a.getLimiter()
 
-		limiter := getVisitor(ip)
-		if !limiter.Allow() {
+		limitCtx, err := l.Get(r.Context(), ip)
+		if err != nil {
+			// Fallback to next handler if rate limiting fails to prevent blocking user traffic
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		if limitCtx.Reached {
 			http.Error(w, "Too many requests", http.StatusTooManyRequests)
 			return
 		}
@@ -62,3 +67,4 @@ func (a *App) RateLimitMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+

@@ -49,12 +49,15 @@ func TestMigrate(t *testing.T) {
 		{
 			name: "Success",
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
+				// Mock check cves exists returning false
+				mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
+					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 				// Mock base schema execution
 				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
 
 				// Expectations for each migration query in migrate()
-				// There are 25 queries in the queries slice
-				for i := 0; i < 25; i++ {
+				// There are 27 queries in the queries slice
+				for i := 0; i < 27; i++ {
 					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
 				}
 			},
@@ -63,6 +66,8 @@ func TestMigrate(t *testing.T) {
 		{
 			name: "Base Schema Failure",
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
+					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnError(fmt.Errorf("schema fail"))
 			},
 			wantErr:  true,
@@ -71,12 +76,45 @@ func TestMigrate(t *testing.T) {
 		{
 			name: "Incremental Migration Failure",
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
+					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
 				// Fail on the first incremental migration
 				mock.ExpectExec("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin").WillReturnError(fmt.Errorf("query fail"))
 			},
 			wantErr:  true,
 			errMatch: "migration 0 failed",
+		},
+		{
+			name: "Partition Migration Success",
+			mockSetup: func(mock pgxmock.PgxPoolIface) {
+				// 1. check if table exists returns true
+				mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
+					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
+				// 2. check if partitioned returns false
+				mock.ExpectQuery("SELECT EXISTS").
+					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
+				// 3. Expect drop FK execs (5 queries)
+				for i := 0; i < 5; i++ {
+					mock.ExpectExec("ALTER TABLE").WillReturnResult(pgxmock.NewResult("ALTER", 0))
+				}
+				// 4. Expect rename cves
+				mock.ExpectExec("ALTER TABLE cves RENAME TO cves_old").WillReturnResult(pgxmock.NewResult("ALTER", 0))
+				// 5. Expect base schema sql exec
+				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
+				// 6. Expect copy data exec
+				mock.ExpectExec("INSERT INTO cves").WillReturnResult(pgxmock.NewResult("INSERT", 10))
+				// 7. Expect setval exec
+				mock.ExpectExec("SELECT setval").WillReturnResult(pgxmock.NewResult("SELECT", 0))
+				// 8. Expect drop cves_old
+				mock.ExpectExec("DROP TABLE cves_old").WillReturnResult(pgxmock.NewResult("DROP", 0))
+
+				// 9. expectations for each migration query (27 queries)
+				for i := 0; i < 27; i++ {
+					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
+				}
+			},
+			wantErr: false,
 		},
 	}
 
@@ -208,8 +246,10 @@ func TestInitDB_Complex(t *testing.T) {
 				mock.ExpectPing().WillReturnError(fmt.Errorf("not ready yet"))
 				mock.ExpectPing().WillReturnError(fmt.Errorf("not ready yet"))
 				mock.ExpectPing() // Succeeds on 3rd try
+				mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
+					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
-				for i := 0; i < 25; i++ {
+				for i := 0; i < 27; i++ {
 					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
 				}
 			},
@@ -221,8 +261,10 @@ func TestInitDB_Complex(t *testing.T) {
 			envs: map[string]string{"DB_HOST": "localhost", "DB_SSLMODE": "disable"},
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectPing()
+				mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
+					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
-				for i := 0; i < 25; i++ {
+				for i := 0; i < 27; i++ {
 					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
 				}
 			},
@@ -257,6 +299,8 @@ func TestInitDB_Complex(t *testing.T) {
 			envs: map[string]string{"DB_HOST": "localhost"},
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectPing()
+				mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
+					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnError(fmt.Errorf("migration fail"))
 			},
 			wantErr:     true,
@@ -393,6 +437,51 @@ func TestSetupHelpers(t *testing.T) {
 		_, err := SetupTestRedis()
 		if err == nil {
 			t.Error("expected error but got nil")
+		}
+	})
+}
+
+func TestInitDB_Replica(t *testing.T) {
+	t.Run("Replica Configuration set", func(t *testing.T) {
+		t.Setenv("DB_HOST", "localhost")
+		t.Setenv("DB_PORT", "5432")
+		t.Setenv("DB_USER", "user")
+		t.Setenv("DB_PASSWORD", "pass")
+		t.Setenv("DB_NAME", "db")
+		t.Setenv("DB_SSLMODE", "disable")
+
+		t.Setenv("DB_REPLICA_HOST", "localhost")
+		t.Setenv("DB_REPLICA_PORT", "5432")
+		t.Setenv("DB_REPLICA_USER", "user")
+		t.Setenv("DB_REPLICA_PASSWORD", "pass")
+		t.Setenv("DB_REPLICA_NAME", "db_replica")
+
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+
+		mock.ExpectPing()
+		mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
+			WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
+		mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
+		for i := 0; i < 27; i++ {
+			mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
+		}
+
+		oldCreator := poolCreator
+		poolCreator = func(ctx context.Context, config *pgxpool.Config) (DBPool, error) {
+			return mock, nil
+		}
+		defer func() { poolCreator = oldCreator }()
+
+		err = InitDB()
+		if err != nil {
+			t.Errorf("expected InitDB to succeed, got %v", err)
+		}
+		if ReplicaPool == nil {
+			t.Error("expected ReplicaPool to be initialized")
 		}
 	})
 }

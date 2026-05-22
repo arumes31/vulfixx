@@ -8,8 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"context"
+
 	"github.com/PuerkitoBio/goquery"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 	"github.com/pashagolub/pgxmock/v3"
 )
 
@@ -117,7 +119,9 @@ func TestUI_CVEDetailStructure(t *testing.T) {
 	expectBaseQueries(mock, 1)
 
 	req, _ := http.NewRequest("GET", "/cve/"+cveID, nil)
-	req = mux.SetURLVars(req, map[string]string{"id": cveID})
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", cveID)
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	setSessionUser(t, app, req, 1, false)
 
 	rr := httptest.NewRecorder()

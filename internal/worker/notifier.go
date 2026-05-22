@@ -2,8 +2,11 @@ package worker
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"cve-tracker/internal/auth"
 	"cve-tracker/internal/models"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -415,6 +418,19 @@ func (w *Worker) sendGenericWebhook(webhookURL string, cve *models.CVE, asset, e
 	req, _ := http.NewRequestWithContext(httpCtx, "POST", webhookURL, strings.NewReader(string(payload)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Host = parsedURL.Host
+
+	// Webhook Signing (Item 10)
+	secret := os.Getenv("WEBHOOK_SECRET")
+	if secret == "" {
+		secret = "vulfixx_webhook_secret_key"
+	}
+	timestamp := fmt.Sprintf("%d", time.Now().Unix())
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(timestamp + "." + string(payload)))
+	signature := hex.EncodeToString(mac.Sum(nil))
+
+	req.Header.Set("X-Vulfixx-Signature", signature)
+	req.Header.Set("X-Vulfixx-Timestamp", timestamp)
 
 	resp, err := client.Do(req)
 	if err != nil { return false, err.Error() }

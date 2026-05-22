@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/hibiken/asynq"
 )
 
 type Worker struct {
@@ -21,6 +23,7 @@ type Worker struct {
 	alertMu            sync.Mutex
 	alertResendBackoff time.Duration
 	enrichmentQueue    chan int
+	AsynqClient        *asynq.Client
 }
 
 func NewWorker(pool db.DBPool, redis db.RedisProvider, mailer EmailSender, http HTTPClient) *Worker {
@@ -64,10 +67,16 @@ func (w *Worker) Start(ctx context.Context) {
 	runTask(w.startHealthCheckPeriodically)
 
 	// Notification & Alert Processing
-	runTask(w.processAlerts)
-	runTask(w.processEmailVerification)
-	runTask(w.processEmailChange)
-	runTask(w.startEmailRetryPoller)
+	if w.AsynqClient != nil {
+		runTask(w.StartAsynqServer)
+	} else {
+		// Fallback to legacy Redis queues for backwards compatibility / local tests
+		runTask(w.processAlerts)
+		runTask(w.processEmailVerification)
+		runTask(w.processEmailChange)
+		runTask(w.startEmailRetryPoller)
+	}
+
 	runTask(w.startWeeklySummaryTask)
 	runTask(w.startIntelligenceEnrichmentTask)
 
@@ -91,6 +100,15 @@ func (w *Worker) enqueueAlertsForCVE(ctx context.Context, cve models.CVE) error 
 	alertJob, err := json.Marshal(cve)
 	if err != nil {
 		return fmt.Errorf("failed to marshal alert for %s: %w", cve.CVEID, err)
+	}
+
+	if w.AsynqClient != nil {
+		task := asynq.NewTask("task:cve_alert", alertJob)
+		_, err := w.AsynqClient.EnqueueContext(ctx, task)
+		if err != nil {
+			return fmt.Errorf("failed to enqueue asynq alert for %s: %w", cve.CVEID, err)
+		}
+		return nil
 	}
 
 	var lastErr error

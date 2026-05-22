@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -39,6 +40,11 @@ func (w *Worker) processEmailVerification(ctx context.Context) {
 		log.Printf("Worker: Picked up verification email for %s", maskEmail(email))
 		if email == "" || token == "" {
 			log.Printf("Worker: Invalid email verification payload: email=%q, token=%q", maskEmail(email), redactToken(token))
+			continue
+		}
+
+		if isEmailDomainBlacklisted(email) {
+			log.Printf("Worker: Blocked verification email to blacklisted domain %s", maskEmail(email))
 			continue
 		}
 
@@ -93,6 +99,11 @@ func (w *Worker) processEmailChange(ctx context.Context) {
 		log.Printf("Worker: Picked up email change notification (%s) for %s", emailType, maskEmail(email))
 		if email == "" || token == "" {
 			log.Printf("Worker: Invalid email change payload: email=%q, token=%q", maskEmail(email), redactToken(token))
+			continue
+		}
+
+		if isEmailDomainBlacklisted(email) {
+			log.Printf("Worker: Blocked email change notification to blacklisted domain %s", maskEmail(email))
 			continue
 		}
 
@@ -250,4 +261,32 @@ func (w *Worker) pollDelayedQueue(ctx context.Context, delayedQueue, activeQueue
 			log.Printf("Worker: Error atomically moving item from %s to %s: %v", delayedQueue, activeQueue, err)
 		}
 	}
+}
+
+func isEmailDomainBlacklisted(email string) bool {
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return true // Block invalid/empty email formats
+	}
+	domain := strings.ToLower(strings.TrimSpace(parts[1]))
+
+	blacklistStr := os.Getenv("EMAIL_DOMAIN_BLACKLIST")
+	var blacklist []string
+	if blacklistStr != "" {
+		blacklist = strings.Split(blacklistStr, ",")
+	} else {
+		// Common disposable email domains
+		blacklist = []string{
+			"mailinator.com", "trashmail.com", "guerrillamail.com", "10minutemail.com",
+			"tempmail.com", "dispostable.com", "sharklasers.com", "getairmail.com",
+		}
+	}
+
+	for _, blocked := range blacklist {
+		blocked = strings.ToLower(strings.TrimSpace(blocked))
+		if domain == blocked || strings.HasSuffix(domain, "."+blocked) {
+			return true
+		}
+	}
+	return false
 }

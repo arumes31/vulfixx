@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "cve-tracker/internal/worker/proto";
+
+service CVEService {
+  rpc GetCVE (CVERequest) returns (CVEResponse);
+}
+
+message CVERequest {
+  string cve_id = 1;
+}
+
+message CVEResponse {
+  int32 id = 1;
+  string cve_id = 2;
+  string description = 3;
+  double cvss_score = 4;
+  string published_date = 5;
+}

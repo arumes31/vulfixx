@@ -104,6 +104,11 @@ Vulfixx is hardened with enterprise-grade system improvements designed for high-
 - **Standardized Structured Logging (`log/slog`)**: Global transition to standard library structured logging (`log/slog`) with context support. Configured to output clean, high-performance JSON logs in production for ingestion by log collectors, and a human-readable structured output in development environments.
 - **Database Connection Pool Optimization (`pgxpool`)**: Configured customized connection pool limits explicitly (`MaxConns = 25`, `MinConns = 5`, `MaxConnLifetime = 30m`, `MaxConnIdleTime = 15m`) to guarantee ready warmed connections and prevent database connection starvation.
 - **Worker Graceful Shutdown & Atomic Sync Transactions**: Enhanced background synchronization processes (NVD, CISA KEV, RSS Advisory feeds) to run in atomic Postgres database transactions (`pgx.Tx`), ensuring incomplete sync operations are safely rolled back on failure or worker shutdown. All sync loops validate active context cancellation (`ctx.Done()`) at iteration boundaries for clean graceful exits.
+- **Decoupled Task Queue Architecture (Asynq)**: Shifts heavy background tasks (alert evaluations, verification emails, and email changes) off the HTTP flow using `github.com/hibiken/asynq` with automated exponential backoff retries.
+- **High-Performance Routing Layer (Chi)**: Replaced Gorilla Mux with modern standard-compliant `github.com/go-chi/chi/v5` featuring sub-routing, timeout propagation, and custom rate-limiting middleware.
+- **Secure gRPC Query Interface**: Exposes a secondary high-speed gRPC server on port `:9091` to support sub-millisecond external CVE intelligence queries.
+- **Real-time Activity Stream (SSE)**: Streams live audit log activities directly to the dashboard utilizing Server-Sent Events (SSE) backed by Redis Pub/Sub.
+- **Optimistic Locking & Concurrency Control**: Uses version columns on target entities to prevent conflicting updates during manual analyst modifications.
 
 ## Getting Started
 

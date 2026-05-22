@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"cve-tracker/internal/config"
+	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
 
 	"encoding/json"
@@ -123,6 +124,31 @@ func (a *App) AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		// Perform separate self-healing query for MFA & Onboarding parameters
+		var isTOTPEnabled bool
+		var onboardingCompleted bool
+		errExtra := a.Pool.QueryRow(r.Context(), "SELECT is_totp_enabled, onboarding_completed FROM users WHERE id = $1", userID).Scan(&isTOTPEnabled, &onboardingCompleted)
+		if errExtra == nil {
+			if isTOTPEnabled {
+				session, err := a.SessionStore.Get(r, "vulfixx-session")
+				if err == nil {
+					totpVerified, _ := session.Values["totp_verified"].(bool)
+					if !totpVerified {
+						http.Redirect(w, r, "/login", http.StatusFound)
+						return
+					}
+				}
+			}
+
+			if !onboardingCompleted && !isTOTPEnabled {
+				path := r.URL.Path
+				if !strings.HasPrefix(path, "/settings") && !strings.HasPrefix(path, "/api/onboarding") && !strings.HasPrefix(path, "/static/") {
+					http.Redirect(w, r, "/settings?info=MFA+registration+is+required+to+complete+onboarding", http.StatusFound)
+					return
+				}
+			}
+		}
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -197,6 +223,18 @@ func (a *App) LogActivity(ctx context.Context, userID int, activityType, descrip
 	if err != nil {
 		// #nosec G706 -- sanitized via sanitizeForLog
 		log.Printf("Error logging activity: %v", sanitizeForLog(err.Error()))
+	} else {
+		// Publish activity log event to Redis Pub/Sub for SSE streaming
+		eventData := map[string]interface{}{
+			"user_id":       userID,
+			"activity_type": activityType,
+			"description":   description,
+			"ip_address":    ipAddress,
+			"created_at":    time.Now().Format(time.RFC3339),
+		}
+		if eventJSON, err := json.Marshal(eventData); err == nil {
+			_ = a.Redis.Publish(ctx, "vulfixx:activity_channel", eventJSON).Err()
+		}
 	}
 }
 
@@ -333,6 +371,17 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 	_, _ = w.Write(buf.Bytes())
 }
 
+type GlobalCVEStatsJSON struct {
+	Total          int            `json:"total"`
+	NewLast24h     int            `json:"new_last_24h"`
+	KevCount       int            `json:"kev_count"`
+	CritCount      int            `json:"crit_count"`
+	SeverityCounts SeverityCounts `json:"severity_counts"`
+	TopCWEs        []CWEStat      `json:"top_cwes"`
+	EpssDist       []int          `json:"epss_dist"`
+	LastUpdated    time.Time      `json:"last_updated"`
+}
+
 func (a *App) StartStatsTicker(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
@@ -341,6 +390,35 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 		refreshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 
+		// Attempt to get from Redis first (Cache-Aside pattern)
+		var statsJSON GlobalCVEStatsJSON
+		cacheFound := false
+
+		if db.RedisClient != nil {
+			val, err := db.RedisClient.Get(refreshCtx, "vulfixx:dashboard_stats").Result()
+			if err == nil && val != "" {
+				if err := json.Unmarshal([]byte(val), &statsJSON); err == nil {
+					cacheFound = true
+				}
+			}
+		}
+
+		if cacheFound {
+			statsCache.Lock()
+			statsCache.total = statsJSON.Total
+			statsCache.newLast24h = statsJSON.NewLast24h
+			statsCache.kevCount = statsJSON.KevCount
+			statsCache.critCount = statsJSON.CritCount
+			statsCache.severityCounts = statsJSON.SeverityCounts
+			statsCache.topCWEs = statsJSON.TopCWEs
+			statsCache.epssDist = statsJSON.EpssDist
+			statsCache.lastUpdated = statsJSON.LastUpdated
+			statsCache.Unlock()
+			log.Printf("Global stats cache loaded from Redis: Total=%d, New=%d, KEV=%d, Crit=%d", statsJSON.Total, statsJSON.NewLast24h, statsJSON.KevCount, statsJSON.CritCount)
+			return
+		}
+
+		// Cache miss - query DB
 		var total, new24h, kevCount, critCount int
 		_ = a.Pool.QueryRow(refreshCtx, "SELECT COUNT(*) FROM cves").Scan(&total)
 		_ = a.Pool.QueryRow(refreshCtx, "SELECT COUNT(*) FROM cves WHERE updated_date >= NOW() - INTERVAL '24 hours'").Scan(&new24h)
@@ -387,6 +465,7 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 			FROM cves
 		`).Scan(&epssDist[0], &epssDist[1], &epssDist[2], &epssDist[3])
 
+		now := time.Now()
 		statsCache.Lock()
 		statsCache.total = total
 		statsCache.newLast24h = new24h
@@ -395,8 +474,27 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 		statsCache.severityCounts = sevCounts
 		statsCache.topCWEs = topCWEs
 		statsCache.epssDist = epssDist
-		statsCache.lastUpdated = time.Now()
+		statsCache.lastUpdated = now
 		statsCache.Unlock()
+
+		// Save to Redis (Expiration = 5 minutes)
+		if db.RedisClient != nil {
+			statsJSON = GlobalCVEStatsJSON{
+				Total:          total,
+				NewLast24h:     new24h,
+				KevCount:       kevCount,
+				CritCount:      critCount,
+				SeverityCounts: sevCounts,
+				TopCWEs:        topCWEs,
+				EpssDist:       epssDist,
+				LastUpdated:    now,
+			}
+			data, err := json.Marshal(statsJSON)
+			if err == nil {
+				_ = db.RedisClient.Set(refreshCtx, "vulfixx:dashboard_stats", string(data), 5*time.Minute).Err()
+			}
+		}
+
 		log.Printf("Global stats cache refreshed: Total=%d, New=%d, KEV=%d, Crit=%d", total, new24h, kevCount, critCount)
 	}
 
@@ -427,6 +525,8 @@ func (a *App) SendResponse(w http.ResponseWriter, r *http.Request, success bool,
 			statusCode = http.StatusInternalServerError
 		} else if strings.Contains(lowerMsg, "method not allowed") {
 			statusCode = http.StatusMethodNotAllowed
+		} else if strings.Contains(lowerMsg, "conflict") {
+			statusCode = http.StatusConflict
 		}
 	}
 

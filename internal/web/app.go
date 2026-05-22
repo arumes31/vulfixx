@@ -6,6 +6,8 @@ import (
 	"sync"
 
 	"github.com/gorilla/sessions"
+	"github.com/hibiken/asynq"
+	"github.com/ulule/limiter/v3"
 	"time"
 )
 
@@ -15,13 +17,16 @@ type EmailSender interface {
 }
 
 type App struct {
-	Pool         db.DBPool
-	Redis        db.RedisProvider
-	SessionStore sessions.Store
-	Mailer       EmailSender
-	TemplateMap  map[string]*template.Template
-	TemplateMu   sync.RWMutex
-	Now          func() time.Time
+	Pool          db.DBPool
+	Redis         db.RedisProvider
+	SessionStore  sessions.Store
+	Mailer        EmailSender
+	TemplateMap   map[string]*template.Template
+	TemplateMu    sync.RWMutex
+	Now           func() time.Time
+	rateLimiter   *limiter.Limiter
+	rateLimiterMu sync.Mutex
+	AsynqClient   *asynq.Client
 }
 
 func NewApp(pool db.DBPool, redis db.RedisProvider, sessionStore sessions.Store, mailer EmailSender) *App {

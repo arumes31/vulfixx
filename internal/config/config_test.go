@@ -1,6 +1,7 @@
 package config
 
 import (
+	"cve-tracker/internal/security"
 	"fmt"
 	"os"
 	"strings"
@@ -263,3 +264,31 @@ func TestGetEnv(t *testing.T) {
 		}
 	})
 }
+
+func TestLoadConfigDecryption(t *testing.T) {
+	// Import or use encryption module directly
+	// Let's encrypt a mock Sentry DSN
+	importSecurityEncrypt := func(plainText string) string {
+		// We'll import security below by modifying the import block, but since we are in the same package we can also call security.Encrypt
+		return ""
+	}
+	_ = importSecurityEncrypt
+
+	// Using the actual package "cve-tracker/internal/security"
+	plainDSN := "https://user@sentry.example.com/123"
+	cipherDSN, err := security.Encrypt(plainDSN)
+	if err != nil {
+		t.Fatalf("failed to encrypt sentry dsn: %v", err)
+	}
+
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("SENTRY_DSN", "cve-gcm:"+cipherDSN)
+
+	// Run LoadConfig
+	LoadConfig()
+
+	if AppConfig.SentryDSN != plainDSN {
+		t.Errorf("expected decrypted SentryDSN %q, got %q", plainDSN, AppConfig.SentryDSN)
+	}
+}
+

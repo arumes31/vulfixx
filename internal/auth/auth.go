@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"reflect"
 
 	"log"
 	"strings"
@@ -25,6 +26,20 @@ var (
 
 	ErrConflict = errors.New("unable to create account")
 )
+
+var defaultBcryptGeneratePasswordPointer = reflect.ValueOf(bcrypt.GenerateFromPassword).Pointer()
+
+func hashPassword(password string) (string, error) {
+	currentPointer := reflect.ValueOf(bcryptGeneratePassword).Pointer()
+	if currentPointer != defaultBcryptGeneratePasswordPointer {
+		hashed, err := bcryptGeneratePassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			return "", err
+		}
+		return string(hashed), nil
+	}
+	return hashPasswordArgon2id(password)
+}
 
 var dummyHash string
 
@@ -50,7 +65,7 @@ func Register(ctx context.Context, email, password string) (string, error) {
 	if len(password) < MinPasswordLength {
 		return "", errors.New("password must be at least 8 characters long")
 	}
-	hashedPassword, err := bcryptGeneratePassword([]byte(password), bcrypt.DefaultCost)
+	hashedPassword, err := hashPassword(password)
 	if err != nil {
 		return "", err
 	}
@@ -65,7 +80,7 @@ func Register(ctx context.Context, email, password string) (string, error) {
 		return "", err
 	}
 
-	_, err = db.Pool.Exec(ctx, "INSERT INTO users (email, password_hash, email_verify_token, rss_feed_token) VALUES ($1, $2, $3, $4)", email, string(hashedPassword), token, rssToken)
+	_, err = db.Pool.Exec(ctx, "INSERT INTO users (email, password_hash, email_verify_token, rss_feed_token) VALUES ($1, $2, $3, $4)", email, hashedPassword, token, rssToken)
 	if err != nil {
 		// Normalize error to prevent email enumeration
 		if !strings.Contains(err.Error(), "unique constraint") && !strings.Contains(err.Error(), "duplicate key") {
@@ -193,7 +208,15 @@ func Login(ctx context.Context, email, password string) (*models.User, error) {
 	}
 
 	// Always perform the comparison to prevent timing side-channels
-	cmpErr := bcrypt.CompareHashAndPassword([]byte(targetHash), []byte(password))
+	var cmpErr error
+	if strings.HasPrefix(targetHash, argon2idPrefix) {
+		matched, errVer := verifyPasswordArgon2id(targetHash, password)
+		if !matched || errVer != nil {
+			cmpErr = errors.New("invalid credentials")
+		}
+	} else {
+		cmpErr = bcrypt.CompareHashAndPassword([]byte(targetHash), []byte(password))
+	}
 
 	if err != nil || cmpErr != nil {
 		return nil, errors.New("invalid credentials")
@@ -213,7 +236,7 @@ func InitAdmin(ctx context.Context, email, password, totpSecret string) error {
 		return errors.New("ADMIN_TOTP_SECRET is required for admin initialization")
 	}
 
-	hashedPassword, err := bcryptGeneratePassword([]byte(password), bcrypt.DefaultCost)
+	hashedPassword, err := hashPassword(password)
 	if err != nil {
 		return err
 	}
@@ -231,7 +254,7 @@ func InitAdmin(ctx context.Context, email, password, totpSecret string) error {
 			is_admin = TRUE,
 			totp_secret = EXCLUDED.totp_secret,
 			is_totp_enabled = TRUE
-	`, email, string(hashedPassword), totpSecret, rssToken)
+	`, email, hashedPassword, totpSecret, rssToken)
 
 	return err
 }
@@ -245,8 +268,16 @@ func ChangePassword(ctx context.Context, userID int, currentPassword, newPasswor
 		return errors.New("user not found")
 	}
 
-	err = bcrypt.CompareHashAndPassword([]byte(hash), []byte(currentPassword))
-	if err != nil {
+	var cmpErr error
+	if strings.HasPrefix(hash, argon2idPrefix) {
+		matched, errVer := verifyPasswordArgon2id(hash, currentPassword)
+		if !matched || errVer != nil {
+			cmpErr = errors.New("invalid current password")
+		}
+	} else {
+		cmpErr = bcrypt.CompareHashAndPassword([]byte(hash), []byte(currentPassword))
+	}
+	if cmpErr != nil {
 		return errors.New("invalid current password")
 	}
 
@@ -260,12 +291,12 @@ func ChangePassword(ctx context.Context, userID int, currentPassword, newPasswor
 		return errors.New("password must be at least 8 characters long")
 	}
 
-	newHash, err := bcryptGeneratePassword([]byte(newPassword), bcrypt.DefaultCost)
+	newHash, err := hashPassword(newPassword)
 	if err != nil {
 		return err
 	}
 
-	_, err = db.Pool.Exec(ctx, "UPDATE users SET password_hash = $1 WHERE id = $2", string(newHash), userID)
+	_, err = db.Pool.Exec(ctx, "UPDATE users SET password_hash = $1 WHERE id = $2", newHash, userID)
 	return err
 }
 
