@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -45,6 +46,7 @@ func (a *App) ReadyzHandler(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if r := recover(); r != nil {
 				// Fallback or ignore panic from mock pool stats
+				slog.Warn("DB Pool Stats panic recovered", "error", r)
 			}
 		}()
 		if st, ok := a.Pool.(stattable); ok {
