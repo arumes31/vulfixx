@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/pashagolub/pgxmock/v3"
-	"golang.org/x/crypto/bcrypt"
 )
 
 func TestAuthMock(t *testing.T) {
@@ -40,7 +39,7 @@ func TestAuthMock(t *testing.T) {
 	}
 
 	// Test Login
-	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
+	hashedPassword, _ := HashPassword("password")
 	rows := pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
 		AddRow(1, "test@example.com", string(hashedPassword), true, false, "", false)
 	mock.ExpectQuery("SELECT id, email, password_hash").
@@ -182,7 +181,7 @@ func TestAuthErrors(t *testing.T) {
 	t.Run("LoginWrongPassword", func(t *testing.T) {
 		mock, _ := db.SetupTestDB()
 		defer mock.Close()
-		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
+		hashedPassword, _ := HashPassword("password")
 		mock.ExpectQuery("SELECT id, email").WithArgs("test@example.com").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
 				AddRow(1, "test@example.com", string(hashedPassword), true, false, "", false))
@@ -212,7 +211,7 @@ func TestAuthErrors(t *testing.T) {
 	t.Run("ChangePasswordWrongCurrent", func(t *testing.T) {
 		mock, _ := db.SetupTestDB()
 		defer mock.Close()
-		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
+		hashedPassword, _ := HashPassword("password")
 		mock.ExpectQuery("SELECT password_hash").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(string(hashedPassword), false, ""))
 		err := ChangePassword(ctx, 1, "wrong", "new", "")
@@ -224,7 +223,7 @@ func TestAuthErrors(t *testing.T) {
 	t.Run("ChangePasswordInvalidTOTP", func(t *testing.T) {
 		mock, _ := db.SetupTestDB()
 		defer mock.Close()
-		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
+		hashedPassword, _ := HashPassword("password")
 		mock.ExpectQuery("SELECT password_hash").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(string(hashedPassword), true, "JBSWY3DPEHPK3PXP"))
 		err := ChangePassword(ctx, 1, "password", "new", "000000")
@@ -236,7 +235,7 @@ func TestAuthErrors(t *testing.T) {
 	t.Run("ChangePasswordShortNewPassword", func(t *testing.T) {
 		mock, _ := db.SetupTestDB()
 		defer mock.Close()
-		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
+		hashedPassword, _ := HashPassword("password")
 		mock.ExpectQuery("SELECT password_hash").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(string(hashedPassword), false, ""))
 		err := ChangePassword(ctx, 1, "password", "short", "")
@@ -475,7 +474,7 @@ func TestExtraCoverage(t *testing.T) {
 		}
 		defer mock.Close()
 		// Mock initial query
-		realHash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
+		realHash, _ := HashPassword("password")
 		mock.ExpectQuery("SELECT password_hash").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(string(realHash), false, ""))
 		// Mock final exec fail

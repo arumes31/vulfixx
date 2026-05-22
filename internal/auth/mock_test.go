@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/pashagolub/pgxmock/v3"
-	"golang.org/x/crypto/bcrypt"
 )
 
 func TestMockedErrors(t *testing.T) {
@@ -24,14 +23,14 @@ func TestMockedErrors(t *testing.T) {
 		}
 	})
 
-	t.Run("RegisterBcryptFail", func(t *testing.T) {
-		orig := bcryptGeneratePassword
-		bcryptGeneratePassword = func(password []byte, cost int) ([]byte, error) { return nil, errors.New("bcrypt fail") }
-		defer func() { bcryptGeneratePassword = orig }()
+	t.Run("RegisterArgon2idFail", func(t *testing.T) {
+		orig := argon2idGeneratePassword
+		argon2idGeneratePassword = func(password string) (string, error) { return "", errors.New("argon2id fail") }
+		defer func() { argon2idGeneratePassword = orig }()
 
 		_, err := Register(ctx, "test@test.com", "password")
-		if err == nil || err.Error() != "bcrypt fail" {
-			t.Errorf("expected bcrypt fail, got %v", err)
+		if err == nil || err.Error() != "argon2id fail" {
+			t.Errorf("expected argon2id fail, got %v", err)
 		}
 	})
 
@@ -67,14 +66,14 @@ func TestMockedErrors(t *testing.T) {
 		}
 	})
 
-	t.Run("InitAdminBcryptFail", func(t *testing.T) {
-		orig := bcryptGeneratePassword
-		bcryptGeneratePassword = func(password []byte, cost int) ([]byte, error) { return nil, errors.New("bcrypt fail") }
-		defer func() { bcryptGeneratePassword = orig }()
+	t.Run("InitAdminArgon2idFail", func(t *testing.T) {
+		orig := argon2idGeneratePassword
+		argon2idGeneratePassword = func(password string) (string, error) { return "", errors.New("argon2id fail") }
+		defer func() { argon2idGeneratePassword = orig }()
 
 		err := InitAdmin(ctx, "admin@test.com", "password", "secret")
-		if err == nil || err.Error() != "bcrypt fail" {
-			t.Errorf("expected bcrypt fail, got %v", err)
+		if err == nil || err.Error() != "argon2id fail" {
+			t.Errorf("expected argon2id fail, got %v", err)
 		}
 	})
 
@@ -89,26 +88,25 @@ func TestMockedErrors(t *testing.T) {
 		}
 	})
 
-	t.Run("ChangePasswordBcryptFail", func(t *testing.T) {
+	t.Run("ChangePasswordArgon2idFail", func(t *testing.T) {
 		mock, err := db.SetupTestDB()
 		if err != nil {
 			t.Fatalf("SetupTestDB failed: %v", err)
 		}
 		defer mock.Close()
 
-		orig := bcryptGeneratePassword
-		bcryptGeneratePassword = func(password []byte, cost int) ([]byte, error) { return nil, errors.New("bcrypt fail") }
-		defer func() { bcryptGeneratePassword = orig }()
+		orig := argon2idGeneratePassword
+		argon2idGeneratePassword = func(password string) (string, error) { return "", errors.New("argon2id fail") }
+		defer func() { argon2idGeneratePassword = orig }()
 
 		// Setup DB mock to pass initial checks
-		// Hash for "password" is $2a$10$8K1p/a0dxv.pS9Zf/nE7u.8K1p/a0dxv.pS9Zf/nE7u.8K1p/a0dxv.pS9Zf/nE7u. (fake but let's use a real one)
-		realHash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
+		realHash, _ := hashPasswordArgon2id("password")
 		mock.ExpectQuery("SELECT password_hash").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(string(realHash), false, ""))
 
 		err = ChangePassword(ctx, 1, "password", "newpassword", "")
-		if err == nil || err.Error() != "bcrypt fail" {
-			t.Errorf("expected bcrypt fail, got %v", err)
+		if err == nil || err.Error() != "argon2id fail" {
+			t.Errorf("expected argon2id fail, got %v", err)
 		}
 	})
 

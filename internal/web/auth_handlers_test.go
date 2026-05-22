@@ -1,6 +1,7 @@
 package web
 
 import (
+	"cve-tracker/internal/auth"
 	"cve-tracker/internal/db"
 	"database/sql"
 	"net/http"
@@ -14,7 +15,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v3"
 	"github.com/pquerna/otp/totp"
-	"golang.org/x/crypto/bcrypt"
 )
 
 func TestConfirmEmailChangeHandler(t *testing.T) {
@@ -132,7 +132,7 @@ func TestLoginHandler(t *testing.T) {
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
-		hash, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
+		hash, _ := auth.HashPassword("password")
 		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE").WithArgs("test@example.com").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
 				AddRow(1, "test@example.com", string(hash), true, false, "", false))
@@ -229,7 +229,7 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 
 		app := setupTestApp(t, mock)
 
-		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
+		hashedPassword, _ := auth.HashPassword("password")
 
 		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE email = \\$1").
 			WithArgs("user@example.com").

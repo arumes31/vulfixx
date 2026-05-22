@@ -109,6 +109,7 @@ Vulfixx is hardened with enterprise-grade system improvements designed for high-
 - **Secure gRPC Query Interface**: Exposes a secondary high-speed gRPC server on port `:9091` to support sub-millisecond external CVE intelligence queries.
 - **Real-time Activity Stream (SSE)**: Streams live audit log activities directly to the dashboard utilizing Server-Sent Events (SSE) backed by Redis Pub/Sub.
 - **Optimistic Locking & Concurrency Control**: Uses version columns on target entities to prevent conflicting updates during manual analyst modifications.
+- **Exclusively Argon2id Password Hashing**: Fully eliminated legacy Bcrypt support in favor of the more modern, computationally intensive Argon2id algorithm, hardened with pre-computed timing-safe dummy verification to completely neutralize side-channel user enumeration attempts.
 
 ## Getting Started
 

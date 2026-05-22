@@ -14,8 +14,9 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/pashagolub/pgxmock/v3"
 	"github.com/pquerna/otp/totp"
+	"cve-tracker/internal/auth"
+
 	"github.com/redis/go-redis/v9"
-	"golang.org/x/crypto/bcrypt"
 )
 
 func TestTOTPHandlers(t *testing.T) {
@@ -183,7 +184,7 @@ func TestChangePasswordHandler(t *testing.T) {
 
 		app := setupTestApp(t, mock)
 
-		hash, _ := bcrypt.GenerateFromPassword([]byte("current"), bcrypt.DefaultCost)
+		hash, _ := auth.HashPassword("current")
 		// 1. Selection query in handler
 		mock.ExpectQuery("SELECT email, is_totp_enabled FROM users WHERE id = \\$1").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"email", "is_totp_enabled"}).AddRow("test@test.com", false))
@@ -301,7 +302,7 @@ func TestSettingsHandlers_Detailed(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		setSessionUser(t, app, req, userID, false)
 
-		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
+		hashedPassword, _ := auth.HashPassword("password")
 
 		// 1. Initial selection
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT email, is_totp_enabled FROM users WHERE id = $1")).
@@ -358,7 +359,7 @@ func TestSettingsHandlers_Detailed(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		setSessionUser(t, app, req, userID, false)
 
-		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
+		hashedPassword, _ := auth.HashPassword("password")
 
 		mock.ExpectQuery("SELECT email FROM users WHERE id = \\$1").
 			WithArgs(userID).

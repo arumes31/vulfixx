@@ -8,37 +8,25 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"reflect"
 
 	"log"
 	"strings"
 	"time"
 
 	"github.com/pquerna/otp/totp"
-	"golang.org/x/crypto/bcrypt"
 )
 
 const MinPasswordLength = 8
 
 var (
-	randRead               = rand.Read
-	bcryptGeneratePassword = bcrypt.GenerateFromPassword
+	randRead                 = rand.Read
+	argon2idGeneratePassword = hashPasswordArgon2id
 
 	ErrConflict = errors.New("unable to create account")
 )
 
-var defaultBcryptGeneratePasswordPointer = reflect.ValueOf(bcrypt.GenerateFromPassword).Pointer()
-
-func hashPassword(password string) (string, error) {
-	currentPointer := reflect.ValueOf(bcryptGeneratePassword).Pointer()
-	if currentPointer != defaultBcryptGeneratePasswordPointer {
-		hashed, err := bcryptGeneratePassword([]byte(password), bcrypt.DefaultCost)
-		if err != nil {
-			return "", err
-		}
-		return string(hashed), nil
-	}
-	return hashPasswordArgon2id(password)
+func HashPassword(password string) (string, error) {
+	return argon2idGeneratePassword(password)
 }
 
 var dummyHash string
@@ -46,7 +34,7 @@ var dummyHash string
 func init() {
 	// Generate a dummy hash for constant-time comparisons when user is not found.
 	// This prevents email enumeration via timing attacks.
-	hash, err := bcrypt.GenerateFromPassword([]byte("dummy-password-for-timing-consistency"), bcrypt.DefaultCost)
+	hash, err := hashPasswordArgon2id("dummy-password-for-timing-consistency")
 	if err != nil {
 		panic(fmt.Sprintf("failed to generate dummy hash: %v", err))
 	}
@@ -65,7 +53,7 @@ func Register(ctx context.Context, email, password string) (string, error) {
 	if len(password) < MinPasswordLength {
 		return "", errors.New("password must be at least 8 characters long")
 	}
-	hashedPassword, err := hashPassword(password)
+	hashedPassword, err := HashPassword(password)
 	if err != nil {
 		return "", err
 	}
@@ -208,14 +196,10 @@ func Login(ctx context.Context, email, password string) (*models.User, error) {
 	}
 
 	// Always perform the comparison to prevent timing side-channels
+	matched, errVer := verifyPasswordArgon2id(targetHash, password)
 	var cmpErr error
-	if strings.HasPrefix(targetHash, argon2idPrefix) {
-		matched, errVer := verifyPasswordArgon2id(targetHash, password)
-		if !matched || errVer != nil {
-			cmpErr = errors.New("invalid credentials")
-		}
-	} else {
-		cmpErr = bcrypt.CompareHashAndPassword([]byte(targetHash), []byte(password))
+	if !matched || errVer != nil {
+		cmpErr = errors.New("invalid credentials")
 	}
 
 	if err != nil || cmpErr != nil {
@@ -236,7 +220,7 @@ func InitAdmin(ctx context.Context, email, password, totpSecret string) error {
 		return errors.New("ADMIN_TOTP_SECRET is required for admin initialization")
 	}
 
-	hashedPassword, err := hashPassword(password)
+	hashedPassword, err := HashPassword(password)
 	if err != nil {
 		return err
 	}
@@ -268,16 +252,8 @@ func ChangePassword(ctx context.Context, userID int, currentPassword, newPasswor
 		return errors.New("user not found")
 	}
 
-	var cmpErr error
-	if strings.HasPrefix(hash, argon2idPrefix) {
-		matched, errVer := verifyPasswordArgon2id(hash, currentPassword)
-		if !matched || errVer != nil {
-			cmpErr = errors.New("invalid current password")
-		}
-	} else {
-		cmpErr = bcrypt.CompareHashAndPassword([]byte(hash), []byte(currentPassword))
-	}
-	if cmpErr != nil {
+	matched, errVer := verifyPasswordArgon2id(hash, currentPassword)
+	if !matched || errVer != nil {
 		return errors.New("invalid current password")
 	}
 
@@ -291,7 +267,7 @@ func ChangePassword(ctx context.Context, userID int, currentPassword, newPasswor
 		return errors.New("password must be at least 8 characters long")
 	}
 
-	newHash, err := hashPassword(newPassword)
+	newHash, err := HashPassword(newPassword)
 	if err != nil {
 		return err
 	}

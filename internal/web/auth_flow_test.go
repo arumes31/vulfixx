@@ -8,8 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"cve-tracker/internal/auth"
+
 	"github.com/pashagolub/pgxmock/v3"
-	"golang.org/x/crypto/bcrypt"
 )
 
 func TestAuthFlow_FullLifecycle(t *testing.T) {
@@ -169,7 +170,7 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 		form.Add("email", email)
 		form.Add("password", password)
 
-		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		hash, err := auth.HashPassword(password)
 		if err != nil {
 			t.Fatalf("failed to hash password: %v", err)
 		}

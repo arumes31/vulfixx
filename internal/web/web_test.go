@@ -11,8 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"cve-tracker/internal/auth"
+
 	"github.com/pashagolub/pgxmock/v3"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // - [x] Align `web_test.go` with current session and template logic
@@ -70,7 +71,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	_ = resReg.Body.Close()
 
 	// User Login
-	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
+	hashedPassword, _ := auth.HashPassword("password123")
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE(totp_secret, ''), is_admin FROM users WHERE email = $1")).
 		WithArgs("web_test2@example.com").
 		WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
