@@ -2,6 +2,8 @@ package web
 
 import (
 	"testing"
+
+	"github.com/gorilla/sessions"
 )
 
 func TestInitSession(t *testing.T) {
@@ -18,11 +20,16 @@ func TestInitSession(t *testing.T) {
 		t.Fatal("expected GetSessionStore() to return the same store")
 	}
 
-	if store.Options.Secure != secure {
-		t.Errorf("expected Secure option to be %v, got %v", secure, store.Options.Secure)
+	cookieStore, ok := store.(*sessions.CookieStore)
+	if !ok {
+		t.Fatal("expected session store to be *sessions.CookieStore")
 	}
 
-	if store.Options.HttpOnly != true {
-		t.Errorf("expected HttpOnly option to be true, got %v", store.Options.HttpOnly)
+	if cookieStore.Options.Secure != secure {
+		t.Errorf("expected Secure option to be %v, got %v", secure, cookieStore.Options.Secure)
+	}
+
+	if cookieStore.Options.HttpOnly != true {
+		t.Errorf("expected HttpOnly option to be true, got %v", cookieStore.Options.HttpOnly)
 	}
 }

@@ -6,7 +6,7 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -36,7 +36,7 @@ func NewWorker(pool db.DBPool, redis db.RedisProvider, mailer EmailSender, http 
 }
 
 func (w *Worker) Start(ctx context.Context) {
-	log.Println("Worker: Starting background tasks...")
+	slog.Info("Worker: Starting background tasks...")
 	
 	// Test LLM connectivity on startup if provider is configured
 	w.TestLLMConnectivity(ctx)
@@ -71,21 +71,22 @@ func (w *Worker) Start(ctx context.Context) {
 	runTask(w.startWeeklySummaryTask)
 	runTask(w.startIntelligenceEnrichmentTask)
 
-	log.Println("Worker: All background goroutines started.")
+	slog.Info("Worker: All background goroutines started.")
 	<-ctx.Done()
-	log.Println("Worker: Stopping background tasks, waiting for goroutines to finish...")
+	slog.Info("Worker: Stopping background tasks, waiting for goroutines to finish...")
 	wg.Wait()
-	log.Println("Worker: All tasks gracefully stopped.")
+	slog.Info("Worker: All tasks gracefully stopped.")
 }
 
 func (w *Worker) enqueueAlertsForCVE(ctx context.Context, cve models.CVE) error {
-	// First, get the internal ID for the CVE as it might be needed by the alert processor
-	var id int
-	err := w.Pool.QueryRow(ctx, "SELECT id FROM cves WHERE cve_id = $1", cve.CVEID).Scan(&id)
-	if err != nil {
-		return fmt.Errorf("failed to get internal ID for CVE %s: %w", cve.CVEID, err)
+	if cve.ID == 0 {
+		var id int
+		err := w.Pool.QueryRow(ctx, "SELECT id FROM cves WHERE cve_id = $1", cve.CVEID).Scan(&id)
+		if err != nil {
+			return fmt.Errorf("failed to get internal ID for CVE %s: %w", cve.CVEID, err)
+		}
+		cve.ID = id
 	}
-	cve.ID = id
 
 	alertJob, err := json.Marshal(cve)
 	if err != nil {

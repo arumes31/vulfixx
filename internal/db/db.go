@@ -47,6 +47,12 @@ func InitDB() error {
 		return fmt.Errorf("unable to parse database URL: %w", err)
 	}
 
+	// Set connection pool configuration limits
+	poolConfig.MaxConns = 25
+	poolConfig.MinConns = 5
+	poolConfig.MaxConnLifetime = 30 * time.Minute
+	poolConfig.MaxConnIdleTime = 15 * time.Minute
+
 	Pool, err = poolCreator(context.Background(), poolConfig)
 	if err != nil {
 		return fmt.Errorf("unable to create connection pool: %w", err)

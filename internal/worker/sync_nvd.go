@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/url"
@@ -260,7 +261,27 @@ func parseNVDDate(dateStr string) (time.Time, error) {
 }
 
 func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfill bool) {
+	if len(entries) == 0 {
+		return
+	}
+
+	tx, err := w.Pool.Begin(ctx)
+	if err != nil {
+		slog.Error("Worker: Error starting transaction for NVD upserts", "error", err)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var successfulCVEs []models.CVE
+
 	for _, entry := range entries {
+		select {
+		case <-ctx.Done():
+			slog.Info("Worker: Context cancelled, aborting NVD batch transaction.")
+			return
+		default:
+		}
+
 		cve := entry.CVE
 
 		description := ""
@@ -331,25 +352,25 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 
 		pubDate, err := parseNVDDate(cve.Published)
 		if err != nil {
-			log.Printf("Worker: Invalid published date %q for %s: %v — skipping", cve.Published, cve.ID, err)
+			slog.Warn("Worker: Invalid published date for CVE, skipping", "cve_id", cve.ID, "published", cve.Published, "error", err)
 			continue
 		}
 		modDate, err := parseNVDDate(cve.LastModified)
 		if err != nil {
-			log.Printf("Worker: Invalid lastModified date %q for %s: %v — skipping", cve.LastModified, cve.ID, err)
+			slog.Warn("Worker: Invalid lastModified date for CVE, skipping", "cve_id", cve.ID, "lastModified", cve.LastModified, "error", err)
 			continue
 		}
 
 		model := models.CVE{
-			CVEID:          cve.ID,
-			Description:    description,
-			CVSSScore:      score,
-			VectorString:   vector,
-			CWEID:          cweID,
-			References:     references,
-			PublishedDate:  pubDate,
-			UpdatedDate:    modDate,
-			Configurations: cve.Configurations,
+			CVEID:            cve.ID,
+			Description:      description,
+			CVSSScore:        score,
+			VectorString:     vector,
+			CWEID:            cweID,
+			References:       references,
+			PublishedDate:    pubDate,
+			UpdatedDate:      modDate,
+			Configurations:   cve.Configurations,
 			ExploitAvailable: exploitAvailable,
 		}
 
@@ -361,14 +382,14 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 		if err == nil && len(products) > 0 {
 			// Use the first one as primary
 			vendor, product = products[0].Vendor, products[0].Product
-			log.Printf("Worker: LLM extraction for %s: found %d products. Primary: %s / %s", model.CVEID, len(products), vendor, product)
+			slog.Info("Worker: LLM extraction success", "cve_id", model.CVEID, "products_found", len(products), "primary_vendor", vendor, "primary_product", product)
 
 			// Add all to affected_products
 			for _, p := range products {
 				model.AddAffectedProduct(p.Vendor, p.Product, p.Version, true)
 			}
 		} else if err != nil {
-			log.Printf("Worker: LLM extraction failed for %s: %v", model.CVEID, err)
+			slog.Warn("Worker: LLM extraction failed", "cve_id", model.CVEID, "error", err)
 		}
 
 		// Heuristic Fallback: If LLM is disabled, failed to find anything, or returned partial data
@@ -381,7 +402,7 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 				product = hProduct
 			}
 			if vendor != "" || product != "" {
-				log.Printf("Worker: Heuristic fallback detection for %s: %s / %s", model.CVEID, vendor, product)
+				slog.Info("Worker: Heuristic fallback detection", "cve_id", model.CVEID, "vendor", vendor, "product", product)
 			}
 		}
 		model.Vendor = vendor
@@ -406,12 +427,22 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 				updated_at = CURRENT_TIMESTAMP
 			RETURNING id
 		`
-		err = w.Pool.QueryRow(ctx, query, model.CVEID, model.Description, model.CVSSScore, model.VectorString, model.CWEID, model.References, model.Configurations, model.PublishedDate, model.UpdatedDate, model.Vendor, model.Product, model.AffectedProducts, model.ExploitAvailable).Scan(&model.ID)
+		err = tx.QueryRow(ctx, query, model.CVEID, model.Description, model.CVSSScore, model.VectorString, model.CWEID, model.References, model.Configurations, model.PublishedDate, model.UpdatedDate, model.Vendor, model.Product, model.AffectedProducts, model.ExploitAvailable).Scan(&model.ID)
 		if err != nil {
-			log.Printf("Worker: Error upserting CVE %s: %v", cve.ID, err)
-			continue
+			slog.Error("Worker: Error upserting CVE in transaction, rolling back batch", "cve_id", cve.ID, "error", err)
+			return
 		}
 
+		successfulCVEs = append(successfulCVEs, model)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		slog.Error("Worker: Error committing NVD batch transaction", "error", err)
+		return
+	}
+
+	// Trigger enrichment and alerts only AFTER successful commit
+	for _, model := range successfulCVEs {
 		// Trigger on-demand enrichment for new/updated CVE
 		select {
 		case w.enrichmentQueue <- model.ID:
@@ -419,10 +450,10 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			// Queue full, will be picked up by background cron
 		}
 
-		// Check for alerts after successful upsert (only if not backfilling)
+		// Check for alerts after successful commit (only if not backfilling)
 		if !isBackfill {
 			if err := w.enqueueAlertsForCVE(ctx, model); err != nil {
-				log.Printf("Worker: [ERROR] %v", err)
+				slog.Error("Worker: Error enqueuing alerts for CVE", "cve_id", model.CVEID, "error", err)
 			}
 		}
 	}

@@ -132,11 +132,6 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		
 		mock.ExpectCommit()
 
-		// 3. Select back for alerting (enqueueAlertsForCVE)
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM cves WHERE cve_id = $1`)).
-			WithArgs("CVE-2024-9999").
-			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
-
 		// Update task stats at the very end
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
 			WithArgs("advisory_rss_sync").
@@ -196,10 +191,6 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 		mock.ExpectCommit()
-
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM cves WHERE cve_id = $1`)).
-			WithArgs("CVE-2024-5678").
-			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
 			WithArgs("advisory_rss_sync").
@@ -268,9 +259,6 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 			WithArgs([]string{"https://example.com/advisory/multi"}, 1).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM cves WHERE cve_id = $1`)).
-			WithArgs("CVE-2024-0001").
-			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 
 		// Expectations for CVE-2024-0002
 		mock.ExpectBegin()
@@ -282,9 +270,6 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 			WithArgs([]string{"https://example.com/advisory/multi"}, 2).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id FROM cves WHERE cve_id = $1`)).
-			WithArgs("CVE-2024-0002").
-			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(2))
 
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
 			WithArgs("advisory_rss_sync").

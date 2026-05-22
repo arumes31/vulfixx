@@ -97,6 +97,14 @@ The application follows a modular architecture designed to prevent monolithic fi
 - **`sync_epss.go`**: Probability-based risk scoring (FIRST EPSS).
 - **`cron_worker.go`**: Scheduled tasks (Weekly summaries).
 
+## ⚡ Core System Hardening & Performance
+
+Vulfixx is hardened with enterprise-grade system improvements designed for high-availability, performance, and transactional safety:
+- **Redis-Backed Session Store**: Migrated from client-side cookie stores to server-side Redis session storage using `github.com/rbcervilla/redisstore/v9`, enabling instant session revocation and enhanced security. Retains an automatic, secure encrypted `CookieStore` fallback for local or test environments without a running Redis instance.
+- **Standardized Structured Logging (`log/slog`)**: Global transition to standard library structured logging (`log/slog`) with context support. Configured to output clean, high-performance JSON logs in production for ingestion by log collectors, and a human-readable structured output in development environments.
+- **Database Connection Pool Optimization (`pgxpool`)**: Configured customized connection pool limits explicitly (`MaxConns = 25`, `MinConns = 5`, `MaxConnLifetime = 30m`, `MaxConnIdleTime = 15m`) to guarantee ready warmed connections and prevent database connection starvation.
+- **Worker Graceful Shutdown & Atomic Sync Transactions**: Enhanced background synchronization processes (NVD, CISA KEV, RSS Advisory feeds) to run in atomic Postgres database transactions (`pgx.Tx`), ensuring incomplete sync operations are safely rolled back on failure or worker shutdown. All sync loops validate active context cancellation (`ctx.Done()`) at iteration boundaries for clean graceful exits.
+
 ## Getting Started
 
 ### Prerequisites
