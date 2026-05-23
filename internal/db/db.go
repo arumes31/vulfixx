@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -125,7 +127,50 @@ func InitDB() error {
 	return nil
 }
 
+func findWorkspaceRoot() string {
+	start, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	candidate := start
+	for i := 0; i < 5; i++ {
+		if _, err := os.Stat(filepath.Join(candidate, "alembic.ini")); err == nil {
+			abs, _ := filepath.Abs(candidate)
+			return abs
+		}
+		parent := filepath.Dir(candidate)
+		if parent == candidate {
+			break
+		}
+		candidate = parent
+	}
+	return ""
+}
+
 func migrate(ctx context.Context) error {
+	log.Println("Database Migration: Executing Alembic migrations...")
+
+	// Run alembic upgrade head using shell execution
+	cmd := exec.CommandContext(ctx, "alembic", "upgrade", "head")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	root := findWorkspaceRoot()
+	if root != "" {
+		cmd.Dir = root
+		log.Printf("Database Migration: Discovered workspace root at %s", root)
+	}
+
+	if err := cmd.Run(); err != nil {
+		log.Printf("WARNING: Alembic migration failed: %v. Falling back to internal SQL migrations.", err)
+		return runNativeFallbackMigration(ctx)
+	}
+
+	log.Println("Database Migration: Alembic migrations completed successfully.")
+	return nil
+}
+
+func runNativeFallbackMigration(ctx context.Context) error {
 	// Item 12: Range Partitioning migration for existing databases
 	var cvesTableExists bool
 	err := Pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'cves')").Scan(&cvesTableExists)

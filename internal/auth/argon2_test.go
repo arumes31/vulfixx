@@ -65,4 +65,20 @@ func TestArgon2idHashingAndVerification(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected error for invalid base64 hash")
 	}
+
+	_, err = verifyPasswordArgon2id("$argon2id$badversion$m=65536,t=3,p=4$c2FsdA$cGFzc3dvcmQ", password)
+	if err == nil {
+		t.Errorf("expected error for bad version format")
+	}
+
+	// 72 bytes base64 decoded is > 64 bytes
+	_, err = verifyPasswordArgon2id("$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYQ", password)
+	if err == nil {
+		t.Errorf("expected error for hash length > 64")
+	}
+
+	_, err = verifyPasswordArgon2id("$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$", password)
+	if err == nil {
+		t.Errorf("expected error for hash length 0")
+	}
 }

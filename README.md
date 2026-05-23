@@ -261,6 +261,25 @@ For convenience, several shell scripts are provided to automate common tasks:
 - **Sitemap & Search Discovery**: Automated generation of `sitemap.xml` and `robots.txt` for efficient crawling of the top 1000 threats.
 - **CSP Nonce Hardening**: Advanced Content Security Policy implementation using unique per-request nonces for all inline script execution.
 
+## 🗄️ Database Migrations (Alembic)
+
+Vulfixx integrates **Alembic** (the industry-standard Python database migration framework) for robust, versioned database schema alterations and automated upgrades.
+
+### Key Features
+- **Dynamic Connection Strings**: Credentials and connection options (`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSLMODE`) are dynamically gathered from the environment at startup to construct secure PostgreSQL connection strings.
+- **Auto-run on Startup**: The Go binary automatically runs `alembic upgrade head` during initialization, performing upward directory traversal to locate `alembic.ini` and execute migrations in a seamless, zero-friction developer workflow.
+- **Resilient Fallback Pathway**: If Python or Alembic is not available in the host environment (e.g. inside minimalist production containers or mock database test suites), Vulfixx gracefully falls back to native Go migration query lists, ensuring operational resiliency.
+
+### Command Guide
+To generate a new incremental migration schema revision:
+```bash
+alembic revision -m "your_change_description"
+```
+To manually apply migrations to the head revision:
+```bash
+alembic upgrade head
+```
+
 ## 🛡️ Security Hardening & Audit
 
 The codebase has undergone a comprehensive security audit (April 2026) using automated static analysis (`gosec`), dependency scanning (`govulncheck`), and manual penetration testing of the public surface.

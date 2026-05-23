@@ -16,6 +16,11 @@ type RedisProvider interface {
 
 var RedisClient RedisProvider
 
+var redisPing = func() error {
+	_, err := RedisClient.Ping(context.Background()).Result()
+	return err
+}
+
 func InitRedis() error {
 	password := os.Getenv("REDIS_PASSWORD")
 
@@ -69,8 +74,7 @@ func InitRedis() error {
 		}
 	}
 
-	_, err := RedisClient.Ping(context.Background()).Result()
-	return err
+	return redisPing()
 }
 
 func CloseRedis() {
@@ -78,3 +82,4 @@ func CloseRedis() {
 		_ = RedisClient.Close()
 	}
 }
+

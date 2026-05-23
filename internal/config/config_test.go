@@ -2,6 +2,7 @@ package config
 
 import (
 	"cve-tracker/internal/security"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"strings"
@@ -283,7 +284,6 @@ func TestLoadConfigDecryption(t *testing.T) {
 
 	t.Setenv("APP_ENV", "development")
 	t.Setenv("SENTRY_DSN", "cve-gcm:"+cipherDSN)
-
 	// Run LoadConfig
 	LoadConfig()
 
@@ -291,4 +291,98 @@ func TestLoadConfigDecryption(t *testing.T) {
 		t.Errorf("expected decrypted SentryDSN %q, got %q", plainDSN, AppConfig.SentryDSN)
 	}
 }
+
+func TestGetEnvInt(t *testing.T) {
+	t.Run("ValidInt", func(t *testing.T) {
+		t.Setenv("TEST_INT_VAL", "42")
+		if val := getEnvInt("TEST_INT_VAL", 10); val != 42 {
+			t.Errorf("expected 42, got %d", val)
+		}
+	})
+
+	t.Run("InvalidInt", func(t *testing.T) {
+		// Mock logPrintf
+		origPrintf := logPrintf
+		defer func() { logPrintf = origPrintf }()
+		logPrintfCalled := false
+		logPrintf = func(format string, v ...interface{}) {
+			logPrintfCalled = true
+		}
+
+		t.Setenv("TEST_INT_VAL", "invalid")
+		if val := getEnvInt("TEST_INT_VAL", 10); val != 10 {
+			t.Errorf("expected 10 fallback, got %d", val)
+		}
+		if !logPrintfCalled {
+			t.Error("expected logPrintf to be called for invalid int")
+		}
+	})
+}
+
+func TestDecryptIfEncrypted_Error(t *testing.T) {
+	// Mock logPrintf
+	origPrintf := logPrintf
+	defer func() { logPrintf = origPrintf }()
+	logPrintfCalled := false
+	logPrintf = func(format string, v ...interface{}) {
+		logPrintfCalled = true
+	}
+
+	val := "cve-gcm:invalid-encrypted-payload"
+	decrypted := decryptIfEncrypted(val)
+	if decrypted != val {
+		t.Errorf("expected fallback to raw value, got %s", decrypted)
+	}
+	if !logPrintfCalled {
+		t.Error("expected logPrintf to be called for decryption error")
+	}
+}
+
+func TestDecodeKey_Detailed(t *testing.T) {
+	origFatalf := logFatalf
+	origPrintf := logPrintf
+	defer func() {
+		logFatalf = origFatalf
+		logPrintf = origPrintf
+	}()
+
+	t.Run("HexDecode", func(t *testing.T) {
+		hexKey := strings.Repeat("a", 64) // 64 chars = 32 bytes hex
+		decoded := decodeKey("Key", hexKey, 32, "production")
+		if len(decoded) != 32 {
+			t.Errorf("expected 32 bytes, got %d", len(decoded))
+		}
+	})
+
+	t.Run("Base64Decode", func(t *testing.T) {
+		base64Key := base64.StdEncoding.EncodeToString(make([]byte, 32))
+		decoded := decodeKey("Key", base64Key, 32, "production")
+		if len(decoded) != 32 {
+			t.Errorf("expected 32 bytes, got %d", len(decoded))
+		}
+	})
+
+	t.Run("InvalidLen_Production", func(t *testing.T) {
+		fatalCalled := false
+		logFatalf = func(format string, v ...interface{}) {
+			fatalCalled = true
+		}
+		decodeKey("Key", "short", 32, "production")
+		if !fatalCalled {
+			t.Error("expected logFatalf to be called in production")
+		}
+	})
+
+	t.Run("InvalidLen_Development", func(t *testing.T) {
+		warningCalled := false
+		logPrintf = func(format string, v ...interface{}) {
+			warningCalled = true
+		}
+		decodeKey("Key", "short", 32, "development")
+		if !warningCalled {
+			t.Error("expected logPrintf warning to be called in development")
+		}
+	})
+}
+
 

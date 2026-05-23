@@ -117,4 +117,73 @@ func TestResendVerificationToken(t *testing.T) {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
+
+	t.Run("UpdateFailure", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("SetupTestDB failed: %v", err)
+		}
+		defer mock.Close()
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token").
+			WithArgs("fail@test.com").
+			WillReturnRows(mock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
+				AddRow(1, false, 0, nil, "old-token"))
+		mock.ExpectExec("UPDATE users").
+			WithArgs(pgxmock.AnyArg(), 1).
+			WillReturnError(pgx.ErrNoRows) // any error to trigger log and fail
+		mock.ExpectRollback()
+
+		_, _, _, err = ResendVerificationToken(ctx, "fail@test.com")
+		if err == nil {
+			t.Error("expected error but got none")
+		}
+	})
+
+	t.Run("CommitFailure", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("SetupTestDB failed: %v", err)
+		}
+		defer mock.Close()
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token").
+			WithArgs("commitfail@test.com").
+			WillReturnRows(mock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
+				AddRow(1, false, 0, nil, "old-token"))
+		mock.ExpectExec("UPDATE users").
+			WithArgs(pgxmock.AnyArg(), 1).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectCommit().WillReturnError(pgx.ErrNoRows)
+		mock.ExpectRollback()
+
+		_, _, _, err = ResendVerificationToken(ctx, "commitfail@test.com")
+		if err == nil {
+			t.Error("expected error but got none")
+		}
+	})
 }
+
+func TestMaskEmail(t *testing.T) {
+	cases := []struct {
+		input    string
+		expected string
+	}{
+		{"", ""},
+		{"a", "a"},
+		{"a@b.com", "a@b.com"},
+		{"ab@c.com", "a***@c.com"},
+		{"abcde@f.com", "a***@f.com"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.input, func(t *testing.T) {
+			res := maskEmail(tc.input)
+			if res != tc.expected {
+				t.Errorf("maskEmail(%q) = %q; expected %q", tc.input, res, tc.expected)
+			}
+		})
+	}
+}
+

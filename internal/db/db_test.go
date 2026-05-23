@@ -485,3 +485,194 @@ func TestInitDB_Replica(t *testing.T) {
 		}
 	})
 }
+
+func TestMigrate_ExtraFailures(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("CheckCVEsTableExistsFailure", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed: %v", err)
+		}
+		defer mock.Close()
+		Pool = mock
+
+		mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
+			WillReturnError(fmt.Errorf("query exists check fail"))
+
+		err = migrate(ctx)
+		if err == nil || !strings.Contains(err.Error(), "failed to check if cves table exists") {
+			t.Errorf("expected exists check error, got %v", err)
+		}
+	})
+
+	t.Run("DropConstraintFailure_WarningOnly", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed: %v", err)
+		}
+		defer mock.Close()
+		Pool = mock
+
+		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
+		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
+		
+		// Drop FK fails, but it prints warning and continues
+		for i := 0; i < 5; i++ {
+			mock.ExpectExec("ALTER TABLE").WillReturnError(fmt.Errorf("drop fk fail"))
+		}
+		mock.ExpectExec("ALTER TABLE cves RENAME TO cves_old").WillReturnResult(pgxmock.NewResult("ALTER", 1))
+		mock.ExpectExec("CREATE TABLE").WillReturnResult(pgxmock.NewResult("CREATE", 1))
+		mock.ExpectExec("INSERT INTO cves").WillReturnResult(pgxmock.NewResult("INSERT", 10))
+		mock.ExpectExec("SELECT setval").WillReturnResult(pgxmock.NewResult("SELECT", 1))
+		mock.ExpectExec("DROP TABLE cves_old").WillReturnResult(pgxmock.NewResult("DROP", 1))
+
+		for i := 0; i < 31; i++ {
+			mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
+		}
+
+		err = migrate(ctx)
+		if err != nil {
+			t.Errorf("expected drop constraint failure to not abort migration, got err: %v", err)
+		}
+	})
+
+	t.Run("RenameCVEsOldFailure", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed: %v", err)
+		}
+		defer mock.Close()
+		Pool = mock
+
+		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
+		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
+		for i := 0; i < 5; i++ {
+			mock.ExpectExec("ALTER TABLE").WillReturnResult(pgxmock.NewResult("ALTER", 1))
+		}
+		mock.ExpectExec("ALTER TABLE cves RENAME").WillReturnError(fmt.Errorf("rename fail"))
+
+		err = migrate(ctx)
+		if err == nil || !strings.Contains(err.Error(), "failed to rename cves table to cves_old") {
+			t.Errorf("expected rename error, got %v", err)
+		}
+	})
+
+	t.Run("BaseSchemaPartitioningFailure", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed: %v", err)
+		}
+		defer mock.Close()
+		Pool = mock
+
+		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
+		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
+		for i := 0; i < 5; i++ {
+			mock.ExpectExec("ALTER TABLE").WillReturnResult(pgxmock.NewResult("ALTER", 1))
+		}
+		mock.ExpectExec("ALTER TABLE cves RENAME").WillReturnResult(pgxmock.NewResult("ALTER", 1))
+		mock.ExpectExec("CREATE TABLE").WillReturnError(fmt.Errorf("schema SQL fail"))
+
+		err = migrate(ctx)
+		if err == nil || !strings.Contains(err.Error(), "failed to execute base schema for partitioning") {
+			t.Errorf("expected schema partitioning error, got %v", err)
+		}
+	})
+
+	t.Run("CopyDataFailure", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed: %v", err)
+		}
+		defer mock.Close()
+		Pool = mock
+
+		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
+		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
+		for i := 0; i < 5; i++ {
+			mock.ExpectExec("ALTER TABLE").WillReturnResult(pgxmock.NewResult("ALTER", 1))
+		}
+		mock.ExpectExec("ALTER TABLE cves RENAME").WillReturnResult(pgxmock.NewResult("ALTER", 1))
+		mock.ExpectExec("CREATE TABLE").WillReturnResult(pgxmock.NewResult("CREATE", 1))
+		mock.ExpectExec("INSERT INTO cves").WillReturnError(fmt.Errorf("copy fail"))
+		mock.ExpectExec("ALTER TABLE cves_old RENAME TO cves").WillReturnResult(pgxmock.NewResult("ALTER", 1))
+
+		err = migrate(ctx)
+		if err == nil || !strings.Contains(err.Error(), "failed to copy CVE data to partitioned table") {
+			t.Errorf("expected copy error, got %v", err)
+		}
+	})
+
+	t.Run("AlignSequenceAndDropWarnings", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed: %v", err)
+		}
+		defer mock.Close()
+		Pool = mock
+
+		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
+		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
+		for i := 0; i < 5; i++ {
+			mock.ExpectExec("ALTER TABLE").WillReturnResult(pgxmock.NewResult("ALTER", 1))
+		}
+		mock.ExpectExec("ALTER TABLE cves RENAME").WillReturnResult(pgxmock.NewResult("ALTER", 1))
+		mock.ExpectExec("CREATE TABLE").WillReturnResult(pgxmock.NewResult("CREATE", 1))
+		mock.ExpectExec("INSERT INTO cves").WillReturnResult(pgxmock.NewResult("INSERT", 10))
+		mock.ExpectExec("SELECT setval").WillReturnError(fmt.Errorf("setval fail"))
+		mock.ExpectExec("DROP TABLE cves_old").WillReturnError(fmt.Errorf("drop fail"))
+
+		for i := 0; i < 31; i++ {
+			mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
+		}
+
+		err = migrate(ctx)
+		if err != nil {
+			t.Errorf("expected warnings to not halt migration, got %v", err)
+		}
+	})
+}
+
+func TestInitRedis_SentinelAndCluster(t *testing.T) {
+	// Mock redisPing globally and restore it
+	oldPing := redisPing
+	redisPing = func() error {
+		return fmt.Errorf("forced offline error")
+	}
+	defer func() { redisPing = oldPing }()
+
+	t.Run("Sentinel Configuration fail ping", func(t *testing.T) {
+		t.Setenv("REDIS_SENTINEL_MASTER", "mymaster")
+		t.Setenv("REDIS_SENTINEL_ADDRS", "127.0.0.1:26379, 127.0.0.1:26380")
+		t.Setenv("REDIS_URL", "")
+
+		err := InitRedis()
+		if err == nil || !strings.Contains(err.Error(), "forced offline error") {
+			t.Errorf("expected forced offline error, got %v", err)
+		}
+	})
+
+	t.Run("Sentinel Default Address fail ping", func(t *testing.T) {
+		t.Setenv("REDIS_SENTINEL_MASTER", "mymaster")
+		t.Setenv("REDIS_SENTINEL_ADDRS", "")
+		t.Setenv("REDIS_URL", "")
+
+		err := InitRedis()
+		if err == nil || !strings.Contains(err.Error(), "forced offline error") {
+			t.Errorf("expected forced offline error, got %v", err)
+		}
+	})
+
+	t.Run("Cluster Configuration fail ping", func(t *testing.T) {
+		t.Setenv("REDIS_SENTINEL_MASTER", "")
+		t.Setenv("REDIS_CLUSTER_ADDRS", "127.0.0.1:7000,127.0.0.1:7001")
+		t.Setenv("REDIS_URL", "")
+
+		err := InitRedis()
+		if err == nil || !strings.Contains(err.Error(), "forced offline error") {
+			t.Errorf("expected forced offline error, got %v", err)
+		}
+	})
+}
+

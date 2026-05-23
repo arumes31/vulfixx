@@ -47,4 +47,28 @@ func TestEncryptionDecryption(t *testing.T) {
 			t.Errorf("expected decryption error, got nil")
 		}
 	})
+
+	t.Run("ShortCiphertext", func(t *testing.T) {
+		// Base64 encode something shorter than 12 bytes nonce
+		shortEncoded := "c2hvcnQ=" // "short" in base64
+		_, err := Decrypt(shortEncoded)
+		if err != ErrDecryption {
+			t.Errorf("expected ErrDecryption for short ciphertext, got %v", err)
+		}
+	})
+
+	t.Run("TamperedCiphertext", func(t *testing.T) {
+		cipherText, err := Encrypt("my secret text")
+		if err != nil {
+			t.Fatalf("failed to encrypt: %v", err)
+		}
+
+		// Tamper with the ciphertext by changing the last character
+		tampered := cipherText[:len(cipherText)-2] + "A="
+		_, err = Decrypt(tampered)
+		if err != ErrDecryption {
+			t.Errorf("expected ErrDecryption for tampered ciphertext, got %v", err)
+		}
+	})
 }
+

@@ -102,3 +102,28 @@ func TestGRPC_GetCVE_EmptyInput(t *testing.T) {
 		t.Errorf("expected status code InvalidArgument, got %s", st.Code())
 	}
 }
+
+func TestGRPC_StartServer(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create pgxmock pool: %v", err)
+	}
+	defer mock.Close()
+
+	// Insecure server start
+	srv, err := StartGRPCServer(mock, "0", "", "")
+	if err != nil {
+		t.Fatalf("failed to start gRPC server: %v", err)
+	}
+	if srv == nil {
+		t.Fatal("expected non-nil gRPC server")
+	}
+	srv.GracefulStop()
+
+	// Secure server start (should fail with invalid cert paths)
+	_, err = StartGRPCServer(mock, "0", "nonexistent_cert.pem", "nonexistent_key.pem")
+	if err == nil {
+		t.Fatal("expected error starting secure gRPC server with missing cert files")
+	}
+}
+
