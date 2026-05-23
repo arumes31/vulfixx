@@ -344,3 +344,5 @@ def downgrade() -> None:
     DROP FUNCTION IF EXISTS calculate_cve_priority() CASCADE;
     DROP FUNCTION IF EXISTS update_updated_at_column() CASCADE;
     """)
+
+# Trigger linter re-index for base_schema dependencies
