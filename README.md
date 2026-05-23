@@ -261,23 +261,23 @@ For convenience, several shell scripts are provided to automate common tasks:
 - **Sitemap & Search Discovery**: Automated generation of `sitemap.xml` and `robots.txt` for efficient crawling of the top 1000 threats.
 - **CSP Nonce Hardening**: Advanced Content Security Policy implementation using unique per-request nonces for all inline script execution.
 
-## 🗄️ Database Migrations (Alembic)
+## 🗄️ Database Migrations (Goose)
 
-Vulfixx integrates **Alembic** (the industry-standard Python database migration framework) for robust, versioned database schema alterations and automated upgrades.
+Vulfixx integrates **Goose** (the Go-native database migration framework) for robust, versioned database schema alterations and automated upgrades.
 
 ### Key Features
 - **Dynamic Connection Strings**: Credentials and connection options (`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSLMODE`) are dynamically gathered from the environment at startup to construct secure PostgreSQL connection strings.
-- **Auto-run on Startup**: The Go binary automatically runs `alembic upgrade head` during initialization, performing upward directory traversal to locate `alembic.ini` and execute migrations in a seamless, zero-friction developer workflow.
-- **Resilient Fallback Pathway**: If Python or Alembic is not available in the host environment (e.g. inside minimalist production containers or mock database test suites), Vulfixx gracefully falls back to native Go migration query lists, ensuring operational resiliency.
+- **Embedded Migrations**: All SQL migrations are compiled directly into the Go binary using `//go:embed` and executed programmatically on application startup.
+- **Zero-Dependency Execution**: No external python interpreter, pip dependencies, or site-packages are required. The migrations run instantly with microsecond latencies.
 
-### Command Guide
-To generate a new incremental migration schema revision:
+### CLI Usage (Optional)
+If you install the `goose` CLI tool, you can inspect or manage migrations manually:
 ```bash
-alembic revision -m "your_change_description"
-```
-To manually apply migrations to the head revision:
-```bash
-alembic upgrade head
+# To check the status of migrations
+goose -dir internal/db/sql/migrations postgres "host=localhost user=youruser dbname=yourdb sslmode=disable" status
+
+# To manually apply migrations
+goose -dir internal/db/sql/migrations postgres "host=localhost user=youruser dbname=yourdb sslmode=disable" up
 ```
 
 ## 🛡️ Security Hardening & Audit

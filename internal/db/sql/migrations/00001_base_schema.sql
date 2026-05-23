@@ -1,6 +1,4 @@
-package db
-
-const schemaSQL = `
+-- +goose Up
 -- 1. Create independent tables
 CREATE TABLE IF NOT EXISTS teams (
     id SERIAL PRIMARY KEY,
@@ -80,7 +78,6 @@ CREATE TABLE IF NOT EXISTS cves_y2028 PARTITION OF cves FOR VALUES FROM ('2028-0
 CREATE TABLE IF NOT EXISTS cves_y2029 PARTITION OF cves FOR VALUES FROM ('2029-01-01 00:00:00+00') TO ('2030-01-01 00:00:00+00');
 CREATE TABLE IF NOT EXISTS cves_default PARTITION OF cves DEFAULT;
 
-
 CREATE TABLE IF NOT EXISTS sync_state (
     key VARCHAR(100) PRIMARY KEY,
     value TEXT NOT NULL,
@@ -93,11 +90,10 @@ CREATE TABLE IF NOT EXISTS worker_sync_stats (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. Create dependent tables
 CREATE TABLE IF NOT EXISTS team_members (
     team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    role VARCHAR(20) DEFAULT 'member', -- 'owner', 'admin', 'member'
+    role VARCHAR(20) DEFAULT 'member',
     joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (team_id, user_id)
 );
@@ -211,75 +207,6 @@ CREATE TABLE IF NOT EXISTS email_change_requests (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 3. Ensure team_id columns exist for all relevant tables (Upgrades)
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'assets') THEN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'assets' AND column_name = 'team_id') THEN
-            ALTER TABLE assets ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE;
-        END IF;
-    END IF;
-
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_subscriptions') THEN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'team_id') THEN
-            ALTER TABLE user_subscriptions ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE;
-        END IF;
-    END IF;
-
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_cve_status') THEN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_cve_status' AND column_name = 'team_id') THEN
-            ALTER TABLE user_cve_status ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE;
-        END IF;
-        -- Handle potential PK change if it was (user_id, cve_id)
-        IF EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE table_name = 'user_cve_status' AND constraint_type = 'PRIMARY KEY') THEN
-             IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_cve_status' AND column_name = 'id') THEN
-                 ALTER TABLE user_cve_status DROP CONSTRAINT IF EXISTS user_cve_status_pkey;
-                 ALTER TABLE user_cve_status ADD COLUMN id SERIAL PRIMARY KEY;
-             END IF;
-        END IF;
-    END IF;
-
-    -- Rename user_cve_notes to cve_notes if it exists
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_cve_notes') AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cve_notes') THEN
-        ALTER TABLE user_cve_notes RENAME TO cve_notes;
-    END IF;
-
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cve_notes') THEN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cve_notes' AND column_name = 'team_id') THEN
-            ALTER TABLE cve_notes ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE;
-        END IF;
-        -- Add id column if missing (it was (user_id, cve_id) in older versions)
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cve_notes' AND column_name = 'id') THEN
-            ALTER TABLE cve_notes DROP CONSTRAINT IF EXISTS user_cve_notes_pkey;
-            ALTER TABLE cve_notes ADD COLUMN id SERIAL PRIMARY KEY;
-        END IF;
-    END IF;
-
-    -- Add Quota Columns
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'max_subscriptions') THEN
-        ALTER TABLE users ADD COLUMN max_subscriptions INTEGER DEFAULT 5;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'max_assets') THEN
-        ALTER TABLE users ADD COLUMN max_assets INTEGER DEFAULT 10;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'onboarding_completed') THEN
-        ALTER TABLE users ADD COLUMN onboarding_completed BOOLEAN DEFAULT FALSE;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'verification_resend_count') THEN
-        ALTER TABLE users ADD COLUMN verification_resend_count INTEGER DEFAULT 0;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'last_verification_resend_at') THEN
-        ALTER TABLE users ADD COLUMN last_verification_resend_at TIMESTAMP WITH TIME ZONE;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'teams' AND column_name = 'max_subscriptions') THEN
-        ALTER TABLE teams ADD COLUMN max_subscriptions INTEGER DEFAULT 10;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'teams' AND column_name = 'max_assets') THEN
-        ALTER TABLE teams ADD COLUMN max_assets INTEGER DEFAULT 20;
-    END IF;
-END $$;
-
--- 4. Automated updated_at refresh
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -299,91 +226,6 @@ CREATE TRIGGER update_worker_sync_stats_updated_at
     BEFORE UPDATE ON worker_sync_stats
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
-
--- Ensure updated_at column and other recent columns exist for cves if table was already created
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'cves') THEN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'updated_at') THEN
-            ALTER TABLE cves ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
-        END IF;
-
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'vector_string') THEN
-            ALTER TABLE cves ADD COLUMN vector_string TEXT;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'references') THEN
-            ALTER TABLE cves ADD COLUMN "references" TEXT[];
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'configurations') THEN
-            ALTER TABLE cves ADD COLUMN configurations JSONB DEFAULT '[]';
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'vendor') THEN
-            ALTER TABLE cves ADD COLUMN vendor VARCHAR(255);
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'product') THEN
-            ALTER TABLE cves ADD COLUMN product VARCHAR(255);
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'affected_products') THEN
-            ALTER TABLE cves ADD COLUMN affected_products JSONB DEFAULT '[]';
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'osv_data') THEN
-            ALTER TABLE cves ADD COLUMN osv_data JSONB DEFAULT '{}';
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'greynoise_hits') THEN
-            ALTER TABLE cves ADD COLUMN greynoise_hits INTEGER DEFAULT 0;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'greynoise_classification') THEN
-            ALTER TABLE cves ADD COLUMN greynoise_classification VARCHAR(50);
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'inthewild_data') THEN
-            ALTER TABLE cves ADD COLUMN inthewild_data JSONB DEFAULT '{}';
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'inthewild_last_updated') THEN
-            ALTER TABLE cves ADD COLUMN inthewild_last_updated TIMESTAMP WITH TIME ZONE;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'exploit_available') THEN
-            ALTER TABLE cves ADD COLUMN exploit_available BOOLEAN DEFAULT FALSE;
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'version') THEN
-            ALTER TABLE cves ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
-        END IF;
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'enable_slack') THEN
-        ALTER TABLE user_subscriptions ADD COLUMN enable_slack BOOLEAN DEFAULT FALSE;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'enable_teams') THEN
-        ALTER TABLE user_subscriptions ADD COLUMN enable_teams BOOLEAN DEFAULT FALSE;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'enable_browser_push') THEN
-        ALTER TABLE user_subscriptions ADD COLUMN enable_browser_push BOOLEAN DEFAULT FALSE;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'slack_webhook_url') THEN
-        ALTER TABLE user_subscriptions ADD COLUMN slack_webhook_url TEXT;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'teams_webhook_url') THEN
-        ALTER TABLE user_subscriptions ADD COLUMN teams_webhook_url TEXT;
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_subscriptions' AND column_name = 'aggregation_mode') THEN
-        ALTER TABLE user_subscriptions ADD COLUMN aggregation_mode VARCHAR(20) DEFAULT 'instant' CHECK (aggregation_mode IN ('instant', 'hourly', 'daily'));
-    END IF;
-
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'user_activity_logs') THEN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_activity_logs' AND column_name = 'retention_expires_at') THEN
-            ALTER TABLE user_activity_logs ADD COLUMN retention_expires_at TIMESTAMP WITH TIME ZONE;
-        END IF;
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'priority') THEN
-        ALTER TABLE cves ADD COLUMN priority VARCHAR(2) DEFAULT 'P3';
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'assets' AND column_name = 'priority') THEN
-        ALTER TABLE assets ADD COLUMN priority VARCHAR(2) DEFAULT 'P3';
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cves' AND column_name = 'cisa_ransomware') THEN
-        ALTER TABLE cves ADD COLUMN cisa_ransomware BOOLEAN DEFAULT FALSE;
-    END IF;
-END $$;
 
 CREATE OR REPLACE FUNCTION calculate_cve_priority() RETURNS TRIGGER AS $$
 BEGIN
@@ -405,7 +247,6 @@ CREATE TRIGGER trigger_calculate_cve_priority
 BEFORE INSERT OR UPDATE ON cves
 FOR EACH ROW EXECUTE FUNCTION calculate_cve_priority();
 
--- 5. Indexes
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE INDEX IF NOT EXISTS idx_user_activity_logs_user_id_created_at ON user_activity_logs (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_user_activity_logs_user_type_created ON user_activity_logs (user_id, activity_type, created_at DESC);
@@ -423,33 +264,49 @@ CREATE INDEX IF NOT EXISTS idx_cves_product ON cves(product);
 DROP INDEX IF EXISTS idx_cves_affected_products;
 CREATE INDEX IF NOT EXISTS idx_cves_affected_products_trgm ON cves USING GIN ((affected_products::text) gin_trgm_ops);
 
--- Partial Unique Indexes for status and notes
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_status ON user_cve_status (user_id, cve_id) WHERE team_id IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_team_status ON user_cve_status (team_id, cve_id) WHERE team_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_notes ON cve_notes (user_id, cve_id) WHERE team_id IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_team_notes ON cve_notes (team_id, cve_id) WHERE team_id IS NOT NULL;
 
--- Composite Covering Indexes for fast dashboard JOINs
 CREATE INDEX IF NOT EXISTS idx_user_status_covering ON user_cve_status (user_id, cve_id, status);
 CREATE INDEX IF NOT EXISTS idx_team_status_covering ON user_cve_status (team_id, cve_id, status);
 CREATE INDEX IF NOT EXISTS idx_user_notes_covering ON cve_notes (user_id, cve_id);
 CREATE INDEX IF NOT EXISTS idx_team_notes_covering ON cve_notes (team_id, cve_id);
 
--- Trigram Indexes for fast ILIKE search performance
 CREATE INDEX IF NOT EXISTS idx_cves_description_trgm ON cves USING GIN (description gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_cves_vendor_trgm ON cves USING GIN (vendor gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_cves_product_trgm ON cves USING GIN (product gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_cves_cve_id_trgm ON cves USING GIN (cve_id gin_trgm_ops);
 
--- Threat Associations
 CREATE TABLE IF NOT EXISTS cve_threat_associations (
     id SERIAL PRIMARY KEY,
     cve_id VARCHAR(50) NOT NULL,
     entity_name VARCHAR(100) NOT NULL,
-    entity_type VARCHAR(50) NOT NULL, -- 'threat_actor' or 'ransomware'
-    source VARCHAR(50) NOT NULL,       -- 'CISA-KEV', 'Trickest', 'OSINT'
+    entity_type VARCHAR(50) NOT NULL,
+    source VARCHAR(50) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cve_threats_unique ON cve_threat_associations(cve_id, entity_name, entity_type);
 CREATE INDEX IF NOT EXISTS idx_cve_threats_cve_id ON cve_threat_associations(cve_id);
-`
+
+-- +goose Down
+DROP TABLE IF EXISTS cve_threat_associations CASCADE;
+DROP TABLE IF EXISTS user_activity_logs CASCADE;
+DROP TABLE IF EXISTS alert_history CASCADE;
+DROP TABLE IF EXISTS cve_notes CASCADE;
+DROP TABLE IF EXISTS user_cve_status CASCADE;
+DROP TABLE IF EXISTS browser_push_subscriptions CASCADE;
+DROP TABLE IF EXISTS notification_delivery_logs CASCADE;
+DROP TABLE IF EXISTS user_subscriptions CASCADE;
+DROP TABLE IF EXISTS asset_keywords CASCADE;
+DROP TABLE IF EXISTS assets CASCADE;
+DROP TABLE IF EXISTS team_members CASCADE;
+DROP TABLE IF EXISTS email_change_requests CASCADE;
+DROP TABLE IF EXISTS worker_sync_stats CASCADE;
+DROP TABLE IF EXISTS sync_state CASCADE;
+DROP TABLE IF EXISTS cves CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS teams CASCADE;
+DROP FUNCTION IF EXISTS calculate_cve_priority() CASCADE;
+DROP FUNCTION IF EXISTS update_updated_at_column() CASCADE;

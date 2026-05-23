@@ -2,16 +2,18 @@ package db
 
 import (
 	"context"
+	"database/sql"
+	"embed"
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 )
 
 type DBPool interface {
@@ -31,7 +33,17 @@ var (
 	poolCreator  = func(ctx context.Context, config *pgxpool.Config) (DBPool, error) {
 		return pgxpool.NewWithConfig(ctx, config)
 	}
+	migrateFunc = migrate
+	sqlOpener   = func(driverName, dataSourceName string) (*sql.DB, error) {
+		return sql.Open(driverName, dataSourceName)
+	}
+	gooseUp = func(ctx context.Context, db *sql.DB, dir string) error {
+		return goose.UpContext(ctx, db, dir)
+	}
 )
+
+//go:embed sql/migrations/*.sql
+var embedMigrations embed.FS
 
 func InitDB() error {
 	sslMode := os.Getenv("DB_SSLMODE")
@@ -120,186 +132,39 @@ func InitDB() error {
 		ReplicaPool = Pool
 	}
 
-	if err := migrate(context.Background()); err != nil {
+	if err := migrateFunc(context.Background()); err != nil {
 		return fmt.Errorf("migration failed: %w", err)
 	}
 
 	return nil
 }
 
-func findWorkspaceRoot() string {
-	start, err := os.Getwd()
-	if err != nil {
-		return ""
-	}
-	candidate := start
-	for i := 0; i < 5; i++ {
-		if _, err := os.Stat(filepath.Join(candidate, "alembic.ini")); err == nil {
-			abs, _ := filepath.Abs(candidate)
-			return abs
-		}
-		parent := filepath.Dir(candidate)
-		if parent == candidate {
-			break
-		}
-		candidate = parent
-	}
-	return ""
-}
-
 func migrate(ctx context.Context) error {
-	log.Println("Database Migration: Executing Alembic migrations...")
+	log.Println("Database Migration: Executing Goose migrations...")
 
-	// Run alembic upgrade head using shell execution
-	cmd := exec.CommandContext(ctx, "alembic", "upgrade", "head")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	root := findWorkspaceRoot()
-	if root != "" {
-		cmd.Dir = root
-		log.Printf("Database Migration: Discovered workspace root at %s", root)
+	sslMode := os.Getenv("DB_SSLMODE")
+	if sslMode == "" {
+		sslMode = "prefer"
 	}
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
+		os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_NAME"), sslMode)
 
-	if err := cmd.Run(); err != nil {
-		log.Printf("WARNING: Alembic migration failed: %v. Falling back to internal SQL migrations.", err)
-		return runNativeFallbackMigration(ctx)
-	}
-
-	log.Println("Database Migration: Alembic migrations completed successfully.")
-	return nil
-}
-
-func runNativeFallbackMigration(ctx context.Context) error {
-	// Item 12: Range Partitioning migration for existing databases
-	var cvesTableExists bool
-	err := Pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'cves')").Scan(&cvesTableExists)
+	dbConn, err := sqlOpener("pgx", dsn)
 	if err != nil {
-		return fmt.Errorf("failed to check if cves table exists: %w", err)
+		return fmt.Errorf("unable to open database connection for goose: %w", err)
+	}
+	defer dbConn.Close()
+
+	goose.SetBaseFS(embedMigrations)
+	if err := goose.SetDialect("postgres"); err != nil {
+		return fmt.Errorf("goose set dialect failed: %w", err)
 	}
 
-	if cvesTableExists {
-		var isPartitioned bool
-		err = Pool.QueryRow(ctx, `
-			SELECT EXISTS (
-				SELECT 1
-				FROM pg_partitioned_table
-				WHERE partrelid = 'cves'::regclass
-			)
-		`).Scan(&isPartitioned)
-		if err != nil {
-			isPartitioned = false
-		}
-
-		if !isPartitioned {
-			log.Println("Database Migration: Migrating 'cves' table to native range-partitioned structure by published_date...")
-
-			// 1. Drop foreign keys on dependent tables (to allow renaming / changing cves)
-			dropFKs := []string{
-				"ALTER TABLE notification_delivery_logs DROP CONSTRAINT IF EXISTS notification_delivery_logs_cve_id_fkey",
-				"ALTER TABLE user_cve_status DROP CONSTRAINT IF EXISTS user_cve_status_cve_id_fkey",
-				"ALTER TABLE cve_notes DROP CONSTRAINT IF EXISTS cve_notes_cve_id_fkey",
-				"ALTER TABLE cve_notes DROP CONSTRAINT IF EXISTS user_cve_notes_cve_id_fkey",
-				"ALTER TABLE alert_history DROP CONSTRAINT IF EXISTS alert_history_cve_id_fkey",
-			}
-			for _, q := range dropFKs {
-				if _, err := Pool.Exec(ctx, q); err != nil {
-					log.Printf("WARNING: failed to drop constraint: %v", err)
-				}
-			}
-
-			// 2. Rename existing cves table
-			if _, err := Pool.Exec(ctx, "ALTER TABLE cves RENAME TO cves_old"); err != nil {
-				return fmt.Errorf("failed to rename cves table to cves_old: %w", err)
-			}
-
-			// 3. Execute base schema to create partitioned cves table and its partitions
-			if _, err := Pool.Exec(ctx, schemaSQL); err != nil {
-				return fmt.Errorf("failed to execute base schema for partitioning: %w", err)
-			}
-
-			// 4. Copy data from cves_old to partitioned cves, defaulting null published_date to current time
-			copySQL := `
-				INSERT INTO cves (
-					id, cve_id, description, cvss_score, vector_string, cisa_kev, cisa_ransomware, exploit_available,
-					epss_score, cwe_id, cwe_name, github_poc_count, greynoise_hits, greynoise_classification,
-					greynoise_last_updated, osv_data, osv_last_updated, inthewild_data, inthewild_last_updated,
-					osint_data, published_date, updated_date, "references", configurations, vendor, product,
-					affected_products, priority, created_at, updated_at
-				)
-				SELECT 
-					id, cve_id, description, cvss_score, vector_string, cisa_kev, cisa_ransomware, exploit_available,
-					epss_score, cwe_id, cwe_name, github_poc_count, greynoise_hits, greynoise_classification,
-					greynoise_last_updated, osv_data, osv_last_updated, inthewild_data, inthewild_last_updated,
-					osint_data, COALESCE(published_date, CURRENT_TIMESTAMP), updated_date, "references", configurations, vendor, product,
-					affected_products, priority, created_at, updated_at
-				FROM cves_old
-			`
-			if _, err := Pool.Exec(ctx, copySQL); err != nil {
-				_, _ = Pool.Exec(ctx, "ALTER TABLE cves_old RENAME TO cves")
-				return fmt.Errorf("failed to copy CVE data to partitioned table: %w", err)
-			}
-
-			// 5. Update SERIAL sequence value for the partitioned table
-			seqSQL := "SELECT setval(pg_get_serial_sequence('cves', 'id'), COALESCE(max(id), 1)) FROM cves"
-			if _, err := Pool.Exec(ctx, seqSQL); err != nil {
-				log.Printf("WARNING: failed to align SERIAL sequence for cves table: %v", err)
-			}
-
-			// 6. Drop the old table
-			if _, err := Pool.Exec(ctx, "DROP TABLE cves_old CASCADE"); err != nil {
-				log.Printf("WARNING: failed to drop cves_old: %v", err)
-			}
-
-			log.Println("Database Migration: 'cves' table range-partitioning migration completed successfully.")
-		}
-	} else {
-		// Table doesn't exist, just execute base schema SQL directly
-		if _, err := Pool.Exec(ctx, schemaSQL); err != nil {
-			return fmt.Errorf("failed to execute base schema: %w", err)
-		}
+	if err := gooseUp(ctx, dbConn, "sql/migrations"); err != nil {
+		return fmt.Errorf("goose migration failed: %w", err)
 	}
 
-	// Then run incremental migrations
-	queries := []string{
-		"ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;",
-		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS enable_email BOOLEAN DEFAULT TRUE;",
-		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS enable_webhook BOOLEAN DEFAULT TRUE;",
-		"CREATE INDEX IF NOT EXISTS idx_cves_published_date ON cves (published_date DESC);",
-		"CREATE INDEX IF NOT EXISTS idx_cves_cvss_score ON cves (cvss_score);",
-		"CREATE INDEX IF NOT EXISTS idx_cves_updated_date ON cves (updated_date DESC);",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS vector_string TEXT;",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS \"references\" TEXT[];",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS epss_score NUMERIC(6,5);",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS cwe_id VARCHAR(50);",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS cwe_name TEXT;",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS github_poc_count INTEGER DEFAULT 0;",
-		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS filter_logic TEXT DEFAULT '';",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS osint_data JSONB DEFAULT '{}';",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS vendor VARCHAR(255);",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS product VARCHAR(255);",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS affected_products JSONB DEFAULT '[]';",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS osv_data JSONB DEFAULT '{}';",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS osv_last_updated TIMESTAMP WITH TIME ZONE;",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS greynoise_hits INTEGER DEFAULT 0;",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS greynoise_classification VARCHAR(50);",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS greynoise_last_updated TIMESTAMP WITH TIME ZONE;",
-		"CREATE INDEX IF NOT EXISTS idx_cves_vendor ON cves(vendor);",
-		"CREATE INDEX IF NOT EXISTS idx_cves_product ON cves(product);",
-		"CREATE INDEX IF NOT EXISTS idx_cves_affected_products ON cves USING GIN (affected_products jsonb_path_ops);",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;",
-		"CREATE INDEX IF NOT EXISTS idx_user_activity_logs_user_type_created ON user_activity_logs (user_id, activity_type, created_at DESC);",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS cisa_ransomware BOOLEAN DEFAULT FALSE;",
-		"CREATE TABLE IF NOT EXISTS cve_threat_associations (id SERIAL PRIMARY KEY, cve_id VARCHAR(50) NOT NULL, entity_name VARCHAR(100) NOT NULL, entity_type VARCHAR(50) NOT NULL, source VARCHAR(50) NOT NULL, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);",
-		"CREATE UNIQUE INDEX IF NOT EXISTS idx_cve_threats_unique ON cve_threat_associations(cve_id, entity_name, entity_type);",
-		"CREATE INDEX IF NOT EXISTS idx_cve_threats_cve_id ON cve_threat_associations(cve_id);",
-	}
-
-	for i, q := range queries {
-		if _, err := Pool.Exec(ctx, q); err != nil {
-			return fmt.Errorf("migration %d failed executing query %q: %w", i, q, err)
-		}
-	}
+	log.Println("Database Migration: Embedded Goose migrations completed successfully.")
 	return nil
 }
 

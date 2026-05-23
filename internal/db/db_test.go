@@ -2,12 +2,14 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pashagolub/pgxmock/v3"
@@ -39,107 +41,66 @@ func TestRedisMock(t *testing.T) {
 	}
 }
 
-func TestMigrate(t *testing.T) {
-	tests := []struct {
-		name      string
-		mockSetup func(mock pgxmock.PgxPoolIface)
-		wantErr   bool
-		errMatch  string
-	}{
-		{
-			name: "Success",
-			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				// Mock check cves exists returning false
-				mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
-					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
-				// Mock base schema execution
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
-
-				// Expectations for each migration query in migrate()
-				// There are 31 queries in the queries slice
-				for i := 0; i < 31; i++ {
-					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
-				}
-			},
-			wantErr: false,
-		},
-		{
-			name: "Base Schema Failure",
-			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
-					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnError(fmt.Errorf("schema fail"))
-			},
-			wantErr:  true,
-			errMatch: "failed to execute base schema",
-		},
-		{
-			name: "Incremental Migration Failure",
-			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
-					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
-				// Fail on the first incremental migration
-				mock.ExpectExec("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin").WillReturnError(fmt.Errorf("query fail"))
-			},
-			wantErr:  true,
-			errMatch: "migration 0 failed",
-		},
-		{
-			name: "Partition Migration Success",
-			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				// 1. check if table exists returns true
-				mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
-					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
-				// 2. check if partitioned returns false
-				mock.ExpectQuery("SELECT EXISTS").
-					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
-				// 3. Expect drop FK execs (5 queries)
-				for i := 0; i < 5; i++ {
-					mock.ExpectExec("ALTER TABLE").WillReturnResult(pgxmock.NewResult("ALTER", 0))
-				}
-				// 4. Expect rename cves
-				mock.ExpectExec("ALTER TABLE cves RENAME TO cves_old").WillReturnResult(pgxmock.NewResult("ALTER", 0))
-				// 5. Expect base schema sql exec
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
-				// 6. Expect copy data exec
-				mock.ExpectExec("INSERT INTO cves").WillReturnResult(pgxmock.NewResult("INSERT", 10))
-				// 7. Expect setval exec
-				mock.ExpectExec("SELECT setval").WillReturnResult(pgxmock.NewResult("SELECT", 0))
-				// 8. Expect drop cves_old
-				mock.ExpectExec("DROP TABLE cves_old").WillReturnResult(pgxmock.NewResult("DROP", 0))
-
-				// 9. expectations for each migration query (31 queries)
-				for i := 0; i < 31; i++ {
-					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
-				}
-			},
-			wantErr: false,
-		},
+func TestMigrate_SqlOpenerFailure(t *testing.T) {
+	oldSqlOpener := sqlOpener
+	sqlOpener = func(driverName, dataSourceName string) (*sql.DB, error) {
+		return nil, fmt.Errorf("forced open error")
 	}
+	defer func() { sqlOpener = oldSqlOpener }()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mock, err := pgxmock.NewPool()
-			if err != nil {
-				t.Fatalf("pgxmock.NewPool failed: %v", err)
-			}
-			Pool = mock
-			defer mock.Close()
+	err := migrate(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "forced open error") {
+		t.Errorf("expected connection error, got: %v", err)
+	}
+}
 
-			if tt.mockSetup != nil {
-				tt.mockSetup(mock)
-			}
+func TestMigrate_GooseFailure(t *testing.T) {
+	db, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
 
-			err = migrate(context.Background())
-			if (err != nil) != tt.wantErr {
-				t.Errorf("migrate() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if tt.wantErr && !strings.Contains(err.Error(), tt.errMatch) {
-				t.Errorf("migrate() error = %v, wantMatch %v", err, tt.errMatch)
-			}
-		})
+	oldSqlOpener := sqlOpener
+	sqlOpener = func(driverName, dataSourceName string) (*sql.DB, error) {
+		return db, nil
+	}
+	defer func() { sqlOpener = oldSqlOpener }()
+
+	oldGooseUp := gooseUp
+	gooseUp = func(ctx context.Context, db *sql.DB, dir string) error {
+		return fmt.Errorf("forced goose failure")
+	}
+	defer func() { gooseUp = oldGooseUp }()
+
+	err = migrate(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "goose migration failed") {
+		t.Errorf("expected goose migration failure, got: %v", err)
+	}
+}
+
+func TestMigrate_Success(t *testing.T) {
+	db, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	oldSqlOpener := sqlOpener
+	sqlOpener = func(driverName, dataSourceName string) (*sql.DB, error) {
+		return db, nil
+	}
+	defer func() { sqlOpener = oldSqlOpener }()
+
+	oldGooseUp := gooseUp
+	gooseUp = func(ctx context.Context, db *sql.DB, dir string) error {
+		return nil
+	}
+	defer func() { gooseUp = oldGooseUp }()
+
+	err = migrate(context.Background())
+	if err != nil {
+		t.Errorf("expected successful migration, got error: %v", err)
 	}
 }
 
@@ -246,12 +207,6 @@ func TestInitDB_Complex(t *testing.T) {
 				mock.ExpectPing().WillReturnError(fmt.Errorf("not ready yet"))
 				mock.ExpectPing().WillReturnError(fmt.Errorf("not ready yet"))
 				mock.ExpectPing() // Succeeds on 3rd try
-				mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
-					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
-				for i := 0; i < 31; i++ {
-					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
-				}
 			},
 			shortRetry: true,
 			wantErr:    false,
@@ -261,12 +216,6 @@ func TestInitDB_Complex(t *testing.T) {
 			envs: map[string]string{"DB_HOST": "localhost", "DB_SSLMODE": "disable"},
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectPing()
-				mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
-					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
-				for i := 0; i < 31; i++ {
-					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
-				}
 			},
 			wantErr: false,
 		},
@@ -299,9 +248,6 @@ func TestInitDB_Complex(t *testing.T) {
 			envs: map[string]string{"DB_HOST": "localhost"},
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectPing()
-				mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
-					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnError(fmt.Errorf("migration fail"))
 			},
 			wantErr:     true,
 			errContains: "migration failed",
@@ -314,10 +260,12 @@ func TestInitDB_Complex(t *testing.T) {
 			oldCreator := poolCreator
 			oldRetryCount := dbRetryCount
 			oldRetryDelay := dbRetryDelay
+			oldMigrateFunc := migrateFunc
 			defer func() {
 				poolCreator = oldCreator
 				dbRetryCount = oldRetryCount
 				dbRetryDelay = oldRetryDelay
+				migrateFunc = oldMigrateFunc
 			}()
 
 			if tt.name == "Success Path - Default SSLMode and Ping Retry" {
@@ -329,6 +277,16 @@ func TestInitDB_Complex(t *testing.T) {
 			} else {
 				dbRetryCount = 1
 				dbRetryDelay = 1 * time.Millisecond
+			}
+
+			if tt.name == "Migration Failure" {
+				migrateFunc = func(ctx context.Context) error {
+					return fmt.Errorf("migration fail")
+				}
+			} else {
+				migrateFunc = func(ctx context.Context) error {
+					return nil
+				}
 			}
 
 			mock, err := pgxmock.NewPool()
@@ -378,7 +336,6 @@ func TestDefaultPoolCreator(t *testing.T) {
 	// Cover the default poolCreator implementation
 	ctx := context.Background()
 	cfg, _ := pgxpool.ParseConfig("host=localhost")
-	// This will try to connect to localhost, which might fail, but it covers the lines.
 	_, _ = poolCreator(ctx, cfg)
 }
 
@@ -463,12 +420,6 @@ func TestInitDB_Replica(t *testing.T) {
 		defer mock.Close()
 
 		mock.ExpectPing()
-		mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
-			WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
-		mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
-		for i := 0; i < 31; i++ {
-			mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
-		}
 
 		oldCreator := poolCreator
 		poolCreator = func(ctx context.Context, config *pgxpool.Config) (DBPool, error) {
@@ -476,160 +427,18 @@ func TestInitDB_Replica(t *testing.T) {
 		}
 		defer func() { poolCreator = oldCreator }()
 
+		oldMigrateFunc := migrateFunc
+		migrateFunc = func(ctx context.Context) error {
+			return nil
+		}
+		defer func() { migrateFunc = oldMigrateFunc }()
+
 		err = InitDB()
 		if err != nil {
 			t.Errorf("expected InitDB to succeed, got %v", err)
 		}
 		if ReplicaPool == nil {
 			t.Error("expected ReplicaPool to be initialized")
-		}
-	})
-}
-
-func TestMigrate_ExtraFailures(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("CheckCVEsTableExistsFailure", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed: %v", err)
-		}
-		defer mock.Close()
-		Pool = mock
-
-		mock.ExpectQuery("SELECT EXISTS \\(SELECT 1 FROM pg_tables WHERE tablename = 'cves'\\)").
-			WillReturnError(fmt.Errorf("query exists check fail"))
-
-		err = migrate(ctx)
-		if err == nil || !strings.Contains(err.Error(), "failed to check if cves table exists") {
-			t.Errorf("expected exists check error, got %v", err)
-		}
-	})
-
-	t.Run("DropConstraintFailure_WarningOnly", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed: %v", err)
-		}
-		defer mock.Close()
-		Pool = mock
-
-		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
-		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
-		
-		// Drop FK fails, but it prints warning and continues
-		for i := 0; i < 5; i++ {
-			mock.ExpectExec("ALTER TABLE").WillReturnError(fmt.Errorf("drop fk fail"))
-		}
-		mock.ExpectExec("ALTER TABLE cves RENAME TO cves_old").WillReturnResult(pgxmock.NewResult("ALTER", 1))
-		mock.ExpectExec("CREATE TABLE").WillReturnResult(pgxmock.NewResult("CREATE", 1))
-		mock.ExpectExec("INSERT INTO cves").WillReturnResult(pgxmock.NewResult("INSERT", 10))
-		mock.ExpectExec("SELECT setval").WillReturnResult(pgxmock.NewResult("SELECT", 1))
-		mock.ExpectExec("DROP TABLE cves_old").WillReturnResult(pgxmock.NewResult("DROP", 1))
-
-		for i := 0; i < 31; i++ {
-			mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
-		}
-
-		err = migrate(ctx)
-		if err != nil {
-			t.Errorf("expected drop constraint failure to not abort migration, got err: %v", err)
-		}
-	})
-
-	t.Run("RenameCVEsOldFailure", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed: %v", err)
-		}
-		defer mock.Close()
-		Pool = mock
-
-		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
-		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
-		for i := 0; i < 5; i++ {
-			mock.ExpectExec("ALTER TABLE").WillReturnResult(pgxmock.NewResult("ALTER", 1))
-		}
-		mock.ExpectExec("ALTER TABLE cves RENAME").WillReturnError(fmt.Errorf("rename fail"))
-
-		err = migrate(ctx)
-		if err == nil || !strings.Contains(err.Error(), "failed to rename cves table to cves_old") {
-			t.Errorf("expected rename error, got %v", err)
-		}
-	})
-
-	t.Run("BaseSchemaPartitioningFailure", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed: %v", err)
-		}
-		defer mock.Close()
-		Pool = mock
-
-		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
-		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
-		for i := 0; i < 5; i++ {
-			mock.ExpectExec("ALTER TABLE").WillReturnResult(pgxmock.NewResult("ALTER", 1))
-		}
-		mock.ExpectExec("ALTER TABLE cves RENAME").WillReturnResult(pgxmock.NewResult("ALTER", 1))
-		mock.ExpectExec("CREATE TABLE").WillReturnError(fmt.Errorf("schema SQL fail"))
-
-		err = migrate(ctx)
-		if err == nil || !strings.Contains(err.Error(), "failed to execute base schema for partitioning") {
-			t.Errorf("expected schema partitioning error, got %v", err)
-		}
-	})
-
-	t.Run("CopyDataFailure", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed: %v", err)
-		}
-		defer mock.Close()
-		Pool = mock
-
-		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
-		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
-		for i := 0; i < 5; i++ {
-			mock.ExpectExec("ALTER TABLE").WillReturnResult(pgxmock.NewResult("ALTER", 1))
-		}
-		mock.ExpectExec("ALTER TABLE cves RENAME").WillReturnResult(pgxmock.NewResult("ALTER", 1))
-		mock.ExpectExec("CREATE TABLE").WillReturnResult(pgxmock.NewResult("CREATE", 1))
-		mock.ExpectExec("INSERT INTO cves").WillReturnError(fmt.Errorf("copy fail"))
-		mock.ExpectExec("ALTER TABLE cves_old RENAME TO cves").WillReturnResult(pgxmock.NewResult("ALTER", 1))
-
-		err = migrate(ctx)
-		if err == nil || !strings.Contains(err.Error(), "failed to copy CVE data to partitioned table") {
-			t.Errorf("expected copy error, got %v", err)
-		}
-	})
-
-	t.Run("AlignSequenceAndDropWarnings", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed: %v", err)
-		}
-		defer mock.Close()
-		Pool = mock
-
-		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
-		mock.ExpectQuery("SELECT EXISTS").WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
-		for i := 0; i < 5; i++ {
-			mock.ExpectExec("ALTER TABLE").WillReturnResult(pgxmock.NewResult("ALTER", 1))
-		}
-		mock.ExpectExec("ALTER TABLE cves RENAME").WillReturnResult(pgxmock.NewResult("ALTER", 1))
-		mock.ExpectExec("CREATE TABLE").WillReturnResult(pgxmock.NewResult("CREATE", 1))
-		mock.ExpectExec("INSERT INTO cves").WillReturnResult(pgxmock.NewResult("INSERT", 10))
-		mock.ExpectExec("SELECT setval").WillReturnError(fmt.Errorf("setval fail"))
-		mock.ExpectExec("DROP TABLE cves_old").WillReturnError(fmt.Errorf("drop fail"))
-
-		for i := 0; i < 31; i++ {
-			mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
-		}
-
-		err = migrate(ctx)
-		if err != nil {
-			t.Errorf("expected warnings to not halt migration, got %v", err)
 		}
 	})
 }
@@ -675,4 +484,3 @@ func TestInitRedis_SentinelAndCluster(t *testing.T) {
 		}
 	})
 }
-
