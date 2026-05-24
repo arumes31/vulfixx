@@ -23,7 +23,7 @@ jobs:
           OWNER: ${{ github.repository_owner }}
           DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: |
-          PACKAGES=("$REPO" "$REPO-ollama-init")
+          PACKAGES=("$REPO" "$REPO-ollama")
           
           for PACKAGE in "${PACKAGES[@]}"; do
             echo "--- Processing package: $PACKAGE ---"
