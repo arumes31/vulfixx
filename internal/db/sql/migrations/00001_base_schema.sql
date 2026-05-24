@@ -207,6 +207,7 @@ CREATE TABLE IF NOT EXISTS email_change_requests (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -214,6 +215,7 @@ BEGIN
     RETURN NEW;
 END;
 $$ language 'plpgsql';
+-- +goose StatementEnd
 
 DROP TRIGGER IF EXISTS update_cves_updated_at ON cves;
 CREATE TRIGGER update_cves_updated_at
@@ -227,6 +229,7 @@ CREATE TRIGGER update_worker_sync_stats_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION calculate_cve_priority() RETURNS TRIGGER AS $$
 BEGIN
     IF COALESCE(NEW.cvss_score, 0.0) >= 9.0 OR NEW.cisa_kev = TRUE OR COALESCE(NEW.epss_score, 0.0) >= 0.5 THEN
@@ -241,6 +244,7 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
 DROP TRIGGER IF EXISTS trigger_calculate_cve_priority ON cves;
 CREATE TRIGGER trigger_calculate_cve_priority
