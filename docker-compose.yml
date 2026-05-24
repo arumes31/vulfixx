@@ -42,8 +42,8 @@ services:
       - POSTGRES_USER=cveuser
       - POSTGRES_PASSWORD=cvepass
       - POSTGRES_DB=cvetracker
-    # ports:
-    #   - "5432:5432"  # Only expose for local development; not for production
+    ports:
+       - "5432:5432"  # Only expose for local development; not for production
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -51,8 +51,8 @@ services:
 
   redis:
     image: redis:7-alpine
-    # ports:
-    #   - "6379:6379"  # Only expose for local development; not for production
+    ports:
+      - "6379:6379"  # Only expose for local development; not for production
     volumes:
       - ./data/redis:/data
     restart: unless-stopped
