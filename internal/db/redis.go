@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"crypto/tls"
 	"os"
 	"strings"
 
@@ -52,6 +53,7 @@ func InitRedis() error {
 			// Redis Cluster
 			addrs := strings.Split(clusterAddrsStr, ",")
 			var parsedAddrs []string
+			var tlsConfig *tls.Config
 			for _, entry := range addrs {
 				entry = strings.TrimSpace(entry)
 				if strings.HasPrefix(entry, "redis://") || strings.HasPrefix(entry, "rediss://") {
@@ -61,14 +63,18 @@ func InitRedis() error {
 						if opt.Password != "" {
 							password = opt.Password
 						}
+						if opt.TLSConfig != nil {
+							tlsConfig = opt.TLSConfig
+						}
 					}
 				} else {
 					parsedAddrs = append(parsedAddrs, entry)
 				}
 			}
 			RedisClient = redis.NewClusterClient(&redis.ClusterOptions{
-				Addrs:    parsedAddrs,
-				Password: password,
+				Addrs:     parsedAddrs,
+				Password:  password,
+				TLSConfig: tlsConfig,
 			})
 		} else {
 			// Single Node Redis

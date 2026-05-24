@@ -93,17 +93,14 @@ func (w *Worker) processEmailChange(ctx context.Context) {
 			log.Printf("Worker: Error unmarshaling email change payload: %v", err)
 			continue
 		}
-		email, _ := payload["email"].(string)
-		token, _ := payload["token"].(string)
-		emailType, _ := payload["type"].(string)
-		log.Printf("Worker: Picked up email change notification (%s) for %s", emailType, maskEmail(email))
-		if email == "" || token == "" {
-			log.Printf("Worker: Invalid email change payload: email=%q, token=%q", maskEmail(email), redactToken(token))
-			continue
-		}
+		oldEmail, _ := payload["old_email"].(string)
+		oldToken, _ := payload["old_token"].(string)
+		newEmail, _ := payload["new_email"].(string)
+		newToken, _ := payload["new_token"].(string)
 
-		if isEmailDomainBlacklisted(email) {
-			log.Printf("Worker: Blocked email change notification to blacklisted domain %s", maskEmail(email))
+		log.Printf("Worker: Picked up combined email change notification for old=%s, new=%s", maskEmail(oldEmail), maskEmail(newEmail))
+		if oldEmail == "" || oldToken == "" || newEmail == "" || newToken == "" {
+			log.Printf("Worker: Invalid email change payload: oldEmail=%q, newEmail=%q", maskEmail(oldEmail), maskEmail(newEmail))
 			continue
 		}
 
@@ -112,25 +109,44 @@ func (w *Worker) processEmailChange(ctx context.Context) {
 			retries = int(r)
 		}
 
-		if err := w.sendEmailChangeNotification(email, token, emailType); err != nil {
-			log.Printf("Worker: Failed to send email change notification to %s (attempt %d): %v", maskEmail(email), retries+1, err)
+		var sendErr error
+		if !isEmailDomainBlacklisted(oldEmail) {
+			if err := w.sendEmailChangeNotification(oldEmail, oldToken, "old"); err != nil {
+				sendErr = fmt.Errorf("old email: %w", err)
+			}
+		} else {
+			log.Printf("Worker: Blocked old email change notification to blacklisted domain %s", maskEmail(oldEmail))
+		}
+
+		if sendErr == nil {
+			if !isEmailDomainBlacklisted(newEmail) {
+				if err := w.sendEmailChangeNotification(newEmail, newToken, "new"); err != nil {
+					sendErr = fmt.Errorf("new email: %w", err)
+				}
+			} else {
+				log.Printf("Worker: Blocked new email change notification to blacklisted domain %s", maskEmail(newEmail))
+			}
+		}
+
+		if sendErr != nil {
+			log.Printf("Worker: Failed to send email change notification (attempt %d): %v", retries+1, sendErr)
 			if retries >= maxEmailRetries {
-				log.Printf("Worker: Permanently failed to send email change notification to %s after %d attempts", maskEmail(email), maxEmailRetries)
+				log.Printf("Worker: Permanently failed to send email change notification after %d attempts", maxEmailRetries)
 				continue
 			}
 			payload["retries"] = retries + 1
 			newPayload, marshalErr := json.Marshal(payload)
 			if marshalErr != nil {
-				log.Printf("Worker: Failed to marshal retry payload for %s: %v", maskEmail(email), marshalErr)
+				log.Printf("Worker: Failed to marshal retry payload: %v", marshalErr)
 				continue
 			}
 			delay := time.Duration(math.Pow(2, float64(retries))) * time.Second
 			score := float64(time.Now().Add(delay).UnixMilli())
 			if zErr := w.Redis.ZAdd(ctx, "email_change_delayed", redis.Z{Score: score, Member: string(newPayload)}).Err(); zErr != nil {
-				log.Printf("Worker: Failed to enqueue email change retry for %s: %v", maskEmail(email), zErr)
+				log.Printf("Worker: Failed to enqueue email change retry: %v", zErr)
 			}
 		} else {
-			log.Printf("Worker: Successfully sent email change notification to %s", maskEmail(email))
+			log.Printf("Worker: Successfully processed both email change notifications")
 		}
 	}
 }

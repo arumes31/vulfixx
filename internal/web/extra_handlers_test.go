@@ -107,6 +107,12 @@ func TestStartStatsTicker(t *testing.T) {
 	defer mock.Close()
 	mock.MatchExpectationsInOrder(false)
 
+	oldRedis := db.RedisClient
+	db.RedisClient = nil
+	defer func() {
+		db.RedisClient = oldRedis
+	}()
+
 	app := setupTestApp(t, mock)
 
 	// Mock the 7 queries in refresh()

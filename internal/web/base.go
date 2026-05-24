@@ -139,10 +139,14 @@ func (a *App) AuthMiddleware(next http.Handler) http.Handler {
 			}
 		}
 
-		if !onboardingCompleted && !isTOTPEnabled {
+		if !onboardingCompleted {
 			path := r.URL.Path
 			if !strings.HasPrefix(path, "/settings") && !strings.HasPrefix(path, "/api/onboarding") && !strings.HasPrefix(path, "/static/") {
-				http.Redirect(w, r, "/settings?info=MFA+registration+is+required+to+complete+onboarding", http.StatusFound)
+				if !isTOTPEnabled {
+					http.Redirect(w, r, "/settings?info=MFA+registration+is+required+to+complete+onboarding", http.StatusFound)
+				} else {
+					http.Redirect(w, r, "/settings?info=Please+complete+onboarding", http.StatusFound)
+				}
 				return
 			}
 		}

@@ -108,7 +108,12 @@ func TestEmailWorker_Queues(t *testing.T) {
 			Mailer: mockMailer,
 		}
 
-		payload, _ := json.Marshal(map[string]string{"email": "test@example.com", "token": "tok456", "type": "new"})
+		payload, _ := json.Marshal(map[string]string{
+			"old_email": "test_old@example.com",
+			"old_token": "tok_old",
+			"new_email": "test_new@example.com",
+			"new_token": "tok_new",
+		})
 		rdb.LPush(context.Background(), "email_change_queue", payload)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
@@ -116,8 +121,8 @@ func TestEmailWorker_Queues(t *testing.T) {
 
 		w.processEmailChange(ctx)
 
-		if mockMailer.Count() == 0 {
-			t.Errorf("expected email to be sent")
+		if mockMailer.Count() != 2 {
+			t.Errorf("expected 2 emails to be sent, got %d", mockMailer.Count())
 		}
 	})
 }

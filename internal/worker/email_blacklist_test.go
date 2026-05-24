@@ -94,7 +94,12 @@ func TestEmailWorker_BlacklistBlocking(t *testing.T) {
 	mockMailer.Count = 0
 
 	// 2. Email change email blocked
-	payload2, err := json.Marshal(map[string]string{"email": "spam@mailinator.com", "token": "tok456", "type": "new"})
+	payload2, err := json.Marshal(map[string]string{
+		"old_email": "spam@mailinator.com",
+		"old_token": "tok_old",
+		"new_email": "spam@mailinator.com",
+		"new_token": "tok_new",
+	})
 	if err != nil {
 		t.Fatalf("failed to marshal payload2: %v", err)
 	}

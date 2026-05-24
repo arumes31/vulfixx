@@ -132,22 +132,31 @@ func (w *Worker) handleEmailChangeTask(ctx context.Context, t *asynq.Task) error
 	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
 		return fmt.Errorf("failed to unmarshal email change payload: %v: %w", err, asynq.SkipRetry)
 	}
-	email, _ := payload["email"].(string)
-	token, _ := payload["token"].(string)
-	emailType, _ := payload["type"].(string)
-	if email == "" || token == "" {
-		return fmt.Errorf("invalid email change payload email/token: %w", asynq.SkipRetry)
-	}
-	if emailType != "old" && emailType != "new" {
-		return fmt.Errorf("invalid email change payload type: %w", asynq.SkipRetry)
-	}
-	if isEmailDomainBlacklisted(email) {
-		slog.Warn("Worker: Blocked email change notification to blacklisted domain", "email", maskEmail(email))
-		return nil
+	oldEmail, _ := payload["old_email"].(string)
+	oldToken, _ := payload["old_token"].(string)
+	newEmail, _ := payload["new_email"].(string)
+	newToken, _ := payload["new_token"].(string)
+	if oldEmail == "" || oldToken == "" || newEmail == "" || newToken == "" {
+		return fmt.Errorf("invalid email change payload: %w", asynq.SkipRetry)
 	}
 
-	if err := w.sendEmailChangeNotification(email, token, emailType); err != nil {
-		return fmt.Errorf("failed to send email change notification to %s: %w", maskEmail(email), err)
+	// Send old email change notification
+	if !isEmailDomainBlacklisted(oldEmail) {
+		if err := w.sendEmailChangeNotification(oldEmail, oldToken, "old"); err != nil {
+			return fmt.Errorf("failed to send old email change notification to %s: %w", maskEmail(oldEmail), err)
+		}
+	} else {
+		slog.Warn("Worker: Blocked email change notification to blacklisted domain", "email", maskEmail(oldEmail))
 	}
+
+	// Send new email change notification
+	if !isEmailDomainBlacklisted(newEmail) {
+		if err := w.sendEmailChangeNotification(newEmail, newToken, "new"); err != nil {
+			return fmt.Errorf("failed to send new email change notification to %s: %w", maskEmail(newEmail), err)
+		}
+	} else {
+		slog.Warn("Worker: Blocked email change notification to blacklisted domain", "email", maskEmail(newEmail))
+	}
+
 	return nil
 }

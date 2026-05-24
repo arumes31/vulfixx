@@ -121,9 +121,10 @@ func TestAsynqWorker_Flow(t *testing.T) {
 		w.Mailer = mailer
 
 		payload, _ := json.Marshal(map[string]interface{}{
-			"email": "user@example.com",
-			"token": "asynq-token-456",
-			"type":  "new",
+			"old_email": "user_old@example.com",
+			"old_token": "asynq-token-old",
+			"new_email": "user_new@example.com",
+			"new_token": "asynq-token-new",
 		})
 
 		task := asynq.NewTask("task:email_change", payload)
@@ -144,8 +145,8 @@ func TestAsynqWorker_Flow(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 		srv.Shutdown()
 
-		if mailer.Count() != 1 {
-			t.Errorf("expected 1 email to be sent, got %d", mailer.Count())
+		if mailer.Count() != 2 {
+			t.Errorf("expected 2 emails to be sent, got %d", mailer.Count())
 		}
 	})
 }

@@ -142,6 +142,9 @@ func (a *App) VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
 	if valid {
 		if _, err := a.Pool.Exec(r.Context(), "UPDATE users SET is_totp_enabled = TRUE WHERE id = $1", userID); err != nil {
 			log.Printf("Error enabling TOTP: %v", err)
+			_ = session.Save(r, w)
+			http.Redirect(w, r, "/settings?error=Failed+to+enable+2FA", http.StatusFound)
+			return
 		}
 		delete(session.Values, "totp_setup_ts")
 		delete(session.Values, "totp_setup_attempts")
@@ -313,33 +316,24 @@ func (a *App) ChangeEmailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Push email change notification payloads to redis queue
-	oldPayload, _ := json.Marshal(map[string]string{
-		"email": email,
-		"token": oldToken,
-		"type":  "old",
-	})
-	newPayload, _ := json.Marshal(map[string]string{
-		"email": newEmail,
-		"token": newToken,
-		"type":  "new",
+	// Push email change notification payloads to redis queue atomically as a single work item
+	combinedPayload, _ := json.Marshal(map[string]string{
+		"old_email": email,
+		"old_token": oldToken,
+		"new_email": newEmail,
+		"new_token": newToken,
 	})
 
 	var enqueueErr error
 	if a.AsynqClient != nil {
-		oldTask := asynq.NewTask("task:email_change", oldPayload)
-		newTask := asynq.NewTask("task:email_change", newPayload)
-		_, enqueueErr = a.AsynqClient.EnqueueContext(r.Context(), oldTask)
-		if enqueueErr == nil {
-			_, enqueueErr = a.AsynqClient.EnqueueContext(r.Context(), newTask)
-		}
+		task := asynq.NewTask("task:email_change", combinedPayload)
+		_, enqueueErr = a.AsynqClient.EnqueueContext(r.Context(), task)
 	} else {
 		if a.Redis == nil {
 			enqueueErr = errors.New("redis client is nil")
 		} else {
 			_, enqueueErr = a.Redis.TxPipelined(r.Context(), func(pipe redis.Pipeliner) error {
-				pipe.LPush(r.Context(), "email_change_queue", oldPayload)
-				pipe.LPush(r.Context(), "email_change_queue", newPayload)
+				pipe.LPush(r.Context(), "email_change_queue", combinedPayload)
 				return nil
 			})
 		}

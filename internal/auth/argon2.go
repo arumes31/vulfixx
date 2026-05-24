@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"runtime"
 	"strings"
 
 	"golang.org/x/crypto/argon2"
@@ -60,13 +59,7 @@ func verifyPasswordArgon2id(hashedPassword, password string) (bool, error) {
 		return false, err
 	}
 
-	maxParallel := runtime.GOMAXPROCS(0)
-	if maxParallel < 1 {
-		maxParallel = 1
-	}
-	if maxParallel > 32 {
-		maxParallel = 32
-	}
+	maxParallel := 32
 
 	if memory < 1024 || memory > 1024*1024 {
 		return false, fmt.Errorf("argon2id memory cost out of bounds: %d", memory)
