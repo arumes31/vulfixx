@@ -451,7 +451,7 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			var id int
 			err := br.QueryRow().Scan(&id)
 			if err != nil {
-				br.Close()
+				_ = br.Close()
 				slog.Error("Worker: Error executing batch item, rolling back transaction", "cve_id", modelsToUpsert[i].CVEID, "error", err)
 				return err
 			}
