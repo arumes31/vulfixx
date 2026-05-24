@@ -423,7 +423,7 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 	query := `
 		INSERT INTO cves (cve_id, description, cvss_score, vector_string, cwe_id, "references", configurations, published_date, updated_date, vendor, product, affected_products, exploit_available)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-		ON CONFLICT (cve_id) DO UPDATE SET
+		ON CONFLICT (cve_id, published_date) DO UPDATE SET
 			description = EXCLUDED.description,
 			cvss_score = EXCLUDED.cvss_score,
 			vector_string = EXCLUDED.vector_string,
@@ -447,16 +447,20 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 	var successfulCVEs []models.CVE
 
 	if br != nil {
-		defer br.Close()
 		for i := 0; i < len(modelsToUpsert); i++ {
 			var id int
 			err := br.QueryRow().Scan(&id)
 			if err != nil {
+				br.Close()
 				slog.Error("Worker: Error executing batch item, rolling back transaction", "cve_id", modelsToUpsert[i].CVEID, "error", err)
 				return err
 			}
 			modelsToUpsert[i].ID = id
 			successfulCVEs = append(successfulCVEs, modelsToUpsert[i])
+		}
+		if err := br.Close(); err != nil {
+			slog.Error("Worker: Error closing batch results", "error", err)
+			return err
 		}
 	} else {
 		slog.Warn("Worker: SendBatch returned nil (likely mock database). Falling back to individual inserts.")
