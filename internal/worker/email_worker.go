@@ -109,23 +109,31 @@ func (w *Worker) processEmailChange(ctx context.Context) {
 			retries = int(r)
 		}
 
-		var sendErr error
+		var oldErr error
 		if !isEmailDomainBlacklisted(oldEmail) {
 			if err := w.sendEmailChangeNotification(oldEmail, oldToken, "old"); err != nil {
-				sendErr = fmt.Errorf("old email: %w", err)
+				oldErr = fmt.Errorf("old email: %w", err)
 			}
 		} else {
 			log.Printf("Worker: Blocked old email change notification to blacklisted domain %s", maskEmail(oldEmail))
 		}
 
-		if sendErr == nil {
-			if !isEmailDomainBlacklisted(newEmail) {
-				if err := w.sendEmailChangeNotification(newEmail, newToken, "new"); err != nil {
-					sendErr = fmt.Errorf("new email: %w", err)
-				}
-			} else {
-				log.Printf("Worker: Blocked new email change notification to blacklisted domain %s", maskEmail(newEmail))
+		var newErr error
+		if !isEmailDomainBlacklisted(newEmail) {
+			if err := w.sendEmailChangeNotification(newEmail, newToken, "new"); err != nil {
+				newErr = fmt.Errorf("new email: %w", err)
 			}
+		} else {
+			log.Printf("Worker: Blocked new email change notification to blacklisted domain %s", maskEmail(newEmail))
+		}
+
+		var sendErr error
+		if oldErr != nil && newErr != nil {
+			sendErr = fmt.Errorf("%v; %v", oldErr, newErr)
+		} else if oldErr != nil {
+			sendErr = oldErr
+		} else if newErr != nil {
+			sendErr = newErr
 		}
 
 		if sendErr != nil {

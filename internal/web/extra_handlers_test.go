@@ -109,9 +109,9 @@ func TestStartStatsTicker(t *testing.T) {
 
 	oldRedis := db.RedisClient
 	db.RedisClient = nil
-	defer func() {
+	t.Cleanup(func() {
 		db.RedisClient = oldRedis
-	}()
+	})
 
 	app := setupTestApp(t, mock)
 

@@ -141,22 +141,33 @@ func (w *Worker) handleEmailChangeTask(ctx context.Context, t *asynq.Task) error
 	}
 
 	// Send old email change notification
+	var oldErr error
 	if !isEmailDomainBlacklisted(oldEmail) {
 		if err := w.sendEmailChangeNotification(oldEmail, oldToken, "old"); err != nil {
-			return fmt.Errorf("failed to send old email change notification to %s: %w", maskEmail(oldEmail), err)
+			oldErr = fmt.Errorf("failed to send old email change notification to %s: %w", maskEmail(oldEmail), err)
 		}
 	} else {
 		slog.Warn("Worker: Blocked email change notification to blacklisted domain", "email", maskEmail(oldEmail))
 	}
 
 	// Send new email change notification
+	var newErr error
 	if !isEmailDomainBlacklisted(newEmail) {
 		if err := w.sendEmailChangeNotification(newEmail, newToken, "new"); err != nil {
-			return fmt.Errorf("failed to send new email change notification to %s: %w", maskEmail(newEmail), err)
+			newErr = fmt.Errorf("failed to send new email change notification to %s: %w", maskEmail(newEmail), err)
 		}
 	} else {
 		slog.Warn("Worker: Blocked email change notification to blacklisted domain", "email", maskEmail(newEmail))
 	}
 
+	if oldErr != nil && newErr != nil {
+		return fmt.Errorf("%v; %v", oldErr, newErr)
+	}
+	if oldErr != nil {
+		return oldErr
+	}
+	if newErr != nil {
+		return newErr
+	}
 	return nil
 }
