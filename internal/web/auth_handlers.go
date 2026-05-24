@@ -6,6 +6,7 @@ import (
 	"cve-tracker/internal/auth"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/big"
@@ -66,7 +67,7 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if this is a TOTP submission for a pre-authenticated user
-	preAuthUserID, hasPreAuth := session.Values["pre_auth_user_id"].(int)
+	preAuthUserID, hasPreAuth := getSessionInt(session.Values["pre_auth_user_id"])
 
 	if hasPreAuth && totpCode != "" {
 		if err := Validate.Var(totpCode, "required,numeric,len=6"); err != nil {
@@ -90,7 +91,7 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if hasPreAuth && totpCode != "" {
-		preAuthTS, _ := session.Values["pre_auth_ts"].(int64)
+		preAuthTS, _ := getSessionInt64(session.Values["pre_auth_ts"])
 
 		if time.Now().Unix()-preAuthTS > 300 {
 			delete(session.Values, "pre_auth_user_id")
@@ -290,7 +291,7 @@ func (a *App) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	session, _ := a.SessionStore.Get(r, "vulfixx-session")
-	expected, _ := session.Values["captcha_answer"].(int)
+	expected, _ := getSessionInt(session.Values["captcha_answer"])
 	actual, _ := strconv.Atoi(captchaAnswer)
 
 	if expected == 0 || actual != expected {
@@ -303,6 +304,10 @@ func (a *App) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	token, err := auth.Register(r.Context(), email, password)
 	if err != nil {
+		if errors.Is(err, auth.ErrConflict) {
+			a.RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Email address is already registered"})
+			return
+		}
 		a.RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
 		return
 	}

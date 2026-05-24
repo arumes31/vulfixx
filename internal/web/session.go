@@ -58,6 +58,40 @@ func GetSessionStore() sessions.Store {
 	return store
 }
 
+func getSessionInt(v any) (int, bool) {
+	if v == nil {
+		return 0, false
+	}
+	switch val := v.(type) {
+	case int:
+		return val, true
+	case int64:
+		return int(val), true
+	case float64:
+		return int(val), true
+	case float32:
+		return int(val), true
+	}
+	return 0, false
+}
+
+func getSessionInt64(v any) (int64, bool) {
+	if v == nil {
+		return 0, false
+	}
+	switch val := v.(type) {
+	case int:
+		return int64(val), true
+	case int64:
+		return val, true
+	case float64:
+		return int64(val), true
+	case float32:
+		return int64(val), true
+	}
+	return 0, false
+}
+
 func (a *App) GetUserID(r *http.Request) (int, bool) {
 	if a.SessionStore == nil {
 		return 0, false
@@ -66,8 +100,7 @@ func (a *App) GetUserID(r *http.Request) (int, bool) {
 	if err != nil {
 		return 0, false
 	}
-	userID, ok := session.Values["user_id"].(int)
-	return userID, ok
+	return getSessionInt(session.Values["user_id"])
 }
 
 func (a *App) GetActiveTeamID(r *http.Request) (int, bool) {
@@ -78,8 +111,7 @@ func (a *App) GetActiveTeamID(r *http.Request) (int, bool) {
 	if err != nil {
 		return 0, false
 	}
-	teamID, ok := session.Values["team_id"].(int)
-	return teamID, ok
+	return getSessionInt(session.Values["team_id"])
 }
 
 func (a *App) SetActiveTeamID(w http.ResponseWriter, r *http.Request, teamID int) error {

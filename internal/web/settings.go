@@ -108,8 +108,8 @@ func (a *App) VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	session, _ := a.SessionStore.Get(r, "vulfixx-session")
-	setupTS, _ := session.Values["totp_setup_ts"].(int64)
-	attempts, _ := session.Values["totp_setup_attempts"].(int)
+	setupTS, _ := getSessionInt64(session.Values["totp_setup_ts"])
+	attempts, _ := getSessionInt(session.Values["totp_setup_attempts"])
 
 	if setupTS == 0 || a.Now().Unix()-setupTS > 600 {
 		delete(session.Values, "totp_setup_ts")
