@@ -47,3 +47,7 @@ results/*.json
 !composer.json
 !package.json
 !package-lock.json
+
+# Local runtime directories
+/data/
+/results/
