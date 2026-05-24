@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"log"
 	"math"
 	"net/url"
@@ -134,40 +133,46 @@ func (w *Worker) sendEmailChangeNotification(email, token, emailType string) err
 	encodedToken := url.QueryEscape(token)
 	link := fmt.Sprintf("%s/confirm-email-change?token=%s", baseURL, encodedToken)
 
-	var content string
+	var tpl string
 	switch emailType {
 	case "old":
 		subject = "Security Alert: Email Change Requested"
-		content = fmt.Sprintf(`
+		tpl = `
 			<p>A request was made to change the email address for your Vulfixx account. If you did not make this request, please secure your account immediately.</p>
 			<div style="text-align: center; margin: 30px 0;">
-				<a href="%s" class="btn">Confirm Request</a>
+				<a href="{{.Link}}" class="btn">Confirm Request</a>
 			</div>
-			<p style="font-size: 12px; opacity: 0.6; text-align: center;">Or copy this link: %s</p>
-		`, link, link)
+			<p style="font-size: 12px; opacity: 0.6; text-align: center;">Or copy this link: {{.Link}}</p>
+		`
 	case "new":
 		subject = "Confirm Your New Email Address"
-		content = fmt.Sprintf(`
+		tpl = `
 			<p>Please confirm your new email address to complete the transition for your Vulfixx account:</p>
 			<div style="text-align: center; margin: 30px 0;">
-				<a href="%s" class="btn">Confirm Email</a>
+				<a href="{{.Link}}" class="btn">Confirm Email</a>
 			</div>
-			<p style="font-size: 12px; opacity: 0.6; text-align: center;">Or copy this link: %s</p>
-		`, link, link)
+			<p style="font-size: 12px; opacity: 0.6; text-align: center;">Or copy this link: {{.Link}}</p>
+		`
 	default:
-		content = fmt.Sprintf(`
+		tpl = `
 			<p>Please click the button below to confirm your email change for Vulfixx:</p>
 			<div style="text-align: center; margin: 30px 0;">
-				<a href="%s" class="btn">Confirm Change</a>
+				<a href="{{.Link}}" class="btn">Confirm Change</a>
 			</div>
-			<p style="font-size: 12px; opacity: 0.6; text-align: center;">Or copy this link: %s</p>
-		`, link, link)
+			<p style="font-size: 12px; opacity: 0.6; text-align: center;">Or copy this link: {{.Link}}</p>
+		`
 	}
 
-	body := WrapInModernLayout(EmailTemplateData{
-		Title: subject,
-		Body:  template.HTML(content), // #nosec G203
-	})
+	data := struct {
+		Link string
+	}{
+		Link: link,
+	}
+	body, err := RenderEmailTemplate(subject, tpl, data)
+	if err != nil {
+		log.Printf("Worker: Failed to render email template: %v", err)
+		return err
+	}
 	return w.Mailer.SendEmail(email, subject, body)
 }
 
@@ -179,20 +184,26 @@ func (w *Worker) sendVerificationEmail(email, token string) error {
 	}
 	encodedToken := url.QueryEscape(token)
 	link := fmt.Sprintf("%s/verify-email?token=%s", baseURL, encodedToken)
-	
-	content := fmt.Sprintf(`
+
+	tpl := `
 		<p>Welcome to <strong>Vulfixx</strong>, your modern threat intelligence platform. Please verify your email address to activate your access profile.</p>
 		<div style="text-align: center; margin: 30px 0;">
-			<a href="%s" class="btn">Verify Account</a>
+			<a href="{{.Link}}" class="btn">Verify Account</a>
 		</div>
-		<p style="font-size: 12px; opacity: 0.6; text-align: center;">Or copy this link: %s</p>
+		<p style="font-size: 12px; opacity: 0.6; text-align: center;">Or copy this link: {{.Link}}</p>
 		<p style="font-size: 12px; opacity: 0.6; text-align: center;">If you didn't create this account, you can safely ignore this email.</p>
-		`, link, link)
+		`
 
-	body := WrapInModernLayout(EmailTemplateData{
-		Title: subject,
-		Body:  template.HTML(content), // #nosec G203
-	})
+	data := struct {
+		Link string
+	}{
+		Link: link,
+	}
+	body, err := RenderEmailTemplate(subject, tpl, data)
+	if err != nil {
+		log.Printf("Worker: Failed to render verification template: %v", err)
+		return err
+	}
 	return w.Mailer.SendEmail(email, subject, body)
 }
 

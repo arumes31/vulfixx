@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"bytes"
 	"fmt"
 	"html"
 	"html/template"
@@ -12,6 +13,22 @@ import (
 type EmailTemplateData struct {
 	Title string
 	Body  template.HTML
+}
+
+// RenderEmailTemplate safely renders an email template body using Go's html/template and wraps it in the modern layout.
+func RenderEmailTemplate(title, tplString string, data interface{}) (string, error) {
+	tmpl, err := template.New("email").Parse(tplString)
+	if err != nil {
+		return "", err
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", err
+	}
+	return WrapInModernLayout(EmailTemplateData{
+		Title: title,
+		Body:  template.HTML(buf.String()), // #nosec G203 -- body is safely generated via html/template
+	}), nil
 }
 
 // WrapInModernLayout wraps the provided title and content in a standard premium HTML email template.
