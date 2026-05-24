@@ -5,6 +5,7 @@ import (
 )
 
 func TestEncryptionDecryption(t *testing.T) {
+	t.Setenv("ENCRYPTION_KEY", "vulfixx-default-dev-secret-key-32bytes")
 	plainText := "sentry-dsn-super-secret-key-123456"
 
 	t.Run("EncryptAndDecrypt", func(t *testing.T) {

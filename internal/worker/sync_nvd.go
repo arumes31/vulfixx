@@ -215,7 +215,10 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool, startIndex in
 			break
 		}
 
-		w.upsertCVEs(ctx, nvdResp.Vulnerabilities, isBackfill)
+		if err := w.upsertCVEs(ctx, nvdResp.Vulnerabilities, isBackfill); err != nil {
+			log.Printf("Worker: NVD upsert failed, aborting sync: %v", err)
+			return
+		}
 
 		if isBackfill {
 			w.updateBackfillProgress(ctx, startIndex)
@@ -260,9 +263,9 @@ func parseNVDDate(dateStr string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("could not parse date %q", dateStr)
 }
 
-func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfill bool) {
+func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfill bool) error {
 	if len(entries) == 0 {
-		return
+		return nil
 	}
 
 	var modelsToUpsert []models.CVE
@@ -271,7 +274,7 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 		select {
 		case <-ctx.Done():
 			slog.Info("Worker: Context cancelled, aborting NVD batch preparation.")
-			return
+			return ctx.Err()
 		default:
 		}
 
@@ -406,13 +409,13 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 	}
 
 	if len(modelsToUpsert) == 0 {
-		return
+		return nil
 	}
 
 	tx, err := w.Pool.Begin(ctx)
 	if err != nil {
 		slog.Error("Worker: Error starting transaction for NVD upserts", "error", err)
-		return
+		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
@@ -420,7 +423,7 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 	query := `
 		INSERT INTO cves (cve_id, description, cvss_score, vector_string, cwe_id, "references", configurations, published_date, updated_date, vendor, product, affected_products, exploit_available)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-		ON CONFLICT (cve_id, published_date) DO UPDATE SET
+		ON CONFLICT (cve_id) DO UPDATE SET
 			description = EXCLUDED.description,
 			cvss_score = EXCLUDED.cvss_score,
 			vector_string = EXCLUDED.vector_string,
@@ -450,7 +453,7 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			err := br.QueryRow().Scan(&id)
 			if err != nil {
 				slog.Error("Worker: Error executing batch item, rolling back transaction", "cve_id", modelsToUpsert[i].CVEID, "error", err)
-				return
+				return err
 			}
 			modelsToUpsert[i].ID = id
 			successfulCVEs = append(successfulCVEs, modelsToUpsert[i])
@@ -462,7 +465,7 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			err := tx.QueryRow(ctx, query, modelsToUpsert[i].CVEID, modelsToUpsert[i].Description, modelsToUpsert[i].CVSSScore, modelsToUpsert[i].VectorString, modelsToUpsert[i].CWEID, modelsToUpsert[i].References, modelsToUpsert[i].Configurations, modelsToUpsert[i].PublishedDate, modelsToUpsert[i].UpdatedDate, modelsToUpsert[i].Vendor, modelsToUpsert[i].Product, modelsToUpsert[i].AffectedProducts, modelsToUpsert[i].ExploitAvailable).Scan(&id)
 			if err != nil {
 				slog.Error("Worker: Error upserting CVE in fallback, rolling back transaction", "cve_id", modelsToUpsert[i].CVEID, "error", err)
-				return
+				return err
 			}
 			modelsToUpsert[i].ID = id
 			successfulCVEs = append(successfulCVEs, modelsToUpsert[i])
@@ -471,7 +474,7 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 
 	if err := tx.Commit(ctx); err != nil {
 		slog.Error("Worker: Error committing NVD batch transaction", "error", err)
-		return
+		return err
 	}
 
 	// Trigger enrichment and alerts only AFTER successful commit
@@ -490,6 +493,7 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			}
 		}
 	}
+	return nil
 }
 
 func (w *Worker) getLastSyncTime(ctx context.Context) (time.Time, error) {

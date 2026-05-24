@@ -267,6 +267,7 @@ func TestGetEnv(t *testing.T) {
 }
 
 func TestLoadConfigDecryption(t *testing.T) {
+	t.Setenv("ENCRYPTION_KEY", "vulfixx-default-dev-secret-key-32bytes")
 	// Import or use encryption module directly
 	// Let's encrypt a mock Sentry DSN
 	importSecurityEncrypt := func(plainText string) string {
@@ -320,6 +321,7 @@ func TestGetEnvInt(t *testing.T) {
 }
 
 func TestDecryptIfEncrypted_Error(t *testing.T) {
+	t.Setenv("ENCRYPTION_KEY", "vulfixx-default-dev-secret-key-32bytes")
 	// Mock logPrintf
 	origPrintf := logPrintf
 	defer func() { logPrintf = origPrintf }()
@@ -330,8 +332,8 @@ func TestDecryptIfEncrypted_Error(t *testing.T) {
 
 	val := "cve-gcm:invalid-encrypted-payload"
 	decrypted := decryptIfEncrypted(val)
-	if decrypted != val {
-		t.Errorf("expected fallback to raw value, got %s", decrypted)
+	if decrypted != "" {
+		t.Errorf("expected empty string on decryption error, got %s", decrypted)
 	}
 	if !logPrintfCalled {
 		t.Error("expected logPrintf to be called for decryption error")

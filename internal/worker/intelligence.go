@@ -11,6 +11,9 @@ import (
 )
 
 func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
 	w.waitUntilNextRun(ctx, "intelligence_sync", 2*time.Hour, 4*time.Minute)
 	if err := w.processIntelligence(ctx); err != nil {
 		log.Printf("Worker: Initial intelligence sync error: %v", err)

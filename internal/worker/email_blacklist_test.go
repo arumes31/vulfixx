@@ -74,8 +74,13 @@ func TestEmailWorker_BlacklistBlocking(t *testing.T) {
 	}
 
 	// 1. Verification email verification blocked
-	payload1, _ := json.Marshal(map[string]string{"email": "spam@mailinator.com", "token": "tok123"})
-	rdb.LPush(context.Background(), "email_verification_queue", payload1)
+	payload1, err := json.Marshal(map[string]string{"email": "spam@mailinator.com", "token": "tok123"})
+	if err != nil {
+		t.Fatalf("failed to marshal payload1: %v", err)
+	}
+	if err := rdb.LPush(context.Background(), "email_verification_queue", payload1).Err(); err != nil {
+		t.Fatalf("failed to push payload1 to redis: %v", err)
+	}
 
 	ctx1, cancel1 := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel1()
@@ -89,8 +94,13 @@ func TestEmailWorker_BlacklistBlocking(t *testing.T) {
 	mockMailer.Count = 0
 
 	// 2. Email change email blocked
-	payload2, _ := json.Marshal(map[string]string{"email": "spam@mailinator.com", "token": "tok456", "type": "new"})
-	rdb.LPush(context.Background(), "email_change_queue", payload2)
+	payload2, err := json.Marshal(map[string]string{"email": "spam@mailinator.com", "token": "tok456", "type": "new"})
+	if err != nil {
+		t.Fatalf("failed to marshal payload2: %v", err)
+	}
+	if err := rdb.LPush(context.Background(), "email_change_queue", payload2).Err(); err != nil {
+		t.Fatalf("failed to push payload2 to redis: %v", err)
+	}
 
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel2()

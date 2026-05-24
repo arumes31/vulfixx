@@ -139,6 +139,9 @@ func TestResendVerificationToken(t *testing.T) {
 		if err == nil {
 			t.Error("expected error but got none")
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
 	t.Run("CommitFailure", func(t *testing.T) {
@@ -162,6 +165,9 @@ func TestResendVerificationToken(t *testing.T) {
 		_, _, _, err = ResendVerificationToken(ctx, "commitfail@test.com")
 		if err == nil {
 			t.Error("expected error but got none")
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
 		}
 	})
 }

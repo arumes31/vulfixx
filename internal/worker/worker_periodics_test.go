@@ -32,7 +32,13 @@ func TestWorker_StartAndPeriodics(t *testing.T) {
 	cancel()
 
 	t.Run("StartWorkerWithCancelledContext", func(t *testing.T) {
-		w.Start(ctx)
+		mockStart, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mockStart.Close()
+		wStart := NewWorker(mockStart, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
+		wStart.Start(ctx)
 	})
 
 	t.Run("PeriodicallyWrappers", func(t *testing.T) {
@@ -68,7 +74,7 @@ func TestWorker_StartAndPeriodics(t *testing.T) {
 		w.syncGitHubBuzzPeriodically(ctx)
 
 		mock.ExpectQuery("SELECT last_run FROM worker_sync_stats WHERE task_name =").
-			WithArgs("in_the_wild_sync").
+			WithArgs("inthewild_sync").
 			WillReturnError(pgx.ErrNoRows)
 
 		w.syncInTheWildPeriodically(ctx)
@@ -100,6 +106,10 @@ func TestWorker_StartAndPeriodics(t *testing.T) {
 		w.startWeeklySummaryTask(ctx)
 		w.startIntelligenceEnrichmentTask(ctx)
 		w.syncIntelligencePeriodically(ctx)
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("unmet expectations in PeriodicallyWrappers: %v", err)
+		}
 	})
 }
 

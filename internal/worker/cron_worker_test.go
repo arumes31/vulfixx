@@ -65,10 +65,6 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		
-		// startWeeklySummaryTask calls runWeeklySummaryWithLock(ctx)
-		// which calls Begin(ctx). If ctx is canceled, Begin might return error immediately.
-		mock.ExpectBegin().WillReturnError(context.Canceled)
-		
 		w.startWeeklySummaryTask(ctx)
 
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -83,9 +79,6 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 		}
 		defer mock.Close()
 		w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
-		
-		// Setup expectations with a live context
-		mock.ExpectQuery("(?i)SELECT COUNT\\(\\*\\) FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = ''").WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(100))
 		
 		// Run with a context that we cancel immediately to verify shutdown
 		ctx, cancel := context.WithCancel(context.Background())

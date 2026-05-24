@@ -122,7 +122,7 @@ func (w *Worker) handleEmailVerificationTask(ctx context.Context, t *asynq.Task)
 	}
 
 	if err := w.sendVerificationEmail(email, token); err != nil {
-		return fmt.Errorf("failed to send verification email to %s: %w", email, err)
+		return fmt.Errorf("failed to send verification email to %s: %w", maskEmail(email), err)
 	}
 	return nil
 }
@@ -138,13 +138,16 @@ func (w *Worker) handleEmailChangeTask(ctx context.Context, t *asynq.Task) error
 	if email == "" || token == "" {
 		return fmt.Errorf("invalid email change payload email/token: %w", asynq.SkipRetry)
 	}
+	if emailType != "old" && emailType != "new" {
+		return fmt.Errorf("invalid email change payload type: %w", asynq.SkipRetry)
+	}
 	if isEmailDomainBlacklisted(email) {
 		slog.Warn("Worker: Blocked email change notification to blacklisted domain", "email", maskEmail(email))
 		return nil
 	}
 
 	if err := w.sendEmailChangeNotification(email, token, emailType); err != nil {
-		return fmt.Errorf("failed to send email change notification to %s: %w", email, err)
+		return fmt.Errorf("failed to send email change notification to %s: %w", maskEmail(email), err)
 	}
 	return nil
 }

@@ -109,11 +109,12 @@ func TestWorker_processEnrichmentRows_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("LLMActive_FailureRetryLoop", func(t *testing.T) {
+		orig := config.AppConfig
+		defer func() {
+			config.AppConfig = orig
+		}()
 		config.AppConfig.GeminiAPIKey = "dummy-key"
 		config.AppConfig.LLMTimeout = 1
-		defer func() {
-			config.AppConfig.GeminiAPIKey = ""
-		}()
 
 		// 3 consecutive failures to trigger backoff, with cancelled context to exit backoff immediately
 		rows := &MockRows{
@@ -214,6 +215,10 @@ func TestWorker_Health_Comprehensive(t *testing.T) {
 	})
 
 	t.Run("TestLLMConnectivity_EdgeCases", func(t *testing.T) {
+		orig := config.AppConfig
+		defer func() {
+			config.AppConfig = orig
+		}()
 		// 1. Ollama Happy path
 		config.AppConfig.LLMProvider = "ollama"
 		config.AppConfig.LLMEndpoint = "http://localhost:11434"
@@ -234,11 +239,6 @@ func TestWorker_Health_Comprehensive(t *testing.T) {
 		config.AppConfig.LLMProvider = "arliai"
 		config.AppConfig.ArliAIAPIKey = "test-key"
 		w2.checkWorkerHealth(context.Background())
-
-		// Reset config
-		config.AppConfig.LLMProvider = ""
-		config.AppConfig.GeminiAPIKey = ""
-		config.AppConfig.ArliAIAPIKey = ""
 	})
 }
 

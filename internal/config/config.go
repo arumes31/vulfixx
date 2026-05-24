@@ -18,7 +18,7 @@ func decryptIfEncrypted(val string) string {
 		decrypted, err := security.Decrypt(encryptedBase64)
 		if err != nil {
 			logPrintf("Warning: failed to decrypt configuration field: %v", err)
-			return val // Fallback to raw value
+			return ""
 		}
 		return decrypted
 	}

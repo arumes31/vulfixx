@@ -422,7 +422,18 @@ func (w *Worker) sendGenericWebhook(webhookURL string, cve *models.CVE, asset, e
 	// Webhook Signing (Item 10)
 	secret := os.Getenv("WEBHOOK_SECRET")
 	if secret == "" {
-		secret = "vulfixx_webhook_secret_key" //#nosec G101 -- dev-only fallback, not a real credential
+		appEnv := os.Getenv("APP_ENV")
+		if appEnv == "" {
+			appEnv = os.Getenv("ENV")
+		}
+		if appEnv == "" {
+			appEnv = os.Getenv("GO_ENV")
+		}
+		if appEnv == "development" || appEnv == "local" || appEnv == "test" || os.Getenv("TEST_MODE") == "1" {
+			secret = "vulfixx_webhook_secret_key" //#nosec G101 -- dev-only fallback, not a real credential
+		} else {
+			return false, "missing WEBHOOK_SECRET in non-development environment"
+		}
 	}
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())
 	mac := hmac.New(sha256.New, []byte(secret))

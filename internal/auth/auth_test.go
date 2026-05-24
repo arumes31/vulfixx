@@ -39,7 +39,10 @@ func TestAuthMock(t *testing.T) {
 	}
 
 	// Test Login
-	hashedPassword, _ := HashPassword("password")
+	hashedPassword, err := HashPassword("password")
+	if err != nil {
+		t.Fatalf("failed to hash password: %v", err)
+	}
 	rows := pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
 		AddRow(1, "test@example.com", string(hashedPassword), true, false, "", false)
 	mock.ExpectQuery("SELECT id, email, password_hash").
@@ -181,11 +184,14 @@ func TestAuthErrors(t *testing.T) {
 	t.Run("LoginWrongPassword", func(t *testing.T) {
 		mock, _ := db.SetupTestDB()
 		defer mock.Close()
-		hashedPassword, _ := HashPassword("password")
+		hashedPassword, err := HashPassword("password")
+		if err != nil {
+			t.Fatalf("failed to hash password: %v", err)
+		}
 		mock.ExpectQuery("SELECT id, email").WithArgs("test@example.com").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
 				AddRow(1, "test@example.com", string(hashedPassword), true, false, "", false))
-		_, err := Login(ctx, "test@example.com", "wrong")
+		_, err = Login(ctx, "test@example.com", "wrong")
 		if err == nil || err.Error() != "invalid credentials" {
 			t.Errorf("expected invalid credentials for wrong pass, got %v", err)
 		}
@@ -211,10 +217,13 @@ func TestAuthErrors(t *testing.T) {
 	t.Run("ChangePasswordWrongCurrent", func(t *testing.T) {
 		mock, _ := db.SetupTestDB()
 		defer mock.Close()
-		hashedPassword, _ := HashPassword("password")
+		hashedPassword, err := HashPassword("password")
+		if err != nil {
+			t.Fatalf("failed to hash password: %v", err)
+		}
 		mock.ExpectQuery("SELECT password_hash").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(string(hashedPassword), false, ""))
-		err := ChangePassword(ctx, 1, "wrong", "new", "")
+		err = ChangePassword(ctx, 1, "wrong", "new", "")
 		if err == nil || err.Error() != "invalid current password" {
 			t.Errorf("expected invalid current pass error, got %v", err)
 		}
@@ -223,10 +232,13 @@ func TestAuthErrors(t *testing.T) {
 	t.Run("ChangePasswordInvalidTOTP", func(t *testing.T) {
 		mock, _ := db.SetupTestDB()
 		defer mock.Close()
-		hashedPassword, _ := HashPassword("password")
+		hashedPassword, err := HashPassword("password")
+		if err != nil {
+			t.Fatalf("failed to hash password: %v", err)
+		}
 		mock.ExpectQuery("SELECT password_hash").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(string(hashedPassword), true, "JBSWY3DPEHPK3PXP"))
-		err := ChangePassword(ctx, 1, "password", "new", "000000")
+		err = ChangePassword(ctx, 1, "password", "new", "000000")
 		if err == nil || err.Error() != "invalid TOTP code" {
 			t.Errorf("expected invalid TOTP error, got %v", err)
 		}
@@ -235,10 +247,13 @@ func TestAuthErrors(t *testing.T) {
 	t.Run("ChangePasswordShortNewPassword", func(t *testing.T) {
 		mock, _ := db.SetupTestDB()
 		defer mock.Close()
-		hashedPassword, _ := HashPassword("password")
+		hashedPassword, err := HashPassword("password")
+		if err != nil {
+			t.Fatalf("failed to hash password: %v", err)
+		}
 		mock.ExpectQuery("SELECT password_hash").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(string(hashedPassword), false, ""))
-		err := ChangePassword(ctx, 1, "password", "short", "")
+		err = ChangePassword(ctx, 1, "password", "short", "")
 		if err == nil || err.Error() != "password must be at least 8 characters long" {
 			t.Errorf("expected short password error, got %v", err)
 		}
@@ -474,7 +489,10 @@ func TestExtraCoverage(t *testing.T) {
 		}
 		defer mock.Close()
 		// Mock initial query
-		realHash, _ := HashPassword("password")
+		realHash, err := HashPassword("password")
+		if err != nil {
+			t.Fatalf("failed to hash password: %v", err)
+		}
 		mock.ExpectQuery("SELECT password_hash").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(string(realHash), false, ""))
 		// Mock final exec fail

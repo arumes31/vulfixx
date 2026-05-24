@@ -108,9 +108,11 @@ func (a *App) AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Check if email is verified
+		// Check email verification, MFA, and onboarding status in a single query
 		var isVerified bool
-		err := a.Pool.QueryRow(r.Context(), "SELECT is_email_verified FROM users WHERE id = $1", userID).Scan(&isVerified)
+		var isTOTPEnabled bool
+		var onboardingCompleted bool
+		err := a.Pool.QueryRow(r.Context(), "SELECT is_email_verified, is_totp_enabled, onboarding_completed FROM users WHERE id = $1", userID).Scan(&isVerified, &isTOTPEnabled, &onboardingCompleted)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				http.Redirect(w, r, "/login", http.StatusFound)
@@ -124,28 +126,24 @@ func (a *App) AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Perform separate self-healing query for MFA & Onboarding parameters
-		var isTOTPEnabled bool
-		var onboardingCompleted bool
-		errExtra := a.Pool.QueryRow(r.Context(), "SELECT is_totp_enabled, onboarding_completed FROM users WHERE id = $1", userID).Scan(&isTOTPEnabled, &onboardingCompleted)
-		if errExtra == nil {
-			if isTOTPEnabled {
-				session, err := a.SessionStore.Get(r, "vulfixx-session")
-				if err == nil {
-					totpVerified, _ := session.Values["totp_verified"].(bool)
-					if !totpVerified {
-						http.Redirect(w, r, "/login", http.StatusFound)
-						return
-					}
-				}
+		if isTOTPEnabled {
+			session, err := a.SessionStore.Get(r, "vulfixx-session")
+			if err != nil {
+				http.Redirect(w, r, "/login", http.StatusFound)
+				return
 			}
+			totpVerified, _ := session.Values["totp_verified"].(bool)
+			if !totpVerified {
+				http.Redirect(w, r, "/login", http.StatusFound)
+				return
+			}
+		}
 
-			if !onboardingCompleted && !isTOTPEnabled {
-				path := r.URL.Path
-				if !strings.HasPrefix(path, "/settings") && !strings.HasPrefix(path, "/api/onboarding") && !strings.HasPrefix(path, "/static/") {
-					http.Redirect(w, r, "/settings?info=MFA+registration+is+required+to+complete+onboarding", http.StatusFound)
-					return
-				}
+		if !onboardingCompleted && !isTOTPEnabled {
+			path := r.URL.Path
+			if !strings.HasPrefix(path, "/settings") && !strings.HasPrefix(path, "/api/onboarding") && !strings.HasPrefix(path, "/static/") {
+				http.Redirect(w, r, "/settings?info=MFA+registration+is+required+to+complete+onboarding", http.StatusFound)
+				return
 			}
 		}
 

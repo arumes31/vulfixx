@@ -69,6 +69,7 @@ func StartGRPCServer(pool db.DBPool, port string, certFile, keyFile string) (*gr
 	if certFile != "" && keyFile != "" {
 		creds, err := credentials.NewServerTLSFromFile(certFile, keyFile)
 		if err != nil {
+			_ = lis.Close()
 			return nil, fmt.Errorf("failed to load TLS keys: %w", err)
 		}
 		opts = append(opts, grpc.Creds(creds))

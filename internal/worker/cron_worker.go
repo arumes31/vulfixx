@@ -18,6 +18,9 @@ type Rows interface {
 }
 
 func (w *Worker) runWeeklySummaryWithLock(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
 	tx, err := w.Pool.Begin(ctx)
 	if err != nil {
 		log.Printf("Worker: [CRON] Failed to begin transaction: %v", err)
@@ -72,6 +75,10 @@ func (w *Worker) runWeeklySummaryWithLock(ctx context.Context) {
 
 func (w *Worker) startIntelligenceEnrichmentTask(ctx context.Context) {
 	log.Println("Worker: [CRON] Intelligence enrichment task started")
+	if ctx.Err() != nil {
+		log.Println("Worker: [CRON] Intelligence enrichment task shutting down")
+		return
+	}
 	
 	// Check queue size to determine initial interval
 	var missingCount int
@@ -248,6 +255,10 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows, total int
 
 func (w *Worker) startWeeklySummaryTask(ctx context.Context) {
 	log.Println("Worker: [CRON] Weekly summary task started")
+	if ctx.Err() != nil {
+		log.Println("Worker: [CRON] Weekly summary task shutting down")
+		return
+	}
 	ticker := time.NewTicker(7 * 24 * time.Hour)
 	defer ticker.Stop()
 

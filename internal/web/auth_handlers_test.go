@@ -132,7 +132,10 @@ func TestLoginHandler(t *testing.T) {
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
-		hash, _ := auth.HashPassword("password")
+		hash, err := auth.HashPassword("password")
+		if err != nil {
+			t.Fatalf("failed to hash password: %v", err)
+		}
 		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE").WithArgs("test@example.com").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
 				AddRow(1, "test@example.com", string(hash), true, false, "", false))
@@ -229,7 +232,10 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 
 		app := setupTestApp(t, mock)
 
-		hashedPassword, _ := auth.HashPassword("password")
+		hashedPassword, err := auth.HashPassword("password")
+		if err != nil {
+			t.Fatalf("failed to hash password: %v", err)
+		}
 
 		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE email = \\$1").
 			WithArgs("user@example.com").

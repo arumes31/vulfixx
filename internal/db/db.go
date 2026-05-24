@@ -6,6 +6,7 @@ import (
 	"embed"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"time"
 
@@ -119,12 +120,27 @@ func InitDB() error {
 			replicaConfig.MaxConnLifetime = 30 * time.Minute
 			replicaConfig.MaxConnIdleTime = 15 * time.Minute
 
-			ReplicaPool, err = poolCreator(context.Background(), replicaConfig)
+			replicaCandidate, err := poolCreator(context.Background(), replicaConfig)
 			if err != nil {
 				log.Printf("WARNING: unable to create database replica pool: %v. Falling back to primary pool.", err)
 				ReplicaPool = Pool
 			} else {
-				log.Println("Database read-replica connection pool initialized successfully.")
+				var pingErr error
+				for i := 0; i < dbRetryCount; i++ {
+					pingErr = replicaCandidate.Ping(context.Background())
+					if pingErr == nil {
+						break
+					}
+					time.Sleep(dbRetryDelay)
+				}
+				if pingErr != nil {
+					log.Printf("WARNING: database replica connection failed after retries: %v. Falling back to primary pool.", pingErr)
+					replicaCandidate.Close()
+					ReplicaPool = Pool
+				} else {
+					ReplicaPool = replicaCandidate
+					log.Println("Database read-replica connection pool initialized successfully.")
+				}
 			}
 		}
 	} else {
@@ -146,8 +162,18 @@ func migrate(ctx context.Context) error {
 	if sslMode == "" {
 		sslMode = "prefer"
 	}
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
-		os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_NAME"), sslMode)
+	hostPort := os.Getenv("DB_HOST")
+	if port := os.Getenv("DB_PORT"); port != "" {
+		hostPort = hostPort + ":" + port
+	}
+	u := &url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD")),
+		Host:     hostPort,
+		Path:     "/" + os.Getenv("DB_NAME"),
+		RawQuery: "sslmode=" + url.QueryEscape(sslMode),
+	}
+	dsn := u.String()
 
 	dbConn, err := sqlOpener("pgx", dsn)
 	if err != nil {

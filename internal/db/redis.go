@@ -47,18 +47,27 @@ func InitRedis() error {
 	} else {
 		// 2. Redis Cluster or Single Node Support
 		clusterAddrsStr := os.Getenv("REDIS_CLUSTER_ADDRS")
-		if clusterAddrsStr == "" {
-			clusterAddrsStr = os.Getenv("REDIS_URL")
-		}
 
-		if strings.Contains(clusterAddrsStr, ",") {
+		if clusterAddrsStr != "" {
 			// Redis Cluster
 			addrs := strings.Split(clusterAddrsStr, ",")
-			for i := range addrs {
-				addrs[i] = strings.TrimSpace(addrs[i])
+			var parsedAddrs []string
+			for _, entry := range addrs {
+				entry = strings.TrimSpace(entry)
+				if strings.HasPrefix(entry, "redis://") || strings.HasPrefix(entry, "rediss://") {
+					opt, err := redis.ParseURL(entry)
+					if err == nil {
+						parsedAddrs = append(parsedAddrs, opt.Addr)
+						if opt.Password != "" {
+							password = opt.Password
+						}
+					}
+				} else {
+					parsedAddrs = append(parsedAddrs, entry)
+				}
 			}
 			RedisClient = redis.NewClusterClient(&redis.ClusterOptions{
-				Addrs:    addrs,
+				Addrs:    parsedAddrs,
 				Password: password,
 			})
 		} else {
@@ -67,10 +76,25 @@ func InitRedis() error {
 			if url == "" {
 				url = "localhost:6379"
 			}
-			RedisClient = redis.NewClient(&redis.Options{
-				Addr:     url,
-				Password: password,
-			})
+			if strings.HasPrefix(url, "redis://") || strings.HasPrefix(url, "rediss://") {
+				opt, err := redis.ParseURL(url)
+				if err == nil {
+					if password != "" {
+						opt.Password = password
+					}
+					RedisClient = redis.NewClient(opt)
+				} else {
+					RedisClient = redis.NewClient(&redis.Options{
+						Addr:     url,
+						Password: password,
+					})
+				}
+			} else {
+				RedisClient = redis.NewClient(&redis.Options{
+					Addr:     url,
+					Password: password,
+				})
+			}
 		}
 	}
 

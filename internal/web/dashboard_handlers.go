@@ -1318,7 +1318,8 @@ func (a *App) APICVEsHandler(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := a.Pool.Query(r.Context(), query, args...)
 	if err != nil {
-		SendJSONResponse(w, http.StatusInternalServerError, false, nil, "Database query error: "+err.Error(), nil)
+		log.Printf("Error querying CVEs: %v", err)
+		SendJSONResponse(w, http.StatusInternalServerError, false, nil, "Failed to fetch CVE data", nil)
 		return
 	}
 	defer rows.Close()
@@ -1327,7 +1328,8 @@ func (a *App) APICVEsHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var c models.CVE
 		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.Vendor, &c.Product, &c.AffectedProducts, &c.Priority); err != nil {
-			SendJSONResponse(w, http.StatusInternalServerError, false, nil, "Error scanning CVE row: "+err.Error(), nil)
+			log.Printf("Error scanning CVE row: %v", err)
+			SendJSONResponse(w, http.StatusInternalServerError, false, nil, "Failed to fetch CVE data", nil)
 			return
 		}
 		cves = append(cves, c)

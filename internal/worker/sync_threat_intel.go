@@ -57,7 +57,9 @@ func (w *Worker) syncThreatIntel(ctx context.Context) {
 	var associations []models.ThreatAssociation
 
 	// Attempt to download the latest threat intel feed
-	req, err := http.NewRequestWithContext(ctx, "GET", defaultThreatIntelURL, nil)
+	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(timeoutCtx, "GET", defaultThreatIntelURL, nil)
 	if err == nil {
 		req.Header.Set("User-Agent", "Vulfixx-Threat-Intel-Bot/1.0")
 		resp, err := w.HTTP.Do(req)
@@ -70,6 +72,14 @@ func (w *Worker) syncThreatIntel(ctx context.Context) {
 					if err := json.Unmarshal(bodyBytes, &feed); err == nil && len(feed.Associations) > 0 {
 						log.Printf("Worker: [SYNC] Successfully fetched %d Threat Intel associations from feed", len(feed.Associations))
 						for _, a := range feed.Associations {
+							if a.CVEID == "" || a.EntityName == "" || a.EntityType == "" || a.Source == "" {
+								log.Printf("Worker: [WARN] Skipping threat association with empty required fields: CVEID=%q, EntityName=%q, EntityType=%q, Source=%q", a.CVEID, a.EntityName, a.EntityType, a.Source)
+								continue
+							}
+							if a.EntityType != "threat_actor" && a.EntityType != "ransomware" {
+								log.Printf("Worker: [WARN] Skipping threat association with invalid EntityType: %q", a.EntityType)
+								continue
+							}
 							associations = append(associations, models.ThreatAssociation{
 								CVEID:      a.CVEID,
 								EntityName: a.EntityName,

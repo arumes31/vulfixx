@@ -78,6 +78,10 @@ func TestCompleteOnboardingHandler(t *testing.T) {
 	req := httptest.NewRequest("POST", "/complete-onboarding", nil)
 	setSessionUser(t, app, req, 1, false)
 
+	mock.ExpectQuery("(?i)SELECT is_totp_enabled FROM users WHERE id = \\$1").
+		WithArgs(1).
+		WillReturnRows(pgxmock.NewRows([]string{"is_totp_enabled"}).AddRow(true))
+
 	mock.ExpectExec("(?i)UPDATE users SET onboarding_completed = TRUE WHERE id = \\$1").
 		WithArgs(1).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))

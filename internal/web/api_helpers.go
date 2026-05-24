@@ -17,15 +17,22 @@ type APIResponse struct {
 
 // SendJSONResponse serializes and sends a standardized JSON API response envelope.
 func SendJSONResponse(w http.ResponseWriter, statusCode int, success bool, data interface{}, errMsg string, meta interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
 	resp := APIResponse{
 		Success: success,
 		Data:    data,
 		Error:   errMsg,
 		Meta:    meta,
 	}
-	_ = json.NewEncoder(w).Encode(resp)
+	body, err := json.Marshal(resp)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"success":false,"error":"Internal server error"}`))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_, _ = w.Write(body)
 }
 
 // Validate is the global validator instance.

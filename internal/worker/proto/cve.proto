@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package proto;
+package internal.worker.proto;
 
 option go_package = "cve-tracker/internal/worker/proto";
 

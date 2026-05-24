@@ -4,6 +4,7 @@ import (
 	"cve-tracker/internal/auth"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strings"
@@ -333,11 +334,15 @@ func (a *App) ChangeEmailHandler(w http.ResponseWriter, r *http.Request) {
 			_, enqueueErr = a.AsynqClient.EnqueueContext(r.Context(), newTask)
 		}
 	} else {
-		_, enqueueErr = a.Redis.TxPipelined(r.Context(), func(pipe redis.Pipeliner) error {
-			pipe.LPush(r.Context(), "email_change_queue", oldPayload)
-			pipe.LPush(r.Context(), "email_change_queue", newPayload)
-			return nil
-		})
+		if a.Redis == nil {
+			enqueueErr = errors.New("redis client is nil")
+		} else {
+			_, enqueueErr = a.Redis.TxPipelined(r.Context(), func(pipe redis.Pipeliner) error {
+				pipe.LPush(r.Context(), "email_change_queue", oldPayload)
+				pipe.LPush(r.Context(), "email_change_queue", newPayload)
+				return nil
+			})
+		}
 	}
 
 	if enqueueErr != nil {

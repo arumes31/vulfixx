@@ -18,14 +18,14 @@ var (
 )
 
 // getEncryptionKey derives a 32-byte key from the ENCRYPTION_KEY environment variable.
-// If the variable is empty, it falls back to a default development key.
-func getEncryptionKey() []byte {
+// If the variable is empty, it returns an error.
+func getEncryptionKey() ([]byte, error) {
 	keyStr := os.Getenv("ENCRYPTION_KEY")
 	if keyStr == "" {
-		keyStr = "vulfixx-default-dev-secret-key-32bytes"
+		return nil, errors.New("ENCRYPTION_KEY is empty; keyStr must not be empty")
 	}
 	hash := sha256.Sum256([]byte(keyStr))
-	return hash[:]
+	return hash[:], nil
 }
 
 // Encrypt encrypts plain text using AES-256-GCM.
@@ -34,7 +34,10 @@ func Encrypt(plainText string) (string, error) {
 		return "", ErrEmptyPlainText
 	}
 
-	key := getEncryptionKey()
+	key, err := getEncryptionKey()
+	if err != nil {
+		return "", err
+	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err
@@ -62,10 +65,13 @@ func Decrypt(cipherTextStr string) (string, error) {
 
 	cipherText, err := base64.StdEncoding.DecodeString(cipherTextStr)
 	if err != nil {
-		return "", err
+		return "", ErrDecryption
 	}
 
-	key := getEncryptionKey()
+	key, err := getEncryptionKey()
+	if err != nil {
+		return "", err
+	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err

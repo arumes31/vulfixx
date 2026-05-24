@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
 )
 
 // CSPReportPayload matches the standard browser CSP violation report JSON structure.
@@ -39,8 +40,22 @@ func (a *App) CSPReportHandler(w http.ResponseWriter, r *http.Request) {
 
 	rep := payload.CSPReport
 	log.Printf("CSP VIOLATION DETECTED: Document=%s, Blocked=%s, Directive=%s, Line=%d, Col=%d",
-		rep.DocumentURI, rep.BlockedURI, rep.ViolatedDirective, rep.LineNumber, rep.ColumnNumber)
+		sanitizeURI(rep.DocumentURI), sanitizeURI(rep.BlockedURI), rep.ViolatedDirective, rep.LineNumber, rep.ColumnNumber)
 
 	// Return a 204 No Content response
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func sanitizeURI(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "[invalid-uri]"
+	}
+	u.RawQuery = ""
+	u.Fragment = ""
+	u.User = nil
+	return u.String()
 }

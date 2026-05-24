@@ -65,8 +65,11 @@ func TestExtractWithOllama(t *testing.T) {
 	})
 
 	t.Run("HTTPRequestError", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+		server.Close()
+
 		ctx := context.Background()
-		_, err := extractWithOllama(ctx, "http://invalid-endpoint-non-existent-12345.local", "llama3", "test")
+		_, err := extractWithOllama(ctx, server.URL, "llama3", "test")
 		if err == nil {
 			t.Fatal("expected request error, got nil")
 		}
@@ -125,7 +128,10 @@ func TestExtractWithOllama(t *testing.T) {
 
 	t.Run("EmptyEndpoint", func(t *testing.T) {
 		ctx := context.Background()
-		_, _ = extractWithOllama(ctx, "", "llama3", "test")
+		_, err := extractWithOllama(ctx, "", "llama3", "test")
+		if err == nil {
+			t.Fatal("expected error for empty endpoint, got nil")
+		}
 	})
 }
 
@@ -191,8 +197,11 @@ func TestExtractWithArliAI(t *testing.T) {
 	})
 
 	t.Run("HTTPRequestError", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+		server.Close()
+
 		ctx := context.Background()
-		_, err := extractWithArliAI(ctx, "key", "model", "http://invalid-endpoint-non-existent-12345.local", "desc")
+		_, err := extractWithArliAI(ctx, "key", "model", server.URL, "desc")
 		if err == nil {
 			t.Fatal("expected request error, got nil")
 		}

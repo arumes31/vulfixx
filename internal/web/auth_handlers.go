@@ -561,13 +561,9 @@ func (a *App) CompleteOnboardingHandler(w http.ResponseWriter, r *http.Request) 
 	var isTOTPEnabled bool
 	err := a.Pool.QueryRow(r.Context(), "SELECT is_totp_enabled FROM users WHERE id = $1", userID).Scan(&isTOTPEnabled)
 	if err != nil {
-		if strings.Contains(err.Error(), "was not expected") {
-			isTOTPEnabled = true // Handle strict mock environments gracefully
-		} else {
-			log.Printf("Error checking user TOTP: %v", err)
-			a.SendResponse(w, r, false, "", "", "Internal server error")
-			return
-		}
+		log.Printf("Error checking user TOTP: %v", err)
+		a.SendResponse(w, r, false, "", "", "Internal server error")
+		return
 	}
 	if !isTOTPEnabled {
 		a.SendResponse(w, r, false, "", "", "You must enable Multi-Factor Authentication (TOTP) to complete onboarding.")

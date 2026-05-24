@@ -99,8 +99,8 @@ func TestWebEndpointsCoverage(t *testing.T) {
 		isPublic := path == "/" || strings.HasPrefix(path, "/feed") || path == "/login" || path == "/register" || strings.HasPrefix(path, "/verify-email") || strings.HasPrefix(path, "/confirm-email-change") || path == "/logout" || strings.HasPrefix(path, "/cve/") || path == "/robots.txt" || path == "/sitemap.xml"
 
 		if !isPublic {
-			mock.ExpectQuery(regexp.QuoteMeta("SELECT is_email_verified FROM users WHERE id = $1")).WithArgs(pgxmock.AnyArg()).
-				WillReturnRows(pgxmock.NewRows([]string{"is_email_verified"}).AddRow(true))
+			mock.ExpectQuery(regexp.QuoteMeta("SELECT is_email_verified, is_totp_enabled, onboarding_completed FROM users WHERE id = $1")).WithArgs(pgxmock.AnyArg()).
+				WillReturnRows(pgxmock.NewRows([]string{"is_email_verified", "is_totp_enabled", "onboarding_completed"}).AddRow(true, false, true))
 		}
 
 		if extraMocks != nil {

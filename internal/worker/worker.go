@@ -39,6 +39,10 @@ func NewWorker(pool db.DBPool, redis db.RedisProvider, mailer EmailSender, http 
 }
 
 func (w *Worker) Start(ctx context.Context) {
+	if ctx.Err() != nil {
+		slog.Info("Worker: Context already cancelled, not starting background tasks.")
+		return
+	}
 	slog.Info("Worker: Starting background tasks...")
 	
 	// Test LLM connectivity on startup if provider is configured

@@ -56,6 +56,8 @@ func BenchmarkDashboardHandler(b *testing.B) {
 			b.Fatalf("handler returned wrong status code: got %v want %v or %v", rr.Code, http.StatusOK, http.StatusFound)
 		}
 
-		app.Redis.FlushAll(context.Background())
+		if err := app.Redis.FlushAll(context.Background()).Err(); err != nil {
+			b.Fatalf("Redis FlushAll failed: %v", err)
+		}
 	}
 }

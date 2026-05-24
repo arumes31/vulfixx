@@ -400,6 +400,13 @@ func TestSetupHelpers(t *testing.T) {
 
 func TestInitDB_Replica(t *testing.T) {
 	t.Run("Replica Configuration set", func(t *testing.T) {
+		oldPool := Pool
+		oldReplicaPool := ReplicaPool
+		defer func() {
+			Pool = oldPool
+			ReplicaPool = oldReplicaPool
+		}()
+
 		t.Setenv("DB_HOST", "localhost")
 		t.Setenv("DB_PORT", "5432")
 		t.Setenv("DB_USER", "user")

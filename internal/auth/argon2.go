@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 
 	"golang.org/x/crypto/argon2"
@@ -57,6 +58,24 @@ func verifyPasswordArgon2id(hashedPassword, password string) (bool, error) {
 	_, err = fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &iterations, &parallelism)
 	if err != nil {
 		return false, err
+	}
+
+	maxParallel := runtime.GOMAXPROCS(0)
+	if maxParallel < 1 {
+		maxParallel = 1
+	}
+	if maxParallel > 32 {
+		maxParallel = 32
+	}
+
+	if memory < 1024 || memory > 1024*1024 {
+		return false, fmt.Errorf("argon2id memory cost out of bounds: %d", memory)
+	}
+	if iterations < 1 || iterations > 100 {
+		return false, fmt.Errorf("argon2id iterations cost out of bounds: %d", iterations)
+	}
+	if parallelism < 1 || int(parallelism) > maxParallel {
+		return false, fmt.Errorf("argon2id parallelism cost out of bounds: %d", parallelism)
 	}
 
 	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
