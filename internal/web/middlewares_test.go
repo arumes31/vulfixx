@@ -174,7 +174,7 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 			req.AddCookie(c)
 		}
 
-		mock.ExpectQuery("SELECT is_email_verified").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"is_email_verified"}).AddRow(false))
+		mock.ExpectQuery("SELECT is_email_verified, is_totp_enabled, onboarding_completed").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"is_email_verified", "is_totp_enabled", "onboarding_completed"}).AddRow(false, false, true))
 
 		rr2 := httptest.NewRecorder()
 		app.AuthMiddleware(nextHandler).ServeHTTP(rr2, req)

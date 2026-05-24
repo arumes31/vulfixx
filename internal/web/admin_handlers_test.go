@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"cve-tracker/internal/db"
 	"net/http"
 	"net/http/httptest"
@@ -33,6 +34,14 @@ func TestAdminUserManagementHandler(t *testing.T) {
 					WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(1, "Team A"))
 			},
 			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "DBError",
+			mockExpect: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery("SELECT id, email, is_email_verified, is_admin, created_at").
+					WillReturnError(errors.New("db error"))
+			},
+			expectedStatus: http.StatusInternalServerError,
 		},
 	}
 
@@ -97,6 +106,86 @@ func TestAdminDeleteUserHandler(t *testing.T) {
 			},
 			expectedStatus: http.StatusFound,
 		},
+		{
+			name:          "MethodNotAllowed",
+			method:        "GET",
+			form:          url.Values{"id": {"2"}, "csrf_token": {"correct"}},
+			userID:        1,
+			csrfInSession: "correct",
+			mockExpect:     func(mock pgxmock.PgxPoolIface) {},
+			expectedStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:          "InvalidCSRF",
+			method:        "POST",
+			form:          url.Values{"id": {"2"}, "csrf_token": {"wrong"}},
+			userID:        1,
+			csrfInSession: "correct",
+			mockExpect:     func(mock pgxmock.PgxPoolIface) {},
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name:          "UserIDMissing",
+			method:        "POST",
+			form:          url.Values{"id": {""}, "csrf_token": {"correct"}},
+			userID:        1,
+			csrfInSession: "correct",
+			mockExpect:     func(mock pgxmock.PgxPoolIface) {},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:          "UserIDInvalid",
+			method:        "POST",
+			form:          url.Values{"id": {"abc"}, "csrf_token": {"correct"}},
+			userID:        1,
+			csrfInSession: "correct",
+			mockExpect:     func(mock pgxmock.PgxPoolIface) {},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:          "CannotDeleteYourself",
+			method:        "POST",
+			form:          url.Values{"id": {"1"}, "csrf_token": {"correct"}},
+			userID:        1,
+			csrfInSession: "correct",
+			mockExpect:     func(mock pgxmock.PgxPoolIface) {},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:          "Unauthorized",
+			method:        "POST",
+			form:          url.Values{"id": {"2"}, "csrf_token": {"correct"}},
+			userID:        0, // no session user
+			csrfInSession: "correct",
+			mockExpect:     func(mock pgxmock.PgxPoolIface) {},
+			expectedStatus: http.StatusUnauthorized,
+		},
+		{
+			name: "DeleteQueryError",
+			method:        "POST",
+			form:          url.Values{"id": {"2"}, "csrf_token": {"correct"}},
+			userID:        1,
+			csrfInSession: "correct",
+			mockExpect: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectExec("DELETE FROM users WHERE id =").
+					WithArgs(2).
+					WillReturnError(errors.New("db error"))
+			},
+			expectedStatus: http.StatusInternalServerError,
+		},
+		{
+			name:          "UserNotFound",
+			method:        "POST",
+			form:          url.Values{"id": {"2"}, "csrf_token": {"correct"}},
+			userID:        1,
+			csrfInSession: "correct",
+			mockExpect: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectExec("DELETE FROM users WHERE id =").
+					WithArgs(2).
+					WillReturnResult(pgxmock.NewResult("DELETE", 0))
+			},
+			expectedStatus: http.StatusNotFound,
+		},
 	}
 
 	for _, tt := range tests {
@@ -133,10 +222,10 @@ func TestAdminDeleteUserHandler(t *testing.T) {
 			app.AdminDeleteUserHandler(rr2, req)
 
 			if rr2.Code != tt.expectedStatus {
-				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr2.Code)
+				t.Errorf("%s: expected status %d, got %d", tt.name, tt.expectedStatus, rr2.Code)
 			}
 			if err := mock.ExpectationsWereMet(); err != nil {
-				t.Errorf("unmet expectations: %v", err)
+				t.Errorf("%s: unmet expectations: %v", tt.name, err)
 			}
 		})
 	}

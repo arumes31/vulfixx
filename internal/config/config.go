@@ -1,6 +1,7 @@
 package config
 
 import (
+	"cve-tracker/internal/security"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
@@ -10,6 +11,19 @@ import (
 	"strconv"
 	"strings"
 )
+
+func decryptIfEncrypted(val string) string {
+	if strings.HasPrefix(val, "cve-gcm:") {
+		encryptedBase64 := strings.TrimPrefix(val, "cve-gcm:")
+		decrypted, err := security.Decrypt(encryptedBase64)
+		if err != nil {
+			logPrintf("Warning: failed to decrypt configuration field: %v", err)
+			return ""
+		}
+		return decrypted
+	}
+	return val
+}
 
 type Config struct {
 	DBHost          string
@@ -41,6 +55,9 @@ type Config struct {
 	ArliAIAPIKey    string
 	ArliAIModel     string
 	ArliAIEndpoint  string
+	GRPCPort        string
+	GRPCCertFile    string
+	GRPCKeyFile     string
 }
 
 var (
@@ -55,7 +72,7 @@ func LoadConfig() {
 		DBHost:          getEnv("DB_HOST", "db"),
 		DBPort:          getEnv("DB_PORT", "5432"),
 		DBUser:          getEnv("DB_USER", "cveuser"),
-		DBPassword:      getEnv("DB_PASSWORD", ""),
+		DBPassword:      decryptIfEncrypted(getEnv("DB_PASSWORD", "")),
 		DBName:          getEnv("DB_NAME", "cvetracker"),
 		RedisURL:        getEnv("REDIS_URL", "redis:6379"),
 		SessionKey:      getEnv("SESSION_KEY", ""),
@@ -63,21 +80,24 @@ func LoadConfig() {
 		BaseURL:         getEnv("BASE_URL", "http://localhost:8080"),
 		SMTPHost:        getEnv("SMTP_HOST", "smtp.example.com"),
 		SMTPUser:        getEnv("SMTP_USER", "user@example.com"),
-		SMTPPass:        getEnv("SMTP_PASS", ""),
+		SMTPPass:        decryptIfEncrypted(getEnv("SMTP_PASS", "")),
 		AdminEmail:      getEnv("ADMIN_EMAIL", ""),
-		AdminPassword:   getEnv("ADMIN_PASSWORD", ""),
-		AdminTOTPSecret: getEnv("ADMIN_TOTP_SECRET", ""),
+		AdminPassword:   decryptIfEncrypted(getEnv("ADMIN_PASSWORD", "")),
+		AdminTOTPSecret: decryptIfEncrypted(getEnv("ADMIN_TOTP_SECRET", "")),
 		AppPort:         getEnv("PORT", "8080"),
-		SentryDSN:       getEnv("SENTRY_DSN", ""),
-		GeminiAPIKey:    getEnv("GEMINI_API_KEY", ""),
+		SentryDSN:       decryptIfEncrypted(getEnv("SENTRY_DSN", "")),
+		GeminiAPIKey:    decryptIfEncrypted(getEnv("GEMINI_API_KEY", "")),
 		GeminiModel:     getEnv("GEMINI_MODEL", "gemini-1.5-flash"),
 		LLMProvider:     getEnv("LLM_PROVIDER", "ollama"),
 		LLMEndpoint:     getEnv("LLM_ENDPOINT", "http://ollama:11434"),
 		LLMModel:        getEnv("LLM_MODEL", "phi3-vulfixx"),
 		LLMTimeout:      getEnvInt("LLM_TIMEOUT", 600),
-		ArliAIAPIKey:    getEnv("ARLIAI_API_KEY", ""),
+		ArliAIAPIKey:    decryptIfEncrypted(getEnv("ARLIAI_API_KEY", "")),
 		ArliAIModel:     getEnv("ARLIAI_MODEL", "Qwen2.5-72B-Instruct"),
 		ArliAIEndpoint:  getEnv("ARLIAI_ENDPOINT", "https://api.arliai.com/v1"),
+		GRPCPort:        getEnv("GRPC_PORT", "9091"),
+		GRPCCertFile:    getEnv("GRPC_CERT_FILE", ""),
+		GRPCKeyFile:     getEnv("GRPC_KEY_FILE", ""),
 	}
 
 	port, err := strconv.Atoi(getEnv("SMTP_PORT", "587"))

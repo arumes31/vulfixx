@@ -1,34 +1,22 @@
 package worker
 
 import (
+	"bytes"
 	"fmt"
-	"html"
 	"html/template"
 	"os"
 	"strings"
 	"time"
 )
 
-type EmailTemplateData struct {
-	Title string
-	Body  template.HTML
+type LayoutData struct {
+	Title   string
+	LogoURL string
+	Year    int
+	Body    template.HTML
 }
 
-// WrapInModernLayout wraps the provided title and content in a standard premium HTML email template.
-// SECURITY: The 'content' parameter is interpolated directly into the HTML. Callers MUST ensure
-// that 'content' contains trusted or pre-sanitized HTML. User-controlled input MUST be
-// sanitized or HTML-escaped before being passed to this function to prevent XSS.
-func WrapInModernLayout(data EmailTemplateData) string {
-	baseURL := os.Getenv("BASE_URL")
-	if baseURL == "" {
-		baseURL = "http://localhost:8080"
-	}
-	baseURL = strings.TrimSuffix(baseURL, "/")
-
-	logoURL := baseURL + "/static/img/logo.png"
-	escapedTitle := html.EscapeString(data.Title)
-
-	return fmt.Sprintf(`
+const baseLayoutTemplate = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -44,7 +32,7 @@ func WrapInModernLayout(data EmailTemplateData) string {
             -webkit-font-smoothing: antialiased;
         }
         .wrapper {
-            width: 100%%;
+            width: 100%;
             table-layout: fixed;
             background-color: #0c0e12;
             padding-bottom: 40px;
@@ -52,7 +40,7 @@ func WrapInModernLayout(data EmailTemplateData) string {
         .main {
             background-color: #101418;
             margin: 0 auto;
-            width: 100%%;
+            width: 100%;
             max-width: 600px;
             border-spacing: 0;
             border-radius: 24px;
@@ -92,7 +80,7 @@ func WrapInModernLayout(data EmailTemplateData) string {
         }
         .btn {
             display: inline-block;
-            background: linear-gradient(135deg, #00daf3 0%%, #0099ff 100%%);
+            background: linear-gradient(135deg, #00daf3 0%, #0099ff 100%);
             color: #101418 !important;
             text-decoration: none !important;
             padding: 16px 32px;
@@ -136,23 +124,62 @@ func WrapInModernLayout(data EmailTemplateData) string {
         <table class="main" align="center">
             <tr>
                 <td class="header">
-                    <img src="%s" alt="Vulfixx" class="logo" width="48">
+                    <img src="{{.LogoURL}}" alt="Vulfixx" class="logo" width="48">
                     <div style="font-weight: 800; letter-spacing: 0.1em; color: #ffffff; text-transform: uppercase; font-size: 14px;">Vulfixx</div>
                 </td>
             </tr>
             <tr>
                 <td class="content">
-                    <h1 align="center">%s</h1>
-                    %s
+                    <h1 align="center">{{.Title}}</h1>
+                    {{.Body}}
                 </td>
             </tr>
         </table>
         <div class="footer">
-            &copy; %d Vulfixx Threat Intelligence. All rights reserved.<br>
+            &copy; {{.Year}} Vulfixx Threat Intelligence. All rights reserved.<br>
             Sent from the Vulfixx Security Operations Center.
         </div>
     </div>
 </body>
 </html>
-	`, logoURL, escapedTitle, data.Body, time.Now().Year())
+`
+
+// RenderEmailTemplate securely renders an inner template, then wraps it in the modern layout.
+func RenderEmailTemplate(title, bodyTmpl string, data interface{}) (string, error) {
+	// Parse and execute the inner body template
+	tmpl, err := template.New("body").Parse(bodyTmpl)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse inner email template: %w", err)
+	}
+
+	var bodyBuf bytes.Buffer
+	if err := tmpl.Execute(&bodyBuf, data); err != nil {
+		return "", fmt.Errorf("failed to execute inner email template: %w", err)
+	}
+
+	baseURL := os.Getenv("BASE_URL")
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
+	baseURL = strings.TrimSuffix(baseURL, "/")
+
+	layoutData := LayoutData{
+		Title:   title,
+		LogoURL: baseURL + "/static/img/logo.png",
+		Year:    time.Now().Year(),
+		Body:    template.HTML(bodyBuf.String()), // #nosec G203
+	}
+
+	// Parse and execute the layout template
+	layoutTmpl, err := template.New("layout").Parse(baseLayoutTemplate)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse base email layout: %w", err)
+	}
+
+	var layoutBuf bytes.Buffer
+	if err := layoutTmpl.Execute(&layoutBuf, layoutData); err != nil {
+		return "", fmt.Errorf("failed to execute base email layout: %w", err)
+	}
+
+	return layoutBuf.String(), nil
 }

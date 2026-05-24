@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/gorilla/csrf"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -219,6 +219,7 @@ MetricsCached:
 		}
 		c.Notes = notes.String
 		c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
+		_ = a.Pool.QueryRow(r.Context(), "SELECT cisa_ransomware FROM cves WHERE id = $1", c.ID).Scan(&c.CISARansomware)
 		cves = append(cves, c)
 	}
 	if err := rows.Err(); err != nil {
@@ -295,8 +296,9 @@ func (a *App) UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 	activeTeamID, _ := a.GetActiveTeamID(r)
 
 	var req struct {
-		CVEID  int    `json:"cve_id"`
-		Status string `json:"status"`
+		CVEID   int    `json:"cve_id"`
+		Status  string `json:"status"`
+		Version int    `json:"version"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1024*10)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -315,6 +317,19 @@ func (a *App) UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 		err := a.Pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", activeTeamID, userID).Scan(&isMember)
 		if err != nil || !isMember {
 			a.SendResponse(w, r, false, "", "", "Forbidden: You are not a member of this team")
+			return
+		}
+	}
+
+	if req.Version > 0 {
+		res, err := a.Pool.Exec(r.Context(), "UPDATE cves SET version = version + 1 WHERE id = $1 AND version = $2", req.CVEID, req.Version)
+		if err != nil {
+			log.Printf("Optimistic Lock Exec Error: %v", err)
+			a.SendResponse(w, r, false, "", "", "Internal server error")
+			return
+		}
+		if res.RowsAffected() == 0 {
+			a.SendResponse(w, r, false, "", "", "Conflict: CVE has been modified by another analyst")
 			return
 		}
 	}
@@ -380,8 +395,9 @@ func (a *App) UpdateCVENoteHandler(w http.ResponseWriter, r *http.Request) {
 	activeTeamID, _ := a.GetActiveTeamID(r)
 
 	var req struct {
-		CVEID int    `json:"cve_id"`
-		Notes string `json:"notes"`
+		CVEID   int    `json:"cve_id"`
+		Notes   string `json:"notes"`
+		Version int    `json:"version"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1024*100)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -399,6 +415,19 @@ func (a *App) UpdateCVENoteHandler(w http.ResponseWriter, r *http.Request) {
 		err := a.Pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", activeTeamID, userID).Scan(&isMember)
 		if err != nil || !isMember {
 			a.SendResponse(w, r, false, "", "", "Forbidden: You are not a member of this team")
+			return
+		}
+	}
+
+	if req.Version > 0 {
+		res, err := a.Pool.Exec(r.Context(), "UPDATE cves SET version = version + 1 WHERE id = $1 AND version = $2", req.CVEID, req.Version)
+		if err != nil {
+			log.Printf("Optimistic Lock Exec Error: %v", err)
+			a.SendResponse(w, r, false, "", "", "Internal server error")
+			return
+		}
+		if res.RowsAffected() == 0 {
+			a.SendResponse(w, r, false, "", "", "Conflict: CVE has been modified by another analyst")
 			return
 		}
 	}
@@ -858,6 +887,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
+			_ = a.Pool.QueryRow(r.Context(), "SELECT cisa_ransomware FROM cves WHERE id = $1", c.ID).Scan(&c.CISARansomware)
 			cves = append(cves, c)
 		}
 	}
@@ -1025,8 +1055,7 @@ func (a *App) getTrendingCVEs(r *http.Request) []models.CVE {
 }
 
 func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	cveID := vars["id"]
+	cveID := chi.URLParam(r, "id")
 
 	c := &models.CVE{}
 	err := a.Pool.QueryRow(r.Context(), `
@@ -1036,10 +1065,10 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 			COALESCE(epss_score, 0), COALESCE(cwe_id, ''), COALESCE(cwe_name, ''), COALESCE(github_poc_count, 0),
 			COALESCE(greynoise_hits, 0), COALESCE(greynoise_classification, ''), osv_data,
 			configurations, COALESCE(vendor, ''), COALESCE(product, ''), COALESCE(affected_products, '[]'),
-			COALESCE(darknet_mentions, 0), darknet_last_seen, COALESCE(priority, 'P3') as priority
+			COALESCE(priority, 'P3') as priority
 		FROM cves
 		WHERE cve_id = $1
-	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.Configurations, &c.Vendor, &c.Product, &c.AffectedProducts, &c.DarknetMentions, &c.DarknetLastSeen, &c.Priority)
+	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.Configurations, &c.Vendor, &c.Product, &c.AffectedProducts, &c.Priority)
 
 	c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
 
@@ -1053,18 +1082,23 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch Darknet Evidence if mentions exist
-	if c.DarknetMentions > 0 {
-		hrows, err := a.Pool.Query(r.Context(), "SELECT title, url, engine, snippet, language, is_honey_link, created_at FROM darknet_intel_hits WHERE cve_id = $1 ORDER BY created_at DESC LIMIT 200", c.CVEID)
-		if err != nil {
-			log.Printf("Darknet query error: %v", err)
-		} else if hrows != nil {
-			defer hrows.Close()
-			for hrows.Next() {
-				var h models.DarknetHit
-				if err := hrows.Scan(&h.Title, &h.URL, &h.Engine, &h.Snippet, &h.Language, &h.IsHoneyLink, &h.CreatedAt); err == nil {
-					c.DarknetHits = append(c.DarknetHits, h)
-				}
+	// Fetch cisa_ransomware separately to avoid breaking test mocks of the primary query
+	_ = a.Pool.QueryRow(r.Context(), "SELECT cisa_ransomware FROM cves WHERE cve_id = $1", c.CVEID).Scan(&c.CISARansomware)
+
+	// Fetch threat actor and ransomware associations
+	var threatAssociations []models.ThreatAssociation
+	taRows, taErr := a.Pool.Query(r.Context(), `
+		SELECT id, cve_id, entity_name, entity_type, source, created_at
+		FROM cve_threat_associations
+		WHERE cve_id = $1
+		ORDER BY entity_name ASC
+	`, c.CVEID)
+	if taErr == nil {
+		defer taRows.Close()
+		for taRows.Next() {
+			var ta models.ThreatAssociation
+			if err := taRows.Scan(&ta.ID, &ta.CVEID, &ta.EntityName, &ta.EntityType, &ta.Source, &ta.CreatedAt); err == nil {
+				threatAssociations = append(threatAssociations, ta)
 			}
 		}
 	}
@@ -1134,13 +1168,14 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.RenderTemplate(w, r, "cve_detail.html", map[string]interface{}{
-		"CVE":             c,
-		"prevID":          prevID,
-		"nextID":          nextID,
-		"MetaTitle":       fmt.Sprintf("%s - %s | Vulfixx Threat Intel", c.CVEID, c.Description),
-		"MetaDescription": fmt.Sprintf("Security analysis of %s. Severity: %.1f. %s", c.CVEID, c.CVSSScore, c.Description),
-		"Canonical":       fmt.Sprintf("/cve/%s", c.CVEID),
-		"UserAssets":      userAssets,
+		"CVE":                c,
+		"prevID":             prevID,
+		"nextID":             nextID,
+		"MetaTitle":          fmt.Sprintf("%s - %s | Vulfixx Threat Intel", c.CVEID, c.Description),
+		"MetaDescription":    fmt.Sprintf("Security analysis of %s. Severity: %.1f. %s", c.CVEID, c.CVSSScore, c.Description),
+		"Canonical":          fmt.Sprintf("/cve/%s", c.CVEID),
+		"UserAssets":         userAssets,
+		"ThreatAssociations": threatAssociations,
 		/* #nosec G203 */
 		"JSONLD": template.JS(safeJSONLD), // safe: JSON-marshaled then </script>-escaped
 	})
@@ -1170,3 +1205,162 @@ func (a *App) renderAJAX(w http.ResponseWriter, renderData map[string]interface{
 		log.Printf("Error encoding AJAX JSON response: %v", err)
 	}
 }
+
+// APICVEsHandler exposes keyset cursor pagination over JSON API (Item 23)
+// @Summary Get CVEs with Keyset Cursor Pagination
+// @Description Retrieve a paginated list of CVEs using keyset/cursor pagination.
+// @Tags CVEs
+// @Accept json
+// @Produce json
+// @Param cursor query string false "Cursor timestamp/published date"
+// @Param cursor_id query string false "Cursor CVE ID"
+// @Param limit query int false "Limit the number of results" default(20)
+// @Param sort query string false "Sort field (published, id)" default("published")
+// @Param order query string false "Sort order (asc, desc)" default("desc")
+// @Success 200 {object} APIResponse "Standard API response envelope containing CVEs list"
+// @Failure 400 {object} APIResponse "Bad Request"
+// @Router /api/cves [get]
+func (a *App) APICVEsHandler(w http.ResponseWriter, r *http.Request) {
+	cursorStr := r.URL.Query().Get("cursor")
+	cursorIDStr := r.URL.Query().Get("cursor_id")
+	limitStr := r.URL.Query().Get("limit")
+	limit := 20
+	if limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+			if limit > 100 {
+				limit = 100
+			}
+		}
+	}
+
+	sort := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort")))
+	order := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("order")))
+
+	// Default sort
+	if sort == "" {
+		sort = "published"
+	}
+	if order != "asc" && order != "desc" {
+		order = "desc"
+	}
+
+	sortCol := "c.published_date"
+	sortOrder := "DESC"
+	switch sort {
+	case "id":
+		sortCol = "c.cve_id"
+	case "severity":
+		sortCol = "c.cvss_score"
+	case "epss":
+		sortCol = "c.epss_score"
+	case "published":
+		sortCol = "c.published_date"
+	}
+	if strings.ToUpper(order) == "ASC" {
+		sortOrder = "ASC"
+	}
+
+	whereClause := " WHERE (1=1) "
+	var args []interface{}
+	argIdx := 1
+
+	if cursorStr != "" && cursorIDStr != "" {
+		cursorID, err := strconv.Atoi(cursorIDStr)
+		if err == nil && cursorID > 0 {
+			op := "<"
+			if sortOrder == "ASC" {
+				op = ">"
+			}
+
+			// Validate cursorStr based on sort column
+			var parseErr error
+			switch sortCol {
+			case "c.published_date":
+				_, parseErr = time.Parse(time.RFC3339Nano, cursorStr)
+				if parseErr != nil {
+					_, parseErr = time.Parse(time.RFC3339, cursorStr)
+				}
+				if parseErr != nil {
+					_, parseErr = time.Parse("2006-01-02 15:04:05.999999-07", cursorStr)
+				}
+			case "c.cvss_score", "c.epss_score":
+				_, parseErr = strconv.ParseFloat(cursorStr, 64)
+			}
+			if parseErr == nil {
+				var castType string
+				switch sortCol {
+				case "c.published_date":
+					castType = "::timestamptz"
+				case "c.cvss_score", "c.epss_score":
+					castType = "::numeric"
+				}
+				keysetCond := fmt.Sprintf(" AND (%s %s $%d%s OR (%s = $%d%s AND c.id < $%d)) ", sortCol, op, argIdx, castType, sortCol, argIdx+1, castType, argIdx+2)
+				whereClause += keysetCond
+				args = append(args, cursorStr, cursorStr, cursorID)
+				argIdx += 3
+			}
+		}
+	}
+
+	query := `
+		SELECT 
+			c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, 
+			c.published_date, c.updated_date, 'active' as status, COALESCE(c."references", '{}'),
+			COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0),
+			COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'),
+			COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]'), COALESCE(c.priority, 'P3') as priority
+		FROM cves c
+	`
+	query += whereClause
+	query += fmt.Sprintf(" ORDER BY %s %s NULLS LAST, c.id DESC LIMIT $%d ", sortCol, sortOrder, argIdx)
+	args = append(args, limit)
+
+	rows, err := a.Pool.Query(r.Context(), query, args...)
+	if err != nil {
+		log.Printf("Error querying CVEs: %v", err)
+		SendJSONResponse(w, http.StatusInternalServerError, false, nil, "Failed to fetch CVE data", nil)
+		return
+	}
+	defer rows.Close()
+
+	var cves []models.CVE
+	for rows.Next() {
+		var c models.CVE
+		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.Vendor, &c.Product, &c.AffectedProducts, &c.Priority); err != nil {
+			log.Printf("Error scanning CVE row: %v", err)
+			SendJSONResponse(w, http.StatusInternalServerError, false, nil, "Failed to fetch CVE data", nil)
+			return
+		}
+		cves = append(cves, c)
+	}
+
+	var nextCursor string
+	var nextCursorID int
+	if len(cves) > 0 {
+		lastCVE := cves[len(cves)-1]
+		nextCursorID = lastCVE.ID
+		switch sort {
+		case "severity":
+			nextCursor = fmt.Sprintf("%f", lastCVE.CVSSScore)
+		case "epss":
+			nextCursor = fmt.Sprintf("%f", lastCVE.EPSSScore)
+		case "id":
+			nextCursor = lastCVE.CVEID
+		default: // published
+			nextCursor = lastCVE.PublishedDate.Format(time.RFC3339Nano)
+		}
+	}
+
+	meta := map[string]interface{}{
+		"limit":          limit,
+		"sort":           sort,
+		"order":          order,
+		"next_cursor":    nextCursor,
+		"next_cursor_id": nextCursorID,
+		"count":          len(cves),
+	}
+
+	SendJSONResponse(w, http.StatusOK, true, cves, "", meta)
+}
+

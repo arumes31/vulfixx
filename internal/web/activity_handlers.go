@@ -1,10 +1,14 @@
 package web
 
 import (
+	"context"
 	"cve-tracker/internal/models"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+
+	"github.com/redis/go-redis/v9"
 )
 
 func (a *App) ActivityLogHandler(w http.ResponseWriter, r *http.Request) {
@@ -96,4 +100,72 @@ func (a *App) ExportActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition", "attachment; filename=\"activity_log.json\"")
 	_, _ = w.Write(buf)
+}
+
+// ActivityStreamHandler streams real-time user activity logs using Server-Sent Events (SSE).
+// @Summary Stream User Activity Events
+// @Description Stream real-time user activity logs for the authenticated user using Server-Sent Events (SSE).
+// @Tags Activity
+// @Produce text/event-stream
+// @Success 200 {string} string "SSE Event Stream"
+// @Router /api/activity/stream [get]
+func (a *App) ActivityStreamHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := a.GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	sub, ok := a.Redis.(interface {
+		Subscribe(ctx context.Context, channels ...string) *redis.PubSub
+	})
+	if !ok {
+		http.Error(w, "Redis subscription unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	pubsub := sub.Subscribe(r.Context(), "vulfixx:activity_channel")
+	defer pubsub.Close()
+
+	ch := pubsub.Channel()
+
+	// Send initial comment to establish connection
+	_, _ = fmt.Fprint(w, ": ok\n\n")
+	flusher.Flush()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case msg, ok := <-ch:
+			if !ok {
+				return
+			}
+			var event map[string]interface{}
+			if err := json.Unmarshal([]byte(msg.Payload), &event); err != nil {
+				continue
+			}
+
+			// Filter: only send to the authenticated user
+			eventUserID, _ := event["user_id"].(float64)
+			if int(eventUserID) != userID {
+				continue
+			}
+
+			// Send event
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", msg.Payload)
+			flusher.Flush()
+		}
+	}
 }

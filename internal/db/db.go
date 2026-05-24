@@ -2,14 +2,19 @@ package db
 
 import (
 	"context"
+	"database/sql"
+	"embed"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 )
 
 type DBPool interface {
@@ -23,12 +28,23 @@ type DBPool interface {
 
 var (
 	Pool         DBPool
+	ReplicaPool  DBPool
 	dbRetryCount = 15
 	dbRetryDelay = 1 * time.Second
 	poolCreator  = func(ctx context.Context, config *pgxpool.Config) (DBPool, error) {
 		return pgxpool.NewWithConfig(ctx, config)
 	}
+	migrateFunc = migrate
+	sqlOpener   = func(driverName, dataSourceName string) (*sql.DB, error) {
+		return sql.Open(driverName, dataSourceName)
+	}
+	gooseUp = func(ctx context.Context, db *sql.DB, dir string) error {
+		return goose.UpContext(ctx, db, dir)
+	}
 )
+
+//go:embed sql/migrations/*.sql
+var embedMigrations embed.FS
 
 func InitDB() error {
 	sslMode := os.Getenv("DB_SSLMODE")
@@ -46,6 +62,12 @@ func InitDB() error {
 	if err != nil {
 		return fmt.Errorf("unable to parse database URL: %w", err)
 	}
+
+	// Set connection pool configuration limits
+	poolConfig.MaxConns = 25
+	poolConfig.MinConns = 5
+	poolConfig.MaxConnLifetime = 30 * time.Minute
+	poolConfig.MaxConnIdleTime = 15 * time.Minute
 
 	Pool, err = poolCreator(context.Background(), poolConfig)
 	if err != nil {
@@ -65,7 +87,68 @@ func InitDB() error {
 		return fmt.Errorf("database connection failed after retries: %w", pingErr)
 	}
 
-	if err := migrate(context.Background()); err != nil {
+	// Setup database read-replica (Item 11)
+	replicaHost := os.Getenv("DB_REPLICA_HOST")
+	if replicaHost != "" {
+		replicaPort := os.Getenv("DB_REPLICA_PORT")
+		if replicaPort == "" {
+			replicaPort = os.Getenv("DB_PORT")
+		}
+		replicaUser := os.Getenv("DB_REPLICA_USER")
+		if replicaUser == "" {
+			replicaUser = os.Getenv("DB_USER")
+		}
+		replicaPassword := os.Getenv("DB_REPLICA_PASSWORD")
+		if replicaPassword == "" {
+			replicaPassword = os.Getenv("DB_PASSWORD")
+		}
+		replicaName := os.Getenv("DB_REPLICA_NAME")
+		if replicaName == "" {
+			replicaName = os.Getenv("DB_NAME")
+		}
+
+		replicaDSN := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+			replicaHost, replicaPort, replicaUser, replicaPassword, replicaName, sslMode)
+
+		replicaConfig, err := pgxpool.ParseConfig(replicaDSN)
+		if err != nil {
+			log.Printf("WARNING: unable to parse database replica URL: %v. Falling back to primary pool.", err)
+			ReplicaPool = Pool
+		} else {
+			replicaConfig.MaxConns = 15
+			replicaConfig.MinConns = 3
+			replicaConfig.MaxConnLifetime = 30 * time.Minute
+			replicaConfig.MaxConnIdleTime = 15 * time.Minute
+
+			replicaCandidate, err := poolCreator(context.Background(), replicaConfig)
+			if err != nil {
+				log.Printf("WARNING: unable to create database replica pool: %v. Falling back to primary pool.", err)
+				ReplicaPool = Pool
+			} else {
+				var pingErr error
+				for i := 0; i < dbRetryCount; i++ {
+					pingErr = replicaCandidate.Ping(context.Background())
+					if pingErr == nil {
+						break
+					}
+					time.Sleep(dbRetryDelay)
+				}
+				if pingErr != nil {
+					log.Printf("WARNING: database replica connection failed after retries: %v. Falling back to primary pool.", pingErr)
+					replicaCandidate.Close()
+					ReplicaPool = Pool
+				} else {
+					ReplicaPool = replicaCandidate
+					log.Println("Database read-replica connection pool initialized successfully.")
+				}
+			}
+		}
+	} else {
+		log.Println("DB_REPLICA_HOST not set. Routing read queries to primary database pool.")
+		ReplicaPool = Pool
+	}
+
+	if err := migrateFunc(context.Background()); err != nil {
 		return fmt.Errorf("migration failed: %w", err)
 	}
 
@@ -73,49 +156,48 @@ func InitDB() error {
 }
 
 func migrate(ctx context.Context) error {
-	// First ensure base schema is present
-	if _, err := Pool.Exec(ctx, schemaSQL); err != nil {
-		return fmt.Errorf("failed to execute base schema: %w", err)
+	log.Println("Database Migration: Executing Goose migrations...")
+
+	sslMode := os.Getenv("DB_SSLMODE")
+	if sslMode == "" {
+		sslMode = "prefer"
+	}
+	hostPort := os.Getenv("DB_HOST")
+	if port := os.Getenv("DB_PORT"); port != "" {
+		hostPort = hostPort + ":" + port
+	}
+	u := &url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD")),
+		Host:     hostPort,
+		Path:     "/" + os.Getenv("DB_NAME"),
+		RawQuery: "sslmode=" + url.QueryEscape(sslMode),
+	}
+	dsn := u.String()
+
+	dbConn, err := sqlOpener("pgx", dsn)
+	if err != nil {
+		return fmt.Errorf("unable to open database connection for goose: %w", err)
+	}
+	defer dbConn.Close()
+
+	goose.SetBaseFS(embedMigrations)
+	if err := goose.SetDialect("postgres"); err != nil {
+		return fmt.Errorf("goose set dialect failed: %w", err)
 	}
 
-	// Then run incremental migrations
-	queries := []string{
-		"ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;",
-		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS enable_email BOOLEAN DEFAULT TRUE;",
-		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS enable_webhook BOOLEAN DEFAULT TRUE;",
-		"CREATE INDEX IF NOT EXISTS idx_cves_published_date ON cves (published_date DESC);",
-		"CREATE INDEX IF NOT EXISTS idx_cves_cvss_score ON cves (cvss_score);",
-		"CREATE INDEX IF NOT EXISTS idx_cves_updated_date ON cves (updated_date DESC);",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS vector_string TEXT;",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS \"references\" TEXT[];",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS epss_score NUMERIC(6,5);",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS cwe_id VARCHAR(50);",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS cwe_name TEXT;",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS github_poc_count INTEGER DEFAULT 0;",
-		"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS filter_logic TEXT DEFAULT '';",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS osint_data JSONB DEFAULT '{}';",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS vendor VARCHAR(255);",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS product VARCHAR(255);",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS affected_products JSONB DEFAULT '[]';",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS osv_data JSONB DEFAULT '{}';",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS osv_last_updated TIMESTAMP WITH TIME ZONE;",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS greynoise_hits INTEGER DEFAULT 0;",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS greynoise_classification VARCHAR(50);",
-		"ALTER TABLE cves ADD COLUMN IF NOT EXISTS greynoise_last_updated TIMESTAMP WITH TIME ZONE;",
-		"CREATE INDEX IF NOT EXISTS idx_cves_vendor ON cves(vendor);",
-		"CREATE INDEX IF NOT EXISTS idx_cves_product ON cves(product);",
-		"CREATE INDEX IF NOT EXISTS idx_cves_affected_products ON cves USING GIN (affected_products);",
+	if err := gooseUp(ctx, dbConn, "sql/migrations"); err != nil {
+		return fmt.Errorf("goose migration failed: %w", err)
 	}
 
-	for i, q := range queries {
-		if _, err := Pool.Exec(ctx, q); err != nil {
-			return fmt.Errorf("migration %d failed executing query %q: %w", i, q, err)
-		}
-	}
+	log.Println("Database Migration: Embedded Goose migrations completed successfully.")
 	return nil
 }
 
 func CloseDB() {
+	if ReplicaPool != nil && ReplicaPool != Pool {
+		ReplicaPool.Close()
+	}
 	if Pool != nil {
 		Pool.Close()
 	}

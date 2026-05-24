@@ -18,7 +18,7 @@ func (a *App) RobotsHandler(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) SitemapHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	cacheKey := "cvetracker:sitemap_cache"
+	cacheKey := "vulfixx:sitemap_xml"
 
 	// Try to serve from Redis cache
 	if a.Redis != nil {
@@ -75,9 +75,9 @@ func (a *App) SitemapHandler(w http.ResponseWriter, r *http.Request) {
 	buf.WriteString("</urlset>\n")
 	res := buf.Bytes()
 
-	// Store in Redis cache for 1 hour
+	// Store in Redis cache for 24 hours
 	if a.Redis != nil {
-		if err := a.Redis.Set(ctx, cacheKey, res, 1*time.Hour).Err(); err != nil {
+		if err := a.Redis.Set(ctx, cacheKey, res, 24*time.Hour).Err(); err != nil {
 			log.Printf("Sitemap cache set error: %v", err)
 		}
 	}

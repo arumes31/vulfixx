@@ -266,4 +266,54 @@ func TestSubscriptionHandlers_Detailed(t *testing.T) {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
+
+	t.Run("UpdateSubscriptionHandler_Success", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		payload := map[string]interface{}{
+			"id":             42,
+			"keyword":        "updated-keyword",
+			"min_severity":   8.0,
+			"webhook_url":    "http://example.com/webhook",
+			"enable_email":   true,
+			"enable_webhook": true,
+			"aggregation_mode": "hourly",
+		}
+		body, _ := json.Marshal(payload)
+
+		// 1. SELECT user_id FROM user_subscriptions WHERE id = $1 -> returns owner 1
+		mock.ExpectQuery("(?i)SELECT user_id FROM user_subscriptions WHERE id = \\$1").
+			WithArgs(42).
+			WillReturnRows(pgxmock.NewRows([]string{"user_id"}).AddRow(1))
+
+		// 2. UPDATE user_subscriptions
+		mock.ExpectExec("(?i)UPDATE user_subscriptions").
+			WithArgs("updated-keyword", 8.0, "http://example.com/webhook", "", "", true, true, false, false, false, "hourly", 42, 1).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+		// 3. INSERT INTO user_activity_logs
+		mock.ExpectExec("INSERT INTO user_activity_logs").
+			WithArgs(1, "subscription_updated", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		req, _ := http.NewRequest("POST", "/subscriptions/update", strings.NewReader(string(body)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.UpdateSubscriptionHandler(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d. Body: %s", rr.Code, rr.Body.String())
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
 }
+

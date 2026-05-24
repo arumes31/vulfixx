@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -14,7 +15,8 @@ var defaultCISAKEVURL = "https://www.cisa.gov/sites/default/files/feeds/known_ex
 
 type CISAKEVResponse struct {
 	Vulnerabilities []struct {
-		CVEID string `json:"cveID"`
+		CVEID                      string `json:"cveID"`
+		KnownRansomwareCampaignUse string `json:"knownRansomwareCampaignUse"`
 	} `json:"vulnerabilities"`
 }
 
@@ -89,7 +91,7 @@ func (w *Worker) fetchFromCISAKEV(ctx context.Context) {
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Optimization: Reset and then set true only for those in the feed
-	if _, err := tx.Exec(ctx, "UPDATE cves SET cisa_kev = false WHERE cisa_kev = true"); err != nil {
+	if _, err := tx.Exec(ctx, "UPDATE cves SET cisa_kev = false, cisa_ransomware = false WHERE cisa_kev = true OR cisa_ransomware = true"); err != nil {
 		log.Printf("Worker: [ERROR] Failed to reset CISA KEV status: %v", err)
 		return
 	}
@@ -101,13 +103,24 @@ func (w *Worker) fetchFromCISAKEV(ctx context.Context) {
 			end = total
 		}
 		ids := make([]string, 0, end-i)
+		ransomIds := make([]string, 0)
 		for _, v := range kevResp.Vulnerabilities[i:end] {
 			ids = append(ids, v.CVEID)
+			if strings.EqualFold(v.KnownRansomwareCampaignUse, "known") {
+				ransomIds = append(ransomIds, v.CVEID)
+			}
 		}
 		_, err := tx.Exec(ctx, "UPDATE cves SET cisa_kev = true WHERE cve_id = ANY($1)", ids)
 		if err != nil {
 			log.Printf("Worker: [ERROR] Failed to update KEV batch: %v", err)
 			return
+		}
+		if len(ransomIds) > 0 {
+			_, err = tx.Exec(ctx, "UPDATE cves SET cisa_ransomware = true WHERE cve_id = ANY($1)", ransomIds)
+			if err != nil {
+				log.Printf("Worker: [ERROR] Failed to update Ransomware batch: %v", err)
+				return
+			}
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {

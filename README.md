@@ -53,6 +53,8 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 - **Intelligence Sync Optimization**: High-throughput synchronization engine with batch processing (200 CVEs/run) and **automated 30-day refresh cycles** for existing records.
 - **OSV & GreyNoise Integration**: Enhanced monitoring for Open Source Vulnerabilities (OSV) and GreyNoise threat intelligence with automated stale-data detection.
 - **LLM-Powered Detection**: Advanced extraction of **Vendor**, **Product**, and **Affected Versions** from complex descriptions using Local LLMs (Ollama) or Cloud APIs (Gemini).
+- **Ransomware & Threat Actor Intel Mapping (Strategy 1 & 3)**: Zero-cost active Ransomware Campaign & Threat Actor matching utilizing CISA KEV `"knownRansomwareCampaignUse"` extraction alongside a dynamic, high-performance OSINT public intelligence feed sync with a curated fallback baseline. Exposes premium "Ransomware Active" badges and multi-actor detail panels without any external paid API requirements.
+- **Production-Grade Security Hardening**: Comprehensive platform-wide hardening, including zero-bypass environment checks, percent-encoded database DSNs, fail-closed rate limiters/session middlewares, closed listener port leaks, buffered response marshalling, scrubbed PII loggers, whitelisted workers, and 100% test-verified conformance.
 
 ## 🤖 LLM Intelligence (Optional)
 
@@ -92,10 +94,25 @@ The application follows a modular architecture designed to prevent monolithic fi
 - **`email_worker.go`**: SMTP delivery and verification email queue.
 - **`sync_nvd.go`**: NVD CVE data synchronization with incremental backoff.
 - **`sync_github.go`**: GitHub Social Buzz and PoC discovery tracking.
-- **`sync_cisa.go`**: Automated CISA KEV catalog synchronization.
+- **`sync_cisa.go`**: Automated CISA KEV catalog synchronization with high-visibility extraction of ransomware campaign flags (`cisa_ransomware`).
+- **`sync_threat_intel.go`**: Automated synchronization of public OSINT threat intelligence feeds mapping active Ransomware Campaigns and targeting Threat Actors to CVE records, supported by curated baseline fallback data.
 - **`sync_advisory_rss.go`**: Generalized multi-format synchronization (RSS 1.0, 2.0, and Atom) for official bulletins from CISA, Microsoft, AWS, VMware, Oracle, GitHub, CERT-EU, FortiGuard, Cisco, Red Hat, Ubuntu, and ZDI. Implements a **"matched-only" policy** via `processAdvisoryFeed` (must contain valid CVE-ID) and `integrateAdvisoryCVE` (only syncs if the CVE already exists in the database) to prevent data bloat.
 - **`sync_epss.go`**: Probability-based risk scoring (FIRST EPSS).
 - **`cron_worker.go`**: Scheduled tasks (Weekly summaries).
+
+## ⚡ Core System Hardening & Performance
+
+Vulfixx is hardened with enterprise-grade system improvements designed for high-availability, performance, and transactional safety:
+- **Redis-Backed Session Store**: Migrated from client-side cookie stores to server-side Redis session storage using `github.com/rbcervilla/redisstore/v9`, enabling instant session revocation and enhanced security. Retains an automatic, secure encrypted `CookieStore` fallback for local or test environments without a running Redis instance.
+- **Standardized Structured Logging (`log/slog`)**: Global transition to standard library structured logging (`log/slog`) with context support. Configured to output clean, high-performance JSON logs in production for ingestion by log collectors, and a human-readable structured output in development environments.
+- **Database Connection Pool Optimization (`pgxpool`)**: Configured customized connection pool limits explicitly (`MaxConns = 25`, `MinConns = 5`, `MaxConnLifetime = 30m`, `MaxConnIdleTime = 15m`) to guarantee ready warmed connections and prevent database connection starvation.
+- **Worker Graceful Shutdown & Atomic Sync Transactions**: Enhanced background synchronization processes (NVD, CISA KEV, RSS Advisory feeds) to run in atomic Postgres database transactions (`pgx.Tx`), ensuring incomplete sync operations are safely rolled back on failure or worker shutdown. All sync loops validate active context cancellation (`ctx.Done()`) at iteration boundaries for clean graceful exits.
+- **Decoupled Task Queue Architecture (Asynq)**: Shifts heavy background tasks (alert evaluations, verification emails, and email changes) off the HTTP flow using `github.com/hibiken/asynq` with automated exponential backoff retries.
+- **High-Performance Routing Layer (Chi)**: Replaced Gorilla Mux with modern standard-compliant `github.com/go-chi/chi/v5` featuring sub-routing, timeout propagation, and custom rate-limiting middleware.
+- **Secure gRPC Query Interface**: Exposes a secondary high-speed gRPC server on port `:9091` to support sub-millisecond external CVE intelligence queries.
+- **Real-time Activity Stream (SSE)**: Streams live audit log activities directly to the dashboard utilizing Server-Sent Events (SSE) backed by Redis Pub/Sub.
+- **Optimistic Locking & Concurrency Control**: Uses version columns on target entities to prevent conflicting updates during manual analyst modifications.
+- **Exclusively Argon2id Password Hashing**: Fully eliminated legacy Bcrypt support in favor of the more modern, computationally intensive Argon2id algorithm, hardened with pre-computed timing-safe dummy verification to completely neutralize side-channel user enumeration attempts.
 
 ## Getting Started
 
@@ -188,34 +205,6 @@ The application follows a modular architecture designed to prevent monolithic fi
 | `OLLAMA_MAX_LOADED_MODELS` | Max models kept in memory | `1` |
 | `OLLAMA_DEBUG` | Enable verbose Ollama server logs | `1` |
 
-### Darknet Scalper Configuration
-
-The Darknet Scalper addon can be customized using the following environment variables:
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PORT` | gRPC Server port | `9090` |
-| `DATABASE_URL` | PostgreSQL connection string | `(empty)` |
-| `REDIS_URL` | Redis connection URL | `(empty)` |
-| `SCALPER_TOR_PROXY` | Tor SOCKS5/HTTP proxy URL | `socks5://localhost:9050` |
-| `SCALPER_USER_AGENTS` | Comma-separated list of User-Agents | (Static list) |
-| `SCALPER_AHMIA_URL` | Ahmia search base URL | `https://ahmia.fi/search/?q=` |
-| `SCALPER_AHMIA_SLEEP` | Sleep duration after navigation | `5s` |
-| `SCALPER_AHMIA_TIMEOUT` | Overall search timeout | `30s` |
-| `SCALPER_WORKER_POP_TIMEOUT`| Redis BLPop timeout | `5s` |
-| `SCALPER_REDLOCK_EXPIRY` | Redlock lock duration | `10m` |
-| `SCALPER_REDLOCK_EXTEND` | Redlock extension interval | `3m` |
-| `SCALPER_RETRY_INTERVAL` | Worker retry delay on error | `1s` |
-| `SCALPER_DEFAULT_DEPTH` | Default crawl depth for workers | `2` |
-| `SCALPER_ENRICH_TIMEOUT` | Enrichment HTTP request timeout | `30s` |
-| `SCALPER_ENRICH_SNIPPET_LEN`| Maximum length of hit snippets | `500` |
-| `SCALPER_ENRICH_MAX_LINKS` | Max links to enrich per search result | `3` |
-| `SCALPER_DOWNLOAD_MAX_SIZE` | Max file download size in bytes | `10485760` |
-| `SCALPER_DOWNLOAD_TIMEOUT` | File download HTTP timeout | `20s` |
-| `SCALPER_LATENCY_TIMEOUT` | Tor latency check timeout | `5s` |
-| `SCALPER_HONEY_LURES` | Comma-separated list of honey-link lures| (Static list) |
-| `SCALPER_ENABLE_OCR` | Enable/disable OCR processing of images | `true` |
-
 > **Security Warning:** The default seed values for `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and `ADMIN_TOTP_SECRET` are insecure and must be changed before deploying to production. Please generate a strong password and a unique base32 TOTP secret. It is highly recommended to rotate the seeded admin credentials and remove defaults from any production configuration.
 ## Development
 
@@ -224,6 +213,16 @@ The Darknet Scalper addon can be customized using the following environment vari
 To run the Go test suite:
 ```bash
 go test ./...
+```
+
+To run tests with the race detector enabled (requires CGO and a C compiler like GCC):
+```powershell
+# On Windows, install WinLibs MinGW via winget if not present:
+# winget install BrechtSanders.WinLibs.POSIX.UCRT
+
+# Then run with CGO enabled (adjust gcc path as needed):
+$env:CGO_ENABLED="1"
+go test -race ./...
 ```
 
 Or use the automated test script with coverage:
@@ -262,6 +261,25 @@ For convenience, several shell scripts are provided to automate common tasks:
 - **Public SEO Dashboard**: High-performance public threat intelligence portal with built-in Schema.org JSON-LD structured data and Open Graph meta-tags for search engine authority.
 - **Sitemap & Search Discovery**: Automated generation of `sitemap.xml` and `robots.txt` for efficient crawling of the top 1000 threats.
 - **CSP Nonce Hardening**: Advanced Content Security Policy implementation using unique per-request nonces for all inline script execution.
+
+## 🗄️ Database Migrations (Goose)
+
+Vulfixx integrates **Goose** (the Go-native database migration framework) for robust, versioned database schema alterations and automated upgrades.
+
+### Key Features
+- **Dynamic Connection Strings**: Credentials and connection options (`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSLMODE`) are dynamically gathered from the environment at startup to construct secure PostgreSQL connection strings.
+- **Embedded Migrations**: All SQL migrations are compiled directly into the Go binary using `//go:embed` and executed programmatically on application startup.
+- **Zero-Dependency Execution**: No external python interpreter, pip dependencies, or site-packages are required. The migrations run instantly with microsecond latencies.
+
+### CLI Usage (Optional)
+If you install the `goose` CLI tool, you can inspect or manage migrations manually:
+```bash
+# To check the status of migrations
+goose -dir internal/db/sql/migrations postgres "host=localhost user=youruser dbname=yourdb sslmode=disable" status
+
+# To manually apply migrations
+goose -dir internal/db/sql/migrations postgres "host=localhost user=youruser dbname=yourdb sslmode=disable" up
+```
 
 ## 🛡️ Security Hardening & Audit
 

@@ -42,7 +42,8 @@ func TestWorker_ExploitDetection(t *testing.T) {
 		},
 	}
 	
-	// Expect UPSERT with exploit_available = true (arg 13)
+	// Expect UPSERT with exploit_available = true (arg 13) inside a transaction
+	mock.ExpectBegin()
 	mock.ExpectQuery("(?i)INSERT INTO cves").
 		WithArgs(
 			"CVE-EXPLOIT", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), 
@@ -51,8 +52,11 @@ func TestWorker_ExploitDetection(t *testing.T) {
 			true, // ExploitAvailable
 		).
 		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
+	mock.ExpectCommit()
 	
-	w.upsertCVEs(context.Background(), entries, true)
+	if err := w.upsertCVEs(context.Background(), entries, true); err != nil {
+		t.Fatalf("upsertCVEs failed: %v", err)
+	}
 	
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("Exploit detection failed expectations: %v", err)

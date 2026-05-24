@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"log"
 	"math"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -40,6 +40,11 @@ func (w *Worker) processEmailVerification(ctx context.Context) {
 		log.Printf("Worker: Picked up verification email for %s", maskEmail(email))
 		if email == "" || token == "" {
 			log.Printf("Worker: Invalid email verification payload: email=%q, token=%q", maskEmail(email), redactToken(token))
+			continue
+		}
+
+		if isEmailDomainBlacklisted(email) {
+			log.Printf("Worker: Blocked verification email to blacklisted domain %s", maskEmail(email))
 			continue
 		}
 
@@ -88,12 +93,14 @@ func (w *Worker) processEmailChange(ctx context.Context) {
 			log.Printf("Worker: Error unmarshaling email change payload: %v", err)
 			continue
 		}
-		email, _ := payload["email"].(string)
-		token, _ := payload["token"].(string)
-		emailType, _ := payload["type"].(string)
-		log.Printf("Worker: Picked up email change notification (%s) for %s", emailType, maskEmail(email))
-		if email == "" || token == "" {
-			log.Printf("Worker: Invalid email change payload: email=%q, token=%q", maskEmail(email), redactToken(token))
+		oldEmail, _ := payload["old_email"].(string)
+		oldToken, _ := payload["old_token"].(string)
+		newEmail, _ := payload["new_email"].(string)
+		newToken, _ := payload["new_token"].(string)
+
+		log.Printf("Worker: Picked up combined email change notification for old=%s, new=%s", maskEmail(oldEmail), maskEmail(newEmail))
+		if oldEmail == "" || oldToken == "" || newEmail == "" || newToken == "" {
+			log.Printf("Worker: Invalid email change payload: oldEmail=%q, newEmail=%q", maskEmail(oldEmail), maskEmail(newEmail))
 			continue
 		}
 
@@ -102,25 +109,52 @@ func (w *Worker) processEmailChange(ctx context.Context) {
 			retries = int(r)
 		}
 
-		if err := w.sendEmailChangeNotification(email, token, emailType); err != nil {
-			log.Printf("Worker: Failed to send email change notification to %s (attempt %d): %v", maskEmail(email), retries+1, err)
+		var oldErr error
+		if !isEmailDomainBlacklisted(oldEmail) {
+			if err := w.sendEmailChangeNotification(oldEmail, oldToken, "old"); err != nil {
+				oldErr = fmt.Errorf("old email: %w", err)
+			}
+		} else {
+			log.Printf("Worker: Blocked old email change notification to blacklisted domain %s", maskEmail(oldEmail))
+		}
+
+		var newErr error
+		if !isEmailDomainBlacklisted(newEmail) {
+			if err := w.sendEmailChangeNotification(newEmail, newToken, "new"); err != nil {
+				newErr = fmt.Errorf("new email: %w", err)
+			}
+		} else {
+			log.Printf("Worker: Blocked new email change notification to blacklisted domain %s", maskEmail(newEmail))
+		}
+
+		var sendErr error
+		if oldErr != nil && newErr != nil {
+			sendErr = fmt.Errorf("%v; %v", oldErr, newErr)
+		} else if oldErr != nil {
+			sendErr = oldErr
+		} else if newErr != nil {
+			sendErr = newErr
+		}
+
+		if sendErr != nil {
+			log.Printf("Worker: Failed to send email change notification (attempt %d): %v", retries+1, sendErr)
 			if retries >= maxEmailRetries {
-				log.Printf("Worker: Permanently failed to send email change notification to %s after %d attempts", maskEmail(email), maxEmailRetries)
+				log.Printf("Worker: Permanently failed to send email change notification after %d attempts", maxEmailRetries)
 				continue
 			}
 			payload["retries"] = retries + 1
 			newPayload, marshalErr := json.Marshal(payload)
 			if marshalErr != nil {
-				log.Printf("Worker: Failed to marshal retry payload for %s: %v", maskEmail(email), marshalErr)
+				log.Printf("Worker: Failed to marshal retry payload: %v", marshalErr)
 				continue
 			}
 			delay := time.Duration(math.Pow(2, float64(retries))) * time.Second
 			score := float64(time.Now().Add(delay).UnixMilli())
 			if zErr := w.Redis.ZAdd(ctx, "email_change_delayed", redis.Z{Score: score, Member: string(newPayload)}).Err(); zErr != nil {
-				log.Printf("Worker: Failed to enqueue email change retry for %s: %v", maskEmail(email), zErr)
+				log.Printf("Worker: Failed to enqueue email change retry: %v", zErr)
 			}
 		} else {
-			log.Printf("Worker: Successfully sent email change notification to %s", maskEmail(email))
+			log.Printf("Worker: Successfully processed both email change notifications")
 		}
 	}
 }
@@ -134,40 +168,47 @@ func (w *Worker) sendEmailChangeNotification(email, token, emailType string) err
 	encodedToken := url.QueryEscape(token)
 	link := fmt.Sprintf("%s/confirm-email-change?token=%s", baseURL, encodedToken)
 
-	var content string
+	var contentTmpl string
 	switch emailType {
 	case "old":
 		subject = "Security Alert: Email Change Requested"
-		content = fmt.Sprintf(`
+		contentTmpl = `
 			<p>A request was made to change the email address for your Vulfixx account. If you did not make this request, please secure your account immediately.</p>
 			<div style="text-align: center; margin: 30px 0;">
-				<a href="%s" class="btn">Confirm Request</a>
+				<a href="{{.Link}}" class="btn">Confirm Request</a>
 			</div>
-			<p style="font-size: 12px; opacity: 0.6; text-align: center;">Or copy this link: %s</p>
-		`, link, link)
+			<p style="font-size: 12px; opacity: 0.6; text-align: center;">Or copy this link: {{.Link}}</p>
+		`
 	case "new":
 		subject = "Confirm Your New Email Address"
-		content = fmt.Sprintf(`
+		contentTmpl = `
 			<p>Please confirm your new email address to complete the transition for your Vulfixx account:</p>
 			<div style="text-align: center; margin: 30px 0;">
-				<a href="%s" class="btn">Confirm Email</a>
+				<a href="{{.Link}}" class="btn">Confirm Email</a>
 			</div>
-			<p style="font-size: 12px; opacity: 0.6; text-align: center;">Or copy this link: %s</p>
-		`, link, link)
+			<p style="font-size: 12px; opacity: 0.6; text-align: center;">Or copy this link: {{.Link}}</p>
+		`
 	default:
-		content = fmt.Sprintf(`
+		contentTmpl = `
 			<p>Please click the button below to confirm your email change for Vulfixx:</p>
 			<div style="text-align: center; margin: 30px 0;">
-				<a href="%s" class="btn">Confirm Change</a>
+				<a href="{{.Link}}" class="btn">Confirm Change</a>
 			</div>
-			<p style="font-size: 12px; opacity: 0.6; text-align: center;">Or copy this link: %s</p>
-		`, link, link)
+			<p style="font-size: 12px; opacity: 0.6; text-align: center;">Or copy this link: {{.Link}}</p>
+		`
 	}
 
-	body := WrapInModernLayout(EmailTemplateData{
-		Title: subject,
-		Body:  template.HTML(content), // #nosec G203
-	})
+	data := struct {
+		Link string
+	}{
+		Link: link,
+	}
+
+	body, err := RenderEmailTemplate(subject, contentTmpl, data)
+	if err != nil {
+		return fmt.Errorf("failed to render email template: %w", err)
+	}
+
 	return w.Mailer.SendEmail(email, subject, body)
 }
 
@@ -180,19 +221,26 @@ func (w *Worker) sendVerificationEmail(email, token string) error {
 	encodedToken := url.QueryEscape(token)
 	link := fmt.Sprintf("%s/verify-email?token=%s", baseURL, encodedToken)
 	
-	content := fmt.Sprintf(`
+	contentTmpl := `
 		<p>Welcome to <strong>Vulfixx</strong>, your modern threat intelligence platform. Please verify your email address to activate your access profile.</p>
 		<div style="text-align: center; margin: 30px 0;">
-			<a href="%s" class="btn">Verify Account</a>
+			<a href="{{.Link}}" class="btn">Verify Account</a>
 		</div>
-		<p style="font-size: 12px; opacity: 0.6; text-align: center;">Or copy this link: %s</p>
+		<p style="font-size: 12px; opacity: 0.6; text-align: center;">Or copy this link: {{.Link}}</p>
 		<p style="font-size: 12px; opacity: 0.6; text-align: center;">If you didn't create this account, you can safely ignore this email.</p>
-		`, link, link)
+		`
 
-	body := WrapInModernLayout(EmailTemplateData{
-		Title: subject,
-		Body:  template.HTML(content), // #nosec G203
-	})
+	data := struct {
+		Link string
+	}{
+		Link: link,
+	}
+
+	body, err := RenderEmailTemplate(subject, contentTmpl, data)
+	if err != nil {
+		return fmt.Errorf("failed to render verification email template: %w", err)
+	}
+
 	return w.Mailer.SendEmail(email, subject, body)
 }
 
@@ -237,4 +285,32 @@ func (w *Worker) pollDelayedQueue(ctx context.Context, delayedQueue, activeQueue
 			log.Printf("Worker: Error atomically moving item from %s to %s: %v", delayedQueue, activeQueue, err)
 		}
 	}
+}
+
+func isEmailDomainBlacklisted(email string) bool {
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return true // Block invalid/empty email formats
+	}
+	domain := strings.ToLower(strings.TrimSpace(parts[1]))
+
+	blacklistStr := os.Getenv("EMAIL_DOMAIN_BLACKLIST")
+	var blacklist []string
+	if blacklistStr != "" {
+		blacklist = strings.Split(blacklistStr, ",")
+	} else {
+		// Common disposable email domains
+		blacklist = []string{
+			"mailinator.com", "trashmail.com", "guerrillamail.com", "10minutemail.com",
+			"tempmail.com", "dispostable.com", "sharklasers.com", "getairmail.com",
+		}
+	}
+
+	for _, blocked := range blacklist {
+		blocked = strings.ToLower(strings.TrimSpace(blocked))
+		if domain == blocked || strings.HasSuffix(domain, "."+blocked) {
+			return true
+		}
+	}
+	return false
 }

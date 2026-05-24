@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/base64"
 	"testing"
 	"time"
 )
@@ -477,3 +478,98 @@ func TestGetLineage(t *testing.T) {
 		}
 	}
 }
+
+func TestCVE_AddAffectedProduct(t *testing.T) {
+	cve := &CVE{}
+
+	// 1. Initial add
+	cve.AddAffectedProduct("VendorA", "ProductA", "1.0", false)
+	if len(cve.AffectedProducts) != 1 {
+		t.Fatalf("expected 1 product, got %d", len(cve.AffectedProducts))
+	}
+	if cve.AffectedProducts[0].Version != "1.0" {
+		t.Errorf("expected version 1.0, got %s", cve.AffectedProducts[0].Version)
+	}
+
+	// 2. Add with empty version shouldn't overwrite existing
+	cve.AddAffectedProduct("VendorA", "ProductA", "", false)
+	if cve.AffectedProducts[0].Version != "1.0" {
+		t.Errorf("expected version to remain 1.0, got %s", cve.AffectedProducts[0].Version)
+	}
+
+	// 3. Add with same vendor/product but existing is empty version
+	cve2 := &CVE{}
+	cve2.AddAffectedProduct("VendorA", "ProductA", "", false)
+	cve2.AddAffectedProduct("VendorA", "ProductA", "2.0", false)
+	if cve2.AffectedProducts[0].Version != "2.0" {
+		t.Errorf("expected version to be updated to 2.0, got %s", cve2.AffectedProducts[0].Version)
+	}
+
+	// 4. Add new product
+	cve.AddAffectedProduct("VendorB", "ProductB", "3.0", true)
+	if len(cve.AffectedProducts) != 2 {
+		t.Fatalf("expected 2 products, got %d", len(cve.AffectedProducts))
+	}
+}
+
+func TestWebhookEncryption(t *testing.T) {
+	// 1. Test empty plaintext
+	res, err := EncryptWebhook("")
+	if err != nil || res != "" {
+		t.Errorf("expected empty string and nil error, got (%q, %v)", res, err)
+	}
+
+	resDec, err := DecryptWebhook("")
+	if err != nil || resDec != "" {
+		t.Errorf("expected empty string and nil error, got (%q, %v)", resDec, err)
+	}
+
+	// 2. Test missing SESSION_KEY
+	t.Setenv("SESSION_KEY", "")
+	_, err = EncryptWebhook("secret")
+	if err == nil || err.Error() != "missing SESSION_KEY" {
+		t.Errorf("expected 'missing SESSION_KEY' error, got %v", err)
+	}
+
+	_, err = DecryptWebhook("secret")
+	if err == nil || err.Error() != "missing SESSION_KEY" {
+		t.Errorf("expected 'missing SESSION_KEY' error, got %v", err)
+	}
+
+	// 3. Test success path
+	t.Setenv("SESSION_KEY", "THIS_IS_A_MOCK_SESSION_KEY_32_BY")
+	plaintext := "http://mywebhook.com/payload"
+	cipher, err := EncryptWebhook(plaintext)
+	if err != nil {
+		t.Fatalf("unexpected encrypt error: %v", err)
+	}
+
+	decrypted, err := DecryptWebhook(cipher)
+	if err != nil {
+		t.Fatalf("unexpected decrypt error: %v", err)
+	}
+	if decrypted != plaintext {
+		t.Errorf("expected %q, got %q", plaintext, decrypted)
+	}
+
+	// 4. Test decrypt failures
+	_, err = DecryptWebhook("invalid-base-64!")
+	if err == nil {
+		t.Error("expected base64 decode error, got nil")
+	}
+
+	// Short ciphertext error
+	shortCipher := base64.URLEncoding.EncodeToString([]byte("short"))
+	_, err = DecryptWebhook(shortCipher)
+	if err == nil || err.Error() != "ciphertext too short" {
+		t.Errorf("expected 'ciphertext too short' error, got %v", err)
+	}
+
+	// Decrypt auth tag failure / tampered ciphertext
+	tampered := cipher[:len(cipher)-4] + "AAAA"
+	_, err = DecryptWebhook(tampered)
+	if err == nil {
+		t.Error("expected GCM authentication check failure error, got nil")
+	}
+}
+

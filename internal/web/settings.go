@@ -4,10 +4,12 @@ import (
 	"cve-tracker/internal/auth"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strings"
 
+	"github.com/hibiken/asynq"
 	"github.com/pquerna/otp/totp"
 	"github.com/redis/go-redis/v9"
 	"rsc.io/qr"
@@ -140,9 +142,13 @@ func (a *App) VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
 	if valid {
 		if _, err := a.Pool.Exec(r.Context(), "UPDATE users SET is_totp_enabled = TRUE WHERE id = $1", userID); err != nil {
 			log.Printf("Error enabling TOTP: %v", err)
+			_ = session.Save(r, w)
+			http.Redirect(w, r, "/settings?error=Failed+to+enable+2FA", http.StatusFound)
+			return
 		}
 		delete(session.Values, "totp_setup_ts")
 		delete(session.Values, "totp_setup_attempts")
+		session.Values["totp_verified"] = true
 		_ = session.Save(r, w)
 		a.LogActivity(r.Context(), userID, "totp_enabled", "Successfully enabled 2FA", a.GetClientIP(r), r.UserAgent())
 	} else {
@@ -155,6 +161,19 @@ func (a *App) VerifyTOTPHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/settings", http.StatusFound)
 }
 
+// ChangePasswordHandler handles changing user passwords.
+// @Summary Change User Password
+// @Description Update the password of the authenticated user.
+// @Tags Settings
+// @Accept x-www-form-urlencoded
+// @Produce html
+// @Param current_password formData string true "Current Password"
+// @Param new_password formData string true "New Password"
+// @Param confirm_password formData string true "Confirm New Password"
+// @Param totp_code formData string false "TOTP Code"
+// @Success 200 {string} string "Success"
+// @Failure 400 {string} string "Bad Request"
+// @Router /settings/password [post]
 func (a *App) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := a.GetUserID(r)
 	if !ok {
@@ -192,6 +211,17 @@ func (a *App) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	reqVal := ChangePasswordRequest{
+		CurrentPassword: currentPassword,
+		NewPassword:     newPassword,
+		ConfirmPassword: confirmPassword,
+		TOTPCode:        totpCode,
+	}
+	if err := Validate.Struct(reqVal); err != nil {
+		renderError("New password must be at least 8 characters.")
+		return
+	}
+
 	err = auth.ChangePassword(r.Context(), userID, currentPassword, newPassword, totpCode)
 	if err != nil {
 		errMsg := err.Error()
@@ -220,6 +250,17 @@ func (a *App) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ChangeEmailHandler handles user request to change email.
+// @Summary Change User Email
+// @Description Initiate a request to change the authenticated user's email address.
+// @Tags Settings
+// @Accept x-www-form-urlencoded
+// @Produce html
+// @Param new_email formData string true "New Email Address"
+// @Param password formData string true "Current Password"
+// @Success 200 {string} string "Success"
+// @Failure 400 {string} string "Bad Request"
+// @Router /settings/email [post]
 func (a *App) ChangeEmailHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -253,6 +294,15 @@ func (a *App) ChangeEmailHandler(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	reqVal := ChangeEmailRequest{
+		NewEmail: newEmail,
+		Password: password,
+	}
+	if err := Validate.Struct(reqVal); err != nil {
+		renderError("Invalid email format or empty password field.")
+		return
+	}
+
 	// Verify password
 	_, err := auth.Login(r.Context(), email, password)
 	if err != nil {
@@ -266,24 +316,31 @@ func (a *App) ChangeEmailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Push email change notification payloads to redis queue
-	oldPayload, _ := json.Marshal(map[string]string{
-		"email": email,
-		"token": oldToken,
-		"type":  "old",
+	// Push email change notification payloads to redis queue atomically as a single work item
+	combinedPayload, _ := json.Marshal(map[string]string{
+		"old_email": email,
+		"old_token": oldToken,
+		"new_email": newEmail,
+		"new_token": newToken,
 	})
-	newPayload, _ := json.Marshal(map[string]string{
-		"email": newEmail,
-		"token": newToken,
-		"type":  "new",
-	})
-	// Push email change notification payloads to redis queue atomically
-	if _, err = a.Redis.TxPipelined(r.Context(), func(pipe redis.Pipeliner) error {
-		pipe.LPush(r.Context(), "email_change_queue", oldPayload)
-		pipe.LPush(r.Context(), "email_change_queue", newPayload)
-		return nil
-	}); err != nil {
-		log.Printf("Error enqueueing email change payloads: %v", err)
+
+	var enqueueErr error
+	if a.AsynqClient != nil {
+		task := asynq.NewTask("task:email_change", combinedPayload)
+		_, enqueueErr = a.AsynqClient.EnqueueContext(r.Context(), task)
+	} else {
+		if a.Redis == nil {
+			enqueueErr = errors.New("redis client is nil")
+		} else {
+			_, enqueueErr = a.Redis.TxPipelined(r.Context(), func(pipe redis.Pipeliner) error {
+				pipe.LPush(r.Context(), "email_change_queue", combinedPayload)
+				return nil
+			})
+		}
+	}
+
+	if enqueueErr != nil {
+		log.Printf("Error enqueueing email change payloads: %v", enqueueErr)
 		renderError("Error requesting email change")
 		return
 	}

@@ -2,12 +2,14 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pashagolub/pgxmock/v3"
@@ -39,69 +41,66 @@ func TestRedisMock(t *testing.T) {
 	}
 }
 
-func TestMigrate(t *testing.T) {
-	tests := []struct {
-		name      string
-		mockSetup func(mock pgxmock.PgxPoolIface)
-		wantErr   bool
-		errMatch  string
-	}{
-		{
-			name: "Success",
-			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				// Mock base schema execution
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
-
-				// Expectations for each migration query in migrate()
-				// There are 25 queries in the queries slice
-				for i := 0; i < 25; i++ {
-					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
-				}
-			},
-			wantErr: false,
-		},
-		{
-			name: "Base Schema Failure",
-			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnError(fmt.Errorf("schema fail"))
-			},
-			wantErr:  true,
-			errMatch: "failed to execute base schema",
-		},
-		{
-			name: "Incremental Migration Failure",
-			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
-				// Fail on the first incremental migration
-				mock.ExpectExec("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin").WillReturnError(fmt.Errorf("query fail"))
-			},
-			wantErr:  true,
-			errMatch: "migration 0 failed",
-		},
+func TestMigrate_SqlOpenerFailure(t *testing.T) {
+	oldSqlOpener := sqlOpener
+	sqlOpener = func(driverName, dataSourceName string) (*sql.DB, error) {
+		return nil, fmt.Errorf("forced open error")
 	}
+	defer func() { sqlOpener = oldSqlOpener }()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mock, err := pgxmock.NewPool()
-			if err != nil {
-				t.Fatalf("pgxmock.NewPool failed: %v", err)
-			}
-			Pool = mock
-			defer mock.Close()
+	err := migrate(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "forced open error") {
+		t.Errorf("expected connection error, got: %v", err)
+	}
+}
 
-			if tt.mockSetup != nil {
-				tt.mockSetup(mock)
-			}
+func TestMigrate_GooseFailure(t *testing.T) {
+	db, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
 
-			err = migrate(context.Background())
-			if (err != nil) != tt.wantErr {
-				t.Errorf("migrate() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if tt.wantErr && !strings.Contains(err.Error(), tt.errMatch) {
-				t.Errorf("migrate() error = %v, wantMatch %v", err, tt.errMatch)
-			}
-		})
+	oldSqlOpener := sqlOpener
+	sqlOpener = func(driverName, dataSourceName string) (*sql.DB, error) {
+		return db, nil
+	}
+	defer func() { sqlOpener = oldSqlOpener }()
+
+	oldGooseUp := gooseUp
+	gooseUp = func(ctx context.Context, db *sql.DB, dir string) error {
+		return fmt.Errorf("forced goose failure")
+	}
+	defer func() { gooseUp = oldGooseUp }()
+
+	err = migrate(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "goose migration failed") {
+		t.Errorf("expected goose migration failure, got: %v", err)
+	}
+}
+
+func TestMigrate_Success(t *testing.T) {
+	db, _, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+
+	oldSqlOpener := sqlOpener
+	sqlOpener = func(driverName, dataSourceName string) (*sql.DB, error) {
+		return db, nil
+	}
+	defer func() { sqlOpener = oldSqlOpener }()
+
+	oldGooseUp := gooseUp
+	gooseUp = func(ctx context.Context, db *sql.DB, dir string) error {
+		return nil
+	}
+	defer func() { gooseUp = oldGooseUp }()
+
+	err = migrate(context.Background())
+	if err != nil {
+		t.Errorf("expected successful migration, got error: %v", err)
 	}
 }
 
@@ -208,10 +207,6 @@ func TestInitDB_Complex(t *testing.T) {
 				mock.ExpectPing().WillReturnError(fmt.Errorf("not ready yet"))
 				mock.ExpectPing().WillReturnError(fmt.Errorf("not ready yet"))
 				mock.ExpectPing() // Succeeds on 3rd try
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
-				for i := 0; i < 25; i++ {
-					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
-				}
 			},
 			shortRetry: true,
 			wantErr:    false,
@@ -221,10 +216,6 @@ func TestInitDB_Complex(t *testing.T) {
 			envs: map[string]string{"DB_HOST": "localhost", "DB_SSLMODE": "disable"},
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectPing()
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnResult(pgxmock.NewResult("CREATE", 0))
-				for i := 0; i < 25; i++ {
-					mock.ExpectExec("").WillReturnResult(pgxmock.NewResult("ALTER", 0))
-				}
 			},
 			wantErr: false,
 		},
@@ -257,7 +248,6 @@ func TestInitDB_Complex(t *testing.T) {
 			envs: map[string]string{"DB_HOST": "localhost"},
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectPing()
-				mock.ExpectExec("CREATE TABLE IF NOT EXISTS users").WillReturnError(fmt.Errorf("migration fail"))
 			},
 			wantErr:     true,
 			errContains: "migration failed",
@@ -270,10 +260,12 @@ func TestInitDB_Complex(t *testing.T) {
 			oldCreator := poolCreator
 			oldRetryCount := dbRetryCount
 			oldRetryDelay := dbRetryDelay
+			oldMigrateFunc := migrateFunc
 			defer func() {
 				poolCreator = oldCreator
 				dbRetryCount = oldRetryCount
 				dbRetryDelay = oldRetryDelay
+				migrateFunc = oldMigrateFunc
 			}()
 
 			if tt.name == "Success Path - Default SSLMode and Ping Retry" {
@@ -285,6 +277,16 @@ func TestInitDB_Complex(t *testing.T) {
 			} else {
 				dbRetryCount = 1
 				dbRetryDelay = 1 * time.Millisecond
+			}
+
+			if tt.name == "Migration Failure" {
+				migrateFunc = func(ctx context.Context) error {
+					return fmt.Errorf("migration fail")
+				}
+			} else {
+				migrateFunc = func(ctx context.Context) error {
+					return nil
+				}
 			}
 
 			mock, err := pgxmock.NewPool()
@@ -334,7 +336,6 @@ func TestDefaultPoolCreator(t *testing.T) {
 	// Cover the default poolCreator implementation
 	ctx := context.Background()
 	cfg, _ := pgxpool.ParseConfig("host=localhost")
-	// This will try to connect to localhost, which might fail, but it covers the lines.
 	_, _ = poolCreator(ctx, cfg)
 }
 
@@ -393,6 +394,100 @@ func TestSetupHelpers(t *testing.T) {
 		_, err := SetupTestRedis()
 		if err == nil {
 			t.Error("expected error but got nil")
+		}
+	})
+}
+
+func TestInitDB_Replica(t *testing.T) {
+	t.Run("Replica Configuration set", func(t *testing.T) {
+		oldPool := Pool
+		oldReplicaPool := ReplicaPool
+		defer func() {
+			Pool = oldPool
+			ReplicaPool = oldReplicaPool
+		}()
+
+		t.Setenv("DB_HOST", "localhost")
+		t.Setenv("DB_PORT", "5432")
+		t.Setenv("DB_USER", "user")
+		t.Setenv("DB_PASSWORD", "pass")
+		t.Setenv("DB_NAME", "db")
+		t.Setenv("DB_SSLMODE", "disable")
+
+		t.Setenv("DB_REPLICA_HOST", "localhost")
+		t.Setenv("DB_REPLICA_PORT", "5432")
+		t.Setenv("DB_REPLICA_USER", "user")
+		t.Setenv("DB_REPLICA_PASSWORD", "pass")
+		t.Setenv("DB_REPLICA_NAME", "db_replica")
+
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+
+		mock.ExpectPing()
+
+		oldCreator := poolCreator
+		poolCreator = func(ctx context.Context, config *pgxpool.Config) (DBPool, error) {
+			return mock, nil
+		}
+		defer func() { poolCreator = oldCreator }()
+
+		oldMigrateFunc := migrateFunc
+		migrateFunc = func(ctx context.Context) error {
+			return nil
+		}
+		defer func() { migrateFunc = oldMigrateFunc }()
+
+		err = InitDB()
+		if err != nil {
+			t.Errorf("expected InitDB to succeed, got %v", err)
+		}
+		if ReplicaPool == nil {
+			t.Error("expected ReplicaPool to be initialized")
+		}
+	})
+}
+
+func TestInitRedis_SentinelAndCluster(t *testing.T) {
+	// Mock redisPing globally and restore it
+	oldPing := redisPing
+	redisPing = func() error {
+		return fmt.Errorf("forced offline error")
+	}
+	defer func() { redisPing = oldPing }()
+
+	t.Run("Sentinel Configuration fail ping", func(t *testing.T) {
+		t.Setenv("REDIS_SENTINEL_MASTER", "mymaster")
+		t.Setenv("REDIS_SENTINEL_ADDRS", "127.0.0.1:26379, 127.0.0.1:26380")
+		t.Setenv("REDIS_URL", "")
+
+		err := InitRedis()
+		if err == nil || !strings.Contains(err.Error(), "forced offline error") {
+			t.Errorf("expected forced offline error, got %v", err)
+		}
+	})
+
+	t.Run("Sentinel Default Address fail ping", func(t *testing.T) {
+		t.Setenv("REDIS_SENTINEL_MASTER", "mymaster")
+		t.Setenv("REDIS_SENTINEL_ADDRS", "")
+		t.Setenv("REDIS_URL", "")
+
+		err := InitRedis()
+		if err == nil || !strings.Contains(err.Error(), "forced offline error") {
+			t.Errorf("expected forced offline error, got %v", err)
+		}
+	})
+
+	t.Run("Cluster Configuration fail ping", func(t *testing.T) {
+		t.Setenv("REDIS_SENTINEL_MASTER", "")
+		t.Setenv("REDIS_CLUSTER_ADDRS", "127.0.0.1:7000,127.0.0.1:7001")
+		t.Setenv("REDIS_URL", "")
+
+		err := InitRedis()
+		if err == nil || !strings.Contains(err.Error(), "forced offline error") {
+			t.Errorf("expected forced offline error, got %v", err)
 		}
 	})
 }

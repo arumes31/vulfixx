@@ -177,9 +177,9 @@ func TestAuthMiddleware(t *testing.T) {
 		setSessionUser(t, app, req, 1, false)
 		
 		// Mock verified check in middleware
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_email_verified FROM users WHERE id = $1")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_email_verified, is_totp_enabled, onboarding_completed FROM users WHERE id = $1")).
 			WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"is_email_verified"}).AddRow(false))
+			WillReturnRows(pgxmock.NewRows([]string{"is_email_verified", "is_totp_enabled", "onboarding_completed"}).AddRow(false, false, true))
 			
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)
@@ -199,9 +199,9 @@ func TestAuthMiddleware(t *testing.T) {
 		setSessionUser(t, app, req, 1, false)
 		
 		// Mock verified check in middleware
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_email_verified FROM users WHERE id = $1")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_email_verified, is_totp_enabled, onboarding_completed FROM users WHERE id = $1")).
 			WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"is_email_verified"}).AddRow(true))
+			WillReturnRows(pgxmock.NewRows([]string{"is_email_verified", "is_totp_enabled", "onboarding_completed"}).AddRow(true, false, true))
 			
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)

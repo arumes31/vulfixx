@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"cve-tracker/internal/config"
+	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
 
 	"encoding/json"
@@ -107,9 +108,11 @@ func (a *App) AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Check if email is verified
+		// Check email verification, MFA, and onboarding status in a single query
 		var isVerified bool
-		err := a.Pool.QueryRow(r.Context(), "SELECT is_email_verified FROM users WHERE id = $1", userID).Scan(&isVerified)
+		var isTOTPEnabled bool
+		var onboardingCompleted bool
+		err := a.Pool.QueryRow(r.Context(), "SELECT is_email_verified, is_totp_enabled, onboarding_completed FROM users WHERE id = $1", userID).Scan(&isVerified, &isTOTPEnabled, &onboardingCompleted)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				http.Redirect(w, r, "/login", http.StatusFound)
@@ -121,6 +124,31 @@ func (a *App) AuthMiddleware(next http.Handler) http.Handler {
 		if !isVerified {
 			http.Error(w, "Please verify your email address to access this page.", http.StatusForbidden)
 			return
+		}
+
+		if isTOTPEnabled {
+			session, err := a.SessionStore.Get(r, "vulfixx-session")
+			if err != nil {
+				http.Redirect(w, r, "/login", http.StatusFound)
+				return
+			}
+			totpVerified, _ := session.Values["totp_verified"].(bool)
+			if !totpVerified {
+				http.Redirect(w, r, "/login", http.StatusFound)
+				return
+			}
+		}
+
+		if !onboardingCompleted {
+			path := r.URL.Path
+			if !strings.HasPrefix(path, "/settings") && !strings.HasPrefix(path, "/api/onboarding") && !strings.HasPrefix(path, "/static/") {
+				if !isTOTPEnabled {
+					http.Redirect(w, r, "/settings?info=MFA+registration+is+required+to+complete+onboarding", http.StatusFound)
+				} else {
+					http.Redirect(w, r, "/settings?info=Please+complete+onboarding", http.StatusFound)
+				}
+				return
+			}
 		}
 
 		next.ServeHTTP(w, r)
@@ -197,6 +225,18 @@ func (a *App) LogActivity(ctx context.Context, userID int, activityType, descrip
 	if err != nil {
 		// #nosec G706 -- sanitized via sanitizeForLog
 		log.Printf("Error logging activity: %v", sanitizeForLog(err.Error()))
+	} else {
+		// Publish activity log event to Redis Pub/Sub for SSE streaming
+		eventData := map[string]interface{}{
+			"user_id":       userID,
+			"activity_type": activityType,
+			"description":   description,
+			"ip_address":    ipAddress,
+			"created_at":    time.Now().Format(time.RFC3339),
+		}
+		if eventJSON, err := json.Marshal(eventData); err == nil {
+			_ = a.Redis.Publish(ctx, "vulfixx:activity_channel", eventJSON).Err()
+		}
 	}
 }
 
@@ -243,6 +283,7 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 		data["SubCount"] = subCount
 
 		// Fetch user's teams
+		var userTeams []map[string]interface{}
 		teamRows, err := a.Pool.Query(r.Context(), `
 			SELECT t.id, t.name 
 			FROM teams t
@@ -253,29 +294,47 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 			log.Printf("RenderTemplate teams query ERR: %v", err)
 		} else {
 			defer teamRows.Close()
-			var teams []map[string]interface{}
 			for teamRows.Next() {
 				var id int
 				var teamName string
 				if err := teamRows.Scan(&id, &teamName); err == nil {
-					teams = append(teams, map[string]interface{}{"ID": id, "Name": teamName})
+					userTeams = append(userTeams, map[string]interface{}{"ID": id, "Name": teamName})
 				}
 			}
 			if err := teamRows.Err(); err != nil {
 				log.Printf("RenderTemplate teamRows ERR: %v", err)
 			}
-			data["UserTeams"] = teams
+			data["UserTeams"] = userTeams
 		}
 
 		activeTeamID, ok := a.GetActiveTeamID(r)
 		if ok && activeTeamID != 0 {
 			var teamName string
-			err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
-			if err != nil {
-				log.Printf("Error fetching active team name: %v", err)
+			var found bool
+
+			// Attempt to find the active team name in the already fetched user teams
+			for _, team := range userTeams {
+				if team["ID"] == activeTeamID {
+					if name, ok := team["Name"].(string); ok {
+						teamName = name
+						found = true
+						break
+					}
+				}
+			}
+
+			// Fallback to database query if not found in pre-fetched teams
+			if !found {
+				err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
+				if err != nil {
+					log.Printf("Error fetching active team name: %v", err)
+				} else {
+					data["ActiveTeamName"] = teamName
+				}
 			} else {
 				data["ActiveTeamName"] = teamName
 			}
+
 			data["ActiveTeamID"] = activeTeamID
 		} else {
 			data["ActiveTeamID"] = 0
@@ -314,6 +373,17 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 	_, _ = w.Write(buf.Bytes())
 }
 
+type GlobalCVEStatsJSON struct {
+	Total          int            `json:"total"`
+	NewLast24h     int            `json:"new_last_24h"`
+	KevCount       int            `json:"kev_count"`
+	CritCount      int            `json:"crit_count"`
+	SeverityCounts SeverityCounts `json:"severity_counts"`
+	TopCWEs        []CWEStat      `json:"top_cwes"`
+	EpssDist       []int          `json:"epss_dist"`
+	LastUpdated    time.Time      `json:"last_updated"`
+}
+
 func (a *App) StartStatsTicker(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
@@ -322,6 +392,35 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 		refreshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 
+		// Attempt to get from Redis first (Cache-Aside pattern)
+		var statsJSON GlobalCVEStatsJSON
+		cacheFound := false
+
+		if db.RedisClient != nil {
+			val, err := db.RedisClient.Get(refreshCtx, "vulfixx:dashboard_stats").Result()
+			if err == nil && val != "" {
+				if err := json.Unmarshal([]byte(val), &statsJSON); err == nil {
+					cacheFound = true
+				}
+			}
+		}
+
+		if cacheFound {
+			statsCache.Lock()
+			statsCache.total = statsJSON.Total
+			statsCache.newLast24h = statsJSON.NewLast24h
+			statsCache.kevCount = statsJSON.KevCount
+			statsCache.critCount = statsJSON.CritCount
+			statsCache.severityCounts = statsJSON.SeverityCounts
+			statsCache.topCWEs = statsJSON.TopCWEs
+			statsCache.epssDist = statsJSON.EpssDist
+			statsCache.lastUpdated = statsJSON.LastUpdated
+			statsCache.Unlock()
+			log.Printf("Global stats cache loaded from Redis: Total=%d, New=%d, KEV=%d, Crit=%d", statsJSON.Total, statsJSON.NewLast24h, statsJSON.KevCount, statsJSON.CritCount)
+			return
+		}
+
+		// Cache miss - query DB
 		var total, new24h, kevCount, critCount int
 		_ = a.Pool.QueryRow(refreshCtx, "SELECT COUNT(*) FROM cves").Scan(&total)
 		_ = a.Pool.QueryRow(refreshCtx, "SELECT COUNT(*) FROM cves WHERE updated_date >= NOW() - INTERVAL '24 hours'").Scan(&new24h)
@@ -368,6 +467,7 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 			FROM cves
 		`).Scan(&epssDist[0], &epssDist[1], &epssDist[2], &epssDist[3])
 
+		now := time.Now()
 		statsCache.Lock()
 		statsCache.total = total
 		statsCache.newLast24h = new24h
@@ -376,8 +476,27 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 		statsCache.severityCounts = sevCounts
 		statsCache.topCWEs = topCWEs
 		statsCache.epssDist = epssDist
-		statsCache.lastUpdated = time.Now()
+		statsCache.lastUpdated = now
 		statsCache.Unlock()
+
+		// Save to Redis (Expiration = 5 minutes)
+		if db.RedisClient != nil {
+			statsJSON = GlobalCVEStatsJSON{
+				Total:          total,
+				NewLast24h:     new24h,
+				KevCount:       kevCount,
+				CritCount:      critCount,
+				SeverityCounts: sevCounts,
+				TopCWEs:        topCWEs,
+				EpssDist:       epssDist,
+				LastUpdated:    now,
+			}
+			data, err := json.Marshal(statsJSON)
+			if err == nil {
+				_ = db.RedisClient.Set(refreshCtx, "vulfixx:dashboard_stats", string(data), 5*time.Minute).Err()
+			}
+		}
+
 		log.Printf("Global stats cache refreshed: Total=%d, New=%d, KEV=%d, Crit=%d", total, new24h, kevCount, critCount)
 	}
 
@@ -408,6 +527,8 @@ func (a *App) SendResponse(w http.ResponseWriter, r *http.Request, success bool,
 			statusCode = http.StatusInternalServerError
 		} else if strings.Contains(lowerMsg, "method not allowed") {
 			statusCode = http.StatusMethodNotAllowed
+		} else if strings.Contains(lowerMsg, "conflict") {
+			statusCode = http.StatusConflict
 		}
 	}
 

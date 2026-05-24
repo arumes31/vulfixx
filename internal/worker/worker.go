@@ -6,9 +6,11 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/hibiken/asynq"
 )
 
 type Worker struct {
@@ -21,6 +23,7 @@ type Worker struct {
 	alertMu            sync.Mutex
 	alertResendBackoff time.Duration
 	enrichmentQueue    chan int
+	AsynqClient        *asynq.Client
 }
 
 func NewWorker(pool db.DBPool, redis db.RedisProvider, mailer EmailSender, http HTTPClient) *Worker {
@@ -36,7 +39,11 @@ func NewWorker(pool db.DBPool, redis db.RedisProvider, mailer EmailSender, http 
 }
 
 func (w *Worker) Start(ctx context.Context) {
-	log.Println("Worker: Starting background tasks...")
+	if ctx.Err() != nil {
+		slog.Info("Worker: Context already cancelled, not starting background tasks.")
+		return
+	}
+	slog.Info("Worker: Starting background tasks...")
 	
 	// Test LLM connectivity on startup if provider is configured
 	w.TestLLMConnectivity(ctx)
@@ -55,6 +62,7 @@ func (w *Worker) Start(ctx context.Context) {
 	runTask(w.fetchCVEsPeriodically)
 	runTask(w.fetchCISAKEVPeriodically)
 	runTask(w.syncEPSSPeriodically)
+	runTask(w.syncThreatIntelPeriodically)
 	runTask(w.syncGitHubBuzzPeriodically)
 	runTask(w.syncIntelligencePeriodically)
 	runTask(w.syncGreyNoisePeriodically)
@@ -64,32 +72,48 @@ func (w *Worker) Start(ctx context.Context) {
 	runTask(w.startHealthCheckPeriodically)
 
 	// Notification & Alert Processing
-	runTask(w.processAlerts)
-	runTask(w.processEmailVerification)
-	runTask(w.processEmailChange)
-	runTask(w.startEmailRetryPoller)
+	if w.AsynqClient != nil {
+		runTask(w.StartAsynqServer)
+	} else {
+		// Fallback to legacy Redis queues for backwards compatibility / local tests
+		runTask(w.processAlerts)
+		runTask(w.processEmailVerification)
+		runTask(w.processEmailChange)
+		runTask(w.startEmailRetryPoller)
+	}
+
 	runTask(w.startWeeklySummaryTask)
 	runTask(w.startIntelligenceEnrichmentTask)
 
-	log.Println("Worker: All background goroutines started.")
+	slog.Info("Worker: All background goroutines started.")
 	<-ctx.Done()
-	log.Println("Worker: Stopping background tasks, waiting for goroutines to finish...")
+	slog.Info("Worker: Stopping background tasks, waiting for goroutines to finish...")
 	wg.Wait()
-	log.Println("Worker: All tasks gracefully stopped.")
+	slog.Info("Worker: All tasks gracefully stopped.")
 }
 
 func (w *Worker) enqueueAlertsForCVE(ctx context.Context, cve models.CVE) error {
-	// First, get the internal ID for the CVE as it might be needed by the alert processor
-	var id int
-	err := w.Pool.QueryRow(ctx, "SELECT id FROM cves WHERE cve_id = $1", cve.CVEID).Scan(&id)
-	if err != nil {
-		return fmt.Errorf("failed to get internal ID for CVE %s: %w", cve.CVEID, err)
+	if cve.ID == 0 {
+		var id int
+		err := w.Pool.QueryRow(ctx, "SELECT id FROM cves WHERE cve_id = $1", cve.CVEID).Scan(&id)
+		if err != nil {
+			return fmt.Errorf("failed to get internal ID for CVE %s: %w", cve.CVEID, err)
+		}
+		cve.ID = id
 	}
-	cve.ID = id
 
 	alertJob, err := json.Marshal(cve)
 	if err != nil {
 		return fmt.Errorf("failed to marshal alert for %s: %w", cve.CVEID, err)
+	}
+
+	if w.AsynqClient != nil {
+		task := asynq.NewTask("task:cve_alert", alertJob)
+		_, err := w.AsynqClient.EnqueueContext(ctx, task)
+		if err != nil {
+			return fmt.Errorf("failed to enqueue asynq alert for %s: %w", cve.CVEID, err)
+		}
+		return nil
 	}
 
 	var lastErr error

@@ -212,6 +212,8 @@ Description: ` + description
 
 	return res.Products, nil
 }
+var timeSleep = time.Sleep
+
 func extractWithArliAI(ctx context.Context, apiKey, model, endpoint, description string) ([]ProductResult, error) {
 	if apiKey == "" {
 		return nil, fmt.Errorf("arliai api key is required")
@@ -275,7 +277,7 @@ Output: {"products": [
 			// Backoff before retry
 			wait := time.Duration(i*2) * time.Second
 			log.Printf("LLM: [RETRY] ArliAI hit limit, waiting %v before retry %d/3...", wait, i)
-			time.Sleep(wait)
+			timeSleep(wait)
 		}
 
 		resp, err := client.Do(req)
