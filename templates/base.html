@@ -252,7 +252,7 @@
 
     <div id="toast-container"></div>
     <div id="modal-container" class="hidden"></div>
-    <div id="onboarding-overlay" class="onboarding-overlay" onclick="if(typeof vulfixx!=='undefined'&&vulfixx.completeOnboarding)vulfixx.completeOnboarding()"></div>
+    <div id="onboarding-overlay" class="onboarding-overlay"></div>
 
     <script nonce="{{.Nonce}}">
         const vulfixx = {
@@ -676,6 +676,12 @@
 
             document.getElementById('mobile-logout-btn')?.addEventListener('click', () => {
                 document.getElementById('mobile-logout-form').submit();
+            });
+
+            document.getElementById('onboarding-overlay')?.addEventListener('click', () => {
+                if (typeof vulfixx !== 'undefined' && vulfixx.completeOnboarding) {
+                    vulfixx.completeOnboarding();
+                }
             });
 
             const userLoggedIn = document.body.dataset.userLoggedIn === 'true';
