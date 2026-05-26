@@ -91,7 +91,7 @@ func LoadConfig() {
 		LLMProvider:     getEnv("LLM_PROVIDER", "ollama"),
 		LLMEndpoint:     getEnv("LLM_ENDPOINT", "http://ollama:11434"),
 		LLMModel:        getEnv("LLM_MODEL", "phi3-vulfixx"),
-		LLMTimeout:      getEnvInt("LLM_TIMEOUT", 600),
+		LLMTimeout:      getEnvInt("LLM_TIMEOUT", 300),
 		ArliAIAPIKey:    decryptIfEncrypted(getEnv("ARLIAI_API_KEY", "")),
 		ArliAIModel:     getEnv("ARLIAI_MODEL", "Qwen2.5-72B-Instruct"),
 		ArliAIEndpoint:  getEnv("ARLIAI_ENDPOINT", "https://api.arliai.com/v1"),
