@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"cve-tracker/internal/models"
 	"database/sql"
@@ -15,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/csrf"
 	"github.com/go-chi/chi/v5"
+	"github.com/gorilla/csrf"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -603,66 +604,11 @@ type PublicDashboardData struct {
 
 func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	isAJAX := r.URL.Query().Get("ajax") == "true"
-	pageStr := r.URL.Query().Get("page")
-	page, _ := strconv.Atoi(pageStr)
-	if page < 1 {
-		page = 1
-	}
-	if page > 1000 { // Max depth for guest users
-		page = 1000
-	}
-	pageSize := 20
-	offset := (page - 1) * pageSize
-
-	cursorStr := r.URL.Query().Get("cursor")
-	cursorIDStr := r.URL.Query().Get("cursor_id")
-	if cursorStr != "" && cursorIDStr != "" {
-		offset = 0 // override offset when using cursor pagination
-	}
-
-	searchQuery := strings.TrimSpace(r.URL.Query().Get("q"))
-	vendorQuery := strings.TrimSpace(r.URL.Query().Get("vendor"))
-	productQuery := strings.TrimSpace(r.URL.Query().Get("product"))
-	cveIDQuery := strings.TrimSpace(r.URL.Query().Get("cve"))
-	cweQuery := strings.TrimSpace(r.URL.Query().Get("cwe"))
-
-	startDate := strings.TrimSpace(r.URL.Query().Get("start_date"))
-	endDate := strings.TrimSpace(r.URL.Query().Get("end_date"))
-	kevOnly := r.URL.Query().Get("kev") == "true"
-	hasPoC := r.URL.Query().Get("has_poc") == "true"
-	minCvssStr := r.URL.Query().Get("min_cvss")
-	maxCvssStr := r.URL.Query().Get("max_cvss")
-	minEpssStr := r.URL.Query().Get("min_epss")
-	maxEpssStr := r.URL.Query().Get("max_epss")
-
-	minCvss, _ := strconv.ParseFloat(minCvssStr, 64)
-	maxCvss, _ := strconv.ParseFloat(maxCvssStr, 64)
-	if maxCvss == 0 {
-		maxCvss = 10.0
-	}
-	minEpss, _ := strconv.ParseFloat(minEpssStr, 64)
-	maxEpss, _ := strconv.ParseFloat(maxEpssStr, 64)
-	if maxEpss == 0 && maxEpssStr != "" {
-		// if user explicitly put 0, keep it. If empty, default to 1.0
-	} else if maxEpssStr == "" {
-		maxEpss = 1.0
-	}
-
-	// Normalize sort/order
-	sort := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort")))
-	order := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("order")))
-
-	// Default sort
-	if sort == "" {
-		sort = "published"
-	}
-	if order != "asc" && order != "desc" {
-		order = "desc"
-	}
+	filters := a.parseDashboardFilters(r)
 
 	// Redis Caching for Default View
 	cacheKey := "public_dashboard_default_v2"
-	if (r.URL.RawQuery == "" || r.URL.RawQuery == "page=1") && sort == "" && order == "" {
+	if (r.URL.RawQuery == "" || r.URL.RawQuery == "page=1") && r.URL.Query().Get("sort") == "" && r.URL.Query().Get("order") == "" {
 		if val, err := a.Redis.Get(r.Context(), cacheKey).Result(); err == nil {
 			var cachedData PublicDashboardData
 			if err := json.Unmarshal([]byte(val), &cachedData); err == nil {
@@ -706,273 +652,63 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	whereClause := " WHERE (1=1) "
-	args := []any{}
-	argIdx := 1
+	whereClause, args, argIdx := a.buildDashboardWhereClause(filters)
 
-	if searchQuery != "" {
-		whereClause += fmt.Sprintf(" AND (c.cve_id ILIKE $%d OR c.description ILIKE $%d) ", argIdx, argIdx)
-		args = append(args, "%"+escapeLikePattern(searchQuery)+"%")
-		argIdx++
+	metrics, err := a.fetchDashboardMetrics(r.Context(), whereClause, args)
+	if err != nil {
+		log.Printf("Public dashboard metrics error: %v", err)
 	}
 
-	if vendorQuery != "" {
-		whereClause += fmt.Sprintf(" AND (c.vendor ILIKE $%d OR c.affected_products::text ILIKE $%d) ", argIdx, argIdx)
-		args = append(args, "%"+escapeLikePattern(vendorQuery)+"%")
-		argIdx++
-	}
-
-	if productQuery != "" {
-		whereClause += fmt.Sprintf(" AND (c.product ILIKE $%d OR c.affected_products::text ILIKE $%d) ", argIdx, argIdx)
-		args = append(args, "%"+escapeLikePattern(productQuery)+"%")
-		argIdx++
-	}
-
-	if cveIDQuery != "" {
-		whereClause += fmt.Sprintf(" AND c.cve_id ILIKE $%d ", argIdx)
-		args = append(args, "%"+escapeLikePattern(cveIDQuery)+"%")
-		argIdx++
-	}
-
-	if kevOnly {
-		whereClause += " AND c.cisa_kev = true "
-	}
-
-	if minCvss > 0 {
-		whereClause += fmt.Sprintf(" AND c.cvss_score >= $%d ", argIdx)
-		args = append(args, minCvss)
-		argIdx++
-	}
-	if maxCvss < 10 {
-		whereClause += fmt.Sprintf(" AND c.cvss_score <= $%d ", argIdx)
-		args = append(args, maxCvss)
-		argIdx++
-	}
-	if startDate != "" {
-		whereClause += fmt.Sprintf(" AND c.published_date >= $%d ", argIdx)
-		args = append(args, startDate)
-		argIdx++
-	}
-	if endDate != "" {
-		whereClause += fmt.Sprintf(" AND c.published_date <= $%d ", argIdx)
-		args = append(args, endDate)
-		argIdx++
-	}
-
-	if cweQuery != "" {
-		whereClause += fmt.Sprintf(" AND (c.cwe_id ILIKE $%d OR c.cwe_name ILIKE $%d) ", argIdx, argIdx)
-		args = append(args, "%"+escapeLikePattern(cweQuery)+"%")
-		argIdx++
-	}
-
-	if hasPoC {
-		whereClause += " AND c.github_poc_count > 0 "
-	}
-
-	if minEpss > 0 {
-		whereClause += fmt.Sprintf(" AND c.epss_score >= $%d ", argIdx)
-		args = append(args, minEpss)
-		argIdx++
-	}
-	if maxEpss < 1.0 {
-		whereClause += fmt.Sprintf(" AND c.epss_score <= $%d ", argIdx)
-		args = append(args, maxEpss)
-		argIdx++
-	}
-
-	var totalItems, kevCount, critCount int
-	if whereClause == " WHERE (1=1) " {
-		statsCache.RLock()
-		totalItems = statsCache.total
-		kevCount = statsCache.kevCount
-		critCount = statsCache.critCount
-		statsCache.RUnlock()
-	} else {
-		metricsQuery := `
-			SELECT
-				COUNT(DISTINCT c.id) as total_cves,
-				COUNT(DISTINCT CASE WHEN c.cisa_kev = true THEN c.id END) as kev_count,
-				COUNT(DISTINCT CASE WHEN c.cvss_score >= 9.0 THEN c.id END) as critical_count
-			FROM cves c` + whereClause
-		err := a.Pool.QueryRow(r.Context(), metricsQuery, args...).Scan(&totalItems, &kevCount, &critCount)
-		if err != nil {
-			log.Printf("Public dashboard metrics error: %v", err)
-		}
-	}
-
-	query := `
-		SELECT 
-			c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, 
-			c.published_date, c.updated_date, 'active' as status, COALESCE(c."references", '{}'),
-			COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0),
-			COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'),
-			COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]'), COALESCE(c.priority, 'P3') as priority
-		FROM cves c
-	`
-	// Dynamic Sort
-	sortCol := "c.published_date"
-	sortOrder := "DESC"
-	switch sort {
-	case "id":
-		sortCol = "c.cve_id"
-	case "severity":
-		sortCol = "c.cvss_score"
-	case "epss":
-		sortCol = "c.epss_score"
-	case "published":
-		sortCol = "c.published_date"
-	}
-	if strings.ToUpper(order) == "ASC" {
-		sortOrder = "ASC"
-	}
-
-	if cursorStr != "" && cursorIDStr != "" {
-		cursorID, err := strconv.Atoi(cursorIDStr)
-		if err == nil && cursorID > 0 {
-			op := "<"
-			if sortOrder == "ASC" {
-				op = ">"
-			}
-			
-			// Validate cursorStr based on sort column
-			var parseErr error
-			switch sortCol {
-			case "c.published_date":
-				_, parseErr = time.Parse(time.RFC3339Nano, cursorStr)
-				if parseErr != nil {
-					_, parseErr = time.Parse(time.RFC3339, cursorStr)
-				}
-				if parseErr != nil {
-					_, parseErr = time.Parse("2006-01-02 15:04:05.999999-07", cursorStr)
-				}
-			case "c.cvss_score", "c.epss_score":
-				_, parseErr = strconv.ParseFloat(cursorStr, 64)
-			}
-			if parseErr != nil {
-				http.Error(w, "Invalid cursor value", http.StatusBadRequest)
-				return
-			}
-
-			var castType string
-			switch sortCol {
-			case "c.published_date":
-				castType = "::timestamptz"
-			case "c.cvss_score", "c.epss_score":
-				castType = "::numeric"
-			default:
-				castType = ""
-			}
-			keysetCond := fmt.Sprintf(" AND (%s %s $%d%s OR (%s = $%d%s AND c.id < $%d)) ", sortCol, op, argIdx, castType, sortCol, argIdx+1, castType, argIdx+2)
-			whereClause += keysetCond
-			args = append(args, cursorStr, cursorStr, cursorID)
-			argIdx += 3
-		}
-	}
-
-	query += whereClause
-	query += fmt.Sprintf(" ORDER BY %s %s NULLS LAST, c.id DESC LIMIT $%d OFFSET $%d ", sortCol, sortOrder, argIdx, argIdx+1)
-	finalArgs := append(args, pageSize, offset)
-	var cves []models.CVE
-	rows, err := a.Pool.Query(r.Context(), query, finalArgs...)
+	cves, err := a.fetchDashboardCVEs(r.Context(), filters, whereClause, args, argIdx)
 	if err != nil {
 		log.Printf("Public dashboard query error: %v", err)
-		totalItems = 0
-	} else {
-		defer rows.Close()
-		for rows.Next() {
-			var c models.CVE
-			err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.Vendor, &c.Product, &c.AffectedProducts, &c.Priority)
-			if err != nil {
-				log.Printf("Error scanning public CVE: %v", err)
-				continue
-			}
-			c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
-			_ = a.Pool.QueryRow(r.Context(), "SELECT cisa_ransomware FROM cves WHERE id = $1", c.ID).Scan(&c.CISARansomware)
-			cves = append(cves, c)
-		}
+		metrics.totalItems = 0
 	}
 
-	totalPages := (totalItems + pageSize - 1) / pageSize
+	stats, err := a.fetchDashboardStats(r.Context(), whereClause, args)
+	if err != nil {
+		log.Printf("Public dashboard stats error: %v", err)
+	}
+
+	totalPages := (metrics.totalItems + filters.pageSize - 1) / filters.pageSize
 	if totalPages < 1 {
 		totalPages = 1
 	}
 
 	threatLevel := "LOW"
 	threatColor := "text-blue-400"
-	if kevCount > 0 || critCount > 0 {
+	if metrics.kevCount > 0 || metrics.critCount > 0 {
 		threatLevel = "HIGH"
 		threatColor = "text-red-500"
 	}
 
-	var severityCounts SeverityCounts
-	var topCWEs []CWEStat
-	var epssDist []int
-
-	if whereClause == " WHERE (1=1) " {
-		statsCache.RLock()
-		severityCounts = statsCache.severityCounts
-		topCWEs = statsCache.topCWEs
-		epssDist = statsCache.epssDist
-		statsCache.RUnlock()
-	} else {
-		severityQuery := "SELECT " +
-			"COUNT(*) FILTER (WHERE cvss_score >= 9.0), " +
-			"COUNT(*) FILTER (WHERE cvss_score >= 7.0 AND cvss_score < 9.0), " +
-			"COUNT(*) FILTER (WHERE cvss_score >= 4.0 AND cvss_score < 7.0), " +
-			"COUNT(*) FILTER (WHERE cvss_score < 4.0) " +
-			"FROM cves c " + whereClause
-		_ = a.Pool.QueryRow(r.Context(), severityQuery, args...).Scan(&severityCounts.Critical, &severityCounts.High, &severityCounts.Medium, &severityCounts.Low)
-
-		cweQueryRows, _ := a.Pool.Query(r.Context(), "SELECT cwe_id, COALESCE(MAX(cwe_name), 'Unknown'), COUNT(*) as cnt FROM cves c "+whereClause+" AND cwe_id IS NOT NULL AND cwe_id != '' GROUP BY cwe_id ORDER BY cnt DESC LIMIT 15", args...)
-		if cweQueryRows != nil {
-			for cweQueryRows.Next() {
-				var s CWEStat
-				if err := cweQueryRows.Scan(&s.ID, &s.Name, &s.Count); err == nil {
-					s.Name = models.GetCWEName(s.ID, s.Name)
-					topCWEs = append(topCWEs, s)
-				}
-			}
-			cweQueryRows.Close()
-		}
-
-		epssQuery := "SELECT " +
-			"COUNT(*) FILTER (WHERE epss_score < 0.01), " +
-			"COUNT(*) FILTER (WHERE epss_score >= 0.01 AND epss_score < 0.1), " +
-			"COUNT(*) FILTER (WHERE epss_score >= 0.1 AND epss_score < 0.5), " +
-			"COUNT(*) FILTER (WHERE epss_score >= 0.5) " +
-			"FROM cves c " + whereClause
-		var e1, e2, e3, e4 int
-		_ = a.Pool.QueryRow(r.Context(), epssQuery, args...).Scan(&e1, &e2, &e3, &e4)
-		epssDist = []int{e1, e2, e3, e4}
-	}
-
 	renderData := map[string]interface{}{
 		"CVEs":            cves,
-		"Total":           totalItems,
-		"KevCount":        kevCount,
-		"CritCount":       critCount,
+		"Total":           metrics.totalItems,
+		"KevCount":        metrics.kevCount,
+		"CritCount":       metrics.critCount,
 		"ThreatLevel":     threatLevel,
 		"ThreatColor":     threatColor,
-		"Page":            page,
+		"Page":            filters.page,
 		"TotalPages":      totalPages,
-		"Query":           searchQuery,
-		"Vendor":          vendorQuery,
-		"Product":         productQuery,
-		"CVE":             cveIDQuery,
-		"CWE":             cweQuery,
-		"StartDate":       startDate,
-		"EndDate":         endDate,
-		"KevOnly":         kevOnly,
-		"HasPoC":          hasPoC,
-		"MinCvss":         minCvss,
-		"MaxCvss":         maxCvss,
-		"MinEpss":         minEpss,
-		"MaxEpss":         maxEpss,
-		"SeverityCounts":  severityCounts,
-		"TopCWEs":         topCWEs,
-		"EPSSDist":        epssDist,
-		"Sort":            sort,
-		"Order":           order,
+		"Query":           filters.searchQuery,
+		"Vendor":          filters.vendorQuery,
+		"Product":         filters.productQuery,
+		"CVE":             filters.cveIDQuery,
+		"CWE":             filters.cweQuery,
+		"StartDate":       filters.startDate,
+		"EndDate":         filters.endDate,
+		"KevOnly":         filters.kevOnly,
+		"HasPoC":          filters.hasPoC,
+		"MinCvss":         filters.minCvss,
+		"MaxCvss":         filters.maxCvss,
+		"MinEpss":         filters.minEpss,
+		"MaxEpss":         filters.maxEpss,
+		"SeverityCounts":  stats.severityCounts,
+		"TopCWEs":         stats.topCWEs,
+		"EPSSDist":        stats.epssDist,
+		"Sort":            filters.sort,
+		"Order":           filters.order,
 		"MetaTitle":       "Vulfixx - CVE Tracker",
 		"MetaDescription": "Monitor real-time vulnerability data, CISA KEV listings, and critical security advisories. The ultimate tracker for security professionals.",
 		"Trending":        a.getTrendingCVEs(r),
@@ -981,32 +717,31 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Cache Default View
 	if r.URL.RawQuery == "" || r.URL.RawQuery == "page=1" {
-		// Use struct for consistent JSON
 		cachedData := PublicDashboardData{
 			CVEs:            cves,
-			Total:           totalItems,
-			KevCount:        kevCount,
-			CritCount:       critCount,
+			Total:           metrics.totalItems,
+			KevCount:        metrics.kevCount,
+			CritCount:       metrics.critCount,
 			ThreatLevel:     threatLevel,
 			ThreatColor:     threatColor,
-			Page:            page,
+			Page:            filters.page,
 			TotalPages:      totalPages,
-			Query:           searchQuery,
-			Vendor:          vendorQuery,
-			Product:         productQuery,
-			CVE:             cveIDQuery,
-			CWE:             cweQuery,
-			StartDate:       startDate,
-			EndDate:         endDate,
-			KevOnly:         kevOnly,
-			HasPoC:          hasPoC,
-			MinCvss:         minCvss,
-			MaxCvss:         maxCvss,
-			MinEpss:         minEpss,
-			MaxEpss:         maxEpss,
-			SeverityCounts:  severityCounts,
-			TopCWEs:         topCWEs,
-			EPSSDist:        epssDist,
+			Query:           filters.searchQuery,
+			Vendor:          filters.vendorQuery,
+			Product:         filters.productQuery,
+			CVE:             filters.cveIDQuery,
+			CWE:             filters.cweQuery,
+			StartDate:       filters.startDate,
+			EndDate:         filters.endDate,
+			KevOnly:         filters.kevOnly,
+			HasPoC:          filters.hasPoC,
+			MinCvss:         filters.minCvss,
+			MaxCvss:         filters.maxCvss,
+			MinEpss:         filters.minEpss,
+			MaxEpss:         filters.maxEpss,
+			SeverityCounts:  stats.severityCounts,
+			TopCWEs:         stats.topCWEs,
+			EPSSDist:        stats.epssDist,
 			MetaTitle:       renderData["MetaTitle"].(string),
 			MetaDescription: renderData["MetaDescription"].(string),
 			Trending:        renderData["Trending"].([]models.CVE),
@@ -1364,3 +1099,355 @@ func (a *App) APICVEsHandler(w http.ResponseWriter, r *http.Request) {
 	SendJSONResponse(w, http.StatusOK, true, cves, "", meta)
 }
 
+type dashboardFilters struct {
+	searchQuery  string
+	vendorQuery  string
+	productQuery string
+	cveIDQuery   string
+	cweQuery     string
+	startDate    string
+	endDate      string
+	kevOnly      bool
+	hasPoC       bool
+	minCvss      float64
+	maxCvss      float64
+	minEpss      float64
+	maxEpss      float64
+	sort         string
+	order        string
+	page         int
+	pageSize     int
+	offset       int
+	cursorStr    string
+	cursorIDStr  string
+}
+
+type dashboardMetrics struct {
+	totalItems int
+	kevCount   int
+	critCount  int
+}
+
+type dashboardStats struct {
+	severityCounts SeverityCounts
+	topCWEs        []CWEStat
+	epssDist       []int
+}
+
+func (a *App) parseDashboardFilters(r *http.Request) dashboardFilters {
+	pageStr := r.URL.Query().Get("page")
+	page, _ := strconv.Atoi(pageStr)
+	if page < 1 {
+		page = 1
+	}
+	if page > 1000 {
+		page = 1000
+	}
+	pageSize := 20
+	offset := (page - 1) * pageSize
+
+	cursorStr := r.URL.Query().Get("cursor")
+	cursorIDStr := r.URL.Query().Get("cursor_id")
+	if cursorStr != "" && cursorIDStr != "" {
+		offset = 0
+	}
+
+	searchQuery := strings.TrimSpace(r.URL.Query().Get("q"))
+	vendorQuery := strings.TrimSpace(r.URL.Query().Get("vendor"))
+	productQuery := strings.TrimSpace(r.URL.Query().Get("product"))
+	cveIDQuery := strings.TrimSpace(r.URL.Query().Get("cve"))
+	cweQuery := strings.TrimSpace(r.URL.Query().Get("cwe"))
+
+	startDate := strings.TrimSpace(r.URL.Query().Get("start_date"))
+	endDate := strings.TrimSpace(r.URL.Query().Get("end_date"))
+	kevOnly := r.URL.Query().Get("kev") == "true"
+	hasPoC := r.URL.Query().Get("has_poc") == "true"
+	minCvssStr := r.URL.Query().Get("min_cvss")
+	maxCvssStr := r.URL.Query().Get("max_cvss")
+	minEpssStr := r.URL.Query().Get("min_epss")
+	maxEpssStr := r.URL.Query().Get("max_epss")
+
+	minCvss, _ := strconv.ParseFloat(minCvssStr, 64)
+	maxCvss, _ := strconv.ParseFloat(maxCvssStr, 64)
+	if maxCvss == 0 {
+		maxCvss = 10.0
+	}
+	minEpss, _ := strconv.ParseFloat(minEpssStr, 64)
+	maxEpss, _ := strconv.ParseFloat(maxEpssStr, 64)
+	if maxEpss == 0 && maxEpssStr == "" {
+		maxEpss = 1.0
+	}
+
+	sort := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort")))
+	order := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("order")))
+
+	if sort == "" {
+		sort = "published"
+	}
+	if order != "asc" && order != "desc" {
+		order = "desc"
+	}
+
+	return dashboardFilters{
+		searchQuery:  searchQuery,
+		vendorQuery:  vendorQuery,
+		productQuery: productQuery,
+		cveIDQuery:   cveIDQuery,
+		cweQuery:     cweQuery,
+		startDate:    startDate,
+		endDate:      endDate,
+		kevOnly:      kevOnly,
+		hasPoC:       hasPoC,
+		minCvss:      minCvss,
+		maxCvss:      maxCvss,
+		minEpss:      minEpss,
+		maxEpss:      maxEpss,
+		sort:         sort,
+		order:        order,
+		page:         page,
+		pageSize:     pageSize,
+		offset:       offset,
+		cursorStr:    cursorStr,
+		cursorIDStr:  cursorIDStr,
+	}
+}
+
+func (a *App) buildDashboardWhereClause(filters dashboardFilters) (string, []any, int) {
+	whereClause := " WHERE (1=1) "
+	args := []any{}
+	argIdx := 1
+
+	if filters.searchQuery != "" {
+		whereClause += fmt.Sprintf(" AND (c.cve_id ILIKE $%d OR c.description ILIKE $%d) ", argIdx, argIdx)
+		args = append(args, "%"+escapeLikePattern(filters.searchQuery)+"%")
+		argIdx++
+	}
+
+	if filters.vendorQuery != "" {
+		whereClause += fmt.Sprintf(" AND (c.vendor ILIKE $%d OR c.affected_products::text ILIKE $%d) ", argIdx, argIdx)
+		args = append(args, "%"+escapeLikePattern(filters.vendorQuery)+"%")
+		argIdx++
+	}
+
+	if filters.productQuery != "" {
+		whereClause += fmt.Sprintf(" AND (c.product ILIKE $%d OR c.affected_products::text ILIKE $%d) ", argIdx, argIdx)
+		args = append(args, "%"+escapeLikePattern(filters.productQuery)+"%")
+		argIdx++
+	}
+
+	if filters.cveIDQuery != "" {
+		whereClause += fmt.Sprintf(" AND c.cve_id ILIKE $%d ", argIdx)
+		args = append(args, "%"+escapeLikePattern(filters.cveIDQuery)+"%")
+		argIdx++
+	}
+
+	if filters.kevOnly {
+		whereClause += " AND c.cisa_kev = true "
+	}
+
+	if filters.minCvss > 0 {
+		whereClause += fmt.Sprintf(" AND c.cvss_score >= $%d ", argIdx)
+		args = append(args, filters.minCvss)
+		argIdx++
+	}
+	if filters.maxCvss < 10 {
+		whereClause += fmt.Sprintf(" AND c.cvss_score <= $%d ", argIdx)
+		args = append(args, filters.maxCvss)
+		argIdx++
+	}
+
+	if filters.startDate != "" {
+		whereClause += fmt.Sprintf(" AND c.published_date >= $%d ", argIdx)
+		args = append(args, filters.startDate)
+		argIdx++
+	}
+	if filters.endDate != "" {
+		whereClause += fmt.Sprintf(" AND c.published_date <= $%d ", argIdx)
+		args = append(args, filters.endDate)
+		argIdx++
+	}
+
+	if filters.cweQuery != "" {
+		whereClause += fmt.Sprintf(" AND (c.cwe_id ILIKE $%d OR c.cwe_name ILIKE $%d) ", argIdx, argIdx)
+		args = append(args, "%"+escapeLikePattern(filters.cweQuery)+"%")
+		argIdx++
+	}
+
+	if filters.hasPoC {
+		whereClause += " AND c.github_poc_count > 0 "
+	}
+
+	if filters.minEpss > 0 {
+		whereClause += fmt.Sprintf(" AND c.epss_score >= $%d ", argIdx)
+		args = append(args, filters.minEpss)
+		argIdx++
+	}
+	if filters.maxEpss < 1.0 {
+		whereClause += fmt.Sprintf(" AND c.epss_score <= $%d ", argIdx)
+		args = append(args, filters.maxEpss)
+		argIdx++
+	}
+
+	return whereClause, args, argIdx
+}
+
+func (a *App) fetchDashboardMetrics(ctx context.Context, whereClause string, args []any) (dashboardMetrics, error) {
+	var metrics dashboardMetrics
+	if whereClause == " WHERE (1=1) " {
+		statsCache.RLock()
+		metrics.totalItems = statsCache.total
+		metrics.kevCount = statsCache.kevCount
+		metrics.critCount = statsCache.critCount
+		statsCache.RUnlock()
+		return metrics, nil
+	}
+
+	metricsQuery := `
+		SELECT
+			COUNT(DISTINCT c.id) as total_cves,
+			COUNT(DISTINCT CASE WHEN c.cisa_kev = true THEN c.id END) as kev_count,
+			COUNT(DISTINCT CASE WHEN c.cvss_score >= 9.0 THEN c.id END) as critical_count
+		FROM cves c` + whereClause
+	err := a.Pool.QueryRow(ctx, metricsQuery, args...).Scan(&metrics.totalItems, &metrics.kevCount, &metrics.critCount)
+	if err != nil {
+		return metrics, err
+	}
+	return metrics, nil
+}
+
+func (a *App) fetchDashboardCVEs(ctx context.Context, filters dashboardFilters, whereClause string, args []any, argIdx int) ([]models.CVE, error) {
+	// Dynamic Sort
+	sortCol := "c.published_date"
+	sortOrder := "DESC"
+	switch filters.sort {
+	case "id":
+		sortCol = "c.cve_id"
+	case "severity":
+		sortCol = "c.cvss_score"
+	case "epss":
+		sortCol = "c.epss_score"
+	case "published":
+		sortCol = "c.published_date"
+	}
+	if strings.ToUpper(filters.order) == "ASC" {
+		sortOrder = "ASC"
+	}
+
+	if filters.cursorStr != "" && filters.cursorIDStr != "" {
+		cursorID, err := strconv.Atoi(filters.cursorIDStr)
+		if err == nil && cursorID > 0 {
+			op := "<"
+			if sortOrder == "ASC" {
+				op = ">"
+			}
+
+			// Validate cursorStr based on sort column
+			var parseErr error
+			switch sortCol {
+			case "c.published_date":
+				_, parseErr = time.Parse(time.RFC3339Nano, filters.cursorStr)
+				if parseErr != nil {
+					_, parseErr = time.Parse(time.RFC3339, filters.cursorStr)
+				}
+				if parseErr != nil {
+					_, parseErr = time.Parse("2006-01-02 15:04:05.999999-07", filters.cursorStr)
+				}
+			case "c.cvss_score", "c.epss_score":
+				_, parseErr = strconv.ParseFloat(filters.cursorStr, 64)
+			}
+			if parseErr != nil {
+				return nil, fmt.Errorf("invalid cursor value")
+			}
+
+			var castType string
+			switch sortCol {
+			case "c.published_date":
+				castType = "::timestamptz"
+			case "c.cvss_score", "c.epss_score":
+				castType = "::numeric"
+			default:
+				castType = ""
+			}
+			keysetCond := fmt.Sprintf(" AND (%s %s $%d%s OR (%s = $%d%s AND c.id < $%d)) ", sortCol, op, argIdx, castType, sortCol, argIdx+1, castType, argIdx+2)
+			whereClause += keysetCond
+			args = append(args, filters.cursorStr, filters.cursorStr, cursorID)
+			argIdx += 3
+		}
+	}
+
+	query := `
+		SELECT
+			c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev,
+			c.published_date, c.updated_date, 'active' as status, COALESCE(c."references", '{}'),
+			COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0),
+			COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'),
+			COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]'), COALESCE(c.priority, 'P3') as priority
+		FROM cves c
+	`
+	query += whereClause
+	query += fmt.Sprintf(" ORDER BY %s %s NULLS LAST, c.id DESC LIMIT $%d OFFSET $%d ", sortCol, sortOrder, argIdx, argIdx+1)
+	finalArgs := append(args, filters.pageSize, filters.offset)
+
+	var cves []models.CVE
+	rows, err := a.Pool.Query(ctx, query, finalArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var c models.CVE
+		err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.Vendor, &c.Product, &c.AffectedProducts, &c.Priority)
+		if err != nil {
+			continue
+		}
+		c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
+		_ = a.Pool.QueryRow(ctx, "SELECT cisa_ransomware FROM cves WHERE id = $1", c.ID).Scan(&c.CISARansomware)
+		cves = append(cves, c)
+	}
+	return cves, nil
+}
+
+func (a *App) fetchDashboardStats(ctx context.Context, whereClause string, args []any) (dashboardStats, error) {
+	var stats dashboardStats
+	if whereClause == " WHERE (1=1) " {
+		statsCache.RLock()
+		stats.severityCounts = statsCache.severityCounts
+		stats.topCWEs = statsCache.topCWEs
+		stats.epssDist = statsCache.epssDist
+		statsCache.RUnlock()
+		return stats, nil
+	}
+
+	severityQuery := "SELECT " +
+		"COUNT(*) FILTER (WHERE cvss_score >= 9.0), " +
+		"COUNT(*) FILTER (WHERE cvss_score >= 7.0 AND cvss_score < 9.0), " +
+		"COUNT(*) FILTER (WHERE cvss_score >= 4.0 AND cvss_score < 7.0), " +
+		"COUNT(*) FILTER (WHERE cvss_score < 4.0) " +
+		"FROM cves c " + whereClause
+	_ = a.Pool.QueryRow(ctx, severityQuery, args...).Scan(&stats.severityCounts.Critical, &stats.severityCounts.High, &stats.severityCounts.Medium, &stats.severityCounts.Low)
+
+	cweQueryRows, _ := a.Pool.Query(ctx, "SELECT cwe_id, COALESCE(MAX(cwe_name), 'Unknown'), COUNT(*) as cnt FROM cves c "+whereClause+" AND cwe_id IS NOT NULL AND cwe_id != '' GROUP BY cwe_id ORDER BY cnt DESC LIMIT 15", args...)
+	if cweQueryRows != nil {
+		for cweQueryRows.Next() {
+			var s CWEStat
+			if err := cweQueryRows.Scan(&s.ID, &s.Name, &s.Count); err == nil {
+				s.Name = models.GetCWEName(s.ID, s.Name)
+				stats.topCWEs = append(stats.topCWEs, s)
+			}
+		}
+		cweQueryRows.Close()
+	}
+
+	epssQuery := "SELECT " +
+		"COUNT(*) FILTER (WHERE epss_score < 0.01), " +
+		"COUNT(*) FILTER (WHERE epss_score >= 0.01 AND epss_score < 0.1), " +
+		"COUNT(*) FILTER (WHERE epss_score >= 0.1 AND epss_score < 0.5), " +
+		"COUNT(*) FILTER (WHERE epss_score >= 0.5) " +
+		"FROM cves c " + whereClause
+	var e1, e2, e3, e4 int
+	_ = a.Pool.QueryRow(ctx, epssQuery, args...).Scan(&e1, &e2, &e3, &e4)
+	stats.epssDist = []int{e1, e2, e3, e4}
+
+	return stats, nil
+}
