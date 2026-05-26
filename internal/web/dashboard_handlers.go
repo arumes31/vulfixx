@@ -604,7 +604,7 @@ type PublicDashboardData struct {
 
 func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	isAJAX := r.URL.Query().Get("ajax") == "true"
-	filters := a.parseDashboardFilters(r)
+	filters := a.parsePublicDashboardFilters(r)
 
 	// Redis Caching for Default View
 	cacheKey := "public_dashboard_default_v2"
@@ -652,20 +652,20 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	whereClause, args, argIdx := a.buildDashboardWhereClause(filters)
+	whereClause, args, argIdx := a.buildPublicDashboardWhereClause(filters)
 
-	metrics, err := a.fetchDashboardMetrics(r.Context(), whereClause, args)
+	metrics, err := a.fetchPublicDashboardMetrics(r.Context(), whereClause, args)
 	if err != nil {
 		log.Printf("Public dashboard metrics error: %v", err)
 	}
 
-	cves, err := a.fetchDashboardCVEs(r.Context(), filters, whereClause, args, argIdx)
+	cves, err := a.fetchPublicDashboardCVEs(r.Context(), filters, whereClause, args, argIdx)
 	if err != nil {
 		log.Printf("Public dashboard query error: %v", err)
 		metrics.totalItems = 0
 	}
 
-	stats, err := a.fetchDashboardStats(r.Context(), whereClause, args)
+	stats, err := a.fetchPublicDashboardStats(r.Context(), whereClause, args)
 	if err != nil {
 		log.Printf("Public dashboard stats error: %v", err)
 	}
@@ -1099,7 +1099,7 @@ func (a *App) APICVEsHandler(w http.ResponseWriter, r *http.Request) {
 	SendJSONResponse(w, http.StatusOK, true, cves, "", meta)
 }
 
-type dashboardFilters struct {
+type publicDashboardFilters struct {
 	searchQuery  string
 	vendorQuery  string
 	productQuery string
@@ -1122,19 +1122,19 @@ type dashboardFilters struct {
 	cursorIDStr  string
 }
 
-type dashboardMetrics struct {
+type publicDashboardMetrics struct {
 	totalItems int
 	kevCount   int
 	critCount  int
 }
 
-type dashboardStats struct {
+type publicDashboardStats struct {
 	severityCounts SeverityCounts
 	topCWEs        []CWEStat
 	epssDist       []int
 }
 
-func (a *App) parseDashboardFilters(r *http.Request) dashboardFilters {
+func (a *App) parsePublicDashboardFilters(r *http.Request) publicDashboardFilters {
 	pageStr := r.URL.Query().Get("page")
 	page, _ := strconv.Atoi(pageStr)
 	if page < 1 {
@@ -1188,7 +1188,7 @@ func (a *App) parseDashboardFilters(r *http.Request) dashboardFilters {
 		order = "desc"
 	}
 
-	return dashboardFilters{
+	return publicDashboardFilters{
 		searchQuery:  searchQuery,
 		vendorQuery:  vendorQuery,
 		productQuery: productQuery,
@@ -1212,7 +1212,7 @@ func (a *App) parseDashboardFilters(r *http.Request) dashboardFilters {
 	}
 }
 
-func (a *App) buildDashboardWhereClause(filters dashboardFilters) (string, []any, int) {
+func (a *App) buildPublicDashboardWhereClause(filters publicDashboardFilters) (string, []any, int) {
 	whereClause := " WHERE (1=1) "
 	args := []any{}
 	argIdx := 1
@@ -1291,8 +1291,8 @@ func (a *App) buildDashboardWhereClause(filters dashboardFilters) (string, []any
 	return whereClause, args, argIdx
 }
 
-func (a *App) fetchDashboardMetrics(ctx context.Context, whereClause string, args []any) (dashboardMetrics, error) {
-	var metrics dashboardMetrics
+func (a *App) fetchPublicDashboardMetrics(ctx context.Context, whereClause string, args []any) (publicDashboardMetrics, error) {
+	var metrics publicDashboardMetrics
 	if whereClause == " WHERE (1=1) " {
 		statsCache.RLock()
 		metrics.totalItems = statsCache.total
@@ -1315,7 +1315,7 @@ func (a *App) fetchDashboardMetrics(ctx context.Context, whereClause string, arg
 	return metrics, nil
 }
 
-func (a *App) fetchDashboardCVEs(ctx context.Context, filters dashboardFilters, whereClause string, args []any, argIdx int) ([]models.CVE, error) {
+func (a *App) fetchPublicDashboardCVEs(ctx context.Context, filters publicDashboardFilters, whereClause string, args []any, argIdx int) ([]models.CVE, error) {
 	// Dynamic Sort
 	sortCol := "c.published_date"
 	sortOrder := "DESC"
@@ -1408,8 +1408,8 @@ func (a *App) fetchDashboardCVEs(ctx context.Context, filters dashboardFilters, 
 	return cves, nil
 }
 
-func (a *App) fetchDashboardStats(ctx context.Context, whereClause string, args []any) (dashboardStats, error) {
-	var stats dashboardStats
+func (a *App) fetchPublicDashboardStats(ctx context.Context, whereClause string, args []any) (publicDashboardStats, error) {
+	var stats publicDashboardStats
 	if whereClause == " WHERE (1=1) " {
 		statsCache.RLock()
 		stats.severityCounts = statsCache.severityCounts
