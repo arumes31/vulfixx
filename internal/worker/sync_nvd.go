@@ -503,7 +503,7 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 		return err
 	}
 
-	slog.Info("Worker: [NVD] Successfully committed batch to database", "batch_size", len(successfulCVEs))
+	slog.Info("Worker: [DATABASE CONFIRMED] Batch added successfully to DB", "batch_size", len(successfulCVEs))
 
 	// Trigger enrichment and alerts only AFTER successful commit
 	for _, model := range successfulCVEs {

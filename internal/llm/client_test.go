@@ -459,8 +459,8 @@ func TestExtractVendorProduct(t *testing.T) {
 		config.AppConfig.LLMProvider = "unsupported-vendor-name"
 		ctx := context.Background()
 		_, err := ExtractVendorProduct(ctx, "desc", []string{})
-		if err == nil || !strings.Contains(err.Error(), "unsupported llm provider") {
-			t.Fatalf("expected unsupported provider error, got %v", err)
+		if err == nil || !strings.Contains(err.Error(), "no valid llm providers configured") {
+			t.Fatalf("expected no valid providers error, got %v", err)
 		}
 	})
 
