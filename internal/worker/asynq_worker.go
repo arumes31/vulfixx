@@ -73,8 +73,15 @@ func (l *asynqLogger) Fatal(args ...interface{}) {
 }
 
 // StartAsynqServer starts the Asynq server to process decoupled jobs.
-func (w *Worker) StartAsynqServer(ctx context.Context) {
-	connOpt := GetAsynqRedisConnOpt()
+// Optional connOpt can be provided for testing (e.g. miniredis).
+func (w *Worker) StartAsynqServer(ctx context.Context, opts ...asynq.RedisConnOpt) {
+	var connOpt asynq.RedisConnOpt
+	if len(opts) > 0 {
+		connOpt = opts[0]
+	} else {
+		connOpt = GetAsynqRedisConnOpt()
+	}
+
 	srv := asynq.NewServer(connOpt, asynq.Config{
 		Concurrency: 10,
 		Logger:      &asynqLogger{},

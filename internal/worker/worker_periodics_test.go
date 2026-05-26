@@ -8,6 +8,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/alicebob/miniredis/v2"
+	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v3"
 )
@@ -169,13 +171,19 @@ func TestWorker_AsynqRedisOptionsAndLogger(t *testing.T) {
 		}
 		defer mock.Close()
 
+		mr, err := miniredis.Run()
+		if err != nil {
+			t.Fatalf("failed to start miniredis: %v", err)
+		}
+		defer mr.Close()
+
 		w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
 		// Should start, register mux, see cancelled context, and shutdown gracefully
-		w.StartAsynqServer(ctx)
+		w.StartAsynqServer(ctx, asynq.RedisClientOpt{Addr: mr.Addr()})
 	})
 }
 

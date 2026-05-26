@@ -77,7 +77,7 @@ func (w *Worker) Start(ctx context.Context) {
 
 	// Notification & Alert Processing
 	if w.AsynqClient != nil {
-		runTask(w.StartAsynqServer)
+		runTask(func(ctx context.Context) { w.StartAsynqServer(ctx) })
 	} else {
 		// Fallback to legacy Redis queues for backwards compatibility / local tests
 		runTask(w.processAlerts)
