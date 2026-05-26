@@ -1,0 +1,135 @@
+<<<<<<< SEARCH
+	t.Run("InvalidToken", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=invalid"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rr := httptest.NewRecorder()
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["admin_csrf_token"] = "valid"
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("failed to save session: %v", err)
+		}
+
+		// Add the cookie so ValidateCSRF can find the session
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		if app.ValidateCSRF(req) {
+			t.Errorf("expected CSRF validation to fail")
+		}
+	})
+}
+=======
+	t.Run("InvalidToken", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=invalid"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rr := httptest.NewRecorder()
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["admin_csrf_token"] = "valid"
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("failed to save session: %v", err)
+		}
+
+		// Add the cookie so ValidateCSRF can find the session
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		if app.ValidateCSRF(req) {
+			t.Errorf("expected CSRF validation to fail")
+		}
+	})
+
+	t.Run("MissingSessionToken", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=valid"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rr := httptest.NewRecorder()
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		// Don't set admin_csrf_token
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("failed to save session: %v", err)
+		}
+
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		if app.ValidateCSRF(req) {
+			t.Errorf("expected CSRF validation to fail due to missing session token")
+		}
+	})
+
+	t.Run("EmptySessionToken", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=valid"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rr := httptest.NewRecorder()
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["admin_csrf_token"] = ""
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("failed to save session: %v", err)
+		}
+
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		if app.ValidateCSRF(req) {
+			t.Errorf("expected CSRF validation to fail due to empty session token")
+		}
+	})
+
+	t.Run("MissingRequestToken", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("other_param=value"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rr := httptest.NewRecorder()
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["admin_csrf_token"] = "valid"
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("failed to save session: %v", err)
+		}
+
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		if app.ValidateCSRF(req) {
+			t.Errorf("expected CSRF validation to fail due to missing request token")
+		}
+	})
+
+	t.Run("MismatchedTokenLength", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=short"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rr := httptest.NewRecorder()
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["admin_csrf_token"] = "muchlongerthanrequesttoken"
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("failed to save session: %v", err)
+		}
+
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		if app.ValidateCSRF(req) {
+			t.Errorf("expected CSRF validation to fail due to mismatched length")
+		}
+	})
+
+	t.Run("SessionError", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=valid"))
+		// Intentionally add an invalid cookie to trigger a session decode error
+		req.AddCookie(&http.Cookie{Name: "vulfixx-session", Value: "invalid-base64-payload!!"})
+
+		if app.ValidateCSRF(req) {
+			t.Errorf("expected CSRF validation to fail due to session error")
+		}
+	})
+}
+>>>>>>> REPLACE
