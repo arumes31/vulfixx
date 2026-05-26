@@ -32,11 +32,24 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 
 	tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync"}
 	w.checkNotificationHealth(ctx)
-	for _, task := range tasks {
-		var lastRun time.Time
-		err := w.Pool.QueryRow(ctx, "SELECT last_run FROM worker_sync_stats WHERE task_name = $1", task).Scan(&lastRun)
 
-		if err != nil {
+	rows, err := w.Pool.Query(ctx, "SELECT task_name, last_run FROM worker_sync_stats WHERE task_name = ANY($1)", tasks)
+	lastRuns := make(map[string]time.Time)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var tn string
+			var lr time.Time
+			if err := rows.Scan(&tn, &lr); err == nil {
+				lastRuns[tn] = lr
+			}
+		}
+	}
+
+	for _, task := range tasks {
+		lastRun, ok := lastRuns[task]
+
+		if !ok {
 			log.Printf("Worker Health ALERT: Task '%s' has never run or status missing!", task)
 			continue
 		}
@@ -131,7 +144,7 @@ func (w *Worker) checkNotificationHealth(ctx context.Context) {
 		SELECT COUNT(*) FROM notification_delivery_logs 
 		WHERE status = 'failure' AND delivery_time > NOW() - INTERVAL '24 hours'
 	`).Scan(&failureCount)
-	
+
 	if err != nil {
 		log.Printf("Worker Health ERROR: notification health query failed: %v", err)
 		return
