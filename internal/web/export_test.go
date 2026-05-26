@@ -192,5 +192,11 @@ func TestExportCVEsHandler_WriteError(t *testing.T) {
 	fw := &failingResponseWriter{ResponseWriter: rr}
 	app.ExportCVEsHandler(fw, req)
 
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("there were unfulfilled expectations: %s", err)
+	}
+	if rr.Body.Len() > 0 {
+		t.Errorf("expected empty body, got %d bytes", rr.Body.Len())
+	}
 	// Since we fail at the first Write (the header), it returns early.
 }

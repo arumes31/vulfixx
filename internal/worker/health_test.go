@@ -49,5 +49,9 @@ func TestWorker_health_Coverage(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"last_run"}))
 
 		w.startHealthCheckPeriodically(ctx)
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatalf("unmet expectations: %v", err)
+		}
 	})
 }

@@ -63,7 +63,19 @@ func TestExtractWithOllama(t *testing.T) {
 
 	t.Run("HTTPRequestError", func(t *testing.T) {
 		ctx := context.Background()
-		_, err := extractWithOllama(ctx, "http://invalid-url-12345", "model", "desc")
+		// Test error scenario properly without making external requests.
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Close connection immediately to simulate error
+			hj, ok := w.(http.Hijacker)
+			if ok {
+				conn, _, _ := hj.Hijack()
+				conn.Close()
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		server.Close() // Close it right away so request fails with connection refused
+		_, err := extractWithOllama(ctx, server.URL, "model", "desc")
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -114,14 +126,7 @@ func TestExtractWithOllama(t *testing.T) {
 		}
 	})
 
-	t.Run("EmptyEndpoint", func(t *testing.T) {
-		// Just test that it defaults and fails (not testing actual localhost:11434)
-		ctx := context.Background()
-		_, err := extractWithOllama(ctx, "", "model", "desc")
-		if err == nil {
-			t.Fatal("expected error with empty endpoint, got nil")
-		}
-	})
+
 }
 
 func TestExtractWithArliAI(t *testing.T) {
@@ -574,8 +579,13 @@ func TestExtractVendorProduct(t *testing.T) {
 	t.Run("ReferencesFormatting", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var req map[string]interface{}
-			_ = json.NewDecoder(r.Body).Decode(&req)
-			prompt := req["prompt"].(string)
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("failed to decode req: %v", err)
+			}
+			prompt, ok := req["prompt"].(string)
+			if !ok {
+				t.Fatalf("prompt not a string or missing")
+			}
 
 			expectedContext := "test-desc\n\nReferences:\nref1\nref2"
 			if !strings.Contains(prompt, expectedContext) {

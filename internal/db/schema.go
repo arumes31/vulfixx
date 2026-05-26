@@ -6,6 +6,7 @@ import (
 	"embed"
 	"fmt"
 	"log"
+	"net"
 	"net/url"
 	"os"
 
@@ -35,7 +36,7 @@ func migrate(ctx context.Context) error {
 	}
 	hostPort := os.Getenv("DB_HOST")
 	if port := os.Getenv("DB_PORT"); port != "" {
-		hostPort = hostPort + ":" + port
+		hostPort = net.JoinHostPort(hostPort, port)
 	}
 	u := &url.URL{
 		Scheme:   "postgres",

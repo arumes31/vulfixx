@@ -4,6 +4,7 @@ import (
 	"cve-tracker/internal/db"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -56,6 +57,16 @@ func TestSitemapHandler_Caching(t *testing.T) {
 }
 
 func TestRobotsHandler(t *testing.T) {
+	origVal, origSet := os.LookupEnv("BASE_URL")
+	os.Setenv("BASE_URL", "http://localhost:8080")
+	t.Cleanup(func() {
+		if origSet {
+			os.Setenv("BASE_URL", origVal)
+		} else {
+			os.Unsetenv("BASE_URL")
+		}
+	})
+
 	mock, err := db.SetupTestDB()
 	if err != nil {
 		t.Fatalf("failed to setup mock db: %v", err)

@@ -540,6 +540,9 @@ func TestChangePasswordHandler(t *testing.T) {
 		if !strings.Contains(rr.Body.String(), "Unable to change password. Please try again later.") {
 			t.Errorf("expected generic error message")
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 }
 

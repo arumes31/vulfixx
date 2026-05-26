@@ -1368,7 +1368,12 @@ func (a *App) fetchPublicDashboardCVEs(ctx context.Context, filters publicDashbo
 			default:
 				castType = ""
 			}
-			keysetCond := fmt.Sprintf(" AND (%s %s $%d%s OR (%s = $%d%s AND c.id < $%d)) ", sortCol, op, argIdx, castType, sortCol, argIdx+1, castType, argIdx+2)
+			
+			tieBreakOp := "<"
+			if sortOrder == "ASC" {
+				tieBreakOp = ">"
+			}
+			keysetCond := fmt.Sprintf(" AND (%s %s $%d%s OR (%s = $%d%s AND c.id %s $%d)) ", sortCol, op, argIdx, castType, sortCol, argIdx+1, castType, tieBreakOp, argIdx+2)
 			whereClause += keysetCond
 			args = append(args, filters.cursorStr, filters.cursorStr, cursorID)
 			argIdx += 3

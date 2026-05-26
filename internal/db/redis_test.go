@@ -50,7 +50,7 @@ func TestInitRedisTable(t *testing.T) {
 			name:    "Empty URL (defaults to localhost:6379)",
 			url:     "",
 			wantErr: false,
-			skipErr: true,
+			skipErr: false,
 		},
 	}
 
@@ -84,16 +84,20 @@ func TestInitRedisTable(t *testing.T) {
 
 func TestCloseRedis(t *testing.T) {
 	t.Run("Nil Client", func(t *testing.T) {
+		orig := RedisClient
+		t.Cleanup(func() { RedisClient = orig })
 		RedisClient = nil
 		CloseRedis() // should not panic
 	})
 
 	t.Run("Valid Client", func(t *testing.T) {
+		orig := RedisClient
+		t.Cleanup(func() { RedisClient = orig })
 		mr, err := miniredis.Run()
 		if err != nil {
 			t.Fatalf("miniredis.Run failed: %v", err)
 		}
-		defer mr.Close()
+		t.Cleanup(func() { mr.Close() })
 		RedisClient = redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		CloseRedis()
 	})
@@ -111,14 +115,16 @@ func TestInitRedis_Error(t *testing.T) {
 
 func TestSetupRedisHelper(t *testing.T) {
 	t.Run("SetupTestRedis", func(t *testing.T) {
+		orig := RedisClient
+		t.Cleanup(func() { RedisClient = orig })
 		mr, err := SetupTestRedis()
 		if err != nil {
-			t.Errorf("SetupTestRedis failed: %v", err)
+			t.Fatalf("SetupTestRedis failed: %v", err)
 		}
+		t.Cleanup(func() { mr.Close() })
 		if mr == nil || RedisClient == nil {
 			t.Error("SetupTestRedis did not set RedisClient correctly")
 		}
-		mr.Close()
 	})
 
 	t.Run("SetupTestRedis Error", func(t *testing.T) {

@@ -175,8 +175,10 @@ func TestCSRFProtection(t *testing.T) {
 	})
 
 	t.Run("SessionError", func(t *testing.T) {
+		// We deliberately forego the normal session.Save() setup to simulate a corrupted external cookie.
+		// The malformed cookie added via req.AddCookie (Value "invalid-base64-payload!!") ensures session decoding fails.
+		// This is why we call app.ValidateCSRF(req) directly rather than using session.Save().
 		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=valid"))
-		// Intentionally add an invalid cookie to trigger a session decode error
 		req.AddCookie(&http.Cookie{Name: "vulfixx-session", Value: "invalid-base64-payload!!"})
 
 		if app.ValidateCSRF(req) {

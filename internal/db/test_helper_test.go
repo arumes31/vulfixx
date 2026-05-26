@@ -10,6 +10,8 @@ import (
 
 func TestSetupHelpers(t *testing.T) {
 	t.Run("SetupTestDB", func(t *testing.T) {
+		oldPool := Pool
+		t.Cleanup(func() { Pool = oldPool })
 		mock, err := SetupTestDB()
 		if err != nil {
 			t.Errorf("SetupTestDB failed: %v", err)
@@ -20,14 +22,16 @@ func TestSetupHelpers(t *testing.T) {
 	})
 
 	t.Run("SetupTestRedis", func(t *testing.T) {
+		oldRedisClient := RedisClient
+		t.Cleanup(func() { RedisClient = oldRedisClient })
 		mr, err := SetupTestRedis()
 		if err != nil {
-			t.Errorf("SetupTestRedis failed: %v", err)
+			t.Fatalf("SetupTestRedis failed: %v", err)
 		}
+		t.Cleanup(func() { mr.Close() })
 		if mr == nil || RedisClient == nil {
 			t.Error("SetupTestRedis did not set RedisClient correctly")
 		}
-		mr.Close()
 	})
 
 	t.Run("SetupTestDB Error", func(t *testing.T) {

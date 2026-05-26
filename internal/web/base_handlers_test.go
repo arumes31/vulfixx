@@ -32,6 +32,22 @@ func TestIndexHandler(t *testing.T) {
 	t.Run("Unauthenticated", func(t *testing.T) {
 		// Populate cache to avoid DB hits for metrics
 		statsCache.Lock()
+		origStatsTotal := statsCache.total
+		origStatsKevCount := statsCache.kevCount
+		origStatsCritCount := statsCache.critCount
+		origStatsSeverityCounts := statsCache.severityCounts
+		origStatsTopCWEs := statsCache.topCWEs
+		origStatsEpssDist := statsCache.epssDist
+		t.Cleanup(func() {
+			statsCache.Lock()
+			statsCache.total = origStatsTotal
+			statsCache.kevCount = origStatsKevCount
+			statsCache.critCount = origStatsCritCount
+			statsCache.severityCounts = origStatsSeverityCounts
+			statsCache.topCWEs = origStatsTopCWEs
+			statsCache.epssDist = origStatsEpssDist
+			statsCache.Unlock()
+		})
 		statsCache.total = 100
 		statsCache.kevCount = 10
 		statsCache.critCount = 5

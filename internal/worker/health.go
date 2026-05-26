@@ -34,16 +34,25 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 	w.checkNotificationHealth(ctx)
 
 	rows, err := w.Pool.Query(ctx, "SELECT task_name, last_run FROM worker_sync_stats WHERE task_name = ANY($1)", tasks)
+	if err != nil {
+		log.Printf("Worker Health ALERT: Failed to query sync stats: %v", err)
+		return
+	}
+	defer rows.Close()
+
 	lastRuns := make(map[string]time.Time)
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var tn string
-			var lr time.Time
-			if err := rows.Scan(&tn, &lr); err == nil {
-				lastRuns[tn] = lr
-			}
+	for rows.Next() {
+		var tn string
+		var lr time.Time
+		if err := rows.Scan(&tn, &lr); err != nil {
+			log.Printf("Worker Health ALERT: Failed to scan sync stats: %v", err)
+			return
 		}
+		lastRuns[tn] = lr
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Worker Health ALERT: Row iteration error: %v", err)
+		return
 	}
 
 	for _, task := range tasks {
