@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"testing"
 
@@ -21,10 +20,16 @@ func TestWorker_health_Coverage(t *testing.T) {
 
 	t.Run("checkWorkerHealth", func(t *testing.T) {
 		tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync"}
-		for _, task := range tasks {
-			mock.ExpectQuery("SELECT last_run FROM worker_sync_stats").WithArgs(task).WillReturnError(errors.New("no rows"))
-		}
-		
+
+		// Expectation for checkNotificationHealth
+		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM notification_delivery_logs").
+			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
+
+		// Expectation for optimized query in checkWorkerHealth
+		mock.ExpectQuery("SELECT task_name, last_run FROM worker_sync_stats WHERE task_name = ANY\\(\\$1\\)").
+			WithArgs(tasks).
+			WillReturnRows(pgxmock.NewRows([]string{"task_name", "last_run"}))
+
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("health_check").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		w.checkWorkerHealth(context.Background())
@@ -37,6 +42,12 @@ func TestWorker_health_Coverage(t *testing.T) {
 	t.Run("startHealthCheckPeriodically", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
+
+		// startHealthCheckPeriodically calls waitUntilNextRun first
+		mock.ExpectQuery("SELECT last_run FROM worker_sync_stats WHERE task_name = \\$1").
+			WithArgs("health_check").
+			WillReturnRows(pgxmock.NewRows([]string{"last_run"}))
+
 		w.startHealthCheckPeriodically(ctx)
 	})
 }
