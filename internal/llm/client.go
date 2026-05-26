@@ -33,7 +33,8 @@ var ErrRateLimit = errors.New("llm rate limit exceeded")
 // This ensures that only one LLM request is processed at a time across the entire application.
 var llmSemaphore = make(chan struct{}, 1)
 
-// ExtractVendorProduct chooses the appropriate provider (Gemini, Ollama, or ArliAI) to extract all vendor/product/version names.
+// ExtractVendorProduct chooses the appropriate provider(s) (Gemini, Ollama, or ArliAI) to extract all vendor/product/version names.
+// It supports a fallback chain if LLM_PROVIDER is a comma-separated list (e.g. "gemini,arliai").
 func ExtractVendorProduct(ctx context.Context, description string, references []string) ([]ProductResult, error) {
 	// Acquire semaphore (queue up if another job is running)
 	select {
@@ -44,17 +45,42 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 	}
 
 	fullContext := fmt.Sprintf("%s\n\nReferences:\n%s", description, strings.Join(references, "\n"))
+	providers := strings.Split(config.AppConfig.LLMProvider, ",")
 
-	switch config.AppConfig.LLMProvider {
-	case "gemini":
-		return extractWithGemini(ctx, config.AppConfig.GeminiAPIKey, config.AppConfig.GeminiModel, fullContext)
-	case "ollama":
-		return extractWithOllama(ctx, config.AppConfig.LLMEndpoint, config.AppConfig.LLMModel, fullContext)
-	case "arliai":
-		return extractWithArliAI(ctx, config.AppConfig.ArliAIAPIKey, config.AppConfig.ArliAIModel, config.AppConfig.ArliAIEndpoint, fullContext)
-	default:
-		return nil, fmt.Errorf("unsupported llm provider: %s", config.AppConfig.LLMProvider)
+	var lastErr error
+	for _, p := range providers {
+		p = strings.TrimSpace(p)
+		if p == "" || p == "none" {
+			continue
+		}
+
+		var results []ProductResult
+		var err error
+
+		switch p {
+		case "gemini":
+			results, err = extractWithGemini(ctx, config.AppConfig.GeminiAPIKey, config.AppConfig.GeminiModel, fullContext)
+		case "ollama":
+			results, err = extractWithOllama(ctx, config.AppConfig.LLMEndpoint, config.AppConfig.LLMModel, fullContext)
+		case "arliai":
+			results, err = extractWithArliAI(ctx, config.AppConfig.ArliAIAPIKey, config.AppConfig.ArliAIModel, config.AppConfig.ArliAIEndpoint, fullContext)
+		default:
+			log.Printf("LLM: [WARN] Unsupported provider in chain: %s", p)
+			continue
+		}
+
+		if err == nil {
+			return results, nil
+		}
+
+		log.Printf("LLM: [FALLBACK] Provider %s failed, trying next... Error: %v", p, err)
+		lastErr = err
 	}
+
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("no valid llm providers configured (current: %s)", config.AppConfig.LLMProvider)
 }
 
 func extractWithGemini(ctx context.Context, apiKey, model, description string) ([]ProductResult, error) {
