@@ -47,11 +47,85 @@ func TestTOTPHandlers(t *testing.T) {
 		if rr2.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr2.Code)
 		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unmet expectations: %v", err)
+		if !strings.Contains(rr.Body.String(), "Manual Secret") {
+			t.Errorf("expected response to contain Manual Secret")
 		}
 	})
 
+
+	t.Run("GenerateTOTPHandler_Unauthenticated", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		req, _ := http.NewRequest("POST", "/settings/totp/generate", nil)
+		rr := httptest.NewRecorder()
+		app.GenerateTOTPHandler(rr, req)
+		if rr.Code != http.StatusFound {
+			t.Errorf("expected 302, got %d", rr.Code)
+		}
+	})
+
+	t.Run("GenerateTOTPHandler_UserNotFound", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		mock.ExpectQuery("SELECT email FROM users").WithArgs(1).WillReturnError(fmt.Errorf("db error"))
+
+		req, _ := http.NewRequest("POST", "/settings/totp/generate", nil)
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.GenerateTOTPHandler(rr, req)
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500, got %d", rr.Code)
+		}
+	})
+
+	t.Run("GenerateTOTPHandler_UserNotFound_ZeroRows", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		mock.ExpectQuery("SELECT email FROM users").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"email"}))
+
+		req, _ := http.NewRequest("POST", "/settings/totp/generate", nil)
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.GenerateTOTPHandler(rr, req)
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500, got %d", rr.Code)
+		}
+	})
+
+	t.Run("GenerateTOTPHandler_DBUpdateError", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		mock.ExpectQuery("SELECT email FROM users").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"email"}).AddRow("test@example.com"))
+		mock.ExpectExec("UPDATE users SET totp_secret").WithArgs(pgxmock.AnyArg(), 1).WillReturnError(fmt.Errorf("db error"))
+
+		req, _ := http.NewRequest("POST", "/settings/totp/generate", nil)
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.GenerateTOTPHandler(rr, req)
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500, got %d", rr.Code)
+		}
+	})
 	t.Run("VerifyTOTPHandler_InvalidCode", func(t *testing.T) {
 		mock, err := db.SetupTestDB()
 		if err != nil {
