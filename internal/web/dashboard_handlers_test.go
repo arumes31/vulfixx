@@ -40,7 +40,9 @@ func TestBulkUpdateCVEStatusHandler_New(t *testing.T) {
 			Success bool   `json:"success"`
 			Error   string `json:"error"`
 		}
-		json.NewDecoder(rr.Body).Decode(&resp)
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
 		if resp.Success || resp.Error != "Unauthorized" {
 			t.Errorf("expected success=false, error=Unauthorized, got %+v", resp)
 		}
@@ -59,7 +61,9 @@ func TestBulkUpdateCVEStatusHandler_New(t *testing.T) {
 			Success bool   `json:"success"`
 			Error   string `json:"error"`
 		}
-		json.NewDecoder(rr.Body).Decode(&resp)
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
 		if resp.Success || resp.Error != "Bad request" {
 			t.Errorf("expected success=false, error=Bad request, got %+v", resp)
 		}
@@ -82,7 +86,9 @@ func TestBulkUpdateCVEStatusHandler_New(t *testing.T) {
 			Success bool   `json:"success"`
 			Error   string `json:"error"`
 		}
-		json.NewDecoder(rr.Body).Decode(&resp)
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
 		if resp.Success || resp.Error != "Invalid status" {
 			t.Errorf("expected success=false, error=Invalid status, got %+v", resp)
 		}
@@ -105,7 +111,9 @@ func TestBulkUpdateCVEStatusHandler_New(t *testing.T) {
 			Success bool   `json:"success"`
 			Message string `json:"message"`
 		}
-		json.NewDecoder(rr.Body).Decode(&resp)
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
 		if !resp.Success || resp.Message != "No CVEs selected" {
 			t.Errorf("expected success=true, message=No CVEs selected, got %+v", resp)
 		}
@@ -129,7 +137,9 @@ func TestBulkUpdateCVEStatusHandler_New(t *testing.T) {
 			Success bool   `json:"success"`
 			Error   string `json:"error"`
 		}
-		json.NewDecoder(rr.Body).Decode(&resp)
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
 		if resp.Success || resp.Error != "Too many CVE IDs (max 1000)" {
 			t.Errorf("expected success=false, error=Too many CVE IDs (max 1000), got %+v", resp)
 		}
@@ -160,7 +170,9 @@ func TestBulkUpdateCVEStatusHandler_New(t *testing.T) {
 			Success bool   `json:"success"`
 			Error   string `json:"error"`
 		}
-		json.NewDecoder(rr.Body).Decode(&resp)
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
 		if resp.Success || resp.Error != "Forbidden: You are not a member of this team" {
 			t.Errorf("expected success=false, error=Forbidden..., got %+v", resp)
 		}
@@ -189,7 +201,9 @@ func TestBulkUpdateCVEStatusHandler_New(t *testing.T) {
 			Success bool   `json:"success"`
 			Message string `json:"message"`
 		}
-		json.NewDecoder(rr.Body).Decode(&resp)
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
 		if !resp.Success || resp.Message != "Updated 2 CVEs" {
 			t.Errorf("expected success=true, message=Updated 2 CVEs, got %+v", resp)
 		}
@@ -224,7 +238,9 @@ func TestBulkUpdateCVEStatusHandler_New(t *testing.T) {
 			Success bool   `json:"success"`
 			Message string `json:"message"`
 		}
-		json.NewDecoder(rr.Body).Decode(&resp)
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
 		if !resp.Success || resp.Message != "Updated 2 CVEs" {
 			t.Errorf("expected success=true, message=Updated 2 CVEs, got %+v", resp)
 		}
