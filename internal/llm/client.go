@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/genai"
@@ -33,6 +35,32 @@ var ErrRateLimit = errors.New("llm rate limit exceeded")
 // This ensures that only one LLM request is processed at a time across the entire application.
 var llmSemaphore = make(chan struct{}, 1)
 
+// Cooldown state to track exhausted providers
+var (
+	providerCooldowns = make(map[string]time.Time)
+	cooldownMutex     sync.RWMutex
+)
+
+func setCooldown(provider string, duration time.Duration) {
+	cooldownMutex.Lock()
+	defer cooldownMutex.Unlock()
+	providerCooldowns[provider] = time.Now().Add(duration)
+	log.Printf("LLM: [COOLDOWN] Provider %s is exhausted. Cooling down for %v...", provider, duration)
+}
+
+func isCooledDown(provider string) bool {
+	cooldownMutex.RLock()
+	defer cooldownMutex.RUnlock()
+	until, exists := providerCooldowns[provider]
+	if !exists {
+		return false
+	}
+	if time.Now().After(until) {
+		return false
+	}
+	return true
+}
+
 // ExtractVendorProduct chooses the appropriate provider(s) (Gemini, Ollama, or ArliAI) to extract all vendor/product/version names.
 // It supports a fallback chain if LLM_PROVIDER is a comma-separated list (e.g. "gemini,arliai").
 func ExtractVendorProduct(ctx context.Context, description string, references []string) ([]ProductResult, error) {
@@ -54,6 +82,11 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 			continue
 		}
 
+		if isCooledDown(p) {
+			slog.Debug("LLM: skipping provider on cooldown", "provider", p)
+			continue
+		}
+
 		var results []ProductResult
 		var err error
 
@@ -70,7 +103,20 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 		}
 
 		if err == nil {
+			// Proactive rate limiting for Gemini free tier (15 RPM limit)
+			if p == "gemini" {
+				slog.Debug("LLM: successful Gemini call, pausing 4s to respect free tier RPM limit")
+				time.Sleep(4 * time.Second)
+			}
 			return results, nil
+		}
+
+		// Check for rate limits to trigger cooldown
+		if strings.Contains(strings.ToLower(err.Error()), "rate") ||
+			strings.Contains(strings.ToLower(err.Error()), "limit") ||
+			strings.Contains(strings.ToLower(err.Error()), "exhausted") ||
+			strings.Contains(err.Error(), "429") {
+			setCooldown(p, 5*time.Minute)
 		}
 
 		log.Printf("LLM: [FALLBACK] Provider %s failed, trying next... Error: %v", p, err)
