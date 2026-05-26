@@ -168,6 +168,49 @@ func TestSettingsHandler(t *testing.T) {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
+
+	t.Run("NotLoggedIn", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		req := httptest.NewRequest("GET", "/settings", nil)
+		rr := httptest.NewRecorder()
+		app.SettingsHandler(rr, req)
+		if rr.Code != http.StatusFound {
+			t.Errorf("expected 302 Found, got %d", rr.Code)
+		}
+		if loc := rr.Header().Get("Location"); loc != "/login" {
+			t.Errorf("expected redirect to /login, got %s", loc)
+		}
+	})
+
+	t.Run("DBError", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		req := httptest.NewRequest("GET", "/settings", nil)
+		setSessionUser(t, app, req, 1, false)
+
+		mock.ExpectQuery("SELECT email, is_totp_enabled").WithArgs(1).
+			WillReturnError(fmt.Errorf("db error"))
+
+		rr := httptest.NewRecorder()
+		app.SettingsHandler(rr, req)
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500 Internal Server Error, got %d", rr.Code)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
 }
 
 func TestChangePasswordHandler(t *testing.T) {
