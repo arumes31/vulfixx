@@ -61,7 +61,7 @@ func TestTOTPHandlers(t *testing.T) {
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
-		req, _ := http.NewRequest("POST", "/settings/totp/generate", nil)
+		req, _ := http.NewRequest("GET", "/settings/totp/generate", nil)
 		rr := httptest.NewRecorder()
 		app.GenerateTOTPHandler(rr, req)
 		if rr.Code != http.StatusFound {
@@ -79,7 +79,7 @@ func TestTOTPHandlers(t *testing.T) {
 
 		mock.ExpectQuery("SELECT email FROM users").WithArgs(1).WillReturnError(fmt.Errorf("db error"))
 
-		req, _ := http.NewRequest("POST", "/settings/totp/generate", nil)
+		req, _ := http.NewRequest("GET", "/settings/totp/generate", nil)
 		setSessionUser(t, app, req, 1, false)
 		rr := httptest.NewRecorder()
 		app.GenerateTOTPHandler(rr, req)
@@ -98,7 +98,7 @@ func TestTOTPHandlers(t *testing.T) {
 
 		mock.ExpectQuery("SELECT email FROM users").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"email"}))
 
-		req, _ := http.NewRequest("POST", "/settings/totp/generate", nil)
+		req, _ := http.NewRequest("GET", "/settings/totp/generate", nil)
 		setSessionUser(t, app, req, 1, false)
 		rr := httptest.NewRecorder()
 		app.GenerateTOTPHandler(rr, req)
@@ -118,7 +118,7 @@ func TestTOTPHandlers(t *testing.T) {
 		mock.ExpectQuery("SELECT email FROM users").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"email"}).AddRow("test@example.com"))
 		mock.ExpectExec("UPDATE users SET totp_secret").WithArgs(pgxmock.AnyArg(), 1).WillReturnError(fmt.Errorf("db error"))
 
-		req, _ := http.NewRequest("POST", "/settings/totp/generate", nil)
+		req, _ := http.NewRequest("GET", "/settings/totp/generate", nil)
 		setSessionUser(t, app, req, 1, false)
 		rr := httptest.NewRecorder()
 		app.GenerateTOTPHandler(rr, req)

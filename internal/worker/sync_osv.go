@@ -147,7 +147,7 @@ func (w *Worker) syncOSV(ctx context.Context) {
 			}
 		} else {
 			// Mark as checked even if no data found
-			_, _ = w.Pool.Exec(ctx, "UPDATE cves SET osv_last_updated = NOW() WHERE cve_id = $1", cve.CVEID)
+			_, _ = w.Pool.Exec(ctx, "UPDATE cves SET osv_last_updated = NOW() WHERE id = $1", cve.ID)
 		}
 
 		time.Sleep(200 * time.Millisecond) // OSV is fast

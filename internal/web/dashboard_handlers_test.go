@@ -351,6 +351,10 @@ func TestDashboardHandler_Filters(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected status code %d, got %d", http.StatusOK, rr.Code)
 	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("there were unfulfilled expectations: %s", err)
+	}
 }
 
 func TestDashboardHandler_DBError(t *testing.T) {
@@ -395,6 +399,10 @@ func TestDashboardHandler_DBError(t *testing.T) {
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected status code %d, got %d", http.StatusOK, rr.Code)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("there were unfulfilled expectations: %s", err)
 	}
 }
 
@@ -481,5 +489,9 @@ func TestPublicDashboardHandler_WithFilters(t *testing.T) {
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected status code %d, got %d", http.StatusOK, rr.Code)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("there were unfulfilled expectations: %s", err)
 	}
 }

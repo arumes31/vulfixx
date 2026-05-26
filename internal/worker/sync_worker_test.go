@@ -395,8 +395,8 @@ func TestWorkerSync_OSV(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cve_id, vendor, product, affected_products FROM cves WHERE osv_last_updated IS NULL OR osv_last_updated < NOW() - INTERVAL '30 days' ORDER BY osv_last_updated ASC NULLS FIRST LIMIT 200")).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "vendor", "product", "affected_products"}).AddRow(2, "CVE-OSV-NONE", "", "", []byte(`[]`)))
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE cves SET osv_last_updated = NOW() WHERE cve_id = $1")).
-			WithArgs("CVE-OSV-NONE").
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE cves SET osv_last_updated = NOW() WHERE id = $1")).
+			WithArgs(2).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO worker_sync_stats")).
