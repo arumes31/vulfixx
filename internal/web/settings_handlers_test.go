@@ -47,7 +47,7 @@ func TestTOTPHandlers(t *testing.T) {
 		if rr2.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr2.Code)
 		}
-		if !strings.Contains(rr.Body.String(), "Manual Secret") {
+		if !strings.Contains(rr2.Body.String(), "Manual Secret") {
 			t.Errorf("expected response to contain Manual Secret")
 		}
 	})

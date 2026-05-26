@@ -620,25 +620,6 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	isAJAX := r.URL.Query().Get("ajax") == "true"
 	filters := a.parsePublicDashboardFilters(r)
 
-	// Pagination
-	pageStr := r.URL.Query().Get("page")
-	page, _ := strconv.Atoi(pageStr)
-	if page < 1 {
-		page = 1
-	}
-	if page > 1000 {
-		page = 1000
-	}
-	pageSize := 20
-	offset := (page - 1) * pageSize
-
-	cursorStr := r.URL.Query().Get("cursor")
-	cursorIDStr := r.URL.Query().Get("cursor_id")
-
-	if cursorStr != "" {
-		offset = 0
-	}
-
 	// Redis Caching for Default View
 	cacheKey := "public_dashboard_default_v2"
 	if (r.URL.RawQuery == "" || r.URL.RawQuery == "page=1") && r.URL.Query().Get("sort") == "" && r.URL.Query().Get("order") == "" {
@@ -1418,7 +1399,7 @@ func (a *App) fetchPublicDashboardCVEs(ctx context.Context, filters publicDashbo
 			default:
 				castType = ""
 			}
-			
+
 			tieBreakOp := "<"
 			if sortOrder == "ASC" {
 				tieBreakOp = ">"
