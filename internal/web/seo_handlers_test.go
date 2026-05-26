@@ -54,3 +54,68 @@ func TestSitemapHandler_Caching(t *testing.T) {
 		t.Errorf("there were unfulfilled expectations: %s", err)
 	}
 }
+
+func TestRobotsHandler(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	app := setupTestApp(t, mock)
+
+	req := httptest.NewRequest("GET", "/robots.txt", nil)
+	rr := httptest.NewRecorder()
+	app.RobotsHandler(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status OK, got %v", rr.Code)
+	}
+
+	contentType := rr.Header().Get("Content-Type")
+	if contentType != "text/plain" {
+		t.Errorf("Expected Content-Type text/plain, got %v", contentType)
+	}
+
+	expectedBody := "User-agent: *\nAllow: /\nSitemap: http://localhost:8080/sitemap.xml\n"
+	if rr.Body.String() != expectedBody {
+		t.Errorf("Expected body %q, got %q", expectedBody, rr.Body.String())
+	}
+}
+
+func TestGetBaseURL(t *testing.T) {
+	// Save current BASE_URL to restore it later if necessary, but t.Setenv does it.
+
+	tests := []struct {
+		name     string
+		baseURL  string
+		expected string
+	}{
+		{
+			name:     "Default value",
+			baseURL:  "",
+			expected: "http://localhost:8080",
+		},
+		{
+			name:     "Custom URL",
+			baseURL:  "https://example.com",
+			expected: "https://example.com",
+		},
+		{
+			name:     "Custom URL with trailing slash",
+			baseURL:  "https://example.com/",
+			expected: "https://example.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("BASE_URL", tt.baseURL)
+
+			got := GetBaseURL()
+			if got != tt.expected {
+				t.Errorf("GetBaseURL() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
