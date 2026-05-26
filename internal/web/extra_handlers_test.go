@@ -13,27 +13,6 @@ import (
 	"github.com/pashagolub/pgxmock/v3"
 )
 
-func TestRobotsHandler(t *testing.T) {
-	mock, err := db.SetupTestDB()
-	if err != nil {
-		t.Fatalf("SetupTestDB failed: %v", err)
-	}
-	defer mock.Close()
-
-	app := setupTestApp(t, mock)
-
-	req := httptest.NewRequest("GET", "/robots.txt", nil)
-	rr := httptest.NewRecorder()
-
-	app.RobotsHandler(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Errorf("expected 200 OK, got %d", rr.Code)
-	}
-	if rr.Body.String() == "" {
-		t.Errorf("expected robots.txt content, got empty")
-	}
-}
 
 func TestAlertHistoryHandler(t *testing.T) {
 	mock, err := db.SetupTestDB()

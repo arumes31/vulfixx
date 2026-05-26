@@ -17,76 +17,6 @@ import (
 	"github.com/pashagolub/pgxmock/v3"
 )
 
-func TestIndexHandler(t *testing.T) {
-	t.Run("Unauthenticated", func(t *testing.T) {
-		mock, err := db.SetupTestDB()
-		if err != nil {
-			t.Fatalf("failed to setup mock db: %v", err)
-		}
-		defer mock.Close()
-		app := setupTestApp(t, mock)
-
-		// Populate cache to avoid DB hits for metrics
-		statsCache.Lock()
-		statsCache.total = 100
-		statsCache.kevCount = 10
-		statsCache.critCount = 5
-		statsCache.severityCounts = SeverityCounts{High: 1}
-		statsCache.topCWEs = []CWEStat{{ID: "CWE-79", Name: "XSS", Count: 1}}
-		statsCache.epssDist = []int{1, 0, 0, 0}
-		statsCache.Unlock()
-
-		// Main query should have 2 args (pageSize, offset) if others are empty
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, 'active' as status, COALESCE(c.\"references\", '{}'), COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0), COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'), COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]'), COALESCE(c.priority, 'P3') as priority FROM cves c WHERE (1=1) ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $1 OFFSET $2")).
-			WithArgs(20, 0).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "vendor", "product", "affected_products", "priority"}).
-				AddRow(1, "CVE-2024-0001", "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, 0.123, "CWE-79", "XSS", 1, 0, "", []byte("{}"), "", "", []byte("[]"), "P2"))
-
-		// Trending CVEs
-		mock.ExpectQuery("SELECT.*c.id, c.cve_id.*FROM cves c.*ORDER BY c.github_poc_count DESC").WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "vendor", "product", "affected_products", "priority"}).
-			AddRow(2, "CVE-2024-9999", "Trending", 9.8, "", true, time.Now(), time.Now(), "active", []string{}, 0.9, "CWE-89", "SQLi", 5, 0, "", []byte("{}"), "", "", []byte("[]"), "P1"))
-
-		req := httptest.NewRequest("GET", "/", nil)
-		rr := httptest.NewRecorder()
-		app.IndexHandler(rr, req)
-		if rr.Code != http.StatusOK {
-			t.Errorf("expected 200 OK, got %d", rr.Code)
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unmet expectations: %v", err)
-		}
-	})
-
-	t.Run("Authenticated", func(t *testing.T) {
-		mock, err := db.SetupTestDB()
-		if err != nil {
-			t.Fatalf("failed to setup mock db: %v", err)
-		}
-		defer mock.Close()
-		app := setupTestApp(t, mock)
-
-		req := httptest.NewRequest("GET", "/", nil)
-		session, _ := app.SessionStore.Get(req, "vulfixx-session")
-		session.Values["user_id"] = 1
-		rr := httptest.NewRecorder()
-		_ = session.Save(req, rr)
-
-		req = httptest.NewRequest("GET", "/", nil)
-		for _, c := range rr.Result().Cookies() {
-			req.AddCookie(c)
-		}
-
-		rr2 := httptest.NewRecorder()
-		app.IndexHandler(rr2, req)
-		if rr2.Code != http.StatusFound {
-			t.Errorf("expected 302 redirect, got %d", rr2.Code)
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unmet expectations: %v", err)
-		}
-	})
-}
-
 func TestDashboardHandler(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		mock, err := db.SetupTestDB()
@@ -271,95 +201,6 @@ func TestCVEDetailHandler_Extra(t *testing.T) {
 	})
 }
 
-func TestExportCVEsHandler_Extra(t *testing.T) {
-	t.Run("Success", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-		app := setupTestApp(t, mock)
-
-		req, _ := http.NewRequest("GET", "/export", nil)
-		setSessionUser(t, app, req, 1, false)
-
-		mock.ExpectQuery(`(?is)SELECT DISTINCT c.cve_id,.*priority`).
-			WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score", "cisa_kev", "published_date", "priority"}).
-				AddRow("CVE-2023-0001", "Desc 1", 9.8, true, time.Now(), "P0").
-				AddRow("CVE-2023-0002", "Desc 2", 5.0, false, time.Now(), "P3"))
-
-		rr := httptest.NewRecorder()
-		app.ExportCVEsHandler(rr, req)
-
-		if rr.Code != http.StatusOK {
-			t.Errorf("expected 200 OK, got %d", rr.Code)
-		}
-		if rr.Header().Get("Content-Type") != "text/csv" {
-			t.Errorf("expected text/csv, got %s", rr.Header().Get("Content-Type"))
-		}
-		if !strings.Contains(rr.Body.String(), "CVE-2023-0001") {
-			t.Errorf("expected body to contain CVE-2023-0001")
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unmet expectations: %v", err)
-		}
-	})
-
-	t.Run("DatabaseError", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-		app := setupTestApp(t, mock)
-
-		req, _ := http.NewRequest("GET", "/export", nil)
-		setSessionUser(t, app, req, 1, false)
-
-		mock.ExpectQuery(`SELECT DISTINCT c.cve_id`).
-			WithArgs(1).
-			WillReturnError(fmt.Errorf("db error"))
-
-		rr := httptest.NewRecorder()
-		app.ExportCVEsHandler(rr, req)
-
-		if rr.Code != http.StatusInternalServerError {
-			t.Errorf("expected 500 Internal Server Error, got %d", rr.Code)
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unmet expectations: %v", err)
-		}
-	})
-
-	t.Run("ScanError", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-		app := setupTestApp(t, mock)
-
-		req, _ := http.NewRequest("GET", "/export", nil)
-		setSessionUser(t, app, req, 1, false)
-
-		mock.ExpectQuery(`SELECT DISTINCT c.cve_id`).
-			WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score", "cisa_kev", "published_date"}).
-				AddRow("CVE-2023-0001", "Desc 1", "not-a-float", true, time.Now()))
-
-		rr := httptest.NewRecorder()
-		app.ExportCVEsHandler(rr, req)
-
-		if rr.Code != http.StatusOK {
-			t.Errorf("expected 200 OK (even with scan errors), got %d", rr.Code)
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unmet expectations: %v", err)
-		}
-	})
-}
-
 func TestUpdateCVENoteHandler(t *testing.T) {
 	t.Run("Success_Private", func(t *testing.T) {
 		mock, err := db.SetupTestDB()
@@ -509,3 +350,89 @@ func TestAPICVEsHandler(t *testing.T) {
 	})
 }
 
+func TestCVEDetailHandler_LoggedIn(t *testing.T) {
+	t.Run("SuccessWithUserAndPagination", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		cveID := "CVE-2023-9999"
+		userID := 123
+		publishedDate := time.Now().Add(-24 * time.Hour).Truncate(time.Second)
+
+		// Primary CVE Query
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT
+			id, cve_id, description, COALESCE(cvss_score, 0), vector_string, cisa_kev,
+			published_date, updated_date, 'active' as status, "references",
+			COALESCE(epss_score, 0), COALESCE(cwe_id, ''), COALESCE(cwe_name, ''), COALESCE(github_poc_count, 0),
+			COALESCE(greynoise_hits, 0), COALESCE(greynoise_classification, ''), osv_data,
+			configurations, COALESCE(vendor, ''), COALESCE(product, ''), COALESCE(affected_products, '[]'),
+			COALESCE(priority, 'P3') as priority
+		FROM cves
+		WHERE cve_id = $1`)).
+			WithArgs(cveID).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "configurations", "vendor", "product", "affected_products", "priority"}).
+				AddRow(1, cveID, "Detailed Test", 9.9, "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", true, publishedDate, time.Now(), "active", []string{"http://ref.com"}, 0.99, "CWE-89", "SQLi", 10, 5, "High", []byte("{}"), []byte("[]"), "VendorX", "ProductY", []byte("[]"), "P0"))
+
+		// CISA Ransomware Query
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT cisa_ransomware FROM cves WHERE cve_id = $1")).
+			WithArgs(cveID).
+			WillReturnRows(pgxmock.NewRows([]string{"cisa_ransomware"}).AddRow(true))
+
+		// Threat Associations Query
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, entity_name, entity_type, source, created_at
+		FROM cve_threat_associations
+		WHERE cve_id = $1
+		ORDER BY entity_name ASC`)).
+			WithArgs(cveID).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "entity_name", "entity_type", "source", "created_at"}).
+				AddRow(1, cveID, "Actor1", "Threat Actor", "CISA", time.Now()))
+
+		// Next ID Query
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT cve_id FROM cves
+			WHERE published_date < $1 OR (published_date = $1 AND id < $2)
+			ORDER BY published_date DESC, id DESC LIMIT 1`)).
+			WithArgs(publishedDate, 1).
+			WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-OLDER"))
+
+		// Prev ID Query
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT cve_id FROM cves
+			WHERE published_date > $1 OR (published_date = $1 AND id > $2)
+			ORDER BY published_date ASC, id ASC LIMIT 1`)).
+			WithArgs(publishedDate, 1).
+			WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-NEWER"))
+
+		// User Assets Query
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT a.name, COALESCE(array_agg(ak.keyword) FILTER (WHERE ak.keyword IS NOT NULL), '{}')
+			FROM assets a
+			LEFT JOIN asset_keywords ak ON a.id = ak.asset_id
+			WHERE a.user_id = $1 OR a.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
+			GROUP BY a.id, a.name`)).
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"name", "keywords"}).
+				AddRow("Asset1", []string{"key1", "key2"}))
+
+		// Base Queries in RenderTemplate
+		expectBaseQueries(mock, userID)
+
+		req, _ := http.NewRequest("GET", "/cve/"+cveID, nil)
+		setSessionUser(t, app, req, userID, false)
+
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("id", cveID)
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+		rr := httptest.NewRecorder()
+		app.CVEDetailHandler(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+}

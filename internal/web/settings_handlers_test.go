@@ -1,6 +1,7 @@
 package web
 
 import (
+	"cve-tracker/internal/auth"
 	"cve-tracker/internal/db"
 	"fmt"
 	"net/http"
@@ -14,8 +15,6 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/pashagolub/pgxmock/v3"
 	"github.com/pquerna/otp/totp"
-	"cve-tracker/internal/auth"
-
 	"github.com/redis/go-redis/v9"
 )
 
@@ -28,17 +27,25 @@ func TestTOTPHandlers(t *testing.T) {
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
-		mock.ExpectQuery("SELECT email FROM users").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"email"}).AddRow("test@example.com"))
+		req := httptest.NewRequest("GET", "/settings/totp/generate", nil)
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["user_id"] = 1
+		rr := httptest.NewRecorder()
+		_ = session.Save(req, rr)
+
+		req = httptest.NewRequest("GET", "/settings/totp/generate", nil)
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		mock.ExpectQuery("SELECT email").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"email"}).AddRow("test@test.com"))
 		mock.ExpectExec("UPDATE users SET totp_secret").WithArgs(pgxmock.AnyArg(), 1).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 		expectBaseQueries(mock, 1)
-
-		req, _ := http.NewRequest("POST", "/settings/totp/generate", nil)
-		setSessionUser(t, app, req, 1, false)
-		rr := httptest.NewRecorder()
-		app.GenerateTOTPHandler(rr, req)
-		if rr.Code != http.StatusOK {
-			t.Errorf("expected 200, got %d. Body: %s", rr.Code, rr.Body.String())
+		rr2 := httptest.NewRecorder()
+		app.GenerateTOTPHandler(rr2, req)
+		if rr2.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr2.Code)
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
@@ -53,21 +60,21 @@ func TestTOTPHandlers(t *testing.T) {
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
-		mock.ExpectQuery("SELECT totp_secret FROM users").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"totp_secret"}).AddRow("SECRET"))
+		mock.ExpectQuery("SELECT totp_secret").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"totp_secret"}).AddRow("secret"))
 
-		form := url.Values{"totp_code": {"000000"}}
+		form := url.Values{"totp_code": {"123456"}}
 		req, _ := http.NewRequest("POST", "/settings/totp/verify", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		setSessionUser(t, app, req, 1, false)
-		
+
 		fixedTime := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
 		app.Now = func() time.Time { return fixedTime }
-		
+
 		// Set setup values in session and persist them via cookie
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["totp_setup_ts"] = fixedTime.Unix()
 		session.Values["totp_setup_attempts"] = 0
-		
+
 		rr := httptest.NewRecorder()
 		if err := session.Save(req, rr); err != nil {
 			t.Fatalf("session.Save: %v", err)
@@ -79,7 +86,7 @@ func TestTOTPHandlers(t *testing.T) {
 		rr2 := httptest.NewRecorder()
 		app.VerifyTOTPHandler(rr2, req)
 		if rr2.Code != http.StatusFound {
-			t.Errorf("expected 302, got %d", rr2.Code)
+			t.Errorf("expected 302 Found, got %d", rr2.Code)
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
@@ -92,17 +99,15 @@ func TestTOTPHandlers(t *testing.T) {
 			t.Fatalf("failed to setup mock db: %v", err)
 		}
 		defer mock.Close()
-		app := setupTestApp(t, mock)
 
-		fixedTime := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+		fixedTime := time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC)
+		app := setupTestApp(t, mock)
 		app.Now = func() time.Time { return fixedTime }
 
-		secret := "JBSWY3DPEHPK3PXP"
-		code, err := totp.GenerateCode(secret, fixedTime)
-		if err != nil {
-			t.Fatalf("failed to generate totp code: %v", err)
-		}
-		mock.ExpectQuery("SELECT totp_secret FROM users").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"totp_secret"}).AddRow(secret))
+		secret := "JBSWY3DPEHPK3PXP" // Example base32 secret
+		code, _ := totp.GenerateCode(secret, fixedTime)
+
+		mock.ExpectQuery("SELECT totp_secret").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"totp_secret"}).AddRow(secret))
 		mock.ExpectExec("UPDATE users SET is_totp_enabled = TRUE").WithArgs(1).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(1, "totp_enabled", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
@@ -115,7 +120,7 @@ func TestTOTPHandlers(t *testing.T) {
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["totp_setup_ts"] = fixedTime.Unix()
 		session.Values["totp_setup_attempts"] = 0
-		
+
 		rr := httptest.NewRecorder()
 		if err := session.Save(req, rr); err != nil {
 			t.Fatalf("session.Save: %v", err)
@@ -168,9 +173,94 @@ func TestSettingsHandler(t *testing.T) {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
+
+	t.Run("NotLoggedIn", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		req := httptest.NewRequest("GET", "/settings", nil)
+		rr := httptest.NewRecorder()
+		app.SettingsHandler(rr, req)
+		if rr.Code != http.StatusFound {
+			t.Errorf("expected 302 Found, got %d", rr.Code)
+		}
+		if loc := rr.Header().Get("Location"); loc != "/login" {
+			t.Errorf("expected redirect to /login, got %s", loc)
+		}
+	})
+
+	t.Run("DBError", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		req := httptest.NewRequest("GET", "/settings", nil)
+		setSessionUser(t, app, req, 1, false)
+
+		mock.ExpectQuery("SELECT email, is_totp_enabled").WithArgs(1).
+			WillReturnError(fmt.Errorf("db error"))
+
+		rr := httptest.NewRecorder()
+		app.SettingsHandler(rr, req)
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500 Internal Server Error, got %d", rr.Code)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
 }
 
 func TestChangePasswordHandler(t *testing.T) {
+	t.Run("Unauthenticated", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+
+		app := setupTestApp(t, mock)
+
+		req := httptest.NewRequest("POST", "/settings/password", nil)
+		rr := httptest.NewRecorder()
+		app.ChangePasswordHandler(rr, req)
+
+		if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/login" {
+			t.Errorf("expected redirect to /login, got %d to %s", rr.Code, rr.Header().Get("Location"))
+		}
+	})
+
+	t.Run("UserNotFound", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+
+		app := setupTestApp(t, mock)
+		userID := 999
+		req := httptest.NewRequest("POST", "/settings/password", nil)
+		setSessionUser(t, app, req, userID, false)
+
+		mock.ExpectQuery("SELECT email, is_totp_enabled FROM users WHERE id = \\$1").
+			WithArgs(userID).
+			WillReturnError(fmt.Errorf("user not found"))
+
+		rr := httptest.NewRecorder()
+		app.ChangePasswordHandler(rr, req)
+
+		if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/login" {
+			t.Errorf("expected redirect to /login, got %d to %s", rr.Code, rr.Header().Get("Location"))
+		}
+	})
+
 	t.Run("Success", func(t *testing.T) {
 		mock, err := db.SetupTestDB()
 		if err != nil {
@@ -272,10 +362,43 @@ func TestChangePasswordHandler(t *testing.T) {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
-}
 
-func TestSettingsHandlers_Detailed(t *testing.T) {
-	t.Run("ChangeEmail_RedisError", func(t *testing.T) {
+	t.Run("ValidationFailure", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+
+		app := setupTestApp(t, mock)
+		userID := 1
+		form := url.Values{
+			"current_password": {"oldpass123"},
+			"new_password":     {"short"},
+			"confirm_password": {"short"},
+		}
+		req := httptest.NewRequest("POST", "/settings/password", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, userID, false)
+
+		mock.ExpectQuery("SELECT email, is_totp_enabled FROM users WHERE id = \\$1").
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"email", "is_totp_enabled"}).
+				AddRow("user@example.com", false))
+
+		expectBaseQueries(mock, userID)
+		rr := httptest.NewRecorder()
+		app.ChangePasswordHandler(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "New password must be at least 8 characters.") {
+			t.Errorf("expected validation error")
+		}
+	})
+
+	t.Run("IncorrectCurrentPassword", func(t *testing.T) {
 		mock, err := pgxmock.NewPool()
 		if err != nil {
 			t.Fatalf("failed to create mock pool: %v", err)
@@ -286,66 +409,144 @@ func TestSettingsHandlers_Detailed(t *testing.T) {
 		db.Pool = mock
 		defer func() { db.Pool = oldPool }()
 
-		mr, err := miniredis.Run()
-		if err != nil {
-			t.Fatalf("failed to start miniredis: %v", err)
-		}
-		rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		mr.Close() // Force error
-
 		app := setupTestApp(t, mock)
-		app.Redis = rdb
-
 		userID := 1
 		form := url.Values{
-			"new_email": {"new@example.com"},
-			"password":  {"password"},
+			"current_password": {"wrongpass"},
+			"new_password":     {"newpass123"},
+			"confirm_password": {"newpass123"},
 		}
-		req := httptest.NewRequest("POST", "/settings/email", strings.NewReader(form.Encode()))
+		req := httptest.NewRequest("POST", "/settings/password", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		setSessionUser(t, app, req, userID, false)
 
-		hashedPassword, err := auth.HashPassword("password")
-		if err != nil {
-			t.Fatalf("failed to hash password: %v", err)
-		}
-
-		// 1. Initial selection
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT email, is_totp_enabled FROM users WHERE id = $1")).
+		mock.ExpectQuery("SELECT email, is_totp_enabled FROM users WHERE id = \\$1").
 			WithArgs(userID).
 			WillReturnRows(pgxmock.NewRows([]string{"email", "is_totp_enabled"}).
-				AddRow("old@example.com", false))
+				AddRow("user@example.com", false))
 
-			// 2. auth.Login
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE(totp_secret, ''), is_admin FROM users WHERE email = $1")).
-			WithArgs("old@example.com").
-			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
-				AddRow(userID, "old@example.com", string(hashedPassword), true, false, "", false))
+		// auth.ChangePassword query
+		mock.ExpectQuery("SELECT password_hash, is_totp_enabled, COALESCE\\(totp_secret, ''\\) FROM users WHERE id = \\$1").
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).
+				AddRow("somehash", false, ""))
 
-			// 3. auth.RequestEmailChange
-		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO email_change_requests")).
-			WithArgs(userID, "new@example.com", pgxmock.AnyArg(), pgxmock.AnyArg()).
-			WillReturnResult(pgxmock.NewResult("INSERT", 1))
-
-		// 4. Redis pipeline (FAILS)
-
-		// 5. RenderTemplate
 		expectBaseQueries(mock, userID)
-
 		rr := httptest.NewRecorder()
-		app.ChangeEmailHandler(rr, req)
+		app.ChangePasswordHandler(rr, req)
 
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr.Code)
 		}
-		if !strings.Contains(rr.Body.String(), "Error requesting email change") {
-			t.Errorf("expected redis error message")
+		if !strings.Contains(rr.Body.String(), "Current password is incorrect") {
+			t.Errorf("expected incorrect password error")
+		}
+	})
+
+	t.Run("InvalidTOTP", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+
+		oldPool := db.Pool
+		db.Pool = mock
+		defer func() { db.Pool = oldPool }()
+
+		app := setupTestApp(t, mock)
+		userID := 1
+		form := url.Values{
+			"current_password": {"oldpass123"},
+			"new_password":     {"newpass123"},
+			"confirm_password": {"newpass123"},
+			"totp_code":        {"123456"},
+		}
+		req := httptest.NewRequest("POST", "/settings/password", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, userID, false)
+
+		hashedPassword, _ := auth.HashPassword("oldpass123")
+
+		mock.ExpectQuery("SELECT email, is_totp_enabled FROM users WHERE id = \\$1").
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"email", "is_totp_enabled"}).
+				AddRow("user@example.com", true))
+
+		// auth.ChangePassword query
+		mock.ExpectQuery("SELECT password_hash, is_totp_enabled, COALESCE\\(totp_secret, ''\\) FROM users WHERE id = \\$1").
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).
+				AddRow(string(hashedPassword), true, "secret"))
+
+		expectBaseQueries(mock, userID)
+		rr := httptest.NewRecorder()
+		app.ChangePasswordHandler(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "Invalid or missing 2FA code") {
+			t.Errorf("expected TOTP error")
+		}
+	})
+
+	t.Run("UnexpectedAuthError", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+
+		oldPool := db.Pool
+		db.Pool = mock
+		defer func() { db.Pool = oldPool }()
+
+		app := setupTestApp(t, mock)
+		userID := 1
+		form := url.Values{
+			"current_password": {"oldpass123"},
+			"new_password":     {"newpass123"},
+			"confirm_password": {"newpass123"},
+		}
+		req := httptest.NewRequest("POST", "/settings/password", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, userID, false)
+
+		hashedPassword, _ := auth.HashPassword("oldpass123")
+
+		mock.ExpectQuery("SELECT email, is_totp_enabled FROM users WHERE id = \\$1").
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"email", "is_totp_enabled"}).
+				AddRow("user@example.com", false))
+
+		// auth.ChangePassword query
+		mock.ExpectQuery("SELECT password_hash, is_totp_enabled, COALESCE\\(totp_secret, ''\\) FROM users WHERE id = \\$1").
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).
+				AddRow(string(hashedPassword), false, ""))
+
+		// UPDATE fails
+		mock.ExpectExec("UPDATE users").WithArgs(pgxmock.AnyArg(), userID).
+			WillReturnError(fmt.Errorf("db error"))
+
+		expectBaseQueries(mock, userID)
+		rr := httptest.NewRecorder()
+		app.ChangePasswordHandler(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "Unable to change password. Please try again later.") {
+			t.Errorf("expected generic error message")
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
+}
 
+func TestSettingsHandlers_Detailed(t *testing.T) {
 	t.Run("DeleteAccount_DBError", func(t *testing.T) {
 		mock, err := pgxmock.NewPool()
 		if err != nil {
@@ -389,6 +590,501 @@ func TestSettingsHandlers_Detailed(t *testing.T) {
 		if rr.Code != http.StatusInternalServerError {
 			t.Errorf("expected 500, got %d", rr.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+}
+
+func TestChangeEmailHandler(t *testing.T) {
+	t.Run("MethodNotAllowed", func(t *testing.T) {
+		app := setupTestApp(t, nil)
+		req := httptest.NewRequest("GET", "/settings/email", nil)
+		rr := httptest.NewRecorder()
+		app.ChangeEmailHandler(rr, req)
+		if rr.Code != http.StatusMethodNotAllowed {
+			t.Errorf("expected 405 Method Not Allowed, got %d", rr.Code)
+		}
+	})
+
+	t.Run("Unauthorized", func(t *testing.T) {
+		app := setupTestApp(t, nil)
+		req := httptest.NewRequest("POST", "/settings/email", nil)
+		rr := httptest.NewRecorder()
+		app.ChangeEmailHandler(rr, req)
+		if rr.Code != http.StatusFound {
+			t.Errorf("expected 302 Found, got %d", rr.Code)
+		}
+	})
+
+	t.Run("UserNotFound", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+
+		app := setupTestApp(t, mock)
+		userID := 1
+		req := httptest.NewRequest("POST", "/settings/email", nil)
+		setSessionUser(t, app, req, userID, false)
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT email, is_totp_enabled FROM users WHERE id = $1")).
+			WithArgs(userID).
+			WillReturnError(fmt.Errorf("user not found"))
+
+		rr := httptest.NewRecorder()
+		app.ChangeEmailHandler(rr, req)
+
+		if rr.Code != http.StatusFound {
+			t.Errorf("expected 302 Found, got %d", rr.Code)
+		}
+	})
+
+	t.Run("ValidationError", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+
+		app := setupTestApp(t, mock)
+		userID := 1
+		form := url.Values{
+			"new_email": {"invalid-email"},
+			"password":  {"password"},
+		}
+		req := httptest.NewRequest("POST", "/settings/email", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, userID, false)
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT email, is_totp_enabled FROM users WHERE id = $1")).
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"email", "is_totp_enabled"}).
+				AddRow("old@example.com", false))
+
+		expectBaseQueries(mock, userID)
+
+		rr := httptest.NewRecorder()
+		app.ChangeEmailHandler(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "Invalid email format") {
+			t.Errorf("expected validation error message")
+		}
+	})
+
+	t.Run("InvalidPassword", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+
+		oldPool := db.Pool
+		db.Pool = mock
+		defer func() { db.Pool = oldPool }()
+
+		app := setupTestApp(t, mock)
+		userID := 1
+		form := url.Values{
+			"new_email": {"new@example.com"},
+			"password":  {"wrong-password"},
+		}
+		req := httptest.NewRequest("POST", "/settings/email", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, userID, false)
+
+		hashedPassword, _ := auth.HashPassword("correct-password")
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT email, is_totp_enabled FROM users WHERE id = $1")).
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"email", "is_totp_enabled"}).
+				AddRow("old@example.com", false))
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE(totp_secret, ''), is_admin FROM users WHERE email = $1")).
+			WithArgs("old@example.com").
+			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
+				AddRow(userID, "old@example.com", string(hashedPassword), true, false, "", false))
+
+		expectBaseQueries(mock, userID)
+
+		rr := httptest.NewRecorder()
+		app.ChangeEmailHandler(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "Invalid password") {
+			t.Errorf("expected invalid password message")
+		}
+	})
+
+	t.Run("RedisError", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+
+		oldPool := db.Pool
+		db.Pool = mock
+		defer func() { db.Pool = oldPool }()
+
+		mr, err := miniredis.Run()
+		if err != nil {
+			t.Fatalf("failed to start miniredis: %v", err)
+		}
+		rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+		mr.Close() // Force error
+
+		app := setupTestApp(t, mock)
+		app.Redis = rdb
+
+		userID := 1
+		form := url.Values{
+			"new_email": {"new@example.com"},
+			"password":  {"password"},
+		}
+		req := httptest.NewRequest("POST", "/settings/email", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, userID, false)
+
+		hashedPassword, err := auth.HashPassword("password")
+		if err != nil {
+			t.Fatalf("failed to hash password: %v", err)
+		}
+
+		// 1. Initial selection
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT email, is_totp_enabled FROM users WHERE id = $1")).
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"email", "is_totp_enabled"}).
+				AddRow("old@example.com", false))
+
+		// 2. auth.Login
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE(totp_secret, ''), is_admin FROM users WHERE email = $1")).
+			WithArgs("old@example.com").
+			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
+				AddRow(userID, "old@example.com", string(hashedPassword), true, false, "", false))
+
+		// 3. auth.RequestEmailChange
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO email_change_requests")).
+			WithArgs(userID, "new@example.com", pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		// 4. Redis pipeline (FAILS)
+
+		// 5. RenderTemplate
+		expectBaseQueries(mock, userID)
+
+		rr := httptest.NewRecorder()
+		app.ChangeEmailHandler(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "Error requesting email change") {
+			t.Errorf("expected redis error message")
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("Success", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+
+		oldPool := db.Pool
+		db.Pool = mock
+		defer func() { db.Pool = oldPool }()
+
+		mr, _ := miniredis.Run()
+		defer mr.Close()
+		rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+		app := setupTestApp(t, mock)
+		app.Redis = rdb
+
+		userID := 1
+		form := url.Values{
+			"new_email": {"new@example.com"},
+			"password":  {"password"},
+		}
+		req := httptest.NewRequest("POST", "/settings/email", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, userID, false)
+
+		hashedPassword, _ := auth.HashPassword("password")
+
+		// 1. Initial selection
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT email, is_totp_enabled FROM users WHERE id = $1")).
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"email", "is_totp_enabled"}).
+				AddRow("old@example.com", false))
+
+		// 2. auth.Login
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE(totp_secret, ''), is_admin FROM users WHERE email = $1")).
+			WithArgs("old@example.com").
+			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
+				AddRow(userID, "old@example.com", string(hashedPassword), true, false, "", false))
+
+		// 3. auth.RequestEmailChange
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO email_change_requests")).
+			WithArgs(userID, "new@example.com", pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		// 4. LogActivity
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO user_activity_logs")).
+			WithArgs(userID, "email_change_requested", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		// 5. RenderTemplate
+		expectBaseQueries(mock, userID)
+
+		rr := httptest.NewRecorder()
+		app.ChangeEmailHandler(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "Email change requested") {
+			t.Errorf("expected success message, got: %s", rr.Body.String())
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+	t.Run("ParseFormError", func(t *testing.T) {
+		app := setupTestApp(t, nil)
+		userID := 1
+		// Providing a body that fails ParseForm (invalid % encoding)
+		req := httptest.NewRequest("POST", "/settings/email", strings.NewReader("new_email=test%zz"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, userID, false)
+
+		rr := httptest.NewRecorder()
+		app.ChangeEmailHandler(rr, req)
+
+		if rr.Code != http.StatusFound {
+			t.Errorf("expected 302 Found, got %d", rr.Code)
+		}
+	})
+
+	t.Run("RequestEmailChangeError", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+
+		oldPool := db.Pool
+		db.Pool = mock
+		defer func() { db.Pool = oldPool }()
+
+		app := setupTestApp(t, mock)
+		userID := 1
+		form := url.Values{
+			"new_email": {"new@example.com"},
+			"password":  {"password"},
+		}
+		req := httptest.NewRequest("POST", "/settings/email", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, userID, false)
+
+		hashedPassword, _ := auth.HashPassword("password")
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT email, is_totp_enabled FROM users WHERE id = ")).
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"email", "is_totp_enabled"}).
+				AddRow("old@example.com", false))
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE(totp_secret, ''), is_admin FROM users WHERE email = ")).
+			WithArgs("old@example.com").
+			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
+				AddRow(userID, "old@example.com", string(hashedPassword), true, false, "", false))
+
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO email_change_requests")).
+			WithArgs(userID, "new@example.com", pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnError(fmt.Errorf("db error"))
+
+		expectBaseQueries(mock, userID)
+
+		rr := httptest.NewRecorder()
+		app.ChangeEmailHandler(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "Error requesting email change") {
+			t.Errorf("expected error requesting email change message")
+		}
+	})
+}
+
+func TestDeleteAccountHandler(t *testing.T) {
+	t.Run("Unauthenticated", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		req := httptest.NewRequest("POST", "/settings/delete", nil)
+		rr := httptest.NewRecorder()
+		app.DeleteAccountHandler(rr, req)
+
+		if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/login" {
+			t.Errorf("expected redirect to /login, got %d and location %s", rr.Code, rr.Header().Get("Location"))
+		}
+	})
+
+	t.Run("InvalidMethod", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		req := httptest.NewRequest("GET", "/settings/delete", nil)
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.DeleteAccountHandler(rr, req)
+
+		if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/settings" {
+			t.Errorf("expected redirect to /settings, got %d and location %s", rr.Code, rr.Header().Get("Location"))
+		}
+	})
+
+	t.Run("UserNotFound", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		userID := 1
+		req := httptest.NewRequest("POST", "/settings/delete", nil)
+		setSessionUser(t, app, req, userID, false)
+
+		mock.ExpectQuery("SELECT email FROM users WHERE id = \\$1").
+			WithArgs(userID).
+			WillReturnError(fmt.Errorf("not found"))
+
+		rr := httptest.NewRecorder()
+		app.DeleteAccountHandler(rr, req)
+
+		if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/login" {
+			t.Errorf("expected redirect to /login, got %d and location %s", rr.Code, rr.Header().Get("Location"))
+		}
+	})
+
+	t.Run("InvalidPassword", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+
+		oldPool := db.Pool
+		db.Pool = mock
+		defer func() { db.Pool = oldPool }()
+
+		app := setupTestApp(t, mock)
+
+		userID := 1
+		form := url.Values{"password": {"wrong"}}
+		req := httptest.NewRequest("POST", "/settings/delete", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, userID, false)
+
+		mock.ExpectQuery("SELECT email FROM users WHERE id = \\$1").
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"email"}).AddRow("user@example.com"))
+
+		// auth.Login will return error because password doesn't match
+		// We need to provide the real hash for Argon2id to fail
+		hashedPassword, _ := auth.HashPassword("correct")
+		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE email = \\$1").
+			WithArgs("user@example.com").
+			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
+				AddRow(userID, "user@example.com", string(hashedPassword), true, false, "", false))
+
+		expectBaseQueries(mock, userID)
+
+		rr := httptest.NewRecorder()
+		app.DeleteAccountHandler(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "Invalid password") {
+			t.Errorf("expected 'Invalid password' error in body")
+		}
+	})
+
+	t.Run("Success", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+
+		oldPool := db.Pool
+		db.Pool = mock
+		defer func() { db.Pool = oldPool }()
+
+		app := setupTestApp(t, mock)
+
+		userID := 1
+		password := "correct_password"
+		form := url.Values{"password": {password}}
+		req := httptest.NewRequest("POST", "/settings/delete", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, userID, false)
+
+		hashedPassword, _ := auth.HashPassword(password)
+
+		mock.ExpectQuery("SELECT email FROM users WHERE id = \\$1").
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"email"}).AddRow("user@example.com"))
+
+		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE email = \\$1").
+			WithArgs("user@example.com").
+			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
+				AddRow(userID, "user@example.com", string(hashedPassword), true, false, "", false))
+
+		mock.ExpectExec("DELETE FROM users WHERE id = \\$1").
+			WithArgs(userID).
+			WillReturnResult(pgxmock.NewResult("DELETE", 1))
+
+		rr := httptest.NewRecorder()
+		app.DeleteAccountHandler(rr, req)
+
+		if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/register" {
+			t.Errorf("expected redirect to /register, got %d and location %s", rr.Code, rr.Header().Get("Location"))
+		}
+
+		// Verify session is cleared (MaxAge = -1)
+		found := false
+		for _, cookie := range rr.Result().Cookies() {
+			if cookie.Name == "vulfixx-session" && cookie.MaxAge < 0 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected session cookie to be cleared (MaxAge < 0)")
+		}
+
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
 		}

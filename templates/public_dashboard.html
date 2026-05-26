@@ -927,8 +927,12 @@ input[type=number] {
     {{else}}
     <tr class="no-results">
         <td colspan="5" class="p-12 text-center">
-            <span class="material-symbols-outlined text-4xl text-gray-600 mb-4">search_off</span>
-            <p class="text-gray-500 font-bold uppercase tracking-widest text-xs">No vulnerabilities found matching your filters</p>
+            <span class="material-symbols-outlined text-4xl text-gray-600 mb-4" aria-hidden="true">search_off</span>
+            <p class="text-gray-500 font-bold uppercase tracking-widest text-xs mb-4">No vulnerabilities found matching your filters</p>
+            <button type="button" data-action="clear-filters" class="inline-flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 rounded-2xl font-black text-white hover:bg-white/10 transition-all text-xs uppercase tracking-widest">
+                <span class="material-symbols-outlined text-sm" aria-hidden="true">filter_alt_off</span>
+                Clear Filters
+            </button>
         </td>
     </tr>
     {{end}}

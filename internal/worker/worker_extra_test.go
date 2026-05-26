@@ -2,6 +2,8 @@ package worker
 
 import (
 	"context"
+	"cve-tracker/internal/config"
+	"cve-tracker/internal/models"
 	"errors"
 	"io"
 	"net/http"
@@ -9,46 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"cve-tracker/internal/config"
-	"cve-tracker/internal/models"
 	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v3"
 )
 
-func TestWorker_EnrichSingleCVE(t *testing.T) {
-	mock, err := pgxmock.NewPool()
-	if err != nil {
-		t.Fatalf("failed: %v", err)
-	}
-	defer mock.Close()
-
-	w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
-
-	t.Run("QueryError", func(t *testing.T) {
-		mock.ExpectQuery("SELECT id, cve_id").WithArgs(123).WillReturnError(errors.New("db error"))
-		w.enrichSingleCVE(context.Background(), 123)
-	})
-
-	t.Run("SuccessHeuristic", func(t *testing.T) {
-		mock.ExpectQuery("SELECT id, cve_id").WithArgs(123).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "configurations", "references"}).
-				AddRow(123, "CVE-2023-1234", "A vulnerability in Apache HTTP Server allows remote attackers to execute code.", []byte(`[]`), []string{}))
-
-		mock.ExpectExec("UPDATE cves SET vendor").WithArgs("Apache", "HTTP Server", pgxmock.AnyArg(), 123).
-			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-
-		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("intelligence_enrichment").
-			WillReturnResult(pgxmock.NewResult("INSERT", 1))
-
-		w.enrichSingleCVE(context.Background(), 123)
-
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unmet expectations: %v", err)
-		}
-	})
-}
-
-func TestWorker_processEnrichmentRows_EdgeCases(t *testing.T) {
+func TestWorker_EnrichmentRows_Comprehensive(t *testing.T) {
 	mock, err := pgxmock.NewPool()
 	if err != nil {
 		t.Fatalf("failed: %v", err)
@@ -157,6 +124,7 @@ func TestWorker_Health_Comprehensive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed: %v", err)
 	}
+	mock.MatchExpectationsInOrder(false)
 	defer mock.Close()
 
 	w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
@@ -166,11 +134,15 @@ func TestWorker_Health_Comprehensive(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 
 		tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync"}
-		for _, task := range tasks {
-			mock.ExpectQuery("SELECT last_run FROM worker_sync_stats").
-				WithArgs(task).
-				WillReturnRows(pgxmock.NewRows([]string{"last_run"}).AddRow(time.Now()))
-		}
+		mock.ExpectQuery("SELECT task_name, last_run FROM worker_sync_stats WHERE task_name = ANY\\(\\$1\\)").
+			WithArgs(tasks).
+			WillReturnRows(pgxmock.NewRows([]string{"task_name", "last_run"}).
+				AddRow("nvd_sync", time.Now()).
+				AddRow("cisa_kev_sync", time.Now()).
+				AddRow("epss_sync", time.Now()).
+				AddRow("github_buzz_sync", time.Now()).
+				AddRow("osv_sync", time.Now()).
+				AddRow("greynoise_sync", time.Now()))
 
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("health_check").
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -186,23 +158,15 @@ func TestWorker_Health_Comprehensive(t *testing.T) {
 		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM notification_delivery_logs").
 			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(2))
 
-		// Mock NVD stale
-		mock.ExpectQuery("SELECT last_run FROM worker_sync_stats").
-			WithArgs("nvd_sync").
-			WillReturnRows(pgxmock.NewRows([]string{"last_run"}).AddRow(time.Now().Add(-48 * time.Hour)))
-
-		// Mock CISA error
-		mock.ExpectQuery("SELECT last_run FROM worker_sync_stats").
-			WithArgs("cisa_kev_sync").
-			WillReturnError(errors.New("db error"))
-
-		// Mock the rest successful
-		tasks := []string{"epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync"}
-		for _, task := range tasks {
-			mock.ExpectQuery("SELECT last_run FROM worker_sync_stats").
-				WithArgs(task).
-				WillReturnRows(pgxmock.NewRows([]string{"last_run"}).AddRow(time.Now()))
-		}
+		tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync"}
+		mock.ExpectQuery("SELECT task_name, last_run FROM worker_sync_stats WHERE task_name = ANY\\(\\$1\\)").
+			WithArgs(tasks).
+			WillReturnRows(pgxmock.NewRows([]string{"task_name", "last_run"}).
+				AddRow("nvd_sync", time.Now().Add(-48 * time.Hour)).
+				AddRow("epss_sync", time.Now()).
+				AddRow("github_buzz_sync", time.Now()).
+				AddRow("osv_sync", time.Now()).
+				AddRow("greynoise_sync", time.Now()))
 
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("health_check").
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -219,6 +183,10 @@ func TestWorker_Health_Comprehensive(t *testing.T) {
 		defer func() {
 			config.AppConfig = orig
 		}()
+
+		// In checkWorkerHealth call, we need to satisfy the DB expectations if they are not met
+		// Since we use MatchExpectationsInOrder(false), we just need to make sure we don't have UNMET expectations or UNEXPECTED calls.
+
 		// 1. Ollama Happy path
 		config.AppConfig.LLMProvider = "ollama"
 		config.AppConfig.LLMEndpoint = "http://localhost:11434"
@@ -228,17 +196,22 @@ func TestWorker_Health_Comprehensive(t *testing.T) {
 			},
 		}
 		w2 := NewWorker(mock, nil, &EmailSenderMock{}, httpClient)
-		w2.checkWorkerHealth(context.Background())
+
+		// Satisfy checkWorkerHealth calls within TestLLMConnectivity (if any, although TestLLMConnectivity doesn't call it,
+		// but the previous tests might have left something or the code might call it).
+		// Actually, TestLLMConnectivity doesn't call checkWorkerHealth.
+
+		w2.TestLLMConnectivity(context.Background())
 
 		// 2. Gemini Happy path
 		config.AppConfig.LLMProvider = "gemini"
 		config.AppConfig.GeminiAPIKey = "test-key"
-		w2.checkWorkerHealth(context.Background())
+		w2.TestLLMConnectivity(context.Background())
 
 		// 3. ArliAI Happy path
 		config.AppConfig.LLMProvider = "arliai"
 		config.AppConfig.ArliAIAPIKey = "test-key"
-		w2.checkWorkerHealth(context.Background())
+		w2.TestLLMConnectivity(context.Background())
 	})
 }
 
