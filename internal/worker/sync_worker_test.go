@@ -348,7 +348,7 @@ func TestWorkerSync_OSV(t *testing.T) {
 			}
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Body:       io.NopCloser(strings.NewReader(`{"id":"GHSA-xxxx","summary":"Test OSV","affected":[{"package":{"name":"test-package","ecosystem":"Go"},"ranges":[{"type":"SEMVER","events":[{"introduced":"0"},{"fixed":"1.2.3"}]}]}]}`)),
+				Body:       io.NopCloser(strings.NewReader(`{"id":"GHSA-test-osv-0001","summary":"Test OSV","affected":[{"package":{"name":"test-package","ecosystem":"Go"},"ranges":[{"type":"SEMVER","events":[{"introduced":"0"},{"fixed":"1.2.3"}]}]}]}`)),
 			}, nil
 		},
 	}
