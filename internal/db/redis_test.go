@@ -56,6 +56,13 @@ func TestInitRedisTable(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.name == "Empty URL (defaults to localhost:6379)" {
+				// Mock redisPing to avoid actual connection attempts to localhost:6379
+				oldPing := redisPing
+				redisPing = func() error { return nil }
+				defer func() { redisPing = oldPing }()
+			}
+
 			if tt.url != "" {
 				t.Setenv("REDIS_URL", tt.url)
 			} else {
