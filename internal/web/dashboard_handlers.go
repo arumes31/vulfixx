@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/csrf"
 	"github.com/go-chi/chi/v5"
+	"github.com/gorilla/csrf"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -642,9 +642,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	minEpss, _ := strconv.ParseFloat(minEpssStr, 64)
 	maxEpss, _ := strconv.ParseFloat(maxEpssStr, 64)
-	if maxEpss == 0 && maxEpssStr != "" {
-		// if user explicitly put 0, keep it. If empty, default to 1.0
-	} else if maxEpssStr == "" {
+	if maxEpssStr == "" {
 		maxEpss = 1.0
 	}
 
@@ -833,7 +831,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 			if sortOrder == "ASC" {
 				op = ">"
 			}
-			
+
 			// Validate cursorStr based on sort column
 			var parseErr error
 			switch sortCol {
@@ -1363,4 +1361,3 @@ func (a *App) APICVEsHandler(w http.ResponseWriter, r *http.Request) {
 
 	SendJSONResponse(w, http.StatusOK, true, cves, "", meta)
 }
-
