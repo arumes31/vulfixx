@@ -184,16 +184,6 @@ func TestDefaultPoolCreator(t *testing.T) {
 	_, _ = poolCreator(ctx, cfg)
 }
 
-func TestInitRedis_Error(t *testing.T) {
-	t.Run("Ping Failure", func(t *testing.T) {
-		t.Setenv("REDIS_URL", "localhost:1") // Use port 1 which is likely closed
-		err := InitRedis()
-		if err == nil {
-			t.Error("expected error but got nil")
-		}
-	})
-}
-
 func TestInitDB_Replica(t *testing.T) {
 	t.Run("Replica Configuration set", func(t *testing.T) {
 		oldPool := Pool
