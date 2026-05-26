@@ -38,7 +38,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	pageSize := 20
 	offset := (page - 1) * pageSize
 
-	searchQuery := r.URL.Query().Get("q")
+	searchQuery := strings.TrimSpace(r.URL.Query().Get("q"))
 	startDate := r.URL.Query().Get("start_date")
 	endDate := r.URL.Query().Get("end_date")
 	searchAll := r.URL.Query().Get("all") == "true"
@@ -79,15 +79,16 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	teamArgIdx := -1
 	statusJoinCond := "ucs.user_id = $1 AND ucs.team_id IS NULL"
 	if activeTeamID > 0 {
-		statusJoinCond = fmt.Sprintf("ucs.team_id = $%d", argIdx)
+		statusJoinCond = "ucs.team_id = $" + strconv.Itoa(argIdx)
 		teamArgIdx = argIdx
 		args = append(args, activeTeamID)
 		argIdx++
 	}
 
-	whereClause := " WHERE (1=1) "
+	var where strings.Builder
+	where.WriteString(" WHERE (1=1) ")
 	if !searchAll {
-		whereClause += fmt.Sprintf(` AND (
+		where.WriteString(` AND (
 			EXISTS (
 				SELECT 1 FROM user_subscriptions us 
 				WHERE (us.user_id = $1 OR us.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
@@ -95,47 +96,63 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 				  AND (us.keyword = '' OR c.description ILIKE '%%' || us.keyword || '%%')
 			)
 		) `)
-		whereClause += " AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) "
+		where.WriteString(" AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) ")
 	} else {
 		if statusFilter == "" || statusFilter == "active" {
-			whereClause += " AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) "
+			where.WriteString(" AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) ")
 		} else if statusFilter != "" {
-			whereClause += fmt.Sprintf(" AND ucs.status = $%d ", argIdx)
+			where.WriteString(" AND ucs.status = $")
+			where.WriteString(strconv.Itoa(argIdx))
+			where.WriteString(" ")
 			args = append(args, statusFilter)
 			argIdx++
 		}
 	}
 
 	if searchQuery != "" {
-		whereClause += fmt.Sprintf(" AND (c.cve_id ILIKE $%d OR c.description ILIKE $%d) ", argIdx, argIdx)
+		where.WriteString(" AND (c.cve_id ILIKE $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" OR c.description ILIKE $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(") ")
 		args = append(args, "%"+escapeLikePattern(searchQuery)+"%")
 		argIdx++
 	}
 	if kevOnly {
-		whereClause += " AND c.cisa_kev = true "
+		where.WriteString(" AND c.cisa_kev = true ")
 	}
 	if minCvss > 0 {
-		whereClause += fmt.Sprintf(" AND c.cvss_score >= $%d ", argIdx)
+		where.WriteString(" AND c.cvss_score >= $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" ")
 		args = append(args, minCvss)
 		argIdx++
 	}
 	if maxCvss < 10 {
-		whereClause += fmt.Sprintf(" AND c.cvss_score <= $%d ", argIdx)
+		where.WriteString(" AND c.cvss_score <= $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" ")
 		args = append(args, maxCvss)
 		argIdx++
 	}
 	if startDate != "" {
-		whereClause += fmt.Sprintf(" AND c.published_date >= $%d ", argIdx)
+		where.WriteString(" AND c.published_date >= $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" ")
 		args = append(args, startDate)
 		argIdx++
 	}
 	if endDate != "" {
-		whereClause += fmt.Sprintf(" AND c.published_date <= $%d ", argIdx)
+		where.WriteString(" AND c.published_date <= $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" ")
 		args = append(args, endDate)
 		argIdx++
 	}
 
-	consolidatedMetricsQuery := fmt.Sprintf(`
+	whereClause := where.String()
+
+	consolidatedMetricsQuery := `
 		SELECT
 			COUNT(c.id) as total_cves,
 			COUNT(CASE WHEN c.cisa_kev = true THEN 1 END) as kev_count,
@@ -152,9 +169,8 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 			COUNT(CASE WHEN ucs.status = 'resolved' THEN 1 END) as stat_res,
 			COUNT(CASE WHEN ucs.status = 'ignored' THEN 1 END) as stat_ign
 		FROM cves c
-		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s
-		%s
-	`, statusJoinCond, whereClause)
+		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ` + statusJoinCond + `
+		` + whereClause
 
 	// Generate deterministic cache key
 	cacheKeyStr := fmt.Sprintf("%d:%d:%s:%v", userID, activeTeamID, consolidatedMetricsQuery, args)
@@ -186,19 +202,17 @@ MetricsCached:
 
 	notesJoinCond := "ucn.user_id = $1 AND ucn.team_id IS NULL"
 	if teamArgIdx != -1 {
-		notesJoinCond = fmt.Sprintf("ucn.team_id = $%d", teamArgIdx)
+		notesJoinCond = "ucn.team_id = $" + strconv.Itoa(teamArgIdx)
 	}
 
-	query := fmt.Sprintf(`
+	query := `
 		SELECT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, COALESCE(c."references", '{}'), ucn.notes,
 		COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0), COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'), COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]'), COALESCE(c.priority, 'P3') as priority
 		FROM cves c
-		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s
-		LEFT JOIN cve_notes ucn ON c.id = ucn.cve_id AND %s
-	`, statusJoinCond, notesJoinCond)
-
-	query += whereClause
-	query += fmt.Sprintf(" ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $%d OFFSET $%d ", argIdx, argIdx+1)
+		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ` + statusJoinCond + `
+		LEFT JOIN cve_notes ucn ON c.id = ucn.cve_id AND ` + notesJoinCond + `
+		` + whereClause + `
+		ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $` + strconv.Itoa(argIdx) + ` OFFSET $` + strconv.Itoa(argIdx+1)
 
 	finalArgs := append(args, pageSize, offset)
 
@@ -242,9 +256,9 @@ MetricsCached:
 	// Distribution counts are now fetched in the consolidated metrics query above
 
 	var topCWEs []CWEStat
-	cweBaseQuery := "SELECT cwe_id, COALESCE(MAX(cwe_name), 'Unknown'), COUNT(c.id) as cnt FROM cves c "
-	cweBaseQuery += fmt.Sprintf(" LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND %s ", statusJoinCond)
-	cweQuery := cweBaseQuery + whereClause + " AND cwe_id IS NOT NULL AND cwe_id != '' GROUP BY cwe_id ORDER BY cnt DESC LIMIT 15"
+	cweQuery := "SELECT cwe_id, COALESCE(MAX(cwe_name), 'Unknown'), COUNT(c.id) as cnt FROM cves c " +
+		" LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND " + statusJoinCond + " " +
+		whereClause + " AND cwe_id IS NOT NULL AND cwe_id != '' GROUP BY cwe_id ORDER BY cnt DESC LIMIT 15"
 
 	cweQueryRows, err := a.Pool.Query(r.Context(), cweQuery, args...)
 	if err != nil {
@@ -996,7 +1010,8 @@ func (a *App) APICVEsHandler(w http.ResponseWriter, r *http.Request) {
 		sortOrder = "ASC"
 	}
 
-	whereClause := " WHERE (1=1) "
+	var where strings.Builder
+	where.WriteString(" WHERE (1=1) ")
 	var args []interface{}
 	argIdx := 1
 
@@ -1030,13 +1045,30 @@ func (a *App) APICVEsHandler(w http.ResponseWriter, r *http.Request) {
 				case "c.cvss_score", "c.epss_score":
 					castType = "::numeric"
 				}
-				keysetCond := fmt.Sprintf(" AND (%s %s $%d%s OR (%s = $%d%s AND c.id < $%d)) ", sortCol, op, argIdx, castType, sortCol, argIdx+1, castType, argIdx+2)
-				whereClause += keysetCond
+
+				where.WriteString(" AND (")
+				where.WriteString(sortCol)
+				where.WriteString(" ")
+				where.WriteString(op)
+				where.WriteString(" $")
+				where.WriteString(strconv.Itoa(argIdx))
+				where.WriteString(castType)
+				where.WriteString(" OR (")
+				where.WriteString(sortCol)
+				where.WriteString(" = $")
+				where.WriteString(strconv.Itoa(argIdx + 1))
+				where.WriteString(castType)
+				where.WriteString(" AND c.id < $")
+				where.WriteString(strconv.Itoa(argIdx + 2))
+				where.WriteString(")) ")
+
 				args = append(args, cursorStr, cursorStr, cursorID)
 				argIdx += 3
 			}
 		}
 	}
+
+	whereClause := where.String()
 
 	query := `
 		SELECT 
@@ -1045,10 +1077,9 @@ func (a *App) APICVEsHandler(w http.ResponseWriter, r *http.Request) {
 			COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0),
 			COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'),
 			COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]'), COALESCE(c.priority, 'P3') as priority
-		FROM cves c
-	`
-	query += whereClause
-	query += fmt.Sprintf(" ORDER BY %s %s NULLS LAST, c.id DESC LIMIT $%d ", sortCol, sortOrder, argIdx)
+		FROM cves c ` + whereClause + `
+		ORDER BY ` + sortCol + ` ` + sortOrder + ` NULLS LAST, c.id DESC LIMIT $` + strconv.Itoa(argIdx)
+
 	args = append(args, limit)
 
 	rows, err := a.Pool.Query(r.Context(), query, args...)
@@ -1368,7 +1399,7 @@ func (a *App) fetchPublicDashboardCVEs(ctx context.Context, filters publicDashbo
 			default:
 				castType = ""
 			}
-			
+
 			tieBreakOp := "<"
 			if sortOrder == "ASC" {
 				tieBreakOp = ">"

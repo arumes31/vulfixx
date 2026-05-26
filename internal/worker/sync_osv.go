@@ -50,7 +50,7 @@ func (w *Worker) syncOSV(ctx context.Context) {
 
 	// Prioritize CVEs that haven't been checked yet, then oldest ones (older than 30 days)
 	rows, err := w.Pool.Query(ctx, `
-		SELECT cve_id FROM cves 
+		SELECT id, cve_id, vendor, product, affected_products FROM cves
 		WHERE osv_last_updated IS NULL OR osv_last_updated < NOW() - INTERVAL '30 days'
 		ORDER BY osv_last_updated ASC NULLS FIRST
 		LIMIT 200
@@ -61,102 +61,98 @@ func (w *Worker) syncOSV(ctx context.Context) {
 	}
 	defer rows.Close()
 
-	var cveIDs []string
+	var cves []models.CVE
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err == nil {
-			cveIDs = append(cveIDs, id)
+		var cve models.CVE
+		if err := rows.Scan(&cve.ID, &cve.CVEID, &cve.Vendor, &cve.Product, &cve.AffectedProducts); err == nil {
+			cves = append(cves, cve)
 		}
 	}
 
 	count := 0
-	for _, cveID := range cveIDs {
+	for _, cve := range cves {
 		select {
 		case <-ctx.Done():
 			return
 		default:
 		}
 
-		osvData, err := w.fetchOSVData(ctx, cveID)
+		osvData, err := w.fetchOSVData(ctx, cve.CVEID)
 		if err != nil {
 			continue
 		}
 
 		if osvData != nil {
 			// Deep Enrichment: Extract products and versions
-			var cve models.CVE
-			err = w.Pool.QueryRow(ctx, "SELECT id, vendor, product, affected_products FROM cves WHERE cve_id = $1", cveID).Scan(&cve.ID, &cve.Vendor, &cve.Product, &cve.AffectedProducts)
+			changed := false
+			for _, aff := range osvData.Affected {
+				vendor := aff.Package.Ecosystem
+				product := aff.Package.Name
+
+				// Build version string from ranges
+				var versionParts []string
+				for _, r := range aff.Ranges {
+					var start, end string
+					for _, ev := range r.Events {
+						if v, ok := ev["introduced"]; ok && v != "0" {
+							start = "≥" + v
+						}
+						if v, ok := ev["fixed"]; ok {
+							end = "<" + v
+						}
+						if v, ok := ev["last_affected"]; ok {
+							end = "≤" + v
+						}
+					}
+					if start != "" && end != "" {
+						versionParts = append(versionParts, start+" "+end)
+					} else if start != "" {
+						versionParts = append(versionParts, start)
+					} else if end != "" {
+						versionParts = append(versionParts, end)
+					}
+				}
+
+				versionStr := strings.Join(versionParts, ", ")
+				if versionStr == "" && len(aff.Versions) > 0 {
+					// Fallback to first few versions if no ranges
+					if len(aff.Versions) > 3 {
+						versionStr = strings.Join(aff.Versions[:3], ", ") + "..."
+					} else {
+						versionStr = strings.Join(aff.Versions, ", ")
+					}
+				}
+
+				cve.AddAffectedProduct(vendor, product, versionStr, false)
+
+				// If primary vendor/product is missing, use OSV as authoritative
+				if cve.Vendor == "" {
+					cve.Vendor = vendor
+				}
+				if cve.Product == "" {
+					cve.Product = product
+				}
+				changed = true
+			}
+
+			if changed {
+				dataJSON, _ := json.Marshal(osvData)
+				_, err = w.Pool.Exec(ctx, "UPDATE cves SET osv_data = $1, osv_last_updated = NOW(), vendor = $2, product = $3, affected_products = $4 WHERE id = $5",
+					dataJSON, cve.Vendor, cve.Product, cve.AffectedProducts, cve.ID)
+			} else {
+				_, err = w.Pool.Exec(ctx, "UPDATE cves SET osv_last_updated = NOW() WHERE id = $1", cve.ID)
+			}
 			if err == nil {
-				changed := false
-				for _, aff := range osvData.Affected {
-					vendor := aff.Package.Ecosystem
-					product := aff.Package.Name
-					
-					// Build version string from ranges
-					var versionParts []string
-					for _, r := range aff.Ranges {
-						var start, end string
-						for _, ev := range r.Events {
-							if v, ok := ev["introduced"]; ok && v != "0" {
-								start = "≥" + v
-							}
-							if v, ok := ev["fixed"]; ok {
-								end = "<" + v
-							}
-							if v, ok := ev["last_affected"]; ok {
-								end = "≤" + v
-							}
-						}
-						if start != "" && end != "" {
-							versionParts = append(versionParts, start+" "+end)
-						} else if start != "" {
-							versionParts = append(versionParts, start)
-						} else if end != "" {
-							versionParts = append(versionParts, end)
-						}
-					}
-					
-					versionStr := strings.Join(versionParts, ", ")
-					if versionStr == "" && len(aff.Versions) > 0 {
-						// Fallback to first few versions if no ranges
-						if len(aff.Versions) > 3 {
-							versionStr = strings.Join(aff.Versions[:3], ", ") + "..."
-						} else {
-							versionStr = strings.Join(aff.Versions, ", ")
-						}
-					}
-
-					cve.AddAffectedProduct(vendor, product, versionStr, false)
-					
-					// If primary vendor/product is missing, use OSV as authoritative
-					if cve.Vendor == "" {
-						cve.Vendor = vendor
-					}
-					if cve.Product == "" {
-						cve.Product = product
-					}
-					changed = true
-				}
-
-				if changed {
-					dataJSON, _ := json.Marshal(osvData)
-					_, err = w.Pool.Exec(ctx, "UPDATE cves SET osv_data = $1, osv_last_updated = NOW(), vendor = $2, product = $3, affected_products = $4 WHERE id = $5", 
-						dataJSON, cve.Vendor, cve.Product, cve.AffectedProducts, cve.ID)
-				} else {
-					_, _ = w.Pool.Exec(ctx, "UPDATE cves SET osv_last_updated = NOW() WHERE id = $1", cve.ID)
-				}
-				if err == nil {
-					count++
-				}
+				count++
 			}
 		} else {
 			// Mark as checked even if no data found
-			_, _ = w.Pool.Exec(ctx, "UPDATE cves SET osv_last_updated = NOW() WHERE cve_id = $1", cveID)
+			_, _ = w.Pool.Exec(ctx, "UPDATE cves SET osv_last_updated = NOW() WHERE id = $1", cve.ID)
 		}
 
 		time.Sleep(200 * time.Millisecond) // OSV is fast
 	}
-	
+
 	w.updateTaskStats(ctx, "osv_sync")
 	log.Printf("Worker: [SYNC] OSV synchronization complete. Updated %d records.", count)
 }
