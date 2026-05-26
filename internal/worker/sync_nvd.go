@@ -220,6 +220,8 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool, startIndex in
 			return
 		}
 
+		log.Printf("Worker: [NVD] Successfully upserted batch of %d CVEs (Total processed: %d/%d)", len(nvdResp.Vulnerabilities), startIndex+len(nvdResp.Vulnerabilities), nvdResp.TotalResults)
+
 		if isBackfill {
 			w.updateBackfillProgress(ctx, startIndex)
 		}
@@ -269,8 +271,13 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 	}
 
 	var modelsToUpsert []models.CVE
+	consecutiveLLMFailures := 0
+	skipLLMForBatch := false
 
-	for _, entry := range entries {
+	totalInBatch := len(entries)
+	slog.Info("Worker: [NVD] Preparing batch", "count", totalInBatch, "is_backfill", isBackfill)
+
+	for i, entry := range entries {
 		select {
 		case <-ctx.Done():
 			slog.Info("Worker: Context cancelled, aborting NVD batch preparation.")
@@ -279,6 +286,9 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 		}
 
 		cve := entry.CVE
+		if i%50 == 0 {
+			slog.Info("Worker: [NVD] Processing CVEs...", "current", i+1, "total", totalInBatch, "last_id", cve.ID)
+		}
 
 		description := ""
 		for _, d := range cve.Descriptions {
@@ -372,20 +382,32 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 
 		var vendor, product string
 		// Call LLM as primary with isolated timeout
-		llmCtx, cancel := context.WithTimeout(ctx, time.Duration(config.AppConfig.LLMTimeout+10)*time.Second)
-		products, err := llm.ExtractVendorProduct(llmCtx, model.Description, model.References)
-		cancel()
-		if err == nil && len(products) > 0 {
-			// Use the first one as primary
-			vendor, product = products[0].Vendor, products[0].Product
-			slog.Info("Worker: LLM extraction success", "cve_id", model.CVEID, "products_found", len(products), "primary_vendor", vendor, "primary_product", product)
+		if !skipLLMForBatch {
+			llmCtx, cancel := context.WithTimeout(ctx, time.Duration(config.AppConfig.LLMTimeout)*time.Second)
+			products, err := llm.ExtractVendorProduct(llmCtx, model.Description, model.References)
+			cancel()
+			if err == nil && len(products) > 0 {
+				consecutiveLLMFailures = 0
+				// Use the first one as primary
+				vendor, product = products[0].Vendor, products[0].Product
+				slog.Debug("Worker: LLM extraction success", "cve_id", model.CVEID, "products_found", len(products), "primary_vendor", vendor, "primary_product", product)
 
-			// Add all to affected_products
-			for _, p := range products {
-				model.AddAffectedProduct(p.Vendor, p.Product, p.Version, true)
+				// Add all to affected_products
+				for _, p := range products {
+					model.AddAffectedProduct(p.Vendor, p.Product, p.Version, true)
+				}
+			} else {
+				if err != nil {
+					slog.Warn("Worker: LLM extraction failed", "cve_id", model.CVEID, "error", err)
+					consecutiveLLMFailures++
+					if consecutiveLLMFailures >= 5 {
+						skipLLMForBatch = true
+						slog.Error("Worker: TOO MANY CONSECUTIVE LLM FAILURES. Switching to HEURISTICS for the rest of this batch.", "consecutive_count", consecutiveLLMFailures, "batch_index", i)
+					}
+				}
 			}
-		} else if err != nil {
-			slog.Warn("Worker: LLM extraction failed", "cve_id", model.CVEID, "error", err)
+		} else if i%50 == 0 {
+			slog.Debug("Worker: [NVD] Skipping LLM (heuristic mode active)", "cve_id", cve.ID)
 		}
 
 		// Heuristic Fallback
@@ -480,6 +502,8 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 		slog.Error("Worker: Error committing NVD batch transaction", "error", err)
 		return err
 	}
+
+	slog.Info("Worker: [NVD] Successfully committed batch to database", "batch_size", len(successfulCVEs))
 
 	// Trigger enrichment and alerts only AFTER successful commit
 	for _, model := range successfulCVEs {
