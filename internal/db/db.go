@@ -37,11 +37,15 @@ func InitDB() error {
 		sslMode = "prefer"
 	}
 	if sslMode == "disable" {
-		log.Println("WARNING: DB_SSLMODE is set to 'disable'. Database traffic is unencrypted.")
+		slog.Warn("DATABASE SECURITY ALERT: DB_SSLMODE is set to 'disable'. ALL database traffic is UNENCRYPTED and vulnerable to interception.", "ssl_mode", sslMode)
 	}
 
+	dbHost := os.Getenv("DB_HOST")
+	dbPort := os.Getenv("DB_PORT")
+	slog.Info("Connecting to primary database...", "host", dbHost, "port", dbPort, "ssl", sslMode)
+
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"), sslMode)
+		dbHost, dbPort, os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"), sslMode)
 
 	poolConfig, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
@@ -97,7 +101,7 @@ func InitDB() error {
 
 		replicaConfig, err := pgxpool.ParseConfig(replicaDSN)
 		if err != nil {
-			log.Printf("WARNING: unable to parse database replica URL: %v. Falling back to primary pool.", err)
+			slog.Warn("Unable to parse database replica URL. Falling back to primary pool.", "error", err)
 			ReplicaPool = Pool
 		} else {
 			replicaConfig.MaxConns = 15
@@ -107,7 +111,7 @@ func InitDB() error {
 
 			replicaCandidate, err := poolCreator(context.Background(), replicaConfig)
 			if err != nil {
-				log.Printf("WARNING: unable to create database replica pool: %v. Falling back to primary pool.", err)
+				slog.Warn("Unable to create database replica pool. Falling back to primary pool.", "error", err)
 				ReplicaPool = Pool
 			} else {
 				var pingErr error
@@ -119,17 +123,17 @@ func InitDB() error {
 					time.Sleep(dbRetryDelay)
 				}
 				if pingErr != nil {
-					log.Printf("WARNING: database replica connection failed after retries: %v. Falling back to primary pool.", pingErr)
+					slog.Warn("Database replica connection failed after retries. Falling back to primary pool.", "error", pingErr)
 					replicaCandidate.Close()
 					ReplicaPool = Pool
 				} else {
 					ReplicaPool = replicaCandidate
-					log.Println("Database read-replica connection pool initialized successfully.")
+					slog.Info("Database read-replica connection pool initialized successfully.", "host", replicaHost)
 				}
 			}
 		}
 	} else {
-		log.Println("DB_REPLICA_HOST not set. Routing read queries to primary database pool.")
+		slog.Info("DB_REPLICA_HOST not set. Routing read queries to primary database pool.")
 		ReplicaPool = Pool
 	}
 

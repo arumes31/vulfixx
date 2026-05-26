@@ -18,7 +18,7 @@ func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
 	}
 	w.waitUntilNextRun(ctx, "intelligence_sync", 2*time.Hour, 4*time.Minute)
 	if err := w.processIntelligence(ctx); err != nil {
-		log.Printf("Worker: Initial intelligence sync error: %v", err)
+		slog.Error("Worker: Initial intelligence sync error", "error", err)
 	}
 
 	ticker := time.NewTicker(2 * time.Hour)
@@ -29,9 +29,9 @@ func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			log.Println("Worker: Starting Intelligence Sync (Social Sentiment & Duplicate Detection)...")
+			slog.Info("Worker: Starting Intelligence Sync (Social Sentiment & Duplicate Detection)...")
 			if err := w.processIntelligence(ctx); err != nil {
-				log.Printf("Worker: Intelligence sync error: %v", err)
+				slog.Error("Worker: Intelligence sync error", "error", err)
 			}
 		}
 	}
@@ -74,7 +74,7 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		osintData, _ := json.Marshal(c.OSINTData)
 		_, err = w.Pool.Exec(ctx, "UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
 		if err != nil {
-			log.Printf("Worker: Failed to update OSINT data for %s: %v", c.CVEID, err)
+			slog.Error("Worker: Failed to update OSINT data", "cve_id", c.CVEID, "error", err)
 		}
 
 		// Throttle to avoid rate limits
@@ -208,7 +208,7 @@ func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []
 					waitTime = time.Duration(seconds) * time.Second
 				}
 			}
-			log.Printf("Worker: Reddit rate limited for %s, waiting %v...", cveID, waitTime)
+			slog.Warn("Worker: Reddit rate limited", "cve_id", cveID, "retry_after", waitTime)
 			select {
 			case <-ctx.Done():
 				return 0, nil, ctx.Err()

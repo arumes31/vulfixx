@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -27,7 +27,7 @@ func (w *Worker) syncGreyNoisePeriodically(ctx context.Context) {
 }
 
 func (w *Worker) syncGreyNoise(ctx context.Context) {
-	log.Println("Worker: [SYNC] Starting GreyNoise Intelligence synchronization...")
+	slog.Info("Worker: [SYNC] Starting GreyNoise Intelligence synchronization...")
 	
 	// Prioritize CVEs that haven't been checked yet, then oldest ones (older than 30 days)
 	rows, err := w.Pool.Query(ctx, `
@@ -37,7 +37,7 @@ func (w *Worker) syncGreyNoise(ctx context.Context) {
 		LIMIT 200
 	`)
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to fetch CVEs for GreyNoise sync: %v", err)
+		slog.Error("Worker: [ERROR] Failed to fetch CVEs for GreyNoise sync", "error", err)
 		return
 	}
 	defer rows.Close()
@@ -70,7 +70,7 @@ func (w *Worker) syncGreyNoise(ctx context.Context) {
 			WHERE cve_id = $2
 		`, hits, cveID)
 		if err != nil {
-			log.Printf("Worker: [ERROR] Failed to update GreyNoise hits for %s: %v", cveID, err)
+			slog.Error("Worker: [ERROR] Failed to update GreyNoise hits", "cve_id", cveID, "error", err)
 		}
 		count++
 
@@ -79,7 +79,7 @@ func (w *Worker) syncGreyNoise(ctx context.Context) {
 	}
 	
 	w.updateTaskStats(ctx, "greynoise_sync")
-	log.Printf("Worker: [SYNC] GreyNoise synchronization complete. Processed %d CVEs.", count)
+	slog.Info("Worker: [SYNC] GreyNoise synchronization complete.", "processed_count", count)
 }
 
 func (w *Worker) fetchGreyNoiseHits(ctx context.Context, cveID string) (int, error) {

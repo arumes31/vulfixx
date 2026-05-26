@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -46,7 +46,7 @@ func (w *Worker) syncOSVPeriodically(ctx context.Context) {
 }
 
 func (w *Worker) syncOSV(ctx context.Context) {
-	log.Println("Worker: [SYNC] Starting OSV (Open Source Vulnerabilities) synchronization...")
+	slog.Info("Worker: [SYNC] Starting OSV (Open Source Vulnerabilities) synchronization...")
 
 	// Prioritize CVEs that haven't been checked yet, then oldest ones (older than 30 days)
 	rows, err := w.Pool.Query(ctx, `
@@ -56,7 +56,7 @@ func (w *Worker) syncOSV(ctx context.Context) {
 		LIMIT 200
 	`)
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to fetch CVEs for OSV sync: %v", err)
+		slog.Error("Worker: [ERROR] Failed to fetch CVEs for OSV sync", "error", err)
 		return
 	}
 	defer rows.Close()
@@ -154,7 +154,7 @@ func (w *Worker) syncOSV(ctx context.Context) {
 	}
 
 	w.updateTaskStats(ctx, "osv_sync")
-	log.Printf("Worker: [SYNC] OSV synchronization complete. Updated %d records.", count)
+	slog.Info("Worker: [SYNC] OSV synchronization complete.", "updated_count", count)
 }
 
 func (w *Worker) fetchOSVData(ctx context.Context, cveID string) (*osvResponse, error) {

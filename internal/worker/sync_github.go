@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"math"
 	"net/http"
 	"os"
@@ -33,10 +33,11 @@ func (w *Worker) syncGitHubBuzzPeriodically(ctx context.Context) {
 }
 
 func (w *Worker) syncGitHubBuzz(ctx context.Context) {
-	log.Println("Worker: [SYNC] Starting GitHub Social Buzz synchronization...")
+	slog.Info("Worker: [SYNC] Starting GitHub Social Buzz synchronization...")
+
 	rows, err := w.Pool.Query(ctx, "SELECT cve_id FROM cves WHERE published_date > NOW() - INTERVAL '14 days' ORDER BY published_date DESC")
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to fetch CVEs for GitHub sync: %v", err)
+		slog.Error("Worker: [ERROR] Failed to fetch CVEs for GitHub sync", "error", err)
 		return
 	}
 	defer rows.Close()
@@ -45,13 +46,13 @@ func (w *Worker) syncGitHubBuzz(ctx context.Context) {
 	for rows.Next() {
 		var cveID string
 		if err := rows.Scan(&cveID); err != nil {
-			log.Printf("Worker: Error scanning CVE row for GitHub sync: %v", err)
+			slog.Error("Worker: Error scanning CVE row for GitHub sync", "error", err)
 			continue
 		}
 		cveIDs = append(cveIDs, cveID)
 	}
 	if err := rows.Err(); err != nil {
-		log.Printf("Worker: [ERROR] Row iteration error in syncGitHubBuzz: %v", err)
+		slog.Error("Worker: [ERROR] Row iteration error in syncGitHubBuzz", "error", err)
 	}
 
 	start := time.Now()
@@ -73,7 +74,7 @@ CVELoop:
 			githubURL := fmt.Sprintf("https://api.github.com/search/repositories?q=%s", cveID)
 			req, err := http.NewRequestWithContext(ctx, "GET", githubURL, nil)
 			if err != nil {
-				log.Printf("Worker: [ERROR] Failed to create GitHub request for %s: %v", cveID, err)
+				slog.Error("Worker: [ERROR] Failed to create GitHub request", "cve_id", cveID, "error", err)
 				continue CVELoop
 			}
 			req.Header.Set("Accept", "application/vnd.github.v3+json")
@@ -83,7 +84,7 @@ CVELoop:
 			}
 			resp, err := w.HTTP.Do(req)
 			if err != nil {
-				log.Printf("Worker: [ERROR] Failed to fetch GitHub buzz for %s: %v", cveID, err)
+				slog.Error("Worker: [ERROR] Failed to fetch GitHub buzz", "cve_id", cveID, "error", err)
 				waitDur := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
 				select {
 				case <-ctx.Done():
@@ -111,7 +112,7 @@ CVELoop:
 				if waitDur > maxWait {
 					waitDur = maxWait
 				}
-				log.Printf("Worker: [WARN] GitHub rate limited for %s, waiting %v (attempt %d/%d)", cveID, waitDur, attempt+1, maxGHRetries)
+				slog.Warn("Worker: [WARN] GitHub rate limited", "cve_id", cveID, "wait_duration", waitDur, "attempt", attempt+1, "max_retries", maxGHRetries)
 				select {
 				case <-ctx.Done():
 					return
@@ -120,7 +121,7 @@ CVELoop:
 				continue // retry
 			}
 			if resp.StatusCode >= 500 {
-				log.Printf("Worker: [WARN] GitHub API returned status %d for %s", resp.StatusCode, cveID)
+				slog.Warn("Worker: [WARN] GitHub API returned server error", "status", resp.StatusCode, "cve_id", cveID)
 				_ = resp.Body.Close()
 				waitDur := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
 				select {
@@ -131,14 +132,14 @@ CVELoop:
 				continue // retry
 			}
 			if resp.StatusCode != http.StatusOK {
-				log.Printf("Worker: [WARN] GitHub API returned status %d for %s", resp.StatusCode, cveID)
+				slog.Warn("Worker: [WARN] GitHub API returned non-OK status", "status", resp.StatusCode, "cve_id", cveID)
 				_ = resp.Body.Close()
 				continue CVELoop
 			}
 			err = json.NewDecoder(resp.Body).Decode(&ghResp)
 			_ = resp.Body.Close()
 			if err != nil {
-				log.Printf("Worker: [ERROR] Failed to decode GitHub response for %s: %v", cveID, err)
+				slog.Error("Worker: [ERROR] Failed to decode GitHub response", "cve_id", cveID, "error", err)
 				waitDur := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
 				select {
 				case <-ctx.Done():
@@ -153,10 +154,10 @@ CVELoop:
 		if fetchOK {
 			_, err := w.Pool.Exec(ctx, "UPDATE cves SET github_poc_count = $1 WHERE cve_id = $2", ghResp.TotalCount, cveID)
 			if err != nil {
-				log.Printf("Worker: [ERROR] Failed to update GitHub buzz for %s: %v", cveID, err)
+				slog.Error("Worker: [ERROR] Failed to update GitHub buzz in DB", "cve_id", cveID, "error", err)
 			}
 		} else {
-			log.Printf("Worker: [WARN] Skipping DB update for %s — all GitHub retries failed", cveID)
+			slog.Warn("Worker: [WARN] Skipping DB update for CVE — all GitHub retries failed", "cve_id", cveID)
 		}
 		select {
 		case <-ctx.Done():
@@ -165,5 +166,5 @@ CVELoop:
 		}
 	}
 	w.updateTaskStats(ctx, "github_buzz_sync")
-	log.Printf("Worker: [SYNC] GitHub Social Buzz synchronization complete. Duration: %v", time.Since(start))
+	slog.Info("Worker: [SYNC] GitHub Social Buzz synchronization complete.", "duration", time.Since(start))
 }

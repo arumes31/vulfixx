@@ -100,7 +100,7 @@ func (w *Worker) syncAdvisoryRSSPeriodically(ctx context.Context) {
 }
 
 func (w *Worker) syncAdvisoryRSS(ctx context.Context) {
-	log.Printf("Worker: [SYNC] Starting Generalized Advisory feeds synchronization for %d feeds...", len(advisoryFeeds))
+	slog.Info("Worker: [SYNC] Starting Generalized Advisory feeds synchronization", "feed_count", len(advisoryFeeds))
 	for _, feed := range advisoryFeeds {
 		select {
 		case <-ctx.Done():
@@ -110,14 +110,14 @@ func (w *Worker) syncAdvisoryRSS(ctx context.Context) {
 		}
 	}
 	w.updateTaskStats(ctx, "advisory_rss_sync")
-	log.Println("Worker: [SYNC] Generalized Advisory feeds synchronization complete.")
+	slog.Info("Worker: [SYNC] Generalized Advisory feeds synchronization complete.")
 }
 
 func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
-	log.Printf("Worker: [DEBUG] Syncing feed: %s", feed.Name)
+	slog.Debug("Worker: [DEBUG] Syncing feed", "name", feed.Name, "url", feed.URL)
 	req, err := http.NewRequestWithContext(ctx, "GET", feed.URL, nil)
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to create request for %s: %v", feed.Name, err)
+		slog.Error("Worker: [ERROR] Failed to create request for feed", "name", feed.Name, "error", err)
 		return
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -126,13 +126,13 @@ func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
 
 	resp, err := w.HTTP.Do(req)
 	if err != nil {
-		log.Printf("Worker: [ERROR] HTTP request failed for %s: %v", feed.Name, err)
+		slog.Error("Worker: [ERROR] HTTP request failed for feed", "name", feed.Name, "error", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Worker: [ERROR] Feed for %s returned status %d", feed.Name, resp.StatusCode)
+		slog.Error("Worker: [ERROR] Feed returned error status", "name", feed.Name, "status", resp.StatusCode)
 		return
 	}
 
@@ -140,7 +140,7 @@ func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
 	if resp.Header.Get("Content-Encoding") == "gzip" {
 		gz, err := gzip.NewReader(resp.Body)
 		if err != nil {
-			log.Printf("Worker: [ERROR] Failed to create gzip reader for %s: %v", feed.Name, err)
+			slog.Error("Worker: [ERROR] Failed to create gzip reader for feed", "name", feed.Name, "error", err)
 			return
 		}
 		defer gz.Close()
@@ -149,12 +149,12 @@ func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
 
 	body, err := io.ReadAll(io.LimitReader(reader, maxFeedBodySize))
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to read feed body for %s: %v", feed.Name, err)
+		slog.Error("Worker: [ERROR] Failed to read feed body", "name", feed.Name, "error", err)
 		return
 	}
 
 	if int64(len(body)) >= maxFeedBodySize {
-		log.Printf("Worker: [ERROR] Feed body for %s was truncated (exceeded %d bytes)", feed.Name, maxFeedBodySize)
+		slog.Error("Worker: [ERROR] Feed body was truncated", "name", feed.Name, "max_size", maxFeedBodySize)
 		return
 	}
 
@@ -185,7 +185,7 @@ func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
 					items = append(items, GenericFeedItem{Title: item.Title, Link: item.Link, Description: item.Description})
 				}
 			} else {
-				log.Printf("Worker: [WARN] Failed to unmarshal feed for %s (unknown format or empty)", feed.Name)
+				slog.Warn("Worker: [WARN] Failed to unmarshal feed", "name", feed.Name)
 				return
 			}
 		}
@@ -218,7 +218,7 @@ func (w *Worker) integrateAdvisoryCVE(ctx context.Context, cveID string, item Ge
 
 	tx, err := w.Pool.Begin(ctx)
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to start transaction for advisory sync: %v", err)
+		slog.Error("Worker: [ERROR] Failed to start transaction for advisory sync", "cve_id", cveID, "error", err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -234,7 +234,7 @@ func (w *Worker) integrateAdvisoryCVE(ctx context.Context, cveID string, item Ge
 			// CVE doesn't exist in our database; we skip it to prevent "bloat"
 			return
 		}
-		log.Printf("Worker: [ERROR] Failed to query CVE %s for advisory sync: %v", cveID, err)
+		slog.Error("Worker: [ERROR] Failed to query CVE for advisory sync", "cve_id", cveID, "error", err)
 		return
 	}
 
@@ -251,19 +251,19 @@ func (w *Worker) integrateAdvisoryCVE(ctx context.Context, cveID string, item Ge
 		model.References = append(model.References, item.Link)
 		_, err := tx.Exec(ctx, "UPDATE cves SET \"references\" = $1, updated_at = NOW() WHERE id = $2", model.References, model.ID)
 		if err != nil {
-			log.Printf("Worker: [ERROR] Failed to update %s reference for %s: %v", feed.Name, cveID, err)
+			slog.Error("Worker: [ERROR] Failed to update reference for CVE", "cve_id", cveID, "feed", feed.Name, "error", err)
 			return
 		}
 
 		if err := tx.Commit(ctx); err != nil {
-			log.Printf("Worker: [ERROR] Failed to commit transaction for %s: %v", cveID, err)
+			slog.Error("Worker: [ERROR] Failed to commit transaction for CVE update", "cve_id", cveID, "error", err)
 			return
 		}
 
-		log.Printf("Worker: [SYNC] Added %s reference to existing CVE %s", feed.Name, cveID)
+		slog.Info("Worker: [SYNC] Added new reference to existing CVE", "cve_id", cveID, "feed", feed.Name, "link", item.Link)
 		// Enqueue alert for enrichment/update using the updated model
 		if err := w.enqueueAlertsForCVE(ctx, model); err != nil {
-			log.Printf("Worker: [ERROR] Failed to enqueue alerts for CVE %s: %v", cveID, err)
+			slog.Error("Worker: [ERROR] Failed to enqueue alerts for CVE", "cve_id", cveID, "error", err)
 		}
 	}
 }

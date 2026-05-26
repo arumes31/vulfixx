@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"compress/gzip"
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -29,31 +29,31 @@ func (w *Worker) syncEPSSPeriodically(ctx context.Context) {
 var defaultEPSSBaseURL = "https://epss.cyentia.com/epss_scores-current.csv.gz"
 
 func (w *Worker) syncEPSS(ctx context.Context) {
-	log.Println("Worker: [SYNC] Starting EPSS score synchronization...")
+	slog.Info("Worker: [SYNC] Starting EPSS score synchronization...")
 	start := time.Now()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", defaultEPSSBaseURL, nil)
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to create EPSS bulk request: %v", err)
+		slog.Error("Worker: [ERROR] Failed to create EPSS bulk request", "error", err)
 		return
 	}
 	req.Header.Set("User-Agent", "Vulfixx-Threat-Intel-Bot/1.0")
 
 	resp, err := w.HTTP.Do(req)
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to download EPSS bulk CSV: %v", err)
+		slog.Error("Worker: [ERROR] Failed to download EPSS bulk CSV", "error", err)
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Worker: [ERROR] EPSS bulk CSV returned status %d", resp.StatusCode)
+		slog.Error("Worker: [ERROR] EPSS bulk CSV returned error status", "status", resp.StatusCode)
 		return
 	}
 
 	gzReader, err := gzip.NewReader(resp.Body)
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to create gzip reader for EPSS CSV: %v", err)
+		slog.Error("Worker: [ERROR] Failed to create gzip reader for EPSS CSV", "error", err)
 		return
 	}
 	defer func() { _ = gzReader.Close() }()
@@ -81,7 +81,7 @@ func (w *Worker) syncEPSS(ctx context.Context) {
 			} else {
 				parseErrorCount++
 				if parseErrorCount < 5 {
-					log.Printf("Worker: [DEBUG] Failed to parse EPSS score '%s' for CVE '%s': %v", scoreStr, cveID, err)
+					slog.Debug("Worker: [DEBUG] Failed to parse EPSS score", "score_str", scoreStr, "cve_id", cveID, "error", err)
 				}
 			}
 		}
@@ -102,12 +102,12 @@ func (w *Worker) syncEPSS(ctx context.Context) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		log.Printf("Worker: [ERROR] EPSS CSV scanner error: %v", err)
+		slog.Error("Worker: [ERROR] EPSS CSV scanner error", "error", err)
 		return
 	}
 
 	w.updateTaskStats(ctx, "epss_sync")
-	log.Printf("Worker: [SYNC] EPSS score synchronization complete. Processed %d records. Duration: %v", totalProcessed, time.Since(start))
+	slog.Info("Worker: [SYNC] EPSS score synchronization complete.", "processed_count", totalProcessed, "duration", time.Since(start))
 }
 
 func (w *Worker) updateEPSSBatch(ctx context.Context, batch [][]interface{}) {
@@ -128,6 +128,6 @@ func (w *Worker) updateEPSSBatch(ctx context.Context, batch [][]interface{}) {
 	`
 	_, err := w.Pool.Exec(ctx, query, cveIDs, scores)
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to bulk update EPSS scores: %v", err)
+		slog.Error("Worker: [ERROR] Failed to bulk update EPSS scores", "error", err)
 	}
 }

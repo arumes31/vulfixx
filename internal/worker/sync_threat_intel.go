@@ -5,7 +5,7 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -37,7 +37,7 @@ func (w *Worker) syncThreatIntelPeriodically(ctx context.Context) {
 }
 
 func (w *Worker) syncThreatIntel(ctx context.Context) {
-	log.Println("Worker: [SYNC] Starting Threat Intel synchronization...")
+	slog.Info("Worker: [SYNC] Starting Threat Intel synchronization...")
 	
 	// Curated built-in associations as baseline / fallback
 	curatedAssociations := []models.ThreatAssociation{
@@ -70,14 +70,14 @@ func (w *Worker) syncThreatIntel(ctx context.Context) {
 				if err == nil {
 					var feed ThreatIntelFeed
 					if err := json.Unmarshal(bodyBytes, &feed); err == nil && len(feed.Associations) > 0 {
-						log.Printf("Worker: [SYNC] Successfully fetched %d Threat Intel associations from feed", len(feed.Associations))
+						slog.Info("Worker: [SYNC] Successfully fetched Threat Intel associations from feed", "count", len(feed.Associations))
 						for _, a := range feed.Associations {
 							if a.CVEID == "" || a.EntityName == "" || a.EntityType == "" || a.Source == "" {
-								log.Printf("Worker: [WARN] Skipping threat association with empty required fields: CVEID=%q, EntityName=%q, EntityType=%q, Source=%q", a.CVEID, a.EntityName, a.EntityType, a.Source)
+								slog.Warn("Worker: [WARN] Skipping threat association with empty required fields", "cve_id", a.CVEID, "entity_name", a.EntityName, "entity_type", a.EntityType, "source", a.Source)
 								continue
 							}
 							if a.EntityType != "threat_actor" && a.EntityType != "ransomware" {
-								log.Printf("Worker: [WARN] Skipping threat association with invalid EntityType: %q", a.EntityType)
+								slog.Warn("Worker: [WARN] Skipping threat association with invalid EntityType", "entity_type", a.EntityType, "cve_id", a.CVEID)
 								continue
 							}
 							associations = append(associations, models.ThreatAssociation{
@@ -88,14 +88,14 @@ func (w *Worker) syncThreatIntel(ctx context.Context) {
 							})
 						}
 					} else {
-						log.Printf("Worker: [WARN] Failed to unmarshal Threat Intel feed: %v. Using curated fallback.", err)
+						slog.Warn("Worker: [WARN] Failed to unmarshal Threat Intel feed. Using curated fallback.", "error", err)
 					}
 				}
 			} else {
-				log.Printf("Worker: [WARN] Threat Intel feed returned status %d. Using curated fallback.", resp.StatusCode)
+				slog.Warn("Worker: [WARN] Threat Intel feed returned error status. Using curated fallback.", "status", resp.StatusCode)
 			}
 		} else {
-			log.Printf("Worker: [WARN] Failed to fetch Threat Intel feed: %v. Using curated fallback.", err)
+			slog.Warn("Worker: [WARN] Failed to fetch Threat Intel feed. Using curated fallback.", "error", err)
 		}
 	}
 
@@ -115,7 +115,7 @@ func (w *Worker) syncThreatIntel(ctx context.Context) {
 
 	tx, err := w.Pool.Begin(ctx)
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to start Threat Intel transaction: %v", err)
+		slog.Error("Worker: [ERROR] Failed to start Threat Intel transaction", "error", err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -127,16 +127,16 @@ func (w *Worker) syncThreatIntel(ctx context.Context) {
 			ON CONFLICT (cve_id, entity_name, entity_type) DO NOTHING
 		`, assoc.CVEID, assoc.EntityName, assoc.EntityType, assoc.Source)
 		if err != nil {
-			log.Printf("Worker: [ERROR] Failed to insert threat association for %s: %v", assoc.CVEID, err)
+			slog.Error("Worker: [ERROR] Failed to insert threat association", "cve_id", assoc.CVEID, "entity", assoc.EntityName, "error", err)
 			return
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		log.Printf("Worker: [ERROR] Failed to commit Threat Intel transaction: %v", err)
+		slog.Error("Worker: [ERROR] Failed to commit Threat Intel transaction", "error", err)
 		return
 	}
 
 	w.updateTaskStats(ctx, "threat_intel_sync")
-	log.Printf("Worker: [SYNC] Threat Intel synchronization complete. Processed %d associations.", len(associations))
+	slog.Info("Worker: [SYNC] Threat Intel synchronization complete.", "processed_count", len(associations))
 }

@@ -45,7 +45,7 @@ func setCooldown(provider string, duration time.Duration) {
 	cooldownMutex.Lock()
 	defer cooldownMutex.Unlock()
 	providerCooldowns[provider] = time.Now().Add(duration)
-	log.Printf("LLM: [COOLDOWN] Provider %s is exhausted. Cooling down for %v...", provider, duration)
+	slog.Info("LLM: [COOLDOWN] Provider is exhausted. Cooling down...", "provider", provider, "duration", duration)
 }
 
 func isCooledDown(provider string) bool {
@@ -98,7 +98,7 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 		case "arliai":
 			results, err = extractWithArliAI(ctx, config.AppConfig.ArliAIAPIKey, config.AppConfig.ArliAIModel, config.AppConfig.ArliAIEndpoint, fullContext)
 		default:
-			log.Printf("LLM: [WARN] Unsupported provider in chain: %s", p)
+			slog.Warn("LLM: [WARN] Unsupported provider in chain", "provider", p)
 			continue
 		}
 
@@ -119,7 +119,7 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 			setCooldown(p, 5*time.Minute)
 		}
 
-		log.Printf("LLM: [FALLBACK] Provider %s failed, trying next... Error: %v", p, err)
+		slog.Info("LLM: [FALLBACK] Provider failed, trying next...", "provider", p, "error", err)
 		lastErr = err
 	}
 
@@ -183,7 +183,7 @@ Output: {"products": [{"vendor": "Sendmail", "product": "Sendmail", "version": n
 
 Description: ` + description
 	if os.Getenv("LLM_DEBUG") == "true" {
-		log.Printf("LLM: [DEBUG] Gemini Prompt: %s", prompt)
+		slog.Debug("LLM: [DEBUG] Gemini Prompt", "prompt", prompt)
 	}
 
 	result, err := client.Models.GenerateContent(ctx, model, genai.Text(prompt), config)
@@ -192,7 +192,7 @@ Description: ` + description
 	}
 
 	if os.Getenv("LLM_DEBUG") == "true" {
-		log.Printf("LLM: [DEBUG] Gemini Raw Response: %s", result.Text())
+		slog.Debug("LLM: [DEBUG] Gemini Raw Response", "response", result.Text())
 	}
 
 	var res ExtractionResponse
@@ -233,7 +233,7 @@ Output: {"products": [
 Description: ` + description
 
 	if os.Getenv("LLM_DEBUG") == "true" {
-		log.Printf("LLM: [DEBUG] Ollama Prompt: %s", prompt)
+		slog.Debug("LLM: [DEBUG] Ollama Prompt", "prompt", prompt)
 	}
 
 	payload := map[string]interface{}{
@@ -274,7 +274,7 @@ Description: ` + description
 	}
 
 	if os.Getenv("LLM_DEBUG") == "true" {
-		log.Printf("LLM: [DEBUG] Ollama Raw Response: %s", ollamaResp.Response)
+		slog.Debug("LLM: [DEBUG] Ollama Raw Response", "response", ollamaResp.Response)
 	}
 
 	var res ExtractionResponse
@@ -315,8 +315,8 @@ Output: {"products": [
 ]}`
 
 	if os.Getenv("LLM_DEBUG") == "true" {
-		log.Printf("LLM: [DEBUG] ArliAI System Prompt: %s", systemPrompt)
-		log.Printf("LLM: [DEBUG] ArliAI Description: %s", description)
+		slog.Debug("LLM: [DEBUG] ArliAI System Prompt", "prompt", systemPrompt)
+		slog.Debug("LLM: [DEBUG] ArliAI Description", "description", description)
 	}
 
 	payload := map[string]interface{}{
@@ -348,7 +348,7 @@ Output: {"products": [
 		if i > 0 {
 			// Backoff before retry
 			wait := time.Duration(i*2) * time.Second
-			log.Printf("LLM: [RETRY] ArliAI hit limit, waiting %v before retry %d/3...", wait, i)
+			slog.Info("LLM: [RETRY] ArliAI hit limit, waiting before retry", "wait", wait, "attempt", i, "max_retries", 3)
 			timeSleep(wait)
 		}
 
@@ -394,7 +394,7 @@ Output: {"products": [
 
 		content := chatResp.Choices[0].Message.Content
 		if os.Getenv("LLM_DEBUG") == "true" {
-			log.Printf("LLM: [DEBUG] ArliAI Raw Response: %s", content)
+			slog.Debug("LLM: [DEBUG] ArliAI Raw Response", "response", content)
 		}
 
 		// Clean JSON if the model wrapped it in markdown code blocks

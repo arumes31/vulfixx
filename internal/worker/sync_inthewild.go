@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -29,7 +29,7 @@ func (w *Worker) syncInTheWildPeriodically(ctx context.Context) {
 }
 
 func (w *Worker) syncInTheWild(ctx context.Context) {
-	log.Println("Worker: [SYNC] Starting InTheWild.io synchronization...")
+	slog.Info("Worker: [SYNC] Starting InTheWild.io synchronization...")
 
 	// Prioritize CVEs that haven't been checked yet, then oldest ones (older than 30 days)
 	// We only process CVEs that have a standard CVE-ID format
@@ -41,7 +41,7 @@ func (w *Worker) syncInTheWild(ctx context.Context) {
 		LIMIT 100
 	`)
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to fetch CVEs for InTheWild sync: %v", err)
+		slog.Error("Worker: [ERROR] Failed to fetch CVEs for InTheWild sync", "error", err)
 		return
 	}
 	defer rows.Close()
@@ -50,7 +50,7 @@ func (w *Worker) syncInTheWild(ctx context.Context) {
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			log.Printf("Worker: [ERROR] Failed to scan CVE ID: %v", err)
+			slog.Error("Worker: [ERROR] Failed to scan CVE ID for InTheWild sync", "error", err)
 			continue
 		}
 		cveIDs = append(cveIDs, id)
@@ -73,7 +73,7 @@ func (w *Worker) syncInTheWild(ctx context.Context) {
 		if data != nil {
 			dataJSON, err := json.Marshal(data)
 			if err != nil {
-				log.Printf("Worker: [ERROR] Failed to marshal InTheWild data for %s: %v", cveID, err)
+				slog.Error("Worker: [ERROR] Failed to marshal InTheWild data", "cve_id", cveID, "error", err)
 				continue
 			}
 			_, err = w.Pool.Exec(ctx, `
@@ -82,7 +82,7 @@ func (w *Worker) syncInTheWild(ctx context.Context) {
 				WHERE cve_id = $2
 			`, dataJSON, cveID)
 			if err != nil {
-				log.Printf("Worker: [ERROR] Failed to update InTheWild data for %s: %v", cveID, err)
+				slog.Error("Worker: [ERROR] Failed to update InTheWild data", "cve_id", cveID, "error", err)
 			} else {
 				count++
 			}
@@ -102,7 +102,7 @@ func (w *Worker) syncInTheWild(ctx context.Context) {
 	}
 
 	w.updateTaskStats(ctx, "inthewild_sync")
-	log.Printf("Worker: [SYNC] InTheWild.io synchronization complete. Processed %d records.", count)
+	slog.Info("Worker: [SYNC] InTheWild.io synchronization complete.", "processed_count", count)
 }
 
 func (w *Worker) fetchInTheWildData(ctx context.Context, cveID string) (map[string]interface{}, error) {

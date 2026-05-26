@@ -9,7 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -21,23 +21,24 @@ import (
 )
 
 func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName string) bool {
-	log.Printf("ALERT: Processing multi-channel alert for %s (CVE: %s)\n", redactEmail(email), cve.CVEID)
+	redacted := redactEmail(email)
+	slog.Info("ALERT: Processing multi-channel alert", "email", redacted, "cve_id", cve.CVEID)
 	
 	sev, color := getSeverityInfo(cve.CVSSScore)
 	actionToken, err := auth.GenerateToken()
 	if err != nil {
-		log.Printf("ALERT: Failed to generate action token for %s: %v", cve.CVEID, err)
+		slog.Error("ALERT: Failed to generate action token", "cve_id", cve.CVEID, "error", err)
 		return false
 	}
 	
 	// Store action token in Redis for buttons
 	actionData, err := json.Marshal(map[string]interface{}{"user_id": sub.UserID, "cve_id": cve.ID, "keyword": sub.Keyword})
 	if err != nil {
-		log.Printf("ALERT: Failed to marshal action data for %s: %v", cve.CVEID, err)
+		slog.Error("ALERT: Failed to marshal action data", "cve_id", cve.CVEID, "error", err)
 		return false
 	}
 	if err := w.Redis.Set(context.Background(), "alert_action:"+actionToken, actionData, 48*time.Hour).Err(); err != nil {
-		log.Printf("ALERT: Failed to store action token in Redis for %s: %v", cve.CVEID, err)
+		slog.Error("ALERT: Failed to store action token in Redis", "cve_id", cve.CVEID, "error", err)
 		return false
 	}
 
@@ -124,7 +125,7 @@ func (w *Worker) logDelivery(userID, subID, cveID int, channel string, success b
 		VALUES ($1, $2, $3, $4, $5, $6)
 	`, userID, subID, cveID, channel, status, errMsg)
 	if err != nil {
-		log.Printf("Failed to log notification delivery: %v", err)
+		slog.Error("Failed to log notification delivery", "error", err)
 	}
 }
 
@@ -356,7 +357,7 @@ func (w *Worker) sendEmailAlert(email string, cve *models.CVE, sev, color, token
 
 	body, err := RenderEmailTemplate("Security Alert: "+cve.CVEID, contentTmpl, data)
 	if err != nil {
-		log.Printf("Worker Notifier: Failed to render email template: %v", err)
+		slog.Error("Worker Notifier: Failed to render email template", "cve_id", cve.CVEID, "error", err)
 		return false
 	}
 
