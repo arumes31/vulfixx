@@ -349,3 +349,90 @@ func TestAPICVEsHandler(t *testing.T) {
 		}
 	})
 }
+
+func TestCVEDetailHandler_LoggedIn(t *testing.T) {
+	t.Run("SuccessWithUserAndPagination", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		cveID := "CVE-2023-9999"
+		userID := 123
+		publishedDate := time.Now().Add(-24 * time.Hour).Truncate(time.Second)
+
+		// Primary CVE Query
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT
+			id, cve_id, description, COALESCE(cvss_score, 0), vector_string, cisa_kev,
+			published_date, updated_date, 'active' as status, "references",
+			COALESCE(epss_score, 0), COALESCE(cwe_id, ''), COALESCE(cwe_name, ''), COALESCE(github_poc_count, 0),
+			COALESCE(greynoise_hits, 0), COALESCE(greynoise_classification, ''), osv_data,
+			configurations, COALESCE(vendor, ''), COALESCE(product, ''), COALESCE(affected_products, '[]'),
+			COALESCE(priority, 'P3') as priority
+		FROM cves
+		WHERE cve_id = $1`)).
+			WithArgs(cveID).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "configurations", "vendor", "product", "affected_products", "priority"}).
+				AddRow(1, cveID, "Detailed Test", 9.9, "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", true, publishedDate, time.Now(), "active", []string{"http://ref.com"}, 0.99, "CWE-89", "SQLi", 10, 5, "High", []byte("{}"), []byte("[]"), "VendorX", "ProductY", []byte("[]"), "P0"))
+
+		// CISA Ransomware Query
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT cisa_ransomware FROM cves WHERE cve_id = $1")).
+			WithArgs(cveID).
+			WillReturnRows(pgxmock.NewRows([]string{"cisa_ransomware"}).AddRow(true))
+
+		// Threat Associations Query
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, entity_name, entity_type, source, created_at
+		FROM cve_threat_associations
+		WHERE cve_id = $1
+		ORDER BY entity_name ASC`)).
+			WithArgs(cveID).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "entity_name", "entity_type", "source", "created_at"}).
+				AddRow(1, cveID, "Actor1", "Threat Actor", "CISA", time.Now()))
+
+		// Next ID Query
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT cve_id FROM cves
+			WHERE published_date < $1 OR (published_date = $1 AND id < $2)
+			ORDER BY published_date DESC, id DESC LIMIT 1`)).
+			WithArgs(publishedDate, 1).
+			WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-OLDER"))
+
+		// Prev ID Query
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT cve_id FROM cves
+			WHERE published_date > $1 OR (published_date = $1 AND id > $2)
+			ORDER BY published_date ASC, id ASC LIMIT 1`)).
+			WithArgs(publishedDate, 1).
+			WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-NEWER"))
+
+		// User Assets Query
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT a.name, COALESCE(array_agg(ak.keyword) FILTER (WHERE ak.keyword IS NOT NULL), '{}')
+			FROM assets a
+			LEFT JOIN asset_keywords ak ON a.id = ak.asset_id
+			WHERE a.user_id = $1 OR a.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
+			GROUP BY a.id, a.name`)).
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"name", "keywords"}).
+				AddRow("Asset1", []string{"key1", "key2"}))
+
+		// Base Queries in RenderTemplate
+		expectBaseQueries(mock, userID)
+
+		req, _ := http.NewRequest("GET", "/cve/"+cveID, nil)
+		setSessionUser(t, app, req, userID, false)
+
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("id", cveID)
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+		rr := httptest.NewRecorder()
+		app.CVEDetailHandler(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+}
