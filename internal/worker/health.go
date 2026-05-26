@@ -131,7 +131,7 @@ func (w *Worker) checkNotificationHealth(ctx context.Context) {
 		SELECT COUNT(*) FROM notification_delivery_logs 
 		WHERE status = 'failure' AND delivery_time > NOW() - INTERVAL '24 hours'
 	`).Scan(&failureCount)
-	
+
 	if err != nil {
 		log.Printf("Worker Health ERROR: notification health query failed: %v", err)
 		return

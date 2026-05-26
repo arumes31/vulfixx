@@ -85,12 +85,8 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 
 func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
 	// Hacker News Mentions
-	hnURL := fmt.Sprintf("https://hn.algolia.com/api/v1/search?query=%s&tags=story", c.CVEID)
-	var hnData struct {
-		NbHits int `json:"nbHits"`
-	}
-	if err := w.getJSON(ctx, hnURL, &hnData); err == nil {
-		c.OSINTData["hn_mentions"] = hnData.NbHits
+	if hnResp, err := w.searchHackerNews(ctx, c.CVEID); err == nil {
+		c.OSINTData["hn_mentions"] = hnResp.NbHits
 	}
 
 	// Reddit Mentions (Search)

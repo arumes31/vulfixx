@@ -22,14 +22,14 @@ import (
 
 func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName string) bool {
 	log.Printf("ALERT: Processing multi-channel alert for %s (CVE: %s)\n", redactEmail(email), cve.CVEID)
-	
+
 	sev, color := getSeverityInfo(cve.CVSSScore)
 	actionToken, err := auth.GenerateToken()
 	if err != nil {
 		log.Printf("ALERT: Failed to generate action token for %s: %v", cve.CVEID, err)
 		return false
 	}
-	
+
 	// Store action token in Redis for buttons
 	actionData, err := json.Marshal(map[string]interface{}{"user_id": sub.UserID, "cve_id": cve.ID, "keyword": sub.Keyword})
 	if err != nil {
@@ -42,7 +42,9 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 	}
 
 	baseURL := os.Getenv("BASE_URL")
-	if baseURL == "" { baseURL = "http://localhost:8080" }
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
 
 	var wg sync.WaitGroup
 	results := make(chan bool, 5)
@@ -104,21 +106,25 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 
 	wg.Wait()
 	close(results)
-	
+
 	hasAnySuccess := false
 	for r := range results {
-		if r { hasAnySuccess = true }
+		if r {
+			hasAnySuccess = true
+		}
 	}
 	return hasAnySuccess
 }
 
 func (w *Worker) logDelivery(userID, subID, cveID int, channel string, success bool, errMsg string) {
 	status := "success"
-	if !success { status = "failure" }
-	
+	if !success {
+		status = "failure"
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	_, err := w.Pool.Exec(ctx, `
 		INSERT INTO notification_delivery_logs (user_id, subscription_id, cve_id, channel, status, error_message)
 		VALUES ($1, $2, $3, $4, $5, $6)
@@ -129,9 +135,15 @@ func (w *Worker) logDelivery(userID, subID, cveID int, channel string, success b
 }
 
 func getSeverityInfo(score float64) (string, string) {
-	if score >= 9.0 { return "Critical", "#ff4d4d" }
-	if score >= 7.0 { return "High", "#ff8c00" }
-	if score >= 4.0 { return "Medium", "#ffcc00" }
+	if score >= 9.0 {
+		return "Critical", "#ff4d4d"
+	}
+	if score >= 7.0 {
+		return "High", "#ff8c00"
+	}
+	if score >= 4.0 {
+		return "Medium", "#ffcc00"
+	}
 	return "Low", "#00cc66"
 }
 
@@ -157,9 +169,9 @@ func (w *Worker) sendSlackAlert(webhookURL string, cve *models.CVE, asset string
 				"type": "actions",
 				"elements": []interface{}{
 					map[string]interface{}{
-						"type": "button",
-						"text": map[string]interface{}{"type": "plain_text", "text": "Acknowledge"},
-						"url":  fmt.Sprintf("%s/alert-action?token=%s&action=acknowledge", baseURL, token),
+						"type":  "button",
+						"text":  map[string]interface{}{"type": "plain_text", "text": "Acknowledge"},
+						"url":   fmt.Sprintf("%s/alert-action?token=%s&action=acknowledge", baseURL, token),
 						"style": "primary",
 					},
 					map[string]interface{}{
@@ -190,9 +202,9 @@ func (w *Worker) sendTeamsAlert(webhookURL string, cve *models.CVE, asset string
 					},
 					"actions": []interface{}{
 						map[string]interface{}{
-							"type": "Action.OpenUrl",
+							"type":  "Action.OpenUrl",
 							"title": "Acknowledge",
-							"url": fmt.Sprintf("%s/alert-action?token=%s&action=acknowledge", baseURL, token),
+							"url":   fmt.Sprintf("%s/alert-action?token=%s&action=acknowledge", baseURL, token),
 						},
 					},
 					"$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
@@ -208,7 +220,7 @@ func (w *Worker) sendBrowserPush(userID int, cve *models.CVE) bool {
 	// Implementation would use web-push-go and VAPID keys
 	// For now, we log the intent and could trigger a WebSocket event as a fallback
 	log.Printf("Browser Push triggered for user %d, CVE %s", userID, cve.CVEID)
-	return false 
+	return false
 }
 
 func (w *Worker) postJSON(webhookURL string, payload interface{}) (bool, string) {
@@ -234,16 +246,24 @@ func (w *Worker) postJSON(webhookURL string, payload interface{}) (bool, string)
 			for _, ipAddr := range ips {
 				if addr, ok := netip.AddrFromSlice(ipAddr.IP); ok {
 					if addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified() {
-						if os.Getenv("TEST_MODE") != "1" { continue }
+						if os.Getenv("TEST_MODE") != "1" {
+							continue
+						}
 					}
 					safeIP = ipAddr.IP
 					break
 				}
 			}
-			if safeIP == nil { return nil, fmt.Errorf("no safe IP for webhook host") }
+			if safeIP == nil {
+				return nil, fmt.Errorf("no safe IP for webhook host")
+			}
 			port := parsedURL.Port()
 			if port == "" {
-				if parsedURL.Scheme == "https" { port = "443" } else { port = "80" }
+				if parsedURL.Scheme == "https" {
+					port = "443"
+				} else {
+					port = "80"
+				}
 			}
 			return dialer.DialContext(dialCtx, network, net.JoinHostPort(safeIP.String(), port))
 		},
@@ -288,7 +308,7 @@ func (w *Worker) sendEmailAlert(email string, cve *models.CVE, sev, color, token
 	}
 
 	escapedToken := url.QueryEscape(token)
-	
+
 	contentTmpl := `
 		<div style="margin-bottom: 20px;">
 			{{if .CISAKEV}}
@@ -397,16 +417,24 @@ func (w *Worker) sendGenericWebhook(webhookURL string, cve *models.CVE, asset, e
 			for _, ipAddr := range ips {
 				if addr, ok := netip.AddrFromSlice(ipAddr.IP); ok {
 					if addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified() {
-						if os.Getenv("TEST_MODE") != "1" { continue }
+						if os.Getenv("TEST_MODE") != "1" {
+							continue
+						}
 					}
 					safeIP = ipAddr.IP
 					break
 				}
 			}
-			if safeIP == nil { return nil, fmt.Errorf("no safe IP") }
+			if safeIP == nil {
+				return nil, fmt.Errorf("no safe IP")
+			}
 			port := parsedURL.Port()
 			if port == "" {
-				if parsedURL.Scheme == "https" { port = "443" } else { port = "80" }
+				if parsedURL.Scheme == "https" {
+					port = "443"
+				} else {
+					port = "80"
+				}
 			}
 			return dialer.DialContext(ctx, network, net.JoinHostPort(safeIP.String(), port))
 		},
@@ -444,9 +472,13 @@ func (w *Worker) sendGenericWebhook(webhookURL string, cve *models.CVE, asset, e
 	req.Header.Set("X-Vulfixx-Timestamp", timestamp)
 
 	resp, err := client.Do(req)
-	if err != nil { return false, err.Error() }
+	if err != nil {
+		return false, err.Error()
+	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 { return true, "" }
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return true, ""
+	}
 	return false, fmt.Sprintf("status %d", resp.StatusCode)
 }
 

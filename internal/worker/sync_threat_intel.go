@@ -38,7 +38,7 @@ func (w *Worker) syncThreatIntelPeriodically(ctx context.Context) {
 
 func (w *Worker) syncThreatIntel(ctx context.Context) {
 	log.Println("Worker: [SYNC] Starting Threat Intel synchronization...")
-	
+
 	// Curated built-in associations as baseline / fallback
 	curatedAssociations := []models.ThreatAssociation{
 		{CVEID: "CVE-2021-34473", EntityName: "Lazarus Group", EntityType: "threat_actor", Source: "MITRE CTI"},

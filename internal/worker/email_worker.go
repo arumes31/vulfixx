@@ -220,7 +220,7 @@ func (w *Worker) sendVerificationEmail(email, token string) error {
 	}
 	encodedToken := url.QueryEscape(token)
 	link := fmt.Sprintf("%s/verify-email?token=%s", baseURL, encodedToken)
-	
+
 	contentTmpl := `
 		<p>Welcome to <strong>Vulfixx</strong>, your modern threat intelligence platform. Please verify your email address to activate your access profile.</p>
 		<div style="text-align: center; margin: 30px 0;">

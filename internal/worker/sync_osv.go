@@ -21,7 +21,7 @@ type osvResponse struct {
 			Ecosystem string `json:"ecosystem"`
 		} `json:"package"`
 		Ranges []struct {
-			Type   string `json:"type"`
+			Type   string              `json:"type"`
 			Events []map[string]string `json:"events"`
 		} `json:"ranges"`
 		Versions []string `json:"versions"`
@@ -91,7 +91,7 @@ func (w *Worker) syncOSV(ctx context.Context) {
 				for _, aff := range osvData.Affected {
 					vendor := aff.Package.Ecosystem
 					product := aff.Package.Name
-					
+
 					// Build version string from ranges
 					var versionParts []string
 					for _, r := range aff.Ranges {
@@ -115,7 +115,7 @@ func (w *Worker) syncOSV(ctx context.Context) {
 							versionParts = append(versionParts, end)
 						}
 					}
-					
+
 					versionStr := strings.Join(versionParts, ", ")
 					if versionStr == "" && len(aff.Versions) > 0 {
 						// Fallback to first few versions if no ranges
@@ -127,7 +127,7 @@ func (w *Worker) syncOSV(ctx context.Context) {
 					}
 
 					cve.AddAffectedProduct(vendor, product, versionStr, false)
-					
+
 					// If primary vendor/product is missing, use OSV as authoritative
 					if cve.Vendor == "" {
 						cve.Vendor = vendor
@@ -140,7 +140,7 @@ func (w *Worker) syncOSV(ctx context.Context) {
 
 				if changed {
 					dataJSON, _ := json.Marshal(osvData)
-					_, err = w.Pool.Exec(ctx, "UPDATE cves SET osv_data = $1, osv_last_updated = NOW(), vendor = $2, product = $3, affected_products = $4 WHERE id = $5", 
+					_, err = w.Pool.Exec(ctx, "UPDATE cves SET osv_data = $1, osv_last_updated = NOW(), vendor = $2, product = $3, affected_products = $4 WHERE id = $5",
 						dataJSON, cve.Vendor, cve.Product, cve.AffectedProducts, cve.ID)
 				} else {
 					_, _ = w.Pool.Exec(ctx, "UPDATE cves SET osv_last_updated = NOW() WHERE id = $1", cve.ID)
@@ -156,7 +156,7 @@ func (w *Worker) syncOSV(ctx context.Context) {
 
 		time.Sleep(200 * time.Millisecond) // OSV is fast
 	}
-	
+
 	w.updateTaskStats(ctx, "osv_sync")
 	log.Printf("Worker: [SYNC] OSV synchronization complete. Updated %d records.", count)
 }

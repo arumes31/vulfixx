@@ -24,7 +24,7 @@ func TestWorker_health_Coverage(t *testing.T) {
 		for _, task := range tasks {
 			mock.ExpectQuery("SELECT last_run FROM worker_sync_stats").WithArgs(task).WillReturnError(errors.New("no rows"))
 		}
-		
+
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("health_check").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		w.checkWorkerHealth(context.Background())

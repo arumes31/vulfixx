@@ -79,14 +79,14 @@ func (w *Worker) startIntelligenceEnrichmentTask(ctx context.Context) {
 		log.Println("Worker: [CRON] Intelligence enrichment task shutting down")
 		return
 	}
-	
+
 	// Check queue size to determine initial interval
 	var missingCount int
 	err := w.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = ''").Scan(&missingCount)
 	if err != nil && errors.Is(err, context.Canceled) {
 		return
 	}
-	
+
 	interval := 24 * time.Hour
 	if missingCount > 5000 {
 		interval = 4 * time.Hour
@@ -110,7 +110,7 @@ func (w *Worker) startIntelligenceEnrichmentTask(ctx context.Context) {
 				return
 			}
 			w.enrichMissingIntelligence(ctx)
-			
+
 			// Re-evaluate interval based on remaining backlog
 			_ = w.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = ''").Scan(&missingCount)
 			newInterval := 24 * time.Hour
@@ -133,7 +133,7 @@ func (w *Worker) enrichSingleCVE(ctx context.Context, id int) {
 
 func (w *Worker) enrichMissingIntelligence(ctx context.Context) {
 	log.Println("Worker: [CRON] Starting intelligence enrichment for missing vendor data...")
-	
+
 	// Suggestion 3: Priority-based selection (highest CVSS first)
 	rows, err := w.Pool.Query(ctx, "SELECT id, cve_id, description, configurations, references FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' ORDER BY cvss_score DESC, cisa_kev DESC LIMIT 1000")
 	if err != nil {
@@ -145,7 +145,9 @@ func (w *Worker) enrichMissingIntelligence(ctx context.Context) {
 	// Get total for progress tracking
 	var total int
 	_ = w.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM (SELECT id FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' LIMIT 1000) sub").Scan(&total)
-	if total == 0 { total = 1 }
+	if total == 0 {
+		total = 1
+	}
 
 	w.processEnrichmentRows(ctx, rows, total)
 }
@@ -178,7 +180,7 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows, total int
 
 		var vendor, product string
 		var extractedProducts []llm.ProductResult
-		if (config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama" || config.AppConfig.ArliAIAPIKey != "") {
+		if config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama" || config.AppConfig.ArliAIAPIKey != "" {
 			// Call LLM as primary for missing data with isolated timeout
 			llmCtx, cancel := context.WithTimeout(ctx, time.Duration(config.AppConfig.LLMTimeout+10)*time.Second)
 			products, err := llm.ExtractVendorProduct(llmCtx, c.Description, c.References)
