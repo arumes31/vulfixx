@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"slices"
 	"time"
 )
 
@@ -38,7 +39,7 @@ func (w *Worker) syncThreatIntelPeriodically(ctx context.Context) {
 
 func (w *Worker) syncThreatIntel(ctx context.Context) {
 	log.Println("Worker: [SYNC] Starting Threat Intel synchronization...")
-	
+
 	// Curated built-in associations as baseline / fallback
 	curatedAssociations := []models.ThreatAssociation{
 		{CVEID: "CVE-2021-34473", EntityName: "Lazarus Group", EntityType: "threat_actor", Source: "MITRE CTI"},
@@ -101,14 +102,9 @@ func (w *Worker) syncThreatIntel(ctx context.Context) {
 
 	// Always overlay curated fallback items to ensure baseline data is present
 	for _, ca := range curatedAssociations {
-		found := false
-		for _, a := range associations {
-			if a.CVEID == ca.CVEID && a.EntityName == ca.EntityName && a.EntityType == ca.EntityType {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !slices.ContainsFunc(associations, func(a models.ThreatAssociation) bool {
+			return a.CVEID == ca.CVEID && a.EntityName == ca.EntityName && a.EntityType == ca.EntityType
+		}) {
 			associations = append(associations, ca)
 		}
 	}

@@ -112,4 +112,3 @@ func CloseRedis() {
 		_ = RedisClient.Close()
 	}
 }
-

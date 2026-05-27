@@ -126,7 +126,6 @@ func TestExtractWithOllama(t *testing.T) {
 		}
 	})
 
-
 }
 
 func TestExtractWithArliAI(t *testing.T) {
