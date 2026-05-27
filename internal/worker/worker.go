@@ -24,10 +24,11 @@ type Worker struct {
 	alertResendBackoff time.Duration
 	enrichmentQueue    chan int
 	AsynqClient        *asynq.Client
+	HNClient           HNClient
 }
 
 func NewWorker(pool db.DBPool, redis db.RedisProvider, mailer EmailSender, http HTTPClient) *Worker {
-	return &Worker{
+	w := &Worker{
 		Pool:               pool,
 		Redis:              redis,
 		Mailer:             mailer,
@@ -36,6 +37,8 @@ func NewWorker(pool db.DBPool, redis db.RedisProvider, mailer EmailSender, http 
 		alertResendBackoff: 4 * time.Hour,
 		enrichmentQueue:    make(chan int, 1000),
 	}
+	w.HNClient = NewHNClient(http)
+	return w
 }
 
 func (w *Worker) Start(ctx context.Context) {

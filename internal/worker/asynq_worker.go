@@ -75,6 +75,7 @@ func (l *asynqLogger) Warn(args ...interface{})  { slog.Warn(fmt.Sprint(args...)
 func (l *asynqLogger) Error(args ...interface{}) { slog.Error(fmt.Sprint(args...)) }
 func (l *asynqLogger) Fatal(args ...interface{}) {
 	slog.Error(fmt.Sprint(args...))
+	os.Exit(1)
 }
 
 // StartAsynqServer starts the Asynq server to process decoupled jobs.
