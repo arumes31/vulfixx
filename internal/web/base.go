@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -252,18 +253,38 @@ func (a *App) IndexHandler(w http.ResponseWriter, r *http.Request) {
 	a.PublicDashboardHandler(w, r)
 }
 
-func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data map[string]interface{}) {
-	if data == nil {
-		data = make(map[string]interface{})
+func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data any) {
+	renderData := make(map[string]interface{})
+
+	if data != nil {
+		v := reflect.ValueOf(data)
+		if v.Kind() == reflect.Ptr {
+			v = v.Elem()
+		}
+
+		if v.Kind() == reflect.Map {
+			for _, key := range v.MapKeys() {
+				renderData[key.String()] = v.MapIndex(key).Interface()
+			}
+		} else if v.Kind() == reflect.Struct {
+			t := v.Type()
+			for i := 0; i < v.NumField(); i++ {
+				field := t.Field(i)
+				if field.PkgPath == "" { // exported field
+					renderData[field.Name] = v.Field(i).Interface()
+				}
+			}
+		}
 	}
+
 	userID, ok := a.GetUserID(r)
-	data["UserLoggedIn"] = ok
+	renderData["UserLoggedIn"] = ok
 	if ok && userID > 0 {
 		// Prevent caching of authenticated pages
 		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, private")
 		w.Header().Set("Pragma", "no-cache")
-		data["UserID"] = userID
-		data["IsAdmin"] = a.IsAdmin(r)
+		renderData["UserID"] = userID
+		renderData["IsAdmin"] = a.IsAdmin(r)
 
 		// Onboarding status
 		var onboardingCompleted bool
@@ -273,12 +294,12 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
-		data["OnboardingCompleted"] = onboardingCompleted
+		renderData["OnboardingCompleted"] = onboardingCompleted
 
 		// Fetch user's subscription count
 		var subCount int
 		_ = a.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1", userID).Scan(&subCount)
-		data["SubCount"] = subCount
+		renderData["SubCount"] = subCount
 
 		// Fetch user's teams
 		var userTeams []map[string]interface{}
@@ -302,7 +323,7 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 			if err := teamRows.Err(); err != nil {
 				slog.Error("RenderTemplate teamRows error", "user_id", userID, "error", err)
 			}
-			data["UserTeams"] = userTeams
+			renderData["UserTeams"] = userTeams
 		}
 
 		activeTeamID, ok := a.GetActiveTeamID(r)
@@ -327,32 +348,32 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 				if err != nil {
 				slog.Error("Error fetching active team name", "error", err)
 				} else {
-					data["ActiveTeamName"] = teamName
+					renderData["ActiveTeamName"] = teamName
 				}
 			} else {
-				data["ActiveTeamName"] = teamName
+				renderData["ActiveTeamName"] = teamName
 			}
 
-			data["ActiveTeamID"] = activeTeamID
+			renderData["ActiveTeamID"] = activeTeamID
 		} else {
-			data["ActiveTeamID"] = 0
-			data["ActiveTeamName"] = "Private Workspace"
+			renderData["ActiveTeamID"] = 0
+			renderData["ActiveTeamName"] = "Private Workspace"
 		}
 
 	}
 
 	// Fetch global CVE stats from cache for all views
 	statsCache.RLock()
-	data["GlobalTotalCVEs"] = statsCache.total
-	data["GlobalNewCVEs"] = statsCache.newLast24h
+	renderData["GlobalTotalCVEs"] = statsCache.total
+	renderData["GlobalNewCVEs"] = statsCache.newLast24h
 	statsCache.RUnlock()
 
-	data["SentryDSN"] = config.AppConfig.SentryDSN
+	renderData["SentryDSN"] = config.AppConfig.SentryDSN
 
-	data["csrfField"] = csrf.TemplateField(r)
-	data["CSRFField"] = data["csrfField"]
+	renderData["csrfField"] = csrf.TemplateField(r)
+	renderData["CSRFField"] = renderData["csrfField"]
 	if nonce, ok := r.Context().Value(NonceKey).(string); ok {
-		data["Nonce"] = nonce
+		renderData["Nonce"] = nonce
 	}
 	a.TemplateMu.RLock()
 	tmpl, ok := a.TemplateMap[name]
@@ -363,7 +384,7 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 		return
 	}
 	buf := new(bytes.Buffer)
-	if err := tmpl.ExecuteTemplate(buf, "base", data); err != nil {
+	if err := tmpl.ExecuteTemplate(buf, "base", renderData); err != nil {
 		slog.Error("Error executing template", "name", name, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return

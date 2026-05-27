@@ -430,6 +430,8 @@ type PublicDashboardData struct {
 	Trending        []models.CVE   `json:"trending"`
 	Sort            string         `json:"sort"`
 	Order           string         `json:"order"`
+	ActiveTab       string         `json:"active_tab"`
+	CanScroll       bool           `json:"can_scroll"`
 }
 
 func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
@@ -628,7 +630,7 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (a *App) renderAJAX(w http.ResponseWriter, renderData map[string]interface{}) {
+func (a *App) renderAJAX(w http.ResponseWriter, renderData any) {
 	a.TemplateMu.RLock()
 	tmpl, ok := a.TemplateMap["public_dashboard.html"]
 	a.TemplateMu.RUnlock()
