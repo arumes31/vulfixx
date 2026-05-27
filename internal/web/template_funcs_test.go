@@ -49,29 +49,41 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 	t.Run("severity", func(t *testing.T) {
 		fc := funcs["severityColor"].(func(float64) string)
 		fb := funcs["severityBg"].(func(float64) string)
-		
-		if fc(9.5) != "text-red-500" { t.Errorf("expected red for 9.5, got %s", fc(9.5)) }
-		if fb(9.5) != "bg-red-500" { t.Errorf("expected red for 9.5, got %s", fb(9.5)) }
-		
-		if fc(7.5) != "text-orange-500" { t.Errorf("expected orange for 7.5, got %s", fc(7.5)) }
-		if fc(4.5) != "text-yellow-500" { t.Errorf("expected yellow for 4.5, got %s", fc(4.5)) }
-		if fc(2.0) != "text-blue-500" { t.Errorf("expected blue for 2.0, got %s", fc(2.0)) }
-		if fc(-1) != "text-gray-400" { t.Errorf("expected gray for -1, got %s", fc(-1)) }
+
+		if fc(9.5) != "text-red-500" {
+			t.Errorf("expected red for 9.5, got %s", fc(9.5))
+		}
+		if fb(9.5) != "bg-red-500" {
+			t.Errorf("expected red for 9.5, got %s", fb(9.5))
+		}
+
+		if fc(7.5) != "text-orange-500" {
+			t.Errorf("expected orange for 7.5, got %s", fc(7.5))
+		}
+		if fc(4.5) != "text-yellow-500" {
+			t.Errorf("expected yellow for 4.5, got %s", fc(4.5))
+		}
+		if fc(2.0) != "text-blue-500" {
+			t.Errorf("expected blue for 2.0, got %s", fc(2.0))
+		}
+		if fc(-1) != "text-gray-400" {
+			t.Errorf("expected gray for -1, got %s", fc(-1))
+		}
 	})
 
 	t.Run("vendorLinks", func(t *testing.T) {
 		f := funcs["vendorLinks"].(func(string, string) []map[string]string)
-		
+
 		links := f("CVE-2024-1234", "This is a Microsoft Windows vulnerability")
 		if len(links) == 0 || links[0]["name"] != "Microsoft Security" {
 			t.Errorf("expected Microsoft link, got %v", links)
 		}
-		
+
 		links = f("CVE-2024-5678", "RedHat Linux issue")
 		if len(links) == 0 || links[0]["name"] != "RedHat Advisory" {
 			t.Errorf("expected RedHat link, got %v", links)
 		}
-		
+
 		links = f("CVE-2024-0000", "Cisco router bug")
 		if len(links) == 0 || links[0]["name"] != "Cisco Advisory" {
 			t.Errorf("expected Cisco link, got %v", links)
@@ -98,13 +110,25 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 			t.Error("expected nil for invalid CPE")
 		}
 	})
-	
+
 	t.Run("math", func(t *testing.T) {
-		if funcs["add"].(func(int, int) int)(1, 2) != 3 { t.Error("add failed") }
-		if funcs["subtract"].(func(int, int) int)(5, 2) != 3 { t.Error("subtract failed") }
-		if funcs["multiply"].(func(float64, float64) float64)(2.0, 3.0) != 6.0 { t.Error("multiply failed") }
-		if funcs["round"].(func(float64) int)(3.6) != 4 { t.Error("round failed") }
-		if funcs["min"].(func(float64, float64) float64)(10, 20) != 10 { t.Error("min failed") }
-		if funcs["max"].(func(float64, float64) float64)(10, 20) != 20 { t.Error("max failed") }
+		if funcs["add"].(func(int, int) int)(1, 2) != 3 {
+			t.Error("add failed")
+		}
+		if funcs["subtract"].(func(int, int) int)(5, 2) != 3 {
+			t.Error("subtract failed")
+		}
+		if funcs["multiply"].(func(float64, float64) float64)(2.0, 3.0) != 6.0 {
+			t.Error("multiply failed")
+		}
+		if funcs["round"].(func(float64) int)(3.6) != 4 {
+			t.Error("round failed")
+		}
+		if funcs["min"].(func(float64, float64) float64)(10, 20) != 10 {
+			t.Error("min failed")
+		}
+		if funcs["max"].(func(float64, float64) float64)(10, 20) != 20 {
+			t.Error("max failed")
+		}
 	})
 }

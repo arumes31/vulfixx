@@ -192,7 +192,7 @@ func TestSubscriptionHandlers_Detailed(t *testing.T) {
 			WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "keyword", "min_severity", "webhook_url", "slack_webhook_url", "teams_webhook_url", "enable_email", "enable_webhook", "enable_slack", "enable_teams", "enable_browser_push", "aggregation_mode", "team_id"}).
 				AddRow(1, "test", 5.0, "", "", "", true, true, false, false, false, "instant", nil))
-		
+
 		expectBaseQueries(mock, 1)
 
 		req, _ := http.NewRequest("GET", "/subscriptions", nil)
@@ -216,17 +216,17 @@ func TestSubscriptionHandlers_Detailed(t *testing.T) {
 		app := setupTestApp(t, mock)
 
 		form := url.Values{
-			"keyword": {"new-keyword"},
+			"keyword":      {"new-keyword"},
 			"min_severity": {"7.5"},
 			"enable_email": {"on"},
 		}
-		
+
 		mock.ExpectBegin()
 		mock.ExpectQuery("SELECT max_subscriptions FROM users WHERE id = \\$1 FOR UPDATE").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"max_subscriptions"}).AddRow(5))
 		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM user_subscriptions WHERE user_id = \\$1").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
 		mock.ExpectExec("INSERT INTO user_subscriptions").WithArgs(1, "new-keyword", 7.5, "", "", "", true, false, false, false, false, "instant").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		mock.ExpectCommit()
-		
+
 		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(1, "subscription_added", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
@@ -276,12 +276,12 @@ func TestSubscriptionHandlers_Detailed(t *testing.T) {
 		app := setupTestApp(t, mock)
 
 		payload := map[string]interface{}{
-			"id":             42,
-			"keyword":        "updated-keyword",
-			"min_severity":   8.0,
-			"webhook_url":    "http://example.com/webhook",
-			"enable_email":   true,
-			"enable_webhook": true,
+			"id":               42,
+			"keyword":          "updated-keyword",
+			"min_severity":     8.0,
+			"webhook_url":      "http://example.com/webhook",
+			"enable_email":     true,
+			"enable_webhook":   true,
 			"aggregation_mode": "hourly",
 		}
 		body, _ := json.Marshal(payload)
@@ -316,4 +316,3 @@ func TestSubscriptionHandlers_Detailed(t *testing.T) {
 		}
 	})
 }
-
