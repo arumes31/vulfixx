@@ -174,9 +174,30 @@ func TestCSRFProtection(t *testing.T) {
 		}
 	})
 
+	t.Run("InvalidSessionTokenType", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=valid"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rr := httptest.NewRecorder()
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["admin_csrf_token"] = 123 // Non-string type
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("failed to save session: %v", err)
+		}
+
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		if app.ValidateCSRF(req) {
+			t.Errorf("expected CSRF validation to fail due to invalid session token type")
+		}
+	})
+
 	t.Run("SessionError", func(t *testing.T) {
 		// We deliberately forego the normal session.Save() setup to simulate a corrupted external cookie.
 		// The malformed cookie added via req.AddCookie (Value "invalid-base64-payload!!") ensures session decoding fails.
+
 		// This is why we call app.ValidateCSRF(req) directly rather than using session.Save().
 		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=valid"))
 		req.AddCookie(&http.Cookie{Name: "vulfixx-session", Value: "invalid-base64-payload!!"})
