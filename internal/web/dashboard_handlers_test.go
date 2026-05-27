@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"testing"
+	"html/template"
+	"strings"
 	"time"
 
 	"github.com/pashagolub/pgxmock/v3"
@@ -493,5 +495,79 @@ func TestPublicDashboardHandler_WithFilters(t *testing.T) {
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("there were unfulfilled expectations: %s", err)
+	}
+}
+
+func TestRenderAJAX(t *testing.T) {
+	tests := []struct {
+		name       string
+		setup      func(*App)
+		renderData map[string]interface{}
+		wantStatus int
+		wantBody   string
+	}{
+		{
+			name: "Success",
+			setup: func(a *App) {
+				// templates are loaded in setupTestApp
+			},
+			renderData: map[string]interface{}{"Key": "Value"},
+			wantStatus: http.StatusOK,
+			wantBody:   `{"html":"","meta":{"Key":"Value"}}`,
+		},
+		{
+			name: "Template not found",
+			setup: func(a *App) {
+				a.TemplateMu.Lock()
+				delete(a.TemplateMap, "public_dashboard.html")
+				a.TemplateMu.Unlock()
+			},
+			renderData: map[string]interface{}{"Key": "Value"},
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   "Template not found\n",
+		},
+		{
+			name: "Template execution error",
+			setup: func(a *App) {
+				a.TemplateMu.Lock()
+				// Load an invalid template mapping (no "cve_rows" defined in text/template)
+				a.TemplateMap["public_dashboard.html"] = template.Must(template.New("empty").Parse(""))
+				a.TemplateMu.Unlock()
+			},
+			renderData: map[string]interface{}{"Key": "Value"},
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   "Internal error\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock, err := pgxmock.NewPool()
+			if err != nil {
+				t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+			}
+			defer mock.Close()
+			app := setupTestApp(t, mock)
+
+			tt.setup(app)
+
+			rr := httptest.NewRecorder()
+			app.renderAJAX(rr, tt.renderData)
+
+			if status := rr.Code; status != tt.wantStatus {
+				t.Errorf("renderAJAX() status = %v, want %v", status, tt.wantStatus)
+			}
+
+			if tt.wantStatus == http.StatusOK {
+				body := rr.Body.String()
+				if !strings.Contains(body, `"html":`) || !strings.Contains(body, `"meta":{"Key":"Value"}`) {
+					t.Errorf("renderAJAX() body = %v, want to contain %v", body, tt.wantBody)
+				}
+			} else {
+				if rr.Body.String() != tt.wantBody {
+					t.Errorf("renderAJAX() body = %v, want %v", rr.Body.String(), tt.wantBody)
+				}
+			}
+		})
 	}
 }

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"os/exec"
+	"os"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
@@ -149,4 +151,21 @@ func TestAsynqWorker_Flow(t *testing.T) {
 			t.Errorf("expected 2 emails to be sent, got %d", mailer.Count())
 		}
 	})
+}
+
+func TestAsynqLogger_Fatal(t *testing.T) {
+	if os.Getenv("CRASH_LOGGER") == "1" {
+		logger := &asynqLogger{}
+		logger.Fatal("this is a fatal message")
+		return
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=TestAsynqLogger_Fatal")
+	cmd.Env = append(os.Environ(), "CRASH_LOGGER=1")
+	err := cmd.Run()
+
+	if e, ok := err.(*exec.ExitError); ok && !e.Success() {
+		return
+	}
+	t.Fatalf("process ran with err %v, want exit status 1", err)
 }
