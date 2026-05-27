@@ -137,46 +137,80 @@ func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
 	}
 }
 
-func (w *Worker) getJSON(ctx context.Context, url string, target interface{}) error {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", "Vulfixx/2.0 (Threat Intelligence Bot)")
-
-	resp, err := w.HTTP.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP error: %s", resp.Status)
-	}
-
-	return json.NewDecoder(resp.Body).Decode(target)
-}
 
 func (w *Worker) fetchHNMentions(ctx context.Context, cveID string) (int, []map[string]string, error) {
 	encodedID := url.QueryEscape(cveID)
-	hnURL := fmt.Sprintf("https://hn.algolia.com/api/v1/search?query=%s&tags=story", encodedID)
+	hnURL := fmt.Sprintf("https://hn.algolia.com/api/v1/search?query=%s&tags=(story,comment)", encodedID)
 
 	var hnResp struct {
 		NbHits int `json:"nbHits"`
 		Hits   []struct {
-			Title    string `json:"title"`
-			ObjectID string `json:"objectID"`
+			Title      string `json:"title"`
+			StoryTitle string `json:"story_title"`
+			ObjectID   string `json:"objectID"`
 		} `json:"hits"`
 	}
 
-	if err := w.getJSON(ctx, hnURL, &hnResp); err != nil {
+	var resp *http.Response
+	var err error
+	for retries := 0; retries < 3; retries++ {
+		req, errReq := http.NewRequestWithContext(ctx, "GET", hnURL, nil)
+		if errReq != nil {
+			return 0, nil, errReq
+		}
+		req.Header.Set("User-Agent", "Vulfixx/2.0 (Threat Intelligence Bot)")
+
+		resp, err = w.HTTP.Do(req)
+		if err != nil {
+			return 0, nil, err
+		}
+
+		if resp.StatusCode == http.StatusTooManyRequests {
+			_ = resp.Body.Close()
+			waitTime := 5 * time.Second
+			if ra := resp.Header.Get("Retry-After"); ra != "" {
+				if seconds, errSec := strconv.Atoi(ra); errSec == nil {
+					waitTime = time.Duration(seconds) * time.Second
+				}
+			}
+			log.Printf("Worker: HN rate limited for %s, waiting %v...", cveID, waitTime)
+			select {
+			case <-ctx.Done():
+				return 0, nil, ctx.Err()
+			case <-time.After(waitTime):
+				continue
+			}
+		}
+		break
+	}
+
+	if resp == nil {
+		return 0, nil, fmt.Errorf("HN API returned nil response")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		if resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		return 0, nil, fmt.Errorf("HN API returned status %d", resp.StatusCode)
+	}
+	defer resp.Body.Close()
+
+	if err := json.NewDecoder(resp.Body).Decode(&hnResp); err != nil {
 		return 0, nil, err
 	}
 
 	links := []map[string]string{}
 	for _, hit := range hnResp.Hits {
+		title := hit.Title
+		if title == "" {
+			title = hit.StoryTitle
+		}
+		if title == "" {
+			title = "HN Comment"
+		}
 		hnLink := fmt.Sprintf("https://news.ycombinator.com/item?id=%s", hit.ObjectID)
-		links = append(links, map[string]string{"title": hit.Title, "url": hnLink})
+		links = append(links, map[string]string{"title": title, "url": hnLink})
 	}
 
 	return hnResp.NbHits, links, nil
