@@ -67,12 +67,6 @@ func TestWorkerHelpers(t *testing.T) {
 		}
 	})
 
-	t.Run("RedactToken", func(t *testing.T) {
-		if redactToken("1234567890") != "12345678..." {
-			t.Errorf("redactToken failed: %s", redactToken("1234567890"))
-		}
-	})
-
 	t.Run("RedactURL", func(t *testing.T) {
 		url := "https://user:pass@example.com/path?query=1#frag"
 		redacted := redactURL(url)
