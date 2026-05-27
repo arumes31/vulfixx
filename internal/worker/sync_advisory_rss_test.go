@@ -72,7 +72,7 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 			WithArgs("CVE-2024-9999").
 			WillReturnError(pgx.ErrNoRows)
 		mock.ExpectRollback()
-		
+
 		// Update task stats at the very end
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
 			WithArgs("advisory_rss_sync").
@@ -129,7 +129,7 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		mock.ExpectExec(regexp.QuoteMeta(`UPDATE cves SET "references" = $1, updated_at = NOW() WHERE id = $2`)).
 			WithArgs([]string{"https://cisco.com/psirt/123"}, 1).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-		
+
 		mock.ExpectCommit()
 
 		// Update task stats at the very end

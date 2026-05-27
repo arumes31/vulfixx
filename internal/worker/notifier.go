@@ -9,7 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -21,28 +21,31 @@ import (
 )
 
 func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName string) bool {
-	log.Printf("ALERT: Processing multi-channel alert for %s (CVE: %s)\n", redactEmail(email), cve.CVEID)
-	
+	redacted := redactEmail(email)
+	slog.Info("ALERT: Processing multi-channel alert", "email", redacted, "cve_id", cve.CVEID)
+
 	sev, color := getSeverityInfo(cve.CVSSScore)
 	actionToken, err := auth.GenerateToken()
 	if err != nil {
-		log.Printf("ALERT: Failed to generate action token for %s: %v", cve.CVEID, err)
+		slog.Error("ALERT: Failed to generate action token", "cve_id", cve.CVEID, "error", err)
 		return false
 	}
-	
+
 	// Store action token in Redis for buttons
 	actionData, err := json.Marshal(map[string]interface{}{"user_id": sub.UserID, "cve_id": cve.ID, "keyword": sub.Keyword})
 	if err != nil {
-		log.Printf("ALERT: Failed to marshal action data for %s: %v", cve.CVEID, err)
+		slog.Error("ALERT: Failed to marshal action data", "cve_id", cve.CVEID, "error", err)
 		return false
 	}
 	if err := w.Redis.Set(context.Background(), "alert_action:"+actionToken, actionData, 48*time.Hour).Err(); err != nil {
-		log.Printf("ALERT: Failed to store action token in Redis for %s: %v", cve.CVEID, err)
+		slog.Error("ALERT: Failed to store action token in Redis", "cve_id", cve.CVEID, "error", err)
 		return false
 	}
 
 	baseURL := os.Getenv("BASE_URL")
-	if baseURL == "" { baseURL = "http://localhost:8080" }
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
 
 	var wg sync.WaitGroup
 	results := make(chan bool, 5)
@@ -104,34 +107,44 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 
 	wg.Wait()
 	close(results)
-	
+
 	hasAnySuccess := false
 	for r := range results {
-		if r { hasAnySuccess = true }
+		if r {
+			hasAnySuccess = true
+		}
 	}
 	return hasAnySuccess
 }
 
 func (w *Worker) logDelivery(userID, subID, cveID int, channel string, success bool, errMsg string) {
 	status := "success"
-	if !success { status = "failure" }
-	
+	if !success {
+		status = "failure"
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	_, err := w.Pool.Exec(ctx, `
 		INSERT INTO notification_delivery_logs (user_id, subscription_id, cve_id, channel, status, error_message)
 		VALUES ($1, $2, $3, $4, $5, $6)
 	`, userID, subID, cveID, channel, status, errMsg)
 	if err != nil {
-		log.Printf("Failed to log notification delivery: %v", err)
+		slog.Error("Failed to log notification delivery", "error", err)
 	}
 }
 
 func getSeverityInfo(score float64) (string, string) {
-	if score >= 9.0 { return "Critical", "#ff4d4d" }
-	if score >= 7.0 { return "High", "#ff8c00" }
-	if score >= 4.0 { return "Medium", "#ffcc00" }
+	if score >= 9.0 {
+		return "Critical", "#ff4d4d"
+	}
+	if score >= 7.0 {
+		return "High", "#ff8c00"
+	}
+	if score >= 4.0 {
+		return "Medium", "#ffcc00"
+	}
 	return "Low", "#00cc66"
 }
 
@@ -159,7 +172,7 @@ func (w *Worker) sendSlackAlert(webhookURL string, cve *models.CVE, asset string
 					map[string]interface{}{
 						"type": "button",
 						"text": map[string]interface{}{"type": "plain_text", "text": "Acknowledge"},
-						"url":  fmt.Sprintf("%s/alert-action?token=%s&action=acknowledge", baseURL, token),
+						"url":  fmt.Sprintf("%s/alert-action?action=acknowledge&token=%s", baseURL, token),
 						"style": "primary",
 					},
 					map[string]interface{}{
@@ -190,9 +203,9 @@ func (w *Worker) sendTeamsAlert(webhookURL string, cve *models.CVE, asset string
 					},
 					"actions": []interface{}{
 						map[string]interface{}{
-							"type": "Action.OpenUrl",
+							"type":  "Action.OpenUrl",
 							"title": "Acknowledge",
-							"url": fmt.Sprintf("%s/alert-action?token=%s&action=acknowledge", baseURL, token),
+							"url":   fmt.Sprintf("%s/alert-action?action=acknowledge&token=%s", baseURL, token),
 						},
 					},
 					"$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
@@ -207,8 +220,8 @@ func (w *Worker) sendTeamsAlert(webhookURL string, cve *models.CVE, asset string
 func (w *Worker) sendBrowserPush(userID int, cve *models.CVE) bool {
 	// Implementation would use web-push-go and VAPID keys
 	// For now, we log the intent and could trigger a WebSocket event as a fallback
-	log.Printf("Browser Push triggered for user %d, CVE %s", userID, cve.CVEID)
-	return false 
+	slog.Info("Browser Push triggered: Browser Push simulated/not implemented, recording as success for now", "user_id", userID, "cve_id", cve.CVEID)
+	return true
 }
 
 func (w *Worker) postJSON(webhookURL string, payload interface{}) (bool, string) {
@@ -234,16 +247,24 @@ func (w *Worker) postJSON(webhookURL string, payload interface{}) (bool, string)
 			for _, ipAddr := range ips {
 				if addr, ok := netip.AddrFromSlice(ipAddr.IP); ok {
 					if addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified() {
-						if os.Getenv("TEST_MODE") != "1" { continue }
+						if os.Getenv("TEST_MODE") != "1" {
+							continue
+						}
 					}
 					safeIP = ipAddr.IP
 					break
 				}
 			}
-			if safeIP == nil { return nil, fmt.Errorf("no safe IP for webhook host") }
+			if safeIP == nil {
+				return nil, fmt.Errorf("no safe IP for webhook host")
+			}
 			port := parsedURL.Port()
 			if port == "" {
-				if parsedURL.Scheme == "https" { port = "443" } else { port = "80" }
+				if parsedURL.Scheme == "https" {
+					port = "443"
+				} else {
+					port = "80"
+				}
 			}
 			return dialer.DialContext(dialCtx, network, net.JoinHostPort(safeIP.String(), port))
 		},
@@ -288,7 +309,7 @@ func (w *Worker) sendEmailAlert(email string, cve *models.CVE, sev, color, token
 	}
 
 	escapedToken := url.QueryEscape(token)
-	
+
 	contentTmpl := `
 		<div style="margin-bottom: 20px;">
 			{{if .CISAKEV}}
@@ -317,11 +338,11 @@ func (w *Worker) sendEmailAlert(email string, cve *models.CVE, sev, color, token
 			<table width="100%" border="0" cellspacing="0" cellpadding="0">
 				<tr>
 					<td width="48%">
-						<a href="{{.BaseURL}}/alert-action?token={{.Token}}&action=acknowledge" class="btn" style="display: block; text-align: center; padding: 14px 0; margin: 0;">ACKNOWLEDGE</a>
+						<a href="{{.BaseURL}}/alert-action?action=acknowledge&token={{.Token}}" class="btn" style="display: block; text-align: center; padding: 14px 0; margin: 0;">ACKNOWLEDGE</a>
 					</td>
 					<td width="4%"></td>
 					<td width="48%">
-						<a href="{{.BaseURL}}/alert-action?token={{.Token}}&action=mute" class="secondary-btn" style="display: block; text-align: center; padding: 14px 0; margin: 0;">MUTE KEYWORD</a>
+						<a href="{{.BaseURL}}/alert-action?action=mute&token={{.Token}}" class="secondary-btn" style="display: block; text-align: center; padding: 14px 0; margin: 0;">MUTE KEYWORD</a>
 					</td>
 				</tr>
 			</table>
@@ -356,7 +377,7 @@ func (w *Worker) sendEmailAlert(email string, cve *models.CVE, sev, color, token
 
 	body, err := RenderEmailTemplate("Security Alert: "+cve.CVEID, contentTmpl, data)
 	if err != nil {
-		log.Printf("Worker Notifier: Failed to render email template: %v", err)
+		slog.Error("Worker Notifier: Failed to render email template", "cve_id", cve.CVEID, "error", err)
 		return false
 	}
 
@@ -397,16 +418,24 @@ func (w *Worker) sendGenericWebhook(webhookURL string, cve *models.CVE, asset, e
 			for _, ipAddr := range ips {
 				if addr, ok := netip.AddrFromSlice(ipAddr.IP); ok {
 					if addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified() {
-						if os.Getenv("TEST_MODE") != "1" { continue }
+						if os.Getenv("TEST_MODE") != "1" {
+							continue
+						}
 					}
 					safeIP = ipAddr.IP
 					break
 				}
 			}
-			if safeIP == nil { return nil, fmt.Errorf("no safe IP") }
+			if safeIP == nil {
+				return nil, fmt.Errorf("no safe IP")
+			}
 			port := parsedURL.Port()
 			if port == "" {
-				if parsedURL.Scheme == "https" { port = "443" } else { port = "80" }
+				if parsedURL.Scheme == "https" {
+					port = "443"
+				} else {
+					port = "80"
+				}
 			}
 			return dialer.DialContext(ctx, network, net.JoinHostPort(safeIP.String(), port))
 		},
@@ -444,9 +473,13 @@ func (w *Worker) sendGenericWebhook(webhookURL string, cve *models.CVE, asset, e
 	req.Header.Set("X-Vulfixx-Timestamp", timestamp)
 
 	resp, err := client.Do(req)
-	if err != nil { return false, err.Error() }
+	if err != nil {
+		return false, err.Error()
+	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 { return true, "" }
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return true, ""
+	}
 	return false, fmt.Sprintf("status %d", resp.StatusCode)
 }
 

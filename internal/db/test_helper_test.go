@@ -6,18 +6,26 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/pashagolub/pgxmock/v3"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestSetupHelpers(t *testing.T) {
 	t.Run("SetupTestDB", func(t *testing.T) {
 		oldPool := Pool
-		t.Cleanup(func() { Pool = oldPool })
+		oldReplicaPool := ReplicaPool
+		t.Cleanup(func() {
+			Pool = oldPool
+			ReplicaPool = oldReplicaPool
+		})
 		mock, err := SetupTestDB()
 		if err != nil {
 			t.Errorf("SetupTestDB failed: %v", err)
 		}
 		if mock == nil || Pool != mock {
 			t.Error("SetupTestDB did not set Pool correctly")
+		}
+		if ReplicaPool != mock {
+			t.Error("SetupTestDB did not set ReplicaPool correctly")
 		}
 	})
 
@@ -31,6 +39,12 @@ func TestSetupHelpers(t *testing.T) {
 		t.Cleanup(func() { mr.Close() })
 		if mr == nil || RedisClient == nil {
 			t.Error("SetupTestRedis did not set RedisClient correctly")
+		} else if client, ok := RedisClient.(*redis.Client); ok {
+			if client.Options().Addr != mr.Addr() {
+				t.Errorf("SetupTestRedis did not set correct address: expected %s, got %s", mr.Addr(), client.Options().Addr)
+			}
+		} else {
+			t.Error("RedisClient is not *redis.Client")
 		}
 	})
 

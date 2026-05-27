@@ -348,7 +348,7 @@ func TestWorkerSync_OSV(t *testing.T) {
 			}
 			return &http.Response{
 				StatusCode: http.StatusOK,
-				Body:       io.NopCloser(strings.NewReader(`{"id":"GHSA-test-osv-0001","summary":"Test OSV","affected":[{"package":{"name":"test-package","ecosystem":"Go"},"ranges":[{"type":"SEMVER","events":[{"introduced":"0"},{"fixed":"1.2.3"}]}]}]}`)),
+				Body:       io.NopCloser(strings.NewReader(`{"id":"GHSA-2024-MOCK-0001","summary":"Test OSV","affected":[{"package":{"name":"test-package","ecosystem":"Go"},"ranges":[{"type":"SEMVER","events":[{"introduced":"0"},{"fixed":"1.2.3"}]}]}]}`)),
 			}, nil
 		},
 	}
@@ -358,11 +358,13 @@ func TestWorkerSync_OSV(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cve_id, vendor, product, affected_products FROM cves WHERE osv_last_updated IS NULL OR osv_last_updated < NOW() - INTERVAL '30 days' ORDER BY osv_last_updated ASC NULLS FIRST LIMIT 200")).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "vendor", "product", "affected_products"}).AddRow(1, "CVE-OSV-1", "", "", []byte(`[]`)))
 
+		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE cves SET osv_data = $1, osv_last_updated = NOW(), vendor = $2, product = $3, affected_products = $4 WHERE id = $5")).
 			WithArgs(pgxmock.AnyArg(), "Go", "test-package", pgxmock.AnyArg(), 1).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectCommit()
 
-		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO worker_sync_stats")).
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO worker_sync_stats (task_name, last_run) VALUES ($1, NOW()) ON CONFLICT (task_name) DO UPDATE SET last_run = NOW(), updated_at = NOW()")).
 			WithArgs("osv_sync").
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
@@ -395,11 +397,13 @@ func TestWorkerSync_OSV(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cve_id, vendor, product, affected_products FROM cves WHERE osv_last_updated IS NULL OR osv_last_updated < NOW() - INTERVAL '30 days' ORDER BY osv_last_updated ASC NULLS FIRST LIMIT 200")).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "vendor", "product", "affected_products"}).AddRow(2, "CVE-OSV-NONE", "", "", []byte(`[]`)))
 
+		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE cves SET osv_last_updated = NOW() WHERE id = $1")).
 			WithArgs(2).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectCommit()
 
-		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO worker_sync_stats")).
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO worker_sync_stats (task_name, last_run) VALUES ($1, NOW()) ON CONFLICT (task_name) DO UPDATE SET last_run = NOW(), updated_at = NOW()")).
 			WithArgs("osv_sync").
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 

@@ -16,11 +16,12 @@
         </p>
     </div>
 
-    <form method="POST" class="space-y-4">
+    <form action="/alert-action" method="POST" class="space-y-4">
         {{.CSRFField}}
         <input type="hidden" name="action" value="{{.Action}}">
         <input type="hidden" name="keyword" value="{{.Keyword}}">
         <input type="hidden" name="cve_id" value="{{.CVEID}}">
+        <input type="hidden" name="token" value="{{.Token}}">
         <button type="submit" aria-describedby="confirm-msg" class="w-full bg-primary text-on-primary font-black uppercase tracking-widest text-xs py-4 px-4 rounded-2xl transition-all shadow-lg shadow-primary/20 hover:bg-primary/80 active:scale-95">
             Confirm and Proceed
         </button>

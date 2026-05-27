@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/pashagolub/pgxmock/v3"
 	"net/http"
 	"testing"
-	"github.com/pashagolub/pgxmock/v3"
+	"time"
 )
 
 func TestWorker_cronWorker_Coverage(t *testing.T) {
@@ -46,6 +47,7 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 			pgxmock.NewRows([]string{"id", "cve_id", "description", "configurations", "references"}).
 				AddRow(1, "CVE-123", "test", json.RawMessage(`[]`), []string{}),
 		)
+		mock.ExpectQuery("(?i)SELECT COUNT\\(\\*\\) FROM \\(SELECT id FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' LIMIT 1000\\) sub").WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("intelligence_enrichment").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		w.enrichMissingIntelligence(context.Background())
@@ -64,7 +66,7 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 		w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		
+
 		w.startWeeklySummaryTask(ctx)
 
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -79,11 +81,24 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 		}
 		defer mock.Close()
 		w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
-		
-		// Run with a context that we cancel immediately to verify shutdown
+
+		// Initial count check
+		// The error from previous run was context canceled, so it might not even reach expectations if it returns before them.
+		// Wait, startIntelligenceEnrichmentTask check ctx.Err() at the very beginning.
+
+		// Let's use a context that is NOT canceled yet for the first check
 		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		
+
+		mock.ExpectQuery("(?i)SELECT COUNT\\(\\*\\) FROM cves WHERE vendor IS NULL").WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
+
+		// Cancel AFTER it should have done the first query but before it enters the loop?
+		// Actually, it does the query then enters the loop.
+
+		go func() {
+			time.Sleep(10 * time.Millisecond)
+			cancel()
+		}()
+
 		w.startIntelligenceEnrichmentTask(ctx)
 
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -98,4 +113,66 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 			t.Errorf("expected no error, got %v", err)
 		}
 	})
+}
+
+func TestEnrichSingleCVE(t *testing.T) {
+	tests := []struct {
+		name     string
+		cveID    int
+		setup    func(mock pgxmock.PgxPoolIface, id int)
+	}{
+		{
+			name:  "Query Error",
+			cveID: 1,
+			setup: func(m pgxmock.PgxPoolIface, id int) {
+				m.ExpectQuery("SELECT id, cve_id, description, configurations, references FROM cves WHERE id = \\$1").
+					WithArgs(id).
+					WillReturnError(sql.ErrConnDone)
+			},
+		},
+		{
+			name:  "Success No Rows",
+			cveID: 2,
+			setup: func(m pgxmock.PgxPoolIface, id int) {
+				rows := pgxmock.NewRows([]string{"id", "cve_id", "description", "configurations", "references"})
+				m.ExpectQuery("SELECT id, cve_id, description, configurations, references FROM cves WHERE id = \\$1").
+					WithArgs(id).
+					WillReturnRows(rows)
+			},
+		},
+		{
+			name:  "Success Single Row",
+			cveID: 3,
+			setup: func(m pgxmock.PgxPoolIface, id int) {
+				configData, _ := json.Marshal(map[string]interface{}{"nodes": []interface{}{}})
+				refData, _ := json.Marshal([]map[string]string{{"url": "http://example.com"}})
+
+				rows := pgxmock.NewRows([]string{"id", "cve_id", "description", "configurations", "references"}).
+					AddRow(id, "CVE-2023-1234", "A description", []byte(configData), []byte(refData))
+				m.ExpectQuery("SELECT id, cve_id, description, configurations, references FROM cves WHERE id = \\$1").
+					WithArgs(id).
+					WillReturnRows(rows)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock, err := pgxmock.NewPool()
+			if err != nil {
+				t.Fatalf("failed to create mock pool: %v", err)
+			}
+			defer mock.Close()
+
+			w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
+			ctx := context.Background()
+
+			tt.setup(mock, tt.cveID)
+			w.enrichSingleCVE(ctx, tt.cveID)
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
+		})
+	}
 }

@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -29,17 +29,10 @@ func HashPassword(password string) (string, error) {
 	return argon2idGeneratePassword(password)
 }
 
-var dummyHash string
-
-func init() {
-	// Generate a dummy hash for constant-time comparisons when user is not found.
-	// This prevents email enumeration via timing attacks.
-	hash, err := hashPasswordArgon2id("dummy-password-for-timing-consistency")
-	if err != nil {
-		panic(fmt.Sprintf("failed to generate dummy hash: %v", err))
-	}
-	dummyHash = string(hash)
-}
+// dummyHash is a pre-computed valid argon2id hash of a dummy string.
+// This prevents email enumeration via timing attacks when a user is not found,
+// while avoiding runtime initialization panics.
+var dummyHash = "$argon2id$v=19$m=65536,t=3,p=4$X4fUoUhti1NYpyJWO4K5EQ$eMu2NZT+fjCsjS5+1+DQhG+nJT+wS1ZLXDaZjEvT0d0"
 
 func GenerateToken() (string, error) {
 	bytes := make([]byte, 32)
@@ -72,11 +65,8 @@ func Register(ctx context.Context, email, password string) (string, error) {
 	if err != nil {
 		// Normalize error to prevent email enumeration
 		if !strings.Contains(err.Error(), "unique constraint") && !strings.Contains(err.Error(), "duplicate key") {
-			masked := email
-			if at := strings.Index(email, "@"); at > 1 {
-				masked = email[:1] + "***" + email[at:]
-			}
-			log.Printf("Registration error for %s: %v", masked, err)
+			masked := maskEmail(email)
+			slog.Error("Registration error", "email", masked, "error", err)
 		}
 		return "", ErrConflict
 	}
@@ -131,7 +121,7 @@ func ResendVerificationToken(ctx context.Context, email string) (string, string,
 
 	newToken, err := GenerateToken()
 	if err != nil {
-		log.Printf("Error generating token for resend (email: %s): %v", maskEmail(email), err)
+		slog.Error("Error generating token for resend", "email", maskEmail(email), "error", err)
 		return "", "", nil, errors.New(genericMsg)
 	}
 
@@ -143,12 +133,12 @@ func ResendVerificationToken(ctx context.Context, email string) (string, string,
 		WHERE id = $2
 	`, newToken, userID)
 	if err != nil {
-		log.Printf("Error updating verification token for user %s: %v", maskEmail(email), err)
+		slog.Error("Error updating verification token", "email", maskEmail(email), "error", err)
 		return "", "", nil, errors.New(genericMsg)
 	}
 
 	if err = tx.Commit(ctx); err != nil {
-		log.Printf("Error committing resend transaction for user %s: %v", maskEmail(email), err)
+		slog.Error("Error committing resend transaction", "email", maskEmail(email), "error", err)
 		return "", "", nil, errors.New(genericMsg)
 	}
 

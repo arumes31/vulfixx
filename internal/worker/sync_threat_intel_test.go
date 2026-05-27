@@ -103,4 +103,3 @@ func TestWorkerSync_ThreatIntel(t *testing.T) {
 		}
 	})
 }
-

@@ -272,3 +272,20 @@ func TestInitRedis_ParseError(t *testing.T) {
 		}
 	})
 }
+
+func TestInitRedis_PasswordOverride(t *testing.T) {
+	oldPing := redisPing
+	redisPing = func() error { return nil }
+	defer func() { redisPing = oldPing }()
+
+	t.Run("Single Node Password Override", func(t *testing.T) {
+		t.Setenv("REDIS_URL", "redis://localhost:6379")
+		t.Setenv("REDIS_PASSWORD", "secret")
+		err := InitRedis()
+		if err != nil {
+			t.Errorf("InitRedis failed: %v", err)
+		}
+		// We can't easily check the private client options without reflection or changing the code,
+		// but running it ensures the code path is covered.
+	})
+}

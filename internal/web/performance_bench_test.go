@@ -34,10 +34,10 @@ func BenchmarkDashboardHandler(b *testing.B) {
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "vendor", "product", "affected_products", "priority"}).
 				AddRow(1, "CVE-2023-1234", "Test", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", true, time.Now(), time.Now(), "in_progress", []string{}, "note", 0.5, "CWE-79", "XSS", 2, 0, "", []byte(`{}`), "V", "P", []byte(`[]`), "P0"))
 
-		// Mock inner cisa_ransomware query
-		mock.ExpectQuery("(?is)SELECT cisa_ransomware FROM cves").
-			WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"cisa_ransomware"}).AddRow(false))
+		// Mock batched cisa_ransomware query
+		mock.ExpectQuery("(?is)SELECT id, cisa_ransomware FROM cves WHERE id = ANY").
+			WithArgs(pgxmock.AnyArg()).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cisa_ransomware"}).AddRow(1, false))
 
 		// Mock CWE distribution query
 		mock.ExpectQuery("(?is)SELECT cwe_id.*FROM cves").

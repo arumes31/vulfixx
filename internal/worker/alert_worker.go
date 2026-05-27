@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"regexp"
 	"regexp/syntax"
 	"strconv"
@@ -84,13 +84,13 @@ func (w *Worker) processAlerts(ctx context.Context) {
 				return
 			}
 			if !errors.Is(err, redis.Nil) {
-				log.Println("Error reading from alerts queue:", err)
+				slog.Error("Error reading from alerts queue", "error", err)
 			}
 			continue
 		}
 		var cve models.CVE
 		if err := json.Unmarshal([]byte(result[1]), &cve); err != nil {
-			log.Printf("Error unmarshaling alert job: %v", err)
+			slog.Error("Error unmarshaling alert job", "error", err)
 			continue
 		}
 		w.evaluateSubscriptions(ctx, &cve)
@@ -102,7 +102,7 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 	// Pre-fetch all users who have already been notified about this CVE to avoid N+1 queries
 	historyRows, err := w.Pool.Query(ctx, "SELECT user_id FROM alert_history WHERE cve_id = $1", cve.ID)
 	if err != nil {
-		log.Printf("Error fetching alert history for CVE %d: %v", cve.ID, err)
+		slog.Error("Error fetching alert history for CVE", "id", cve.ID, "cve_id", cve.CVEID, "error", err)
 		notifiedUsers = nil
 	} else {
 		defer historyRows.Close()
@@ -131,7 +131,7 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		  )
 	`, cve.CVSSScore, cve.Description)
 	if err != nil {
-		log.Println("Error fetching subscriptions:", err)
+		slog.Error("Error fetching subscriptions", "error", err)
 		return
 	}
 	defer rows.Close()
@@ -139,11 +139,11 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		var sub models.UserSubscription
 		var email string
 		var slackURL, teamsURL string
-		if err := rows.Scan(&sub.ID, &sub.UserID, &sub.Keyword, &sub.MinSeverity, 
+		if err := rows.Scan(&sub.ID, &sub.UserID, &sub.Keyword, &sub.MinSeverity,
 			&sub.WebhookURL, &slackURL, &teamsURL,
 			&sub.EnableEmail, &sub.EnableWebhook, &sub.EnableSlack, &sub.EnableTeams, &sub.EnableBrowserPush,
 			&sub.FilterLogic, &sub.AggregationMode, &email); err != nil {
-			log.Printf("Error scanning subscription row: %v", err)
+			slog.Error("Error scanning subscription row", "error", err)
 			continue
 		}
 		sub.SlackWebhookURL, _ = models.DecryptWebhook(slackURL)
@@ -167,7 +167,7 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		  AND $1 ILIKE '%' || REPLACE(REPLACE(REPLACE(ak.keyword, '\', '\\'), '%', '\%'), '_', '\_') || '%' ESCAPE '\'
 	`, cve.Description)
 	if err != nil {
-		log.Println("Error fetching asset keywords:", err)
+		slog.Error("Error fetching asset keywords", "error", err)
 		return
 	}
 	defer assetRows.Close()
@@ -175,7 +175,7 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		var keyword, email, assetName string
 		var userID int
 		if err := assetRows.Scan(&keyword, &userID, &email, &assetName); err != nil {
-			log.Printf("Error scanning asset keyword row: %v", err)
+			slog.Error("Error scanning asset keyword row", "error", err)
 			continue
 		}
 		if notifiedUsers[userID] {
@@ -274,7 +274,7 @@ func evaluateComplexFilter(logic string, cve *models.CVE) bool {
 				if pattern != "" {
 					re, err := getPatternRegex(pattern)
 					if err != nil {
-						log.Printf("Complex filter regex error: %v", err)
+						slog.Error("Complex filter regex error", "pattern", pattern, "error", err)
 						return false // Fail closed
 					}
 					if !re.MatchString(cve.Description) {
@@ -316,7 +316,6 @@ func (w *Worker) notifyIfNewWithCache(ctx context.Context, userID int, cve *mode
 		}
 	}
 
-
 	// 21. Alert Flood Protection (Rate limiting per user/hour)
 	floodKey := fmt.Sprintf("flood_protection:%d", userID)
 	count, _ := w.Redis.Incr(ctx, floodKey).Result()
@@ -325,7 +324,7 @@ func (w *Worker) notifyIfNewWithCache(ctx context.Context, userID int, cve *mode
 	}
 	if count > 50 { // Max 50 alerts per hour
 		if count == 51 {
-			log.Printf("Flood Protection: Throttling alerts for user %d", userID)
+			slog.Warn("Flood Protection: Throttling alerts for user", "user_id", userID)
 		}
 		return false
 	}
@@ -339,7 +338,7 @@ func (w *Worker) notifyIfNewWithCache(ctx context.Context, userID int, cve *mode
 		`, cve.ID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.VectorString, &cve.CISAKEV, &cve.EPSSScore, &cve.CWEID, &cve.GitHubPoCCount, &cve.PublishedDate, &cve.References)
 		if err != nil {
 			w.Redis.Decr(ctx, floodKey)
-			log.Printf("Failed to fetch full CVE details for alert: %v", err)
+			slog.Error("Failed to fetch full CVE details for alert", "id", cve.ID, "error", err)
 			return false
 		}
 	}
@@ -353,7 +352,7 @@ func (w *Worker) notifyIfNewWithCache(ctx context.Context, userID int, cve *mode
 
 	_, err := w.Pool.Exec(ctx, "INSERT INTO alert_history (user_id, cve_id, sent_at) VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING", userID, cve.ID)
 	if err != nil {
-		log.Printf("Failed to record alert history: %v", err)
+		slog.Error("Failed to record alert history", "user_id", userID, "cve_id", cve.CVEID, "error", err)
 	}
 
 	return true

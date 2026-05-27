@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"cve-tracker/internal/models"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type osvResponse struct {
@@ -21,7 +23,7 @@ type osvResponse struct {
 			Ecosystem string `json:"ecosystem"`
 		} `json:"package"`
 		Ranges []struct {
-			Type   string `json:"type"`
+			Type   string              `json:"type"`
 			Events []map[string]string `json:"events"`
 		} `json:"ranges"`
 		Versions []string `json:"versions"`
@@ -46,7 +48,7 @@ func (w *Worker) syncOSVPeriodically(ctx context.Context) {
 }
 
 func (w *Worker) syncOSV(ctx context.Context) {
-	log.Println("Worker: [SYNC] Starting OSV (Open Source Vulnerabilities) synchronization...")
+	slog.Info("Worker: [SYNC] Starting OSV (Open Source Vulnerabilities) synchronization...")
 
 	// Prioritize CVEs that haven't been checked yet, then oldest ones (older than 30 days)
 	rows, err := w.Pool.Query(ctx, `
@@ -56,7 +58,7 @@ func (w *Worker) syncOSV(ctx context.Context) {
 		LIMIT 200
 	`)
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to fetch CVEs for OSV sync: %v", err)
+		slog.Error("Worker: [ERROR] Failed to fetch CVEs for OSV sync", "error", err)
 		return
 	}
 	defer rows.Close()
@@ -69,11 +71,23 @@ func (w *Worker) syncOSV(ctx context.Context) {
 		}
 	}
 
-	count := 0
+	if len(cves) == 0 {
+		w.updateTaskStats(ctx, "osv_sync")
+		return
+	}
+
+	type updateItem struct {
+		cve     models.CVE
+		osvData *osvResponse
+		hasData bool
+		changed bool
+	}
+	var updates []updateItem
+
 	for _, cve := range cves {
 		select {
 		case <-ctx.Done():
-			return
+			goto executeUpdates
 		default:
 		}
 
@@ -82,9 +96,10 @@ func (w *Worker) syncOSV(ctx context.Context) {
 			continue
 		}
 
+		item := updateItem{cve: cve, osvData: osvData}
 		if osvData != nil {
+			item.hasData = true
 			// Deep Enrichment: Extract products and versions
-			changed := false
 			for _, aff := range osvData.Affected {
 				vendor := aff.Package.Ecosystem
 				product := aff.Package.Name
@@ -123,38 +138,86 @@ func (w *Worker) syncOSV(ctx context.Context) {
 					}
 				}
 
-				cve.AddAffectedProduct(vendor, product, versionStr, false)
+				item.cve.AddAffectedProduct(vendor, product, versionStr, false)
 
 				// If primary vendor/product is missing, use OSV as authoritative
-				if cve.Vendor == "" {
-					cve.Vendor = vendor
+				if item.cve.Vendor == "" {
+					item.cve.Vendor = vendor
 				}
-				if cve.Product == "" {
-					cve.Product = product
+				if item.cve.Product == "" {
+					item.cve.Product = product
 				}
-				changed = true
+				item.changed = true
 			}
+		}
+		updates = append(updates, item)
+		time.Sleep(100 * time.Millisecond) // OSV is fast, but we're being polite
+	}
 
-			if changed {
-				dataJSON, _ := json.Marshal(osvData)
-				_, err = w.Pool.Exec(ctx, "UPDATE cves SET osv_data = $1, osv_last_updated = NOW(), vendor = $2, product = $3, affected_products = $4 WHERE id = $5",
-					dataJSON, cve.Vendor, cve.Product, cve.AffectedProducts, cve.ID)
+executeUpdates:
+	if len(updates) == 0 {
+		w.updateTaskStats(ctx, "osv_sync")
+		return
+	}
+
+	tx, err := w.Pool.Begin(ctx)
+	if err != nil {
+		slog.Error("Worker: [ERROR] Failed to begin transaction for OSV updates", "error", err)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	count := 0
+	batch := &pgx.Batch{}
+	for _, item := range updates {
+		if item.hasData && item.changed {
+			dataJSON, marshalErr := json.Marshal(item.osvData)
+			if marshalErr != nil {
+				slog.Error("Worker: [ERROR] Failed to marshal OSV data in batch", "error", marshalErr, "cve_id", item.cve.CVEID, "osvData", item.osvData)
+				continue
+			}
+			batch.Queue("UPDATE cves SET osv_data = $1, osv_last_updated = NOW(), vendor = $2, product = $3, affected_products = $4 WHERE id = $5",
+				dataJSON, item.cve.Vendor, item.cve.Product, item.cve.AffectedProducts, item.cve.ID)
+		} else {
+			batch.Queue("UPDATE cves SET osv_last_updated = NOW() WHERE id = $1", item.cve.ID)
+		}
+	}
+
+	br := tx.SendBatch(ctx, batch)
+	if br != nil {
+		for i := 0; i < len(updates); i++ {
+			if _, err := br.Exec(); err == nil {
+				count++
+			}
+		}
+		_ = br.Close()
+	} else {
+		// Fallback for mocks/drivers that don't support batching
+		for _, item := range updates {
+			var err error
+			if item.hasData && item.changed {
+				dataJSON, marshalErr := json.Marshal(item.osvData)
+				if marshalErr != nil {
+					slog.Error("Worker: [ERROR] Failed to marshal OSV data in fallback", "error", marshalErr, "cve_id", item.cve.CVEID, "osvData", item.osvData)
+					continue
+				}
+				_, err = tx.Exec(ctx, "UPDATE cves SET osv_data = $1, osv_last_updated = NOW(), vendor = $2, product = $3, affected_products = $4 WHERE id = $5",
+					dataJSON, item.cve.Vendor, item.cve.Product, item.cve.AffectedProducts, item.cve.ID)
 			} else {
-				_, err = w.Pool.Exec(ctx, "UPDATE cves SET osv_last_updated = NOW() WHERE id = $1", cve.ID)
+				_, err = tx.Exec(ctx, "UPDATE cves SET osv_last_updated = NOW() WHERE id = $1", item.cve.ID)
 			}
 			if err == nil {
 				count++
 			}
-		} else {
-			// Mark as checked even if no data found
-			_, _ = w.Pool.Exec(ctx, "UPDATE cves SET osv_last_updated = NOW() WHERE id = $1", cve.ID)
 		}
+	}
 
-		time.Sleep(200 * time.Millisecond) // OSV is fast
+	if err := tx.Commit(ctx); err != nil {
+		slog.Error("Worker: [ERROR] Failed to commit OSV updates", "error", err)
 	}
 
 	w.updateTaskStats(ctx, "osv_sync")
-	log.Printf("Worker: [SYNC] OSV synchronization complete. Updated %d records.", count)
+	slog.Info("Worker: [SYNC] OSV synchronization complete.", "updated_count", count)
 }
 
 func (w *Worker) fetchOSVData(ctx context.Context, cveID string) (*osvResponse, error) {

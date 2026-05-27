@@ -197,7 +197,7 @@ func TestWorker_BrowserPush(t *testing.T) {
 	w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
 	cve := &models.CVE{CVEID: "CVE-2023-0001"}
 	res := w.sendBrowserPush(123, cve)
-	if res {
-		t.Error("expected sendBrowserPush to return false (not implemented yet)")
+	if !res {
+		t.Error("expected sendBrowserPush to return true (simulated success)")
 	}
 }

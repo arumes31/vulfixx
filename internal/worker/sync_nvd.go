@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"math"
 	"net/http"
@@ -91,19 +90,19 @@ func (w *Worker) fetchCVEsPeriodically(ctx context.Context) {
 func (w *Worker) fetchFromNVD(ctx context.Context) {
 	lastSync, err := w.getLastSyncTime(ctx)
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to fetch last sync time: %v", err)
+		slog.Error("Worker: [ERROR] Failed to fetch last sync time", "error", err)
 		return
 	}
 	if lastSync.IsZero() {
 		startIndex := w.getBackfillProgress(ctx)
 		if startIndex > 0 {
-			log.Printf("Worker: Resuming NVD backfill from index %d...", startIndex)
+			slog.Info("Worker: Resuming NVD backfill", "start_index", startIndex)
 		} else {
-			log.Println("Worker: No prior sync found — starting full NVD backfill...")
+			slog.Info("Worker: No prior sync found — starting full NVD backfill...")
 		}
 		w.runFullSync(ctx, true, startIndex)
 	} else {
-		log.Printf("Worker: Incremental sync — fetching CVEs modified since %s", lastSync.Format(time.RFC3339))
+		slog.Info("Worker: Incremental sync — fetching modified CVEs", "since", lastSync.Format(time.RFC3339))
 		w.runFullSync(ctx, false, 0)
 	}
 }
@@ -123,7 +122,7 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool, startIndex in
 	if !isBackfill {
 		lastSync, err := w.getLastSyncTime(ctx)
 		if err != nil {
-			log.Printf("Worker: Error getting last sync time: %v", err)
+			slog.Error("Worker: Error getting last sync time for incremental sync", "error", err)
 			return
 		}
 		params.Set("lastModStartDate", lastSync.Format(time.RFC3339))
@@ -149,7 +148,7 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool, startIndex in
 		/* #nosec G704 */
 		req, err := http.NewRequestWithContext(ctx, "GET", fullURL, nil)
 		if err != nil {
-			log.Printf("Worker: Error creating NVD request: %v", err)
+			slog.Error("Worker: Error creating NVD request", "error", err)
 			return
 		}
 
@@ -160,9 +159,9 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool, startIndex in
 		resp, err := w.HTTP.Do(req)
 		if err != nil {
 			retryCount++
-			log.Printf("Worker: Error fetching from NVD (attempt %d/%d): %v", retryCount, maxNVDRetries, err)
+			slog.Error("Worker: Error fetching from NVD", "attempt", retryCount, "max_retries", maxNVDRetries, "error", err)
 			if retryCount >= maxNVDRetries {
-				log.Printf("Worker: Max NVD retries reached, aborting sync")
+				slog.Error("Worker: Max NVD retries reached, aborting sync")
 				return
 			}
 			backoff := time.Duration(math.Pow(2, float64(retryCount))) * time.Second
@@ -177,11 +176,11 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool, startIndex in
 		if resp.StatusCode == 403 || resp.StatusCode == 429 {
 			retryCount++
 			if retryCount >= maxNVDRetries {
-				log.Printf("Worker: Max NVD rate-limit retries reached, aborting sync")
+				slog.Error("Worker: Max NVD rate-limit retries reached, aborting sync")
 				_ = resp.Body.Close()
 				return
 			}
-			log.Printf("Worker: Rate limited by NVD (attempt %d/%d), waiting 30s...", retryCount, maxNVDRetries)
+			slog.Warn("Worker: Rate limited by NVD, waiting 30s...", "attempt", retryCount, "max_retries", maxNVDRetries)
 			_ = resp.Body.Close()
 			timer := time.NewTimer(30 * time.Second)
 			select {
@@ -198,14 +197,14 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool, startIndex in
 
 		if resp.StatusCode != http.StatusOK {
 			/* #nosec G706 */
-			log.Printf("Worker: NVD API returned status %d", resp.StatusCode)
+			slog.Error("Worker: NVD API returned error status", "status", resp.StatusCode)
 			_ = resp.Body.Close()
 			return
 		}
 
 		var nvdResp NVDResponse
 		if err := json.NewDecoder(resp.Body).Decode(&nvdResp); err != nil {
-			log.Printf("Worker: Error decoding NVD response: %v", err)
+			slog.Error("Worker: Error decoding NVD response JSON", "error", err)
 			_ = resp.Body.Close()
 			return
 		}
@@ -216,11 +215,11 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool, startIndex in
 		}
 
 		if err := w.upsertCVEs(ctx, nvdResp.Vulnerabilities, isBackfill); err != nil {
-			log.Printf("Worker: NVD upsert failed, aborting sync: %v", err)
+			slog.Error("Worker: NVD upsert failed, aborting sync", "error", err)
 			return
 		}
 
-		log.Printf("Worker: [NVD] Successfully upserted batch of %d CVEs (Total processed: %d/%d)", len(nvdResp.Vulnerabilities), startIndex+len(nvdResp.Vulnerabilities), nvdResp.TotalResults)
+		slog.Info("Worker: [NVD] Successfully upserted batch of CVEs", "batch_size", len(nvdResp.Vulnerabilities), "processed", startIndex+len(nvdResp.Vulnerabilities), "total", nvdResp.TotalResults)
 
 		if isBackfill {
 			w.updateBackfillProgress(ctx, startIndex)
@@ -286,9 +285,7 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 		}
 
 		cve := entry.CVE
-		if i%50 == 0 {
-			slog.Info("Worker: [NVD] Processing CVEs...", "current", i+1, "total", totalInBatch, "last_id", cve.ID)
-		}
+		slog.Info("Worker: [NVD] Processing CVE", "current", i+1, "total", totalInBatch, "cve_id", cve.ID)
 
 		description := ""
 		for _, d := range cve.Descriptions {
@@ -406,8 +403,8 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 					}
 				}
 			}
-		} else if i%50 == 0 {
-			slog.Debug("Worker: [NVD] Skipping LLM (heuristic mode active)", "cve_id", cve.ID)
+		} else {
+			slog.Info("Worker: [NVD] Skipping LLM for CVE (heuristic mode active)", "cve_id", cve.ID)
 		}
 
 		// Heuristic Fallback
@@ -503,7 +500,7 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 		return err
 	}
 
-	slog.Info("Worker: [NVD] Successfully committed batch to database", "batch_size", len(successfulCVEs))
+	slog.Info("Worker: [DATABASE CONFIRMED] Batch added successfully to DB", "batch_size", len(successfulCVEs))
 
 	// Trigger enrichment and alerts only AFTER successful commit
 	for _, model := range successfulCVEs {
@@ -543,7 +540,7 @@ func (w *Worker) updateLastSyncTime(ctx context.Context, t time.Time) {
 		ON CONFLICT (task_name) DO UPDATE SET last_run = EXCLUDED.last_run
 	`, t)
 	if err != nil {
-		log.Printf("Worker: Error updating sync stats: %v", err)
+		slog.Error("Worker: Error updating sync stats", "error", err)
 	}
 }
 
@@ -563,7 +560,7 @@ func (w *Worker) updateBackfillProgress(ctx context.Context, idx int) {
 		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
 	`, fmt.Sprintf("%d", idx))
 	if err != nil {
-		log.Printf("Worker: Error updating backfill progress: %v", err)
+		slog.Error("Worker: Error updating backfill progress", "index", idx, "error", err)
 	}
 }
 

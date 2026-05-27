@@ -236,7 +236,10 @@ This project uses a modern GitHub Actions pipeline (`.github/workflows/docker-bu
 - **Environment**: All CI jobs run in a **Go 1.26.3** containerized environment.
 - **Unit Testing**: Automated Go tests to ensure logic correctness.
 - **Linting**: Strict code quality checks with `golangci-lint` (v2.x).
-- **Security Scanning**: Vulnerability detection with `gosec`.
+- **Security Scanning**:
+  - **Gsec**: Static Analysis (SAST) with `gosec`.
+  - **Govul**: Vulnerability scanning with `govulncheck`.
+  - **Godep**: Dependency security scanning with `osv-scanner`.
 - **Styling**: Modernized CSS pipeline with **Tailwind CSS v4** for high-performance, zero-runtime styling.
 - **Container Publishing**: Images are automatically built and pushed to **GitHub Container Registry (GHCR)**.
 

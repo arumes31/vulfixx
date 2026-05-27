@@ -2,17 +2,16 @@ package web
 
 import (
 	"context"
+	"cve-tracker/internal/db"
 	"errors"
 	"fmt"
-	"strings"
-	"cve-tracker/internal/db"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/pashagolub/pgxmock/v3"
 )
-
 
 func TestAlertHistoryHandler(t *testing.T) {
 	mock, err := db.SetupTestDB()
@@ -171,10 +170,10 @@ func TestUpdateCVEStatusHandler(t *testing.T) {
 			expectedJSON:   "Forbidden",
 		},
 		{
-			name:           "OptimisticLockConflict",
-			method:         "POST",
-			userID:         1,
-			body:           `{"cve_id": 10, "status": "resolved", "version": 2}`,
+			name:   "OptimisticLockConflict",
+			method: "POST",
+			userID: 1,
+			body:   `{"cve_id": 10, "status": "resolved", "version": 2}`,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("UPDATE cves SET version").
 					WithArgs(10, 2).
@@ -184,10 +183,10 @@ func TestUpdateCVEStatusHandler(t *testing.T) {
 			expectedJSON:   "Conflict",
 		},
 		{
-			name:           "OptimisticLockDBError",
-			method:         "POST",
-			userID:         1,
-			body:           `{"cve_id": 10, "status": "resolved", "version": 2}`,
+			name:   "OptimisticLockDBError",
+			method: "POST",
+			userID: 1,
+			body:   `{"cve_id": 10, "status": "resolved", "version": 2}`,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("UPDATE cves SET version").
 					WithArgs(10, 2).
@@ -197,10 +196,10 @@ func TestUpdateCVEStatusHandler(t *testing.T) {
 			expectedJSON:   "Internal server error",
 		},
 		{
-			name:         "Success_Active_NoTeam",
-			method:       "POST",
-			userID:       1,
-			body:         `{"cve_id": 10, "status": "active"}`,
+			name:   "Success_Active_NoTeam",
+			method: "POST",
+			userID: 1,
+			body:   `{"cve_id": 10, "status": "active"}`,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("DELETE FROM user_cve_status WHERE cve_id").
 					WithArgs(10, 1).
@@ -253,10 +252,10 @@ func TestUpdateCVEStatusHandler(t *testing.T) {
 			expectedJSON:   "Remediation status updated",
 		},
 		{
-			name:         "Success_Resolved_NoTeam",
-			method:       "POST",
-			userID:       1,
-			body:         `{"cve_id": 10, "status": "resolved"}`,
+			name:   "Success_Resolved_NoTeam",
+			method: "POST",
+			userID: 1,
+			body:   `{"cve_id": 10, "status": "resolved"}`,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("INSERT INTO user_cve_status").
 					WithArgs(1, pgxmock.AnyArg(), 10, "resolved").
@@ -382,10 +381,10 @@ func TestUpdateCVENoteHandler_Detailed(t *testing.T) {
 			expectedJSON:   "Forbidden",
 		},
 		{
-			name:           "OptimisticLockConflict",
-			method:         "POST",
-			userID:         1,
-			body:           `{"cve_id": 10, "notes": "test note", "version": 2}`,
+			name:   "OptimisticLockConflict",
+			method: "POST",
+			userID: 1,
+			body:   `{"cve_id": 10, "notes": "test note", "version": 2}`,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("UPDATE cves SET version").
 					WithArgs(10, 2).
@@ -395,10 +394,10 @@ func TestUpdateCVENoteHandler_Detailed(t *testing.T) {
 			expectedJSON:   "Conflict",
 		},
 		{
-			name:           "OptimisticLockDBError",
-			method:         "POST",
-			userID:         1,
-			body:           `{"cve_id": 10, "notes": "test note", "version": 2}`,
+			name:   "OptimisticLockDBError",
+			method: "POST",
+			userID: 1,
+			body:   `{"cve_id": 10, "notes": "test note", "version": 2}`,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("UPDATE cves SET version").
 					WithArgs(10, 2).
@@ -408,10 +407,10 @@ func TestUpdateCVENoteHandler_Detailed(t *testing.T) {
 			expectedJSON:   "Internal server error",
 		},
 		{
-			name:         "SuccessNoTeam",
-			method:       "POST",
-			userID:       1,
-			body:         `{"cve_id": 10, "notes": "test note"}`,
+			name:   "SuccessNoTeam",
+			method: "POST",
+			userID: 1,
+			body:   `{"cve_id": 10, "notes": "test note"}`,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("INSERT INTO cve_notes").
 					WithArgs(1, pgxmock.AnyArg(), 10, "test note").
@@ -444,10 +443,10 @@ func TestUpdateCVENoteHandler_Detailed(t *testing.T) {
 			expectedJSON:   "Notes saved successfully",
 		},
 		{
-			name:         "DBInsertError",
-			method:       "POST",
-			userID:       1,
-			body:         `{"cve_id": 10, "notes": "test note"}`,
+			name:   "DBInsertError",
+			method: "POST",
+			userID: 1,
+			body:   `{"cve_id": 10, "notes": "test note"}`,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectExec("INSERT INTO cve_notes").
 					WithArgs(1, pgxmock.AnyArg(), 10, "test note").
@@ -590,10 +589,10 @@ func TestBulkUpdateCVEStatusHandler_Detailed(t *testing.T) {
 			expectedJSON:   "Forbidden",
 		},
 		{
-			name:         "BeginTransactionError",
-			method:       "POST",
-			userID:       1,
-			body:         `{"cve_ids": [1, 2], "status": "resolved"}`,
+			name:   "BeginTransactionError",
+			method: "POST",
+			userID: 1,
+			body:   `{"cve_ids": [1, 2], "status": "resolved"}`,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectBegin().WillReturnError(errors.New("begin error"))
 			},
@@ -601,10 +600,10 @@ func TestBulkUpdateCVEStatusHandler_Detailed(t *testing.T) {
 			expectedJSON:   "Internal server error",
 		},
 		{
-			name:         "SuccessActiveNoTeam",
-			method:       "POST",
-			userID:       1,
-			body:         `{"cve_ids": [1, 2], "status": "active"}`,
+			name:   "SuccessActiveNoTeam",
+			method: "POST",
+			userID: 1,
+			body:   `{"cve_ids": [1, 2], "status": "active"}`,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectBegin()
 				mock.ExpectExec("DELETE FROM user_cve_status").
@@ -641,10 +640,10 @@ func TestBulkUpdateCVEStatusHandler_Detailed(t *testing.T) {
 			expectedJSON:   "Updated 2 CVEs",
 		},
 		{
-			name:         "SuccessResolvedNoTeam",
-			method:       "POST",
-			userID:       1,
-			body:         `{"cve_ids": [1, 2], "status": "resolved"}`,
+			name:   "SuccessResolvedNoTeam",
+			method: "POST",
+			userID: 1,
+			body:   `{"cve_ids": [1, 2], "status": "resolved"}`,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectBegin()
 				mock.ExpectExec("INSERT INTO user_cve_status").
@@ -681,10 +680,10 @@ func TestBulkUpdateCVEStatusHandler_Detailed(t *testing.T) {
 			expectedJSON:   "Updated 2 CVEs",
 		},
 		{
-			name:         "ExecQueryError",
-			method:       "POST",
-			userID:       1,
-			body:         `{"cve_ids": [1, 2], "status": "resolved"}`,
+			name:   "ExecQueryError",
+			method: "POST",
+			userID: 1,
+			body:   `{"cve_ids": [1, 2], "status": "resolved"}`,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectBegin()
 				mock.ExpectExec("INSERT INTO user_cve_status").
@@ -696,10 +695,10 @@ func TestBulkUpdateCVEStatusHandler_Detailed(t *testing.T) {
 			expectedJSON:   "Internal server error",
 		},
 		{
-			name:         "CommitTransactionError",
-			method:       "POST",
-			userID:       1,
-			body:         `{"cve_ids": [1, 2], "status": "resolved"}`,
+			name:   "CommitTransactionError",
+			method: "POST",
+			userID: 1,
+			body:   `{"cve_ids": [1, 2], "status": "resolved"}`,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
 				mock.ExpectBegin()
 				mock.ExpectExec("INSERT INTO user_cve_status").
@@ -764,5 +763,3 @@ func TestBulkUpdateCVEStatusHandler_Detailed(t *testing.T) {
 		})
 	}
 }
-
-

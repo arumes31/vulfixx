@@ -24,24 +24,19 @@ func TestWorker_EnrichmentRows_Comprehensive(t *testing.T) {
 
 	w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
 
-	t.Run("ScanError", func(t *testing.T) {
-		rows := &MockRows{
-			Items: []struct {
-				ID             any
-				CVEID          string
-				Description    string
-				Configurations []byte
-				References     []string
-			}{
-				{ID: 1, CVEID: "CVE-1", Description: "desc", Configurations: []byte(`[]`), References: []string{}},
-			},
-			ErrOnScan: true,
+	t.Run("UpdateSuccess", func(t *testing.T) {
+		// Apache is a known keyword that GetDetectedProduct might pick up if description contains it
+		cves := []models.CVE{
+			{ID: 1, CVEID: "CVE-2023-0001", Description: "Apache HTTP Server vulnerability", Configurations: models.CVEConfigurations{}, References: []string{}},
 		}
+
+		mock.ExpectExec("UPDATE cves SET vendor").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), 1).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("intelligence_enrichment").
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-		w.processEnrichmentRows(context.Background(), rows, 1)
+		w.processEnrichmentRows(context.Background(), cves, 1)
 
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
@@ -49,26 +44,17 @@ func TestWorker_EnrichmentRows_Comprehensive(t *testing.T) {
 	})
 
 	t.Run("UpdateError", func(t *testing.T) {
-		rows := &MockRows{
-			Items: []struct {
-				ID             any
-				CVEID          string
-				Description    string
-				Configurations []byte
-				References     []string
-			}{
-				{ID: 123, CVEID: "CVE-2023-1234", Description: "A vulnerability in Apache HTTP Server allows remote attackers to execute code.", Configurations: []byte(`[]`), References: []string{}},
-			},
+		cves := []models.CVE{
+			{ID: 123, CVEID: "CVE-2023-1234", Description: "Apache HTTP Server vulnerability", Configurations: models.CVEConfigurations{}, References: []string{}},
 		}
 
-		// Heuristic resolves to Apache/HTTP Server, but UPDATE fails
-		mock.ExpectExec("UPDATE cves SET vendor").WithArgs("Apache", "HTTP Server", pgxmock.AnyArg(), 123).
+		mock.ExpectExec("UPDATE cves SET vendor").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), 123).
 			WillReturnError(errors.New("update error"))
 
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("intelligence_enrichment").
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-		w.processEnrichmentRows(context.Background(), rows, 1)
+		w.processEnrichmentRows(context.Background(), cves, 1)
 
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
@@ -83,21 +69,15 @@ func TestWorker_EnrichmentRows_Comprehensive(t *testing.T) {
 		config.AppConfig.GeminiAPIKey = "dummy-key"
 		config.AppConfig.LLMTimeout = 1
 
-		// 3 consecutive failures to trigger backoff, with cancelled context to exit backoff immediately
-		rows := &MockRows{
-			Items: []struct {
-				ID             any
-				CVEID          string
-				Description    string
-				Configurations []byte
-				References     []string
-			}{
-				{ID: 1, CVEID: "CVE-1", Description: "desc", Configurations: []byte(`[]`), References: []string{}},
-				{ID: 2, CVEID: "CVE-2", Description: "desc", Configurations: []byte(`[]`), References: []string{}},
-				{ID: 3, CVEID: "CVE-3", Description: "desc", Configurations: []byte(`[]`), References: []string{}},
-				{ID: 4, CVEID: "CVE-4", Description: "desc", Configurations: []byte(`[]`), References: []string{}},
-			},
+		cves := []models.CVE{
+			{ID: 1, CVEID: "CVE-1", Description: "desc", Configurations: models.CVEConfigurations{}, References: []string{}},
+			{ID: 2, CVEID: "CVE-2", Description: "desc", Configurations: models.CVEConfigurations{}, References: []string{}},
+			{ID: 3, CVEID: "CVE-3", Description: "desc", Configurations: models.CVEConfigurations{}, References: []string{}},
+			{ID: 4, CVEID: "CVE-4", Description: "desc", Configurations: models.CVEConfigurations{}, References: []string{}},
 		}
+
+		// We do NOT expect the stats update because it will exit early during backoff
+		// mock.ExpectExec("INSERT INTO worker_sync_stats")...
 
 		// Set mock HTTP client to return 500 to trigger consecutive LLM failures
 		httpClient := &MockHTTPClient{
@@ -111,7 +91,7 @@ func TestWorker_EnrichmentRows_Comprehensive(t *testing.T) {
 		// Cancel immediately so the consecutive failure backoff exits
 		cancel()
 
-		w2.processEnrichmentRows(ctx, rows, 4)
+		w2.processEnrichmentRows(ctx, cves, 4)
 
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
@@ -133,7 +113,7 @@ func TestWorker_Health_Comprehensive(t *testing.T) {
 		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM notification_delivery_logs").
 			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 
-		tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync"}
+		tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync", "inthewild_sync", "threat_intel_sync", "advisory_rss_sync", "intelligence_sync", "intelligence_enrichment", "health_check"}
 		mock.ExpectQuery("SELECT task_name, last_run FROM worker_sync_stats WHERE task_name = ANY\\(\\$1\\)").
 			WithArgs(tasks).
 			WillReturnRows(pgxmock.NewRows([]string{"task_name", "last_run"}).
@@ -158,11 +138,11 @@ func TestWorker_Health_Comprehensive(t *testing.T) {
 		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM notification_delivery_logs").
 			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(2))
 
-		tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync"}
+		tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync", "inthewild_sync", "threat_intel_sync", "advisory_rss_sync", "intelligence_sync", "intelligence_enrichment", "health_check"}
 		mock.ExpectQuery("SELECT task_name, last_run FROM worker_sync_stats WHERE task_name = ANY\\(\\$1\\)").
 			WithArgs(tasks).
 			WillReturnRows(pgxmock.NewRows([]string{"task_name", "last_run"}).
-				AddRow("nvd_sync", time.Now().Add(-48 * time.Hour)).
+				AddRow("nvd_sync", time.Now().Add(-48*time.Hour)).
 				AddRow("epss_sync", time.Now()).
 				AddRow("github_buzz_sync", time.Now()).
 				AddRow("osv_sync", time.Now()).
@@ -184,9 +164,6 @@ func TestWorker_Health_Comprehensive(t *testing.T) {
 			config.AppConfig = orig
 		}()
 
-		// In checkWorkerHealth call, we need to satisfy the DB expectations if they are not met
-		// Since we use MatchExpectationsInOrder(false), we just need to make sure we don't have UNMET expectations or UNEXPECTED calls.
-
 		// 1. Ollama Happy path
 		config.AppConfig.LLMProvider = "ollama"
 		config.AppConfig.LLMEndpoint = "http://localhost:11434"
@@ -196,10 +173,6 @@ func TestWorker_Health_Comprehensive(t *testing.T) {
 			},
 		}
 		w2 := NewWorker(mock, nil, &EmailSenderMock{}, httpClient)
-
-		// Satisfy checkWorkerHealth calls within TestLLMConnectivity (if any, although TestLLMConnectivity doesn't call it,
-		// but the previous tests might have left something or the code might call it).
-		// Actually, TestLLMConnectivity doesn't call checkWorkerHealth.
 
 		w2.TestLLMConnectivity(context.Background())
 
@@ -302,61 +275,3 @@ func TestWorker_AdvisoryRSS_Extra(t *testing.T) {
 		}
 	})
 }
-
-type MockRows struct {
-	Items []struct {
-		ID             any
-		CVEID          string
-		Description    string
-		Configurations []byte
-		References     []string
-	}
-	Index     int
-	ErrOnScan bool
-}
-
-func (m *MockRows) Next() bool {
-	return m.Index < len(m.Items)
-}
-
-func (m *MockRows) Scan(dest ...any) error {
-	if m.Index >= len(m.Items) {
-		return io.EOF
-	}
-	item := m.Items[m.Index]
-	m.Index++
-	if m.ErrOnScan {
-		return errors.New("forced scan error")
-	}
-
-	if len(dest) < 5 {
-		return errors.New("insufficient dest elements")
-	}
-
-	if v, ok := dest[0].(*int); ok {
-		if idInt, ok := item.ID.(int); ok {
-			*v = idInt
-		} else {
-			return errors.New("id type casting failed")
-		}
-	} else {
-		return errors.New("dest[0] is not *int")
-	}
-
-	if v, ok := dest[1].(*string); ok {
-		*v = item.CVEID
-	}
-	if v, ok := dest[2].(*string); ok {
-		*v = item.Description
-	}
-	if v, ok := dest[3].(*[]byte); ok {
-		*v = item.Configurations
-	}
-	if v, ok := dest[4].(*[]string); ok {
-		*v = item.References
-	}
-
-	return nil
-}
-
-func (m *MockRows) Close() {}

@@ -5,7 +5,7 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -18,7 +18,7 @@ func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
 	}
 	w.waitUntilNextRun(ctx, "intelligence_sync", 2*time.Hour, 4*time.Minute)
 	if err := w.processIntelligence(ctx); err != nil {
-		log.Printf("Worker: Initial intelligence sync error: %v", err)
+		slog.Error("Worker: Initial intelligence sync error", "error", err)
 	}
 
 	ticker := time.NewTicker(2 * time.Hour)
@@ -29,9 +29,9 @@ func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			log.Println("Worker: Starting Intelligence Sync (Social Sentiment & Duplicate Detection)...")
+			slog.Info("Worker: Starting Intelligence Sync (Social Sentiment & Duplicate Detection)...")
 			if err := w.processIntelligence(ctx); err != nil {
-				log.Printf("Worker: Intelligence sync error: %v", err)
+				slog.Error("Worker: Intelligence sync error", "error", err)
 			}
 		}
 	}
@@ -74,7 +74,7 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		osintData, _ := json.Marshal(c.OSINTData)
 		_, err = w.Pool.Exec(ctx, "UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
 		if err != nil {
-			log.Printf("Worker: Failed to update OSINT data for %s: %v", c.CVEID, err)
+			slog.Error("Worker: Failed to update OSINT data", "cve_id", c.CVEID, "error", err)
 		}
 
 		// Throttle to avoid rate limits
@@ -137,49 +137,11 @@ func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
 	}
 }
 
-func (w *Worker) getJSON(ctx context.Context, url string, target interface{}) error {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", "Vulfixx/2.0 (Threat Intelligence Bot)")
-
-	resp, err := w.HTTP.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP error: %s", resp.Status)
-	}
-
-	return json.NewDecoder(resp.Body).Decode(target)
-}
-
 func (w *Worker) fetchHNMentions(ctx context.Context, cveID string) (int, []map[string]string, error) {
-	encodedID := url.QueryEscape(cveID)
-	hnURL := fmt.Sprintf("https://hn.algolia.com/api/v1/search?query=%s&tags=story", encodedID)
-
-	var hnResp struct {
-		NbHits int `json:"nbHits"`
-		Hits   []struct {
-			Title    string `json:"title"`
-			ObjectID string `json:"objectID"`
-		} `json:"hits"`
+	if w.HNClient == nil {
+		return 0, nil, fmt.Errorf("HNClient not initialized")
 	}
-
-	if err := w.getJSON(ctx, hnURL, &hnResp); err != nil {
-		return 0, nil, err
-	}
-
-	links := []map[string]string{}
-	for _, hit := range hnResp.Hits {
-		hnLink := fmt.Sprintf("https://news.ycombinator.com/item?id=%s", hit.ObjectID)
-		links = append(links, map[string]string{"title": hit.Title, "url": hnLink})
-	}
-
-	return hnResp.NbHits, links, nil
+	return w.HNClient.FetchMentions(ctx, cveID)
 }
 
 func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []map[string]string, error) {
@@ -208,7 +170,7 @@ func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []
 					waitTime = time.Duration(seconds) * time.Second
 				}
 			}
-			log.Printf("Worker: Reddit rate limited for %s, waiting %v...", cveID, waitTime)
+			slog.Warn("Worker: Reddit rate limited", "cve_id", cveID, "retry_after", waitTime)
 			select {
 			case <-ctx.Done():
 				return 0, nil, ctx.Err()

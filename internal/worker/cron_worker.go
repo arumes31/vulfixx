@@ -3,19 +3,14 @@ package worker
 import (
 	"context"
 	"cve-tracker/internal/config"
+	"fmt"
 	"cve-tracker/internal/llm"
 	"cve-tracker/internal/models"
 	"database/sql"
 	"errors"
-	"log"
+	"log/slog"
 	"time"
 )
-
-type Rows interface {
-	Next() bool
-	Scan(dest ...any) error
-	Close()
-}
 
 func (w *Worker) runWeeklySummaryWithLock(ctx context.Context) {
 	if ctx.Err() != nil {
@@ -23,7 +18,7 @@ func (w *Worker) runWeeklySummaryWithLock(ctx context.Context) {
 	}
 	tx, err := w.Pool.Begin(ctx)
 	if err != nil {
-		log.Printf("Worker: [CRON] Failed to begin transaction: %v", err)
+		slog.Error("Worker: [CRON] Failed to begin transaction for weekly summary", "error", err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -42,12 +37,12 @@ func (w *Worker) runWeeklySummaryWithLock(ctx context.Context) {
 		if errors.Is(err, sql.ErrNoRows) {
 			shouldRun = true
 		} else {
-			log.Printf("Worker: [CRON] Error querying last run: %v", err)
+			slog.Error("Worker: [CRON] Error querying last run for weekly summary", "error", err)
 		}
 	} else {
 		lastRun, err := time.Parse(time.RFC3339, lastRunStr)
 		if err != nil {
-			log.Printf("Worker: [CRON] Error parsing lastRunStr: %v", err)
+			slog.Error("Worker: [CRON] Error parsing lastRunStr", "value", lastRunStr, "error", err)
 			shouldRun = true
 		} else if time.Since(lastRun) > (6 * 24 * time.Hour) {
 			shouldRun = true
@@ -55,28 +50,28 @@ func (w *Worker) runWeeklySummaryWithLock(ctx context.Context) {
 	}
 
 	if shouldRun {
-		log.Println("Worker: [CRON] Executing weekly summary run...")
+		slog.Info("Worker: [CRON] Executing weekly summary run...")
 		if err := w.sendWeeklySummaries(ctx); err == nil {
 			_, err = tx.Exec(ctx, "INSERT INTO sync_state (key, value, updated_at) VALUES ('weekly_summary_last_run', $1, NOW()) ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()", time.Now().Format(time.RFC3339))
 			if err != nil {
-				log.Printf("Worker: [CRON] Failed to update sync state: %v", err)
+				slog.Error("Worker: [CRON] Failed to update sync state for weekly summary", "error", err)
 				return
 			}
 			if err := tx.Commit(ctx); err != nil {
-				log.Printf("Worker: [CRON] Failed to commit weekly summary: %v", err)
+				slog.Error("Worker: [CRON] Failed to commit weekly summary transaction", "error", err)
 				return
 			}
-			log.Println("Worker: [CRON] Weekly summary run complete.")
+			slog.Info("Worker: [CRON] Weekly summary run complete.")
 		} else {
-			log.Printf("Worker: [CRON] sendWeeklySummaries failed: %v", err)
+			slog.Error("Worker: [CRON] sendWeeklySummaries failed", "error", err)
 		}
 	}
 }
 
 func (w *Worker) startIntelligenceEnrichmentTask(ctx context.Context) {
-	log.Println("Worker: [CRON] Intelligence enrichment task started")
+	slog.Info("Worker: [CRON] Intelligence enrichment task started")
 	if ctx.Err() != nil {
-		log.Println("Worker: [CRON] Intelligence enrichment task shutting down")
+		slog.Info("Worker: [CRON] Intelligence enrichment task shutting down")
 		return
 	}
 	
@@ -86,11 +81,11 @@ func (w *Worker) startIntelligenceEnrichmentTask(ctx context.Context) {
 	if err != nil && errors.Is(err, context.Canceled) {
 		return
 	}
-	
+
 	interval := 24 * time.Hour
 	if missingCount > 5000 {
 		interval = 4 * time.Hour
-		log.Printf("Worker: [CRON] Large backlog (%d), setting enrichment interval to %v", missingCount, interval)
+		slog.Info("Worker: [CRON] Large backlog detected, setting enrichment frequency", "missing_count", missingCount, "interval", interval)
 	}
 
 	timer := time.NewTimer(interval)
@@ -99,7 +94,7 @@ func (w *Worker) startIntelligenceEnrichmentTask(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("Worker: [CRON] Intelligence enrichment task shutting down")
+			slog.Info("Worker: [CRON] Intelligence enrichment task shutting down")
 			return
 		case id := <-w.enrichmentQueue:
 			// On-demand enrichment
@@ -110,7 +105,7 @@ func (w *Worker) startIntelligenceEnrichmentTask(ctx context.Context) {
 				return
 			}
 			w.enrichMissingIntelligence(ctx)
-			
+
 			// Re-evaluate interval based on remaining backlog
 			_ = w.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = ''").Scan(&missingCount)
 			newInterval := 24 * time.Hour
@@ -123,49 +118,55 @@ func (w *Worker) startIntelligenceEnrichmentTask(ctx context.Context) {
 }
 
 func (w *Worker) enrichSingleCVE(ctx context.Context, id int) {
-	rows, err := w.Pool.Query(ctx, "SELECT id, cve_id, description, configurations, references FROM cves WHERE id = $1", id)
+	var c models.CVE
+	err := w.Pool.QueryRow(ctx, "SELECT id, cve_id, description, configurations, references FROM cves WHERE id = $1", id).Scan(&c.ID, &c.CVEID, &c.Description, &c.Configurations, &c.References)
 	if err != nil {
 		return
 	}
-	defer rows.Close()
-	w.processEnrichmentRows(ctx, rows, 1)
+	w.processEnrichmentRows(ctx, []models.CVE{c}, 1)
 }
 
 func (w *Worker) enrichMissingIntelligence(ctx context.Context) {
-	log.Println("Worker: [CRON] Starting intelligence enrichment for missing vendor data...")
-	
+	slog.Info("Worker: [CRON] Starting intelligence enrichment for missing vendor data...")
 	// Suggestion 3: Priority-based selection (highest CVSS first)
 	rows, err := w.Pool.Query(ctx, "SELECT id, cve_id, description, configurations, references FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' ORDER BY cvss_score DESC, cisa_kev DESC LIMIT 1000")
 	if err != nil {
-		log.Printf("Worker: [CRON] Error querying CVEs for enrichment: %v", err)
+		slog.Error("Worker: [CRON] Error querying CVEs for enrichment", "error", err)
 		return
 	}
 	defer rows.Close()
+
+	var cves []models.CVE
+	for rows.Next() {
+		var c models.CVE
+		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.Configurations, &c.References); err != nil {
+			continue
+		}
+		cves = append(cves, c)
+	}
+	rows.Close()
 
 	// Get total for progress tracking
 	var total int
 	_ = w.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM (SELECT id FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' LIMIT 1000) sub").Scan(&total)
-	if total == 0 { total = 1 }
+	if total == 0 {
+		total = 1
+	}
 
-	w.processEnrichmentRows(ctx, rows, total)
+	w.processEnrichmentRows(ctx, cves, total)
 }
 
-func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows, total int) {
+func (w *Worker) processEnrichmentRows(ctx context.Context, cves []models.CVE, total int) {
 	start := time.Now()
 	var count int
 	var llmCount int
 	var heuristicCount int
 	var consecutiveFailures int
 
-	for rows.Next() {
-		var c models.CVE
-		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.Configurations, &c.References); err != nil {
-			continue
-		}
-
+	for _, c := range cves {
 		// Suggestion 2: Adaptive Backoff
 		if consecutiveFailures >= 3 {
-			log.Printf("Worker: [CRON] 3 consecutive LLM failures. Backing off for 15 minutes.")
+			slog.Warn("Worker: [CRON] 3 consecutive LLM failures. Backing off for 15 minutes.")
 			backoffTimer := time.NewTimer(15 * time.Minute)
 			select {
 			case <-backoffTimer.C:
@@ -178,13 +179,13 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows, total int
 
 		var vendor, product string
 		var extractedProducts []llm.ProductResult
-		if (config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama" || config.AppConfig.ArliAIAPIKey != "") {
+		if config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama" || config.AppConfig.ArliAIAPIKey != "" {
 			// Call LLM as primary for missing data with isolated timeout
 			llmCtx, cancel := context.WithTimeout(ctx, time.Duration(config.AppConfig.LLMTimeout+10)*time.Second)
 			products, err := llm.ExtractVendorProduct(llmCtx, c.Description, c.References)
 			cancel()
 			if err != nil {
-				log.Printf("Worker: [CRON] LLM extraction failed for %s: %v", c.CVEID, err)
+				slog.Error("Worker: [CRON] LLM extraction failed", "cve_id", c.CVEID, "error", err)
 				consecutiveFailures++
 			} else {
 				consecutiveFailures = 0 // reset on success
@@ -192,7 +193,7 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows, total int
 					vendor, product = products[0].Vendor, products[0].Product
 					extractedProducts = products
 					llmCount++
-					log.Printf("Worker: [CRON] LLM enriched existing CVE %s: found %d products", c.CVEID, len(products))
+					slog.Info("Worker: [CRON] LLM enriched existing CVE", "cve_id", c.CVEID, "products_found", len(products))
 				}
 			}
 		}
@@ -208,7 +209,7 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows, total int
 			}
 			if vendor != "" || product != "" {
 				heuristicCount++
-				log.Printf("Worker: [CRON] Heuristic fallback for existing CVE %s: %s / %s", c.CVEID, vendor, product)
+				slog.Info("Worker: [CRON] Heuristic fallback for existing CVE", "cve_id", c.CVEID, "vendor", vendor, "product", product)
 			}
 		}
 
@@ -243,20 +244,20 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows, total int
 		if count > 0 && count%10 == 0 {
 			avg := time.Since(start) / time.Duration(count)
 			percent := (float64(count) / float64(total)) * 100
-			log.Printf("Worker: [CRON] Intelligence progress: %d/%d (%.1f%%) processed (%d LLM, %d Heuristic). Avg: %v/CVE", count, total, percent, llmCount, heuristicCount, avg.Truncate(time.Millisecond))
+			slog.Info("Worker: [CRON] Intelligence progress", "count", count, "total", total, "percent", fmt.Sprintf("%.1f%%", percent), "llm_count", llmCount, "heuristic_count", heuristicCount, "avg_per_cve", avg.Truncate(time.Millisecond))
 		}
 	}
 
 	w.updateTaskStats(ctx, "intelligence_enrichment")
 	if count > 0 {
-		log.Printf("Worker: [CRON] Intelligence enrichment complete. Enriched %d records (%d LLM, %d Heuristic). Duration: %v", count, llmCount, heuristicCount, time.Since(start))
+		slog.Info("Worker: [CRON] Intelligence enrichment complete", "count", count, "llm_count", llmCount, "heuristic_count", heuristicCount, "duration", time.Since(start))
 	}
 }
 
 func (w *Worker) startWeeklySummaryTask(ctx context.Context) {
-	log.Println("Worker: [CRON] Weekly summary task started")
+	slog.Info("Worker: [CRON] Weekly summary task started")
 	if ctx.Err() != nil {
-		log.Println("Worker: [CRON] Weekly summary task shutting down")
+		slog.Info("Worker: [CRON] Weekly summary task shutting down")
 		return
 	}
 	ticker := time.NewTicker(7 * 24 * time.Hour)
@@ -268,7 +269,7 @@ func (w *Worker) startWeeklySummaryTask(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("Worker: [CRON] Weekly summary task shutting down")
+			slog.Info("Worker: [CRON] Weekly summary task shutting down")
 			return
 		case <-ticker.C:
 			w.runWeeklySummaryWithLock(ctx)
@@ -277,9 +278,9 @@ func (w *Worker) startWeeklySummaryTask(ctx context.Context) {
 }
 
 func (w *Worker) sendWeeklySummaries(_ context.Context) error {
-	log.Println("Worker: [CRON] Starting weekly summaries distribution...")
+	slog.Info("Worker: [CRON] Starting weekly summaries distribution...")
 	start := time.Now()
 	// Implementation logic for weekly summaries
-	log.Printf("Worker: [CRON] Weekly summaries distribution complete. Duration: %v", time.Since(start))
+	slog.Info("Worker: [CRON] Weekly summaries distribution complete.", "duration", time.Since(start))
 	return nil
 }

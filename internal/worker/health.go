@@ -5,7 +5,7 @@ import (
 	"cve-tracker/internal/config"
 	"cve-tracker/internal/llm"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"time"
 )
@@ -28,14 +28,14 @@ func (w *Worker) startHealthCheckPeriodically(ctx context.Context) {
 }
 
 func (w *Worker) checkWorkerHealth(ctx context.Context) {
-	log.Println("Worker: Running self-health checks...")
+	slog.Info("Worker: Running self-health checks...")
 
-	tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync"}
+	tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync", "inthewild_sync", "threat_intel_sync", "advisory_rss_sync", "intelligence_sync", "intelligence_enrichment", "health_check"}
 	w.checkNotificationHealth(ctx)
 
 	rows, err := w.Pool.Query(ctx, "SELECT task_name, last_run FROM worker_sync_stats WHERE task_name = ANY($1)", tasks)
 	if err != nil {
-		log.Printf("Worker Health ALERT: Failed to query sync stats: %v", err)
+		slog.Error("Worker Health ALERT: Failed to query sync stats", "error", err)
 		return
 	}
 	defer rows.Close()
@@ -45,13 +45,13 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 		var tn string
 		var lr time.Time
 		if err := rows.Scan(&tn, &lr); err != nil {
-			log.Printf("Worker Health ALERT: Failed to scan sync stats: %v", err)
+			slog.Error("Worker Health ALERT: Failed to scan sync stats", "error", err)
 			return
 		}
 		lastRuns[tn] = lr
 	}
 	if err := rows.Err(); err != nil {
-		log.Printf("Worker Health ALERT: Row iteration error: %v", err)
+		slog.Error("Worker Health ALERT: Row iteration error", "error", err)
 		return
 	}
 
@@ -59,18 +59,25 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 		lastRun, ok := lastRuns[task]
 
 		if !ok {
-			log.Printf("Worker Health ALERT: Task '%s' has never run or status missing!", task)
+			slog.Warn("Worker Health ALERT: Task has never run or status is missing", "task", task)
 			continue
 		}
 
 		threshold := 26 * time.Hour
-		if task == "nvd_sync" {
+		switch task {
+		case "nvd_sync":
 			threshold = 8 * time.Hour
+		case "intelligence_sync":
+			threshold = 6 * time.Hour
+		case "github_buzz_sync", "greynoise_sync":
+			threshold = 12 * time.Hour
+		case "health_check":
+			threshold = 1 * time.Hour
 		}
 
 		if time.Since(lastRun) > threshold {
 			msg := fmt.Sprintf("CRITICAL: Worker task '%s' has not run since %v (more than %v ago)!", task, lastRun.Format(time.RFC822), threshold)
-			log.Println(msg)
+			slog.Error("CRITICAL System Event Detected", "task", task, "last_run", lastRun, "threshold", threshold)
 
 			// Send alert to admin if configured and not recently alerted
 			if w.AdminEmail != "" {
@@ -86,7 +93,7 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 					baseURL := os.Getenv("BASE_URL")
 					if baseURL == "" {
 						baseURL = "http://localhost:8080"
-						log.Printf("Worker Health ALERT: BASE_URL environment variable is unset. Falling back to %s (Environment: %s). Links in alerts may be broken.", baseURL, os.Getenv("GO_ENV")) // #nosec G706
+						slog.Warn("Worker Health ALERT: BASE_URL environment variable is unset. Falling back to default.", "fallback", baseURL)
 					}
 					contentTmpl := `
 						<div style="background-color: #ff4d4d1a; padding: 20px; border-radius: 16px; border: 1px solid #ff4d4d33; color: #ff4d4d; margin-bottom: 20px;">
@@ -111,12 +118,12 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 
 					body, err := RenderEmailTemplate("Vulfixx Health Alert", contentTmpl, data)
 					if err != nil {
-						log.Printf("Worker Health: Failed to render health alert email template: %v", err)
+						slog.Error("Worker Health: Failed to render health alert email template", "error", err)
 						continue
 					}
 
 					if err := w.Mailer.SendEmail(w.AdminEmail, "Vulfixx Health Alert", body); err != nil {
-						log.Printf("Worker: Failed to send health alert to %s: %v", w.AdminEmail, err)
+						slog.Error("Worker: Failed to send health alert email", "to", w.AdminEmail, "error", err)
 					}
 				}
 			}
@@ -129,21 +136,21 @@ func (w *Worker) TestLLMConnectivity(ctx context.Context) {
 	if config.AppConfig.LLMProvider == "" {
 		return
 	}
-	log.Printf("Worker: Testing LLM connectivity (%s)...", config.AppConfig.LLMProvider)
+	slog.Info("Worker: Testing LLM connectivity", "provider", config.AppConfig.LLMProvider)
 
 	testDescription := "This is a test description for a vulnerability in a hypothetical product called Vulfixx version 1.0.0."
 	start := time.Now()
 	products, err := llm.ExtractVendorProduct(ctx, testDescription, nil)
 
 	if err != nil {
-		log.Printf("Worker: [LLM TEST FAILED] %v (Duration: %v)", err, time.Since(start))
+		slog.Error("Worker: [LLM TEST FAILED]", "error", err, "duration", time.Since(start))
 		return
 	}
 
 	if len(products) > 0 {
-		log.Printf("Worker: [LLM TEST SUCCESS] Extracted %d products. Primary: %s / %s (Duration: %v)", len(products), products[0].Vendor, products[0].Product, time.Since(start))
+		slog.Info("Worker: [LLM TEST SUCCESS]", "products_found", len(products), "primary_vendor", products[0].Vendor, "primary_product", products[0].Product, "duration", time.Since(start))
 	} else {
-		log.Printf("Worker: [LLM TEST WARNING] LLM reachable but returned no products for test description. (Duration: %v)", time.Since(start))
+		slog.Warn("Worker: [LLM TEST WARNING] LLM reachable but returned no products for test description", "duration", time.Since(start))
 	}
 }
 
@@ -155,12 +162,11 @@ func (w *Worker) checkNotificationHealth(ctx context.Context) {
 	`).Scan(&failureCount)
 
 	if err != nil {
-		log.Printf("Worker Health ERROR: notification health query failed: %v", err)
+		slog.Error("Worker Health ERROR: notification health query failed", "error", err)
 		return
 	}
 	if failureCount > 0 {
-		log.Printf("Worker Health WARNING: %d notification delivery failures in the last 24 hours!", failureCount)
-		// Could send a consolidated alert here if failureCount > threshold
+		slog.Warn("Worker Health WARNING: notification delivery failures detected", "failure_count", failureCount, "period", "last 24 hours")
 	}
 }
 
@@ -171,7 +177,7 @@ func (w *Worker) updateTaskStats(ctx context.Context, taskName string) {
 		ON CONFLICT (task_name) DO UPDATE SET last_run = NOW(), updated_at = NOW()
 	`, taskName)
 	if err != nil {
-		log.Printf("Worker: Failed to update stats for %s: %v", taskName, err)
+		slog.Error("Worker: Failed to update stats for task", "task", taskName, "error", err)
 	}
 }
 
@@ -198,7 +204,7 @@ func (w *Worker) waitUntilNextRun(ctx context.Context, taskName string, interval
 	}
 
 	if sleepDuration > 0 {
-		log.Printf("Worker: [%s] Persistent schedule: next run in %v", taskName, sleepDuration.Round(time.Second))
+		slog.Info("Worker: Persistent schedule", "task", taskName, "next_run_in", sleepDuration.Round(time.Second))
 		timer := time.NewTimer(sleepDuration)
 		defer timer.Stop()
 		select {
@@ -208,3 +214,4 @@ func (w *Worker) waitUntilNextRun(ctx context.Context, taskName string, interval
 		}
 	}
 }
+

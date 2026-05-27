@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -36,27 +36,27 @@ func (w *Worker) fetchCISAKEVPeriodically(ctx context.Context) {
 }
 
 func (w *Worker) fetchFromCISAKEV(ctx context.Context) {
-	log.Println("Worker: [SYNC] Fetching CISA KEV catalog...")
+	slog.Info("Worker: [SYNC] Fetching CISA KEV catalog...")
 	req, err := http.NewRequestWithContext(ctx, "GET", defaultCISAKEVURL, nil)
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to create CISA KEV request: %v", err)
+		slog.Error("Worker: [ERROR] Failed to create CISA KEV request", "error", err)
 		return
 	}
 	resp, err := w.HTTP.Do(req)
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to fetch CISA KEV: %v", err)
+		slog.Error("Worker: [ERROR] Failed to fetch CISA KEV", "error", err)
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Worker: [ERROR] CISA KEV API returned status %d", resp.StatusCode)
+		slog.Error("Worker: [ERROR] CISA KEV API returned error status", "status", resp.StatusCode)
 		return
 	}
 
 	if clStr := resp.Header.Get("Content-Length"); clStr != "" {
 		if cl, err := strconv.ParseInt(clStr, 10, 64); err == nil && cl > 50*1024*1024 {
-			log.Printf("Worker: [ERROR] CISA KEV feed too large (%d bytes)", cl)
+			slog.Error("Worker: [ERROR] CISA KEV feed too large", "size_bytes", cl)
 			return
 		}
 	}
@@ -65,34 +65,34 @@ func (w *Worker) fetchFromCISAKEV(ctx context.Context) {
 	limitReader := io.LimitReader(resp.Body, int64(maxSize)+1)
 	bodyBytes, err := io.ReadAll(limitReader)
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to read CISA KEV: %v", err)
+		slog.Error("Worker: [ERROR] Failed to read CISA KEV body", "error", err)
 		return
 	}
 
 	if len(bodyBytes) > maxSize {
-		log.Printf("Worker: [ERROR] CISA KEV feed exceeded 50MB limit")
+		slog.Error("Worker: [ERROR] CISA KEV feed exceeded 50MB limit")
 		return
 	}
 
 	var kevResp CISAKEVResponse
 	if err := json.Unmarshal(bodyBytes, &kevResp); err != nil {
-		log.Printf("Worker: [ERROR] Failed to unmarshal CISA KEV: %v", err)
+		slog.Error("Worker: [ERROR] Failed to unmarshal CISA KEV JSON", "error", err)
 		return
 	}
 
 	total := len(kevResp.Vulnerabilities)
-	log.Printf("Worker: [SYNC] Updating %d CISA KEV records...", total)
+	slog.Info("Worker: [SYNC] Updating CISA KEV records...", "count", total)
 
 	tx, err := w.Pool.Begin(ctx)
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to start KEV transaction: %v", err)
+		slog.Error("Worker: [ERROR] Failed to start KEV transaction", "error", err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Optimization: Reset and then set true only for those in the feed
 	if _, err := tx.Exec(ctx, "UPDATE cves SET cisa_kev = false, cisa_ransomware = false WHERE cisa_kev = true OR cisa_ransomware = true"); err != nil {
-		log.Printf("Worker: [ERROR] Failed to reset CISA KEV status: %v", err)
+		slog.Error("Worker: [ERROR] Failed to reset CISA KEV status in DB", "error", err)
 		return
 	}
 
@@ -112,21 +112,21 @@ func (w *Worker) fetchFromCISAKEV(ctx context.Context) {
 		}
 		_, err := tx.Exec(ctx, "UPDATE cves SET cisa_kev = true WHERE cve_id = ANY($1)", ids)
 		if err != nil {
-			log.Printf("Worker: [ERROR] Failed to update KEV batch: %v", err)
+			slog.Error("Worker: [ERROR] Failed to update KEV batch", "error", err)
 			return
 		}
 		if len(ransomIds) > 0 {
 			_, err = tx.Exec(ctx, "UPDATE cves SET cisa_ransomware = true WHERE cve_id = ANY($1)", ransomIds)
 			if err != nil {
-				log.Printf("Worker: [ERROR] Failed to update Ransomware batch: %v", err)
+				slog.Error("Worker: [ERROR] Failed to update Ransomware batch", "error", err)
 				return
 			}
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		log.Printf("Worker: [ERROR] Failed to commit KEV transaction: %v", err)
+		slog.Error("Worker: [ERROR] Failed to commit KEV transaction", "error", err)
 		return
 	}
 	w.updateTaskStats(ctx, "cisa_kev_sync")
-	log.Println("Worker: [SYNC] CISA KEV update complete.")
+	slog.Info("Worker: [SYNC] CISA KEV update complete.")
 }

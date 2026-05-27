@@ -11,9 +11,10 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -31,7 +32,7 @@ var (
 
 func (a *App) InitTemplates() {
 	if err := a.InitTemplatesWithFuncs(); err != nil {
-		log.Printf("InitTemplates failed: %v", err)
+		slog.Error("InitTemplates failed", "error", err)
 		return
 	}
 	if flag.Lookup("test.v") != nil {
@@ -166,12 +167,12 @@ func (a *App) AdminMiddleware(next http.Handler) http.Handler {
 		var isAdmin bool
 		err := a.Pool.QueryRow(r.Context(), "SELECT is_admin FROM users WHERE id = $1", userID).Scan(&isAdmin)
 		if err != nil {
-			// #nosec G706 -- sanitized via sanitizeForLog
-			log.Printf("AdminMiddleware DB ERROR: %v", sanitizeForLog(err.Error()))
+			slog.Error("AdminMiddleware database error", "user_id", userID, "error", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 		if !isAdmin {
+			slog.Warn("Unauthorized admin access attempt", "user_id", userID, "ip", a.GetClientIP(r))
 			http.Error(w, "Forbidden: Admin access required", http.StatusForbidden)
 			return
 		}
@@ -179,13 +180,13 @@ func (a *App) AdminMiddleware(next http.Handler) http.Handler {
 		// Optionally refresh session state to keep UI consistent
 		session, err := a.SessionStore.Get(r, "vulfixx-session")
 		if err != nil {
-			log.Printf("AdminMiddleware session get error: %v", err)
+			slog.Error("AdminMiddleware session error", "error", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 		session.Values["is_admin"] = isAdmin
 		if err := session.Save(r, w); err != nil {
-			log.Printf("AdminMiddleware session save error: %v", err)
+			slog.Error("AdminMiddleware session save failed", "error", err)
 		}
 
 		next.ServeHTTP(w, r)
@@ -223,8 +224,7 @@ func (a *App) LogActivity(ctx context.Context, userID int, activityType, descrip
 		VALUES ($1, $2, $3, $4, $5, $6)
 	`, userID, activityType, description, ipAddress, userAgent, expiresAt)
 	if err != nil {
-		// #nosec G706 -- sanitized via sanitizeForLog
-		log.Printf("Error logging activity: %v", sanitizeForLog(err.Error()))
+		slog.Error("Failed to log user activity", "user_id", userID, "error", err)
 	} else {
 		// Publish activity log event to Redis Pub/Sub for SSE streaming
 		eventData := map[string]interface{}{
@@ -253,34 +253,60 @@ func (a *App) IndexHandler(w http.ResponseWriter, r *http.Request) {
 	a.PublicDashboardHandler(w, r)
 }
 
-func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data map[string]interface{}) {
-	if data == nil {
-		data = make(map[string]interface{})
+func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string, data any) {
+	renderData := make(map[string]interface{})
+
+	if data != nil {
+		v := reflect.ValueOf(data)
+		isNilPtr := false
+		if v.Kind() == reflect.Ptr {
+			if v.IsNil() {
+				isNilPtr = true
+			} else {
+				v = v.Elem()
+			}
+		}
+
+		if !isNilPtr {
+			if v.Kind() == reflect.Map {
+				for _, key := range v.MapKeys() {
+					renderData[key.String()] = v.MapIndex(key).Interface()
+				}
+			} else if v.Kind() == reflect.Struct {
+				t := v.Type()
+				for i := 0; i < v.NumField(); i++ {
+					field := t.Field(i)
+					if field.PkgPath == "" { // exported field
+						renderData[field.Name] = v.Field(i).Interface()
+					}
+				}
+			}
+		}
 	}
+
 	userID, ok := a.GetUserID(r)
-	data["UserLoggedIn"] = ok
+	renderData["UserLoggedIn"] = ok
 	if ok && userID > 0 {
 		// Prevent caching of authenticated pages
 		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, private")
 		w.Header().Set("Pragma", "no-cache")
-		data["UserID"] = userID
-		data["IsAdmin"] = a.IsAdmin(r)
+		renderData["UserID"] = userID
+		renderData["IsAdmin"] = a.IsAdmin(r)
 
 		// Onboarding status
 		var onboardingCompleted bool
 		err := a.Pool.QueryRow(r.Context(), "SELECT onboarding_completed FROM users WHERE id = $1", userID).Scan(&onboardingCompleted)
 		if err != nil {
-			// #nosec G706 -- sanitized via sanitizeForLog
-			log.Printf("RenderTemplate onboarding query ERR (UserID: %d): %v", userID, sanitizeForLog(err.Error()))
+			slog.Error("RenderTemplate onboarding query failed", "user_id", userID, "error", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
-		data["OnboardingCompleted"] = onboardingCompleted
+		renderData["OnboardingCompleted"] = onboardingCompleted
 
 		// Fetch user's subscription count
 		var subCount int
 		_ = a.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1", userID).Scan(&subCount)
-		data["SubCount"] = subCount
+		renderData["SubCount"] = subCount
 
 		// Fetch user's teams
 		var userTeams []map[string]interface{}
@@ -291,7 +317,7 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 			WHERE tm.user_id = $1
 		`, userID)
 		if err != nil {
-			log.Printf("RenderTemplate teams query ERR: %v", err)
+			slog.Error("RenderTemplate teams query failed", "user_id", userID, "error", err)
 		} else {
 			defer teamRows.Close()
 			for teamRows.Next() {
@@ -302,9 +328,9 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 				}
 			}
 			if err := teamRows.Err(); err != nil {
-				log.Printf("RenderTemplate teamRows ERR: %v", err)
+				slog.Error("RenderTemplate teamRows error", "user_id", userID, "error", err)
 			}
-			data["UserTeams"] = userTeams
+			renderData["UserTeams"] = userTeams
 		}
 
 		activeTeamID, ok := a.GetActiveTeamID(r)
@@ -327,46 +353,46 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 			if !found {
 				err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
 				if err != nil {
-					log.Printf("Error fetching active team name: %v", err)
+				slog.Error("Error fetching active team name", "error", err)
 				} else {
-					data["ActiveTeamName"] = teamName
+					renderData["ActiveTeamName"] = teamName
 				}
 			} else {
-				data["ActiveTeamName"] = teamName
+				renderData["ActiveTeamName"] = teamName
 			}
 
-			data["ActiveTeamID"] = activeTeamID
+			renderData["ActiveTeamID"] = activeTeamID
 		} else {
-			data["ActiveTeamID"] = 0
-			data["ActiveTeamName"] = "Private Workspace"
+			renderData["ActiveTeamID"] = 0
+			renderData["ActiveTeamName"] = "Private Workspace"
 		}
 
 	}
 
 	// Fetch global CVE stats from cache for all views
 	statsCache.RLock()
-	data["GlobalTotalCVEs"] = statsCache.total
-	data["GlobalNewCVEs"] = statsCache.newLast24h
+	renderData["GlobalTotalCVEs"] = statsCache.total
+	renderData["GlobalNewCVEs"] = statsCache.newLast24h
 	statsCache.RUnlock()
 
-	data["SentryDSN"] = config.AppConfig.SentryDSN
+	renderData["SentryDSN"] = config.AppConfig.SentryDSN
 
-	data["csrfField"] = csrf.TemplateField(r)
-	data["CSRFField"] = data["csrfField"]
+	renderData["csrfField"] = csrf.TemplateField(r)
+	renderData["CSRFField"] = renderData["csrfField"]
 	if nonce, ok := r.Context().Value(NonceKey).(string); ok {
-		data["Nonce"] = nonce
+		renderData["Nonce"] = nonce
 	}
 	a.TemplateMu.RLock()
 	tmpl, ok := a.TemplateMap[name]
 	a.TemplateMu.RUnlock()
 	if !ok {
-		log.Printf("Template %s not found", name)
+		slog.Error("Template not found", "name", name)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 	buf := new(bytes.Buffer)
-	if err := tmpl.ExecuteTemplate(buf, "base", data); err != nil {
-		log.Printf("Error executing template %s: %v", name, err)
+	if err := tmpl.ExecuteTemplate(buf, "base", renderData); err != nil {
+		slog.Error("Error executing template", "name", name, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -416,7 +442,7 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 			statsCache.epssDist = statsJSON.EpssDist
 			statsCache.lastUpdated = statsJSON.LastUpdated
 			statsCache.Unlock()
-			log.Printf("Global stats cache loaded from Redis: Total=%d, New=%d, KEV=%d, Crit=%d", statsJSON.Total, statsJSON.NewLast24h, statsJSON.KevCount, statsJSON.CritCount)
+			slog.Info("Global stats cache loaded from Redis", "total", statsJSON.Total, "new_24h", statsJSON.NewLast24h, "kev", statsJSON.KevCount, "crit", statsJSON.CritCount)
 			return
 		}
 
@@ -497,7 +523,7 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 			}
 		}
 
-		log.Printf("Global stats cache refreshed: Total=%d, New=%d, KEV=%d, Crit=%d", total, new24h, kevCount, critCount)
+		slog.Info("Global stats cache refreshed", "total", total, "new_24h", new24h, "kev", kevCount, "crit", critCount)
 	}
 
 	// Initial refresh
@@ -548,7 +574,7 @@ func (a *App) SendResponse(w http.ResponseWriter, r *http.Request, success bool,
 			resp["error"] = errMsg
 		}
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			log.Printf("SendResponse: JSON encode error: %v", err)
+			slog.Error("SendResponse: JSON encode failed", "error", err)
 		}
 		return
 	}
