@@ -3,6 +3,8 @@ package web
 import (
 	"context"
 	"cve-tracker/internal/db"
+	"fmt"
+	"github.com/pashagolub/pgxmock/v3"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -10,8 +12,6 @@ import (
 	"html/template"
 	"strings"
 	"time"
-
-	"github.com/pashagolub/pgxmock/v3"
 )
 
 func TestDashboardHandler_Unauthenticated(t *testing.T) {
@@ -570,4 +570,331 @@ func TestRenderAJAX(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDashboardHandler_AllWithStatus(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	app := setupTestApp(t, mock)
+	userID := 1
+
+	req, _ := http.NewRequest("GET", "/dashboard?all=true&status=in_progress", nil)
+	setSessionUser(t, app, req, userID, false)
+
+	// 1. Consolidated Metrics
+	mock.ExpectQuery("SELECT.*COUNT.*total_cves").
+		WithArgs(userID, "in_progress").
+		WillReturnRows(pgxmock.NewRows([]string{
+			"total_cves", "kev_count", "critical_count", "in_progress_count",
+			"sev_crit", "sev_high", "sev_med", "sev_low",
+			"stat_active", "stat_prog", "stat_res", "stat_ign",
+		}).AddRow(1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0))
+
+	// 2. CVE List
+	mock.ExpectQuery("SELECT c.id, c.cve_id").
+		WithArgs(userID, "in_progress", 20, 0).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev",
+			"published_date", "updated_date", "status", "references", "notes",
+			"epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits",
+			"greynoise_classification", "osv_data", "vendor", "product",
+			"affected_products", "priority",
+		}).AddRow(101, "CVE-2023-1234", "Test Description", 7.5, "V", false,
+			time.Now(), time.Now(), "in_progress", []string{}, nil,
+			0.1, "CWE-79", "XSS", 1, 0, "", []byte("{}"), "Vendor", "Product", []byte("[]"), "P2"))
+
+	// 3. CISA Ransomware
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)")).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "cisa_ransomware"}).AddRow(101, false))
+
+	// 4. CWE Distribution
+	mock.ExpectQuery("SELECT cwe_id, COALESCE.*MAX.*cwe_name.*COUNT").
+		WithArgs(userID, "in_progress").
+		WillReturnRows(pgxmock.NewRows([]string{"cwe_id", "max_cwe_name", "cnt"}).
+			AddRow("CWE-79", "XSS", 1))
+
+	// 5. RenderTemplate queries
+	expectBaseQueries(mock, userID)
+
+	rr := httptest.NewRecorder()
+	app.DashboardHandler(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status code %d, got %d", http.StatusOK, rr.Code)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("there were unfulfilled expectations: %s", err)
+	}
+}
+
+func TestDashboardHandler_RedisCacheHit(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	app := setupTestApp(t, mock)
+	userID := 1
+
+	req, _ := http.NewRequest("GET", "/dashboard", nil)
+	setSessionUser(t, app, req, userID, false)
+
+	// First run to seed cache
+	mock.ExpectQuery("SELECT.*COUNT.*total_cves").
+		WithArgs(userID).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"total_cves", "kev_count", "critical_count", "in_progress_count",
+			"sev_crit", "sev_high", "sev_med", "sev_low",
+			"stat_active", "stat_prog", "stat_res", "stat_ign",
+		}).AddRow(10, 2, 1, 3, 1, 4, 3, 2, 5, 3, 1, 1))
+
+	mock.ExpectQuery("SELECT c.id, c.cve_id").
+		WithArgs(userID, 20, 0).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev",
+			"published_date", "updated_date", "status", "references", "notes",
+			"epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits",
+			"greynoise_classification", "osv_data", "vendor", "product",
+			"affected_products", "priority",
+		}))
+
+	mock.ExpectQuery("SELECT cwe_id, COALESCE.*MAX.*cwe_name.*COUNT").
+		WithArgs(userID).
+		WillReturnRows(pgxmock.NewRows([]string{"cwe_id", "max_cwe_name", "cnt"}))
+
+	expectBaseQueries(mock, userID)
+
+	rr1 := httptest.NewRecorder()
+	app.DashboardHandler(rr1, req)
+	if rr1.Code != http.StatusOK {
+		t.Errorf("first request failed: %d", rr1.Code)
+	}
+
+	// Second run should hit cache for metrics
+	mock.ExpectQuery("SELECT c.id, c.cve_id").
+		WithArgs(userID, 20, 0).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev",
+			"published_date", "updated_date", "status", "references", "notes",
+			"epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits",
+			"greynoise_classification", "osv_data", "vendor", "product",
+			"affected_products", "priority",
+		}))
+
+	mock.ExpectQuery("SELECT cwe_id, COALESCE.*MAX.*cwe_name.*COUNT").
+		WithArgs(userID).
+		WillReturnRows(pgxmock.NewRows([]string{"cwe_id", "max_cwe_name", "cnt"}))
+
+	expectBaseQueries(mock, userID)
+
+	rr2 := httptest.NewRecorder()
+	app.DashboardHandler(rr2, req)
+
+	if rr2.Code != http.StatusOK {
+		t.Errorf("expected status code %d, got %d", http.StatusOK, rr2.Code)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("there were unfulfilled expectations: %s", err)
+	}
+}
+
+func TestDashboardHandler_ScanError(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	app := setupTestApp(t, mock)
+	userID := 1
+
+	req, _ := http.NewRequest("GET", "/dashboard", nil)
+	setSessionUser(t, app, req, userID, false)
+
+	// 1. Consolidated Metrics
+	mock.ExpectQuery("SELECT.*COUNT.*total_cves").
+		WithArgs(userID).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"total_cves", "kev_count", "critical_count", "in_progress_count",
+			"sev_crit", "sev_high", "sev_med", "sev_low",
+			"stat_active", "stat_prog", "stat_res", "stat_ign",
+		}).AddRow(1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0))
+
+	// 2. CVE List - return a row that will fail Scan (e.g. wrong type for id)
+	mock.ExpectQuery("SELECT c.id, c.cve_id").
+		WithArgs(userID, 20, 0).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev",
+			"published_date", "updated_date", "status", "references", "notes",
+			"epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits",
+			"greynoise_classification", "osv_data", "vendor", "product",
+			"affected_products", "priority",
+		}).AddRow("not-an-int", "CVE-2023-1234", "Desc", 7.5, "V", false,
+			time.Now(), time.Now(), "active", []string{}, nil,
+			0.1, "CWE-79", "XSS", 1, 0, "", []byte("{}"), "V", "P", []byte("[]"), "P2"))
+
+	// 3. CWE Distribution
+	mock.ExpectQuery("SELECT cwe_id, COALESCE.*MAX.*cwe_name.*COUNT").
+		WithArgs(userID).
+		WillReturnRows(pgxmock.NewRows([]string{"cwe_id", "max_cwe_name", "cnt"}))
+
+	// 4. RenderTemplate queries
+	expectBaseQueries(mock, userID)
+
+	rr := httptest.NewRecorder()
+	app.DashboardHandler(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status code %d, got %d", http.StatusOK, rr.Code)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("there were unfulfilled expectations: %s", err)
+	}
+}
+
+func TestDashboardHandler_CWEError(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	app := setupTestApp(t, mock)
+	userID := 1
+
+	req, _ := http.NewRequest("GET", "/dashboard", nil)
+	setSessionUser(t, app, req, userID, false)
+
+	// 1. Consolidated Metrics
+	mock.ExpectQuery("SELECT.*COUNT.*total_cves").
+		WithArgs(userID).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"total_cves", "kev_count", "critical_count", "in_progress_count",
+			"sev_crit", "sev_high", "sev_med", "sev_low",
+			"stat_active", "stat_prog", "stat_res", "stat_ign",
+		}).AddRow(1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0))
+
+	// 2. CVE List
+	mock.ExpectQuery("SELECT c.id, c.cve_id").
+		WithArgs(userID, 20, 0).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev",
+			"published_date", "updated_date", "status", "references", "notes",
+			"epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits",
+			"greynoise_classification", "osv_data", "vendor", "product",
+			"affected_products", "priority",
+		}).AddRow(101, "CVE-2023-1234", "Desc", 7.5, "V", false,
+			time.Now(), time.Now(), "active", []string{}, nil,
+			0.1, "CWE-79", "XSS", 1, 0, "", []byte("{}"), "V", "P", []byte("[]"), "P2"))
+
+	// 3. CISA Ransomware
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)")).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "cisa_ransomware"}).AddRow(101, false))
+
+	// 4. CWE Distribution returns error
+	mock.ExpectQuery("SELECT cwe_id, COALESCE.*MAX.*cwe_name.*COUNT").
+		WithArgs(userID).
+		WillReturnError(fmt.Errorf("db error"))
+
+	// 5. RenderTemplate queries
+	expectBaseQueries(mock, userID)
+
+	rr := httptest.NewRecorder()
+	app.DashboardHandler(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status code %d, got %d", http.StatusOK, rr.Code)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("there were unfulfilled expectations: %s", err)
+	}
+}
+
+func TestDashboardHandler_InvalidStatus(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	app := setupTestApp(t, mock)
+	userID := 1
+
+	req, _ := http.NewRequest("GET", "/dashboard?status=invalid", nil)
+	setSessionUser(t, app, req, userID, false)
+
+	// Status should be reset to empty, so query should look like default
+	mock.ExpectQuery("SELECT.*COUNT.*total_cves").
+		WithArgs(userID).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"total_cves", "kev_count", "critical_count", "in_progress_count",
+			"sev_crit", "sev_high", "sev_med", "sev_low",
+			"stat_active", "stat_prog", "stat_res", "stat_ign",
+		}).AddRow(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+
+	mock.ExpectQuery("SELECT c.id, c.cve_id").
+		WithArgs(userID, 20, 0).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev",
+			"published_date", "updated_date", "status", "references", "notes",
+			"epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits",
+			"greynoise_classification", "osv_data", "vendor", "product",
+			"affected_products", "priority",
+		}))
+
+	mock.ExpectQuery("SELECT cwe_id, COALESCE.*MAX.*cwe_name.*COUNT").
+		WithArgs(userID).
+		WillReturnRows(pgxmock.NewRows([]string{"cwe_id", "max_cwe_name", "cnt"}))
+
+	expectBaseQueries(mock, userID)
+
+	rr := httptest.NewRecorder()
+	app.DashboardHandler(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status code %d, got %d", http.StatusOK, rr.Code)
+	}
+}
+
+func TestDashboardHandler_QueryError(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	app := setupTestApp(t, mock)
+	userID := 1
+
+	req, _ := http.NewRequest("GET", "/dashboard", nil)
+	setSessionUser(t, app, req, userID, false)
+
+	mock.ExpectQuery("SELECT.*COUNT.*total_cves").
+		WithArgs(userID).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"total_cves", "kev_count", "critical_count", "in_progress_count",
+			"sev_crit", "sev_high", "sev_med", "sev_low",
+			"stat_active", "stat_prog", "stat_res", "stat_ign",
+		}).AddRow(1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0))
+
+	mock.ExpectQuery("SELECT c.id, c.cve_id").
+		WithArgs(userID, 20, 0).
+		WillReturnError(fmt.Errorf("query error"))
+
+	rr := httptest.NewRecorder()
+	app.DashboardHandler(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected status code %d, got %d", http.StatusInternalServerError, rr.Code)
 }
