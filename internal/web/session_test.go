@@ -78,4 +78,3 @@ func TestInitRedisSession(t *testing.T) {
 		}
 	})
 }
-

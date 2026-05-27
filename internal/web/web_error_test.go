@@ -32,8 +32,8 @@ func TestErrorReportHandler(t *testing.T) {
 	t.Run("POST_Success", func(t *testing.T) {
 		data := map[string]string{
 			"message": "test error",
-			"type": "TypeError",
-			"url": "http://localhost/test",
+			"type":    "TypeError",
+			"url":     "http://localhost/test",
 		}
 		body, _ := json.Marshal(data)
 		req := httptest.NewRequest("POST", "/report-error", strings.NewReader(string(body)))

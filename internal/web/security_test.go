@@ -55,19 +55,19 @@ func TestCSRFProtection(t *testing.T) {
 	t.Run("ValidToken", func(t *testing.T) {
 		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=valid"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		
+
 		rr := httptest.NewRecorder()
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["admin_csrf_token"] = "valid"
 		if err := session.Save(req, rr); err != nil {
 			t.Fatalf("failed to save session: %v", err)
 		}
-		
+
 		// Add the cookie to the request so ValidateCSRF can find the session
 		for _, c := range rr.Result().Cookies() {
 			req.AddCookie(c)
 		}
-		
+
 		if !app.ValidateCSRF(req) {
 			t.Errorf("expected CSRF validation to pass")
 		}
@@ -76,7 +76,7 @@ func TestCSRFProtection(t *testing.T) {
 	t.Run("InvalidToken", func(t *testing.T) {
 		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=invalid"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		
+
 		rr := httptest.NewRecorder()
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["admin_csrf_token"] = "valid"
@@ -88,7 +88,7 @@ func TestCSRFProtection(t *testing.T) {
 		for _, c := range rr.Result().Cookies() {
 			req.AddCookie(c)
 		}
-		
+
 		if app.ValidateCSRF(req) {
 			t.Errorf("expected CSRF validation to fail")
 		}
@@ -194,20 +194,20 @@ func TestXSSPrevention(t *testing.T) {
 	}
 	defer mock.Close()
 	app := setupTestApp(t, mock)
-	
+
 	// We'll test RenderTemplate with a malicious string
 	// and check if it's escaped in the response body.
 	req, _ := http.NewRequest("GET", "/", nil)
 	rr := httptest.NewRecorder()
-	
+
 	malicious := "<script>alert('xss')</script>"
 	data := map[string]interface{}{
 		"Message": malicious,
 	}
-	
+
 	// Use message.html which displays .Message
 	app.RenderTemplate(rr, req, "message.html", data)
-	
+
 	body := rr.Body.String()
 	if strings.Contains(body, malicious) {
 		t.Errorf("XSS payload found unescaped in response: %s", body)
@@ -250,7 +250,7 @@ func TestAuthMiddleware(t *testing.T) {
 	}
 	defer mock.Close()
 	app := setupTestApp(t, mock)
-	
+
 	handler := app.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -267,15 +267,15 @@ func TestAuthMiddleware(t *testing.T) {
 	t.Run("Authenticated_Unverified", func(t *testing.T) {
 		req, _ := http.NewRequest("GET", "/dashboard", nil)
 		setSessionUser(t, app, req, 1, false)
-		
+
 		// Mock verified check in middleware
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_email_verified, is_totp_enabled, onboarding_completed FROM users WHERE id = $1")).
 			WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"is_email_verified", "is_totp_enabled", "onboarding_completed"}).AddRow(false, false, true))
-			
+
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)
-		
+
 		// If unverified, it should return 403 Forbidden
 		if rr.Code != http.StatusForbidden {
 			t.Errorf("expected 403 Forbidden for unverified user, got %d", rr.Code)
@@ -289,15 +289,15 @@ func TestAuthMiddleware(t *testing.T) {
 	t.Run("Authenticated_Verified", func(t *testing.T) {
 		req, _ := http.NewRequest("GET", "/dashboard", nil)
 		setSessionUser(t, app, req, 1, false)
-		
+
 		// Mock verified check in middleware
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_email_verified, is_totp_enabled, onboarding_completed FROM users WHERE id = $1")).
 			WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"is_email_verified", "is_totp_enabled", "onboarding_completed"}).AddRow(true, false, true))
-			
+
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)
-		
+
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK for verified user, got %d", rr.Code)
 		}
@@ -315,7 +315,7 @@ func TestAdminMiddleware(t *testing.T) {
 	}
 	defer mock.Close()
 	app := setupTestApp(t, mock)
-	
+
 	handler := app.AdminMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -323,11 +323,11 @@ func TestAdminMiddleware(t *testing.T) {
 	t.Run("NonAdmin", func(t *testing.T) {
 		req, _ := http.NewRequest("GET", "/admin", nil)
 		setSessionUser(t, app, req, 1, false)
-		
+
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_admin FROM users WHERE id = $1")).
 			WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"is_admin"}).AddRow(false))
-			
+
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)
 		if rr.Code != http.StatusForbidden {
@@ -341,11 +341,11 @@ func TestAdminMiddleware(t *testing.T) {
 	t.Run("Admin", func(t *testing.T) {
 		req, _ := http.NewRequest("GET", "/admin", nil)
 		setSessionUser(t, app, req, 1, true)
-		
+
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_admin FROM users WHERE id = $1")).
 			WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"is_admin"}).AddRow(true))
-			
+
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)
 		if rr.Code != http.StatusOK {
@@ -364,10 +364,10 @@ func TestDashboardNoErrorLeakOnMalformedQuery(t *testing.T) {
 	}
 	defer mock.Close()
 	app := setupTestApp(t, mock)
-	
+
 	// Malicious keyword that attempts to break out of string and run additional commands
 	maliciousKeyword := "'; DROP TABLE users; --"
-	
+
 	v := url.Values{}
 	v.Set("q", maliciousKeyword)
 	req, _ := http.NewRequest("GET", "/dashboard?"+v.Encode(), nil)
@@ -378,19 +378,18 @@ func TestDashboardNoErrorLeakOnMalformedQuery(t *testing.T) {
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"total", "kev", "crit", "prog", "sev_crit", "sev_high", "sev_med", "sev_low", "stat_active", "stat_prog", "stat_res", "stat_ign"}).
 			AddRow(100, 10, 5, 2, 5, 1, 0, 0, 1, 0, 0, 0))
-	
+
 	// 2. query (CVE list)
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.cve_id")).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "notes", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "vendor", "product", "affected_products", "priority"}).
 			AddRow(1, "CVE-1", "Desc", 5.0, "", false, time.Now(), time.Now(), "active", []string{}, "", 0.1, "", "", 0, 0, "", []byte(`{}`), "V", "P", []byte(`[]`), "P2"))
 
-
 	// 5. cweQuery
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT cwe_id, COALESCE(MAX(cwe_name), 'Unknown')")).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"cwe_id", "cwe_name", "cnt"}).AddRow("CWE-79", "XSS", 1))
-	
+
 	// 6. RenderTemplate calls
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT onboarding_completed FROM users WHERE id = $1")).
 		WithArgs(1).
@@ -404,7 +403,7 @@ func TestDashboardNoErrorLeakOnMalformedQuery(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 	app.DashboardHandler(rr, req)
-	
+
 	body := rr.Body.String()
 	badPhrases := []string{"syntax error", "unterminated string literal", "sql error"}
 	for _, p := range badPhrases {

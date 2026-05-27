@@ -52,7 +52,6 @@ func TestTOTPHandlers(t *testing.T) {
 		}
 	})
 
-
 	t.Run("GenerateTOTPHandler_Unauthenticated", func(t *testing.T) {
 		mock, err := db.SetupTestDB()
 		if err != nil {
