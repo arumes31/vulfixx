@@ -30,7 +30,7 @@ func (w *Worker) startHealthCheckPeriodically(ctx context.Context) {
 func (w *Worker) checkWorkerHealth(ctx context.Context) {
 	log.Println("Worker: Running self-health checks...")
 
-	tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync"}
+	tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync", "inthewild_sync", "threat_intel_sync", "advisory_rss_sync", "intelligence_sync", "intelligence_enrichment", "health_check"}
 	w.checkNotificationHealth(ctx)
 
 	rows, err := w.Pool.Query(ctx, "SELECT task_name, last_run FROM worker_sync_stats WHERE task_name = ANY($1)", tasks)
@@ -64,8 +64,15 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 		}
 
 		threshold := 26 * time.Hour
-		if task == "nvd_sync" {
+		switch task {
+		case "nvd_sync":
 			threshold = 8 * time.Hour
+		case "intelligence_sync":
+			threshold = 6 * time.Hour
+		case "github_buzz_sync", "greynoise_sync":
+			threshold = 12 * time.Hour
+		case "health_check":
+			threshold = 1 * time.Hour
 		}
 
 		if time.Since(lastRun) > threshold {
