@@ -162,7 +162,7 @@ executeUpdates:
 
 	tx, err := w.Pool.Begin(ctx)
 	if err != nil {
-		log.Printf("Worker: [ERROR] Failed to begin transaction for OSV updates: %v", err)
+		slog.Error("Worker: [ERROR] Failed to begin transaction for OSV updates", "error", err)
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -205,7 +205,7 @@ executeUpdates:
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		log.Printf("Worker: [ERROR] Failed to commit OSV updates: %v", err)
+		slog.Error("Worker: [ERROR] Failed to commit OSV updates", "error", err)
 	}
 
 	w.updateTaskStats(ctx, "osv_sync")
