@@ -5,6 +5,7 @@ import (
 	"log"
 )
 
+// fetchOSINTLinks collects links from external platforms (HN, Reddit) for a given CVE.
 func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) map[string]interface{} {
 	data := make(map[string]interface{})
 

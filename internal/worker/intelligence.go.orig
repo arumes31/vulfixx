@@ -41,7 +41,7 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 	// Fetch top 100 recent/critical CVEs to update intelligence for
 	rows, err := w.Pool.Query(ctx, `
 		SELECT id, cve_id, description, COALESCE(cvss_score, 0), osint_data, github_poc_count, cwe_id, published_date
-		FROM cves 
+		FROM cves
 		ORDER BY published_date DESC, id DESC LIMIT 100
 	`)
 	if err != nil {
@@ -116,7 +116,7 @@ func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
 	var duplicateIDs []string
 	// Match CVSS within 0.5 tolerance and prefer closer scores
 	rows, err := w.Pool.Query(ctx, `
-		SELECT cve_id FROM cves 
+		SELECT cve_id FROM cves
 		WHERE cwe_id = $1 AND id != $2 AND ABS(cvss_score - $3) <= 0.5 AND published_date > $4
 		ORDER BY ABS(cvss_score - $3) ASC
 		LIMIT 5
@@ -158,9 +158,6 @@ func (w *Worker) getJSON(ctx context.Context, url string, target interface{}) er
 }
 
 func (w *Worker) fetchHNMentions(ctx context.Context, cveID string) (int, []map[string]string, error) {
-	if w.HNClient == nil {
-		return 0, nil, fmt.Errorf("HNClient not initialized")
-	}
 	return w.HNClient.FetchMentions(ctx, cveID)
 }
 
