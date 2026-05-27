@@ -77,75 +77,75 @@
             
             <!-- Row 1 -->
             <div class="flex flex-col justify-end xl:col-span-4">
-                <label class="hud-label ml-1">Search Keywords</label>
+                <label for="filter-q" class="hud-label ml-1">Search Keywords</label>
                 <div class="tactical-input-container group">
                     <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg group-focus-within:text-primary transition-colors">search</span>
-                    <input type="text" name="q" value="{{.Query}}" placeholder="Search in description..." class="w-full bg-transparent border-none pl-12 pr-4 py-3.5 text-sm text-white focus:outline-none transition-all placeholder:text-gray-700">
+                    <input type="text" id="filter-q" name="q" value="{{.Query}}" placeholder="Search in description..." class="w-full bg-transparent border-none pl-12 pr-4 py-3.5 text-sm text-white focus:outline-none transition-all placeholder:text-gray-700">
                 </div>
             </div>
             
             <div class="flex flex-col justify-end xl:col-span-4">
-                <label class="hud-label ml-1">Vendor & Product</label>
+                <label for="filter-vendor" class="hud-label ml-1">Vendor & Product</label>
                 <div class="flex gap-2">
                     <div class="tactical-input-container flex-1">
-                        <input type="text" name="vendor" value="{{.Vendor}}" placeholder="Vendor..." class="w-full bg-transparent border-none px-4 py-3.5 text-sm text-white focus:outline-none transition-all placeholder:text-gray-700">
+                        <input type="text" id="filter-vendor" name="vendor" value="{{.Vendor}}" placeholder="Vendor..." class="w-full bg-transparent border-none px-4 py-3.5 text-sm text-white focus:outline-none transition-all placeholder:text-gray-700">
                     </div>
                     <div class="tactical-input-container flex-1">
-                        <input type="text" name="product" value="{{.Product}}" placeholder="Product..." class="w-full bg-transparent border-none px-4 py-3.5 text-sm text-white focus:outline-none transition-all placeholder:text-gray-700">
+                        <input type="text" id="filter-product" name="product" value="{{.Product}}" aria-label="Product" placeholder="Product..." class="w-full bg-transparent border-none px-4 py-3.5 text-sm text-white focus:outline-none transition-all placeholder:text-gray-700">
                     </div>
                 </div>
             </div>
             
             <div class="flex flex-col justify-end xl:col-span-4">
-                <label class="hud-label ml-1">Vulnerability IDs</label>
+                <label for="filter-cve" class="hud-label ml-1">Vulnerability IDs</label>
                 <div class="flex gap-2">
                     <div class="tactical-input-container flex-1">
                         <input id="filter-cve" type="text" name="cve" value="{{.CVE}}" placeholder="CVE-..." class="w-full bg-transparent border-none px-4 py-3.5 text-sm text-white focus:outline-none transition-all placeholder:text-gray-700">
                     </div>
                     <div class="tactical-input-container flex-1">
-                        <input id="filter-cwe" type="text" name="cwe" value="{{.CWE}}" placeholder="CWE-..." class="w-full bg-transparent border-none px-4 py-3.5 text-sm text-white focus:outline-none transition-all placeholder:text-gray-700">
+                        <input id="filter-cwe" type="text" name="cwe" value="{{.CWE}}" aria-label="CWE ID" placeholder="CWE-..." class="w-full bg-transparent border-none px-4 py-3.5 text-sm text-white focus:outline-none transition-all placeholder:text-gray-700">
                     </div>
                 </div>
             </div>
             
             <div class="flex flex-col justify-end xl:col-span-2">
-                <label class="hud-label ml-1">CVSS Range</label>
+                <label for="filter-min-cvss" class="hud-label ml-1">CVSS Range</label>
                 <div class="tactical-input-container flex items-center gap-2 px-2">
                     <input id="filter-min-cvss" type="number" step="0.1" name="min_cvss" value="{{.MinCvss}}" placeholder="0.0" class="w-full bg-transparent border-none px-2 py-3 text-sm text-white focus:outline-none text-center placeholder:text-gray-700">
                     <span class="text-gray-700 font-bold">-</span>
-                    <input id="filter-max-cvss" type="number" step="0.1" name="max_cvss" value="{{.MaxCvss}}" placeholder="10.0" class="w-full bg-transparent border-none px-2 py-3 text-sm text-white focus:outline-none text-center placeholder:text-gray-700">
+                    <input id="filter-max-cvss" type="number" step="0.1" name="max_cvss" value="{{.MaxCvss}}" aria-label="Max CVSS" placeholder="10.0" class="w-full bg-transparent border-none px-2 py-3 text-sm text-white focus:outline-none text-center placeholder:text-gray-700">
                 </div>
             </div>
 
             <div class="flex flex-col justify-end xl:col-span-2">
-                <label class="hud-label ml-1">EPSS Range</label>
+                <label for="filter-min-epss" class="hud-label ml-1">EPSS Range</label>
                 <div class="tactical-input-container flex items-center gap-2 px-2">
                     <input id="filter-min-epss" type="number" step="0.01" name="min_epss" value="{{.MinEpss}}" placeholder="0.0" class="w-full bg-transparent border-none px-2 py-3 text-sm text-white focus:outline-none text-center placeholder:text-gray-700">
                     <span class="text-gray-700 font-bold">-</span>
-                    <input id="filter-max-epss" type="number" step="0.01" name="max_epss" value="{{.MaxEpss}}" placeholder="1.0" class="w-full bg-transparent border-none px-2 py-3 text-sm text-white focus:outline-none text-center placeholder:text-gray-700">
+                    <input id="filter-max-epss" type="number" step="0.01" name="max_epss" value="{{.MaxEpss}}" aria-label="Max EPSS" placeholder="1.0" class="w-full bg-transparent border-none px-2 py-3 text-sm text-white focus:outline-none text-center placeholder:text-gray-700">
                 </div>
             </div>
 
             <div class="flex flex-col justify-end xl:col-span-4">
-                <label class="hud-label ml-1">Published Date Range</label>
+                <label for="filter-start-date" class="hud-label ml-1">Published Date Range</label>
                 <div class="flex items-center gap-2 h-[50px]">
                     <div class="tactical-input-container flex-1 h-full flex items-center">
-                        <input type="date" name="start_date" value="{{.StartDate}}" class="w-full bg-transparent border-none px-4 py-2 text-[11px] text-white focus:outline-none [color-scheme:dark]" title="Start Date">
+                        <input type="date" id="filter-start-date" name="start_date" value="{{.StartDate}}" class="w-full bg-transparent border-none px-4 py-2 text-[11px] text-white focus:outline-none [color-scheme:dark]" title="Start Date">
                     </div>
                     <span class="text-gray-700 font-bold">-</span>
                     <div class="tactical-input-container flex-1 h-full flex items-center">
-                        <input type="date" name="end_date" value="{{.EndDate}}" class="w-full bg-transparent border-none px-4 py-2 text-[11px] text-white focus:outline-none [color-scheme:dark]" title="End Date">
+                        <input type="date" id="filter-end-date" name="end_date" value="{{.EndDate}}" aria-label="End Date" class="w-full bg-transparent border-none px-4 py-2 text-[11px] text-white focus:outline-none [color-scheme:dark]" title="End Date">
                     </div>
                 </div>
             </div>
 
             <div class="flex items-end gap-2 xl:col-span-2">
-                <label class="flex items-center gap-2 cursor-pointer tactical-input-container px-4 py-[13.5px] hover:bg-white/5 transition-all flex-1 group">
-                    <input type="checkbox" name="kev" value="true" {{if .KevOnly}}checked{{end}} class="w-3.5 h-3.5 rounded border-white/20 bg-white/10 text-primary focus:ring-primary transition-all cursor-pointer">
+                <label for="filter-kev" class="flex items-center gap-2 cursor-pointer tactical-input-container px-4 py-[13.5px] hover:bg-white/5 transition-all flex-1 group">
+                    <input id="filter-kev" type="checkbox" name="kev" value="true" {{if .KevOnly}}checked{{end}} class="w-3.5 h-3.5 rounded border-white/20 bg-white/10 text-primary focus:ring-primary transition-all cursor-pointer">
                     <span class="text-[9px] font-black text-gray-500 uppercase tracking-widest group-hover:text-white transition-colors">KEV</span>
                 </label>
-                <label class="flex items-center gap-2 cursor-pointer tactical-input-container px-4 py-[13.5px] hover:bg-white/5 transition-all flex-1 group">
-                    <input type="checkbox" name="has_poc" value="true" {{if .HasPoC}}checked{{end}} class="w-3.5 h-3.5 rounded border-white/20 bg-white/10 text-primary focus:ring-primary transition-all cursor-pointer">
+                <label for="filter-has-poc" class="flex items-center gap-2 cursor-pointer tactical-input-container px-4 py-[13.5px] hover:bg-white/5 transition-all flex-1 group">
+                    <input id="filter-has-poc" type="checkbox" name="has_poc" value="true" {{if .HasPoC}}checked{{end}} class="w-3.5 h-3.5 rounded border-white/20 bg-white/10 text-primary focus:ring-primary transition-all cursor-pointer">
                     <span class="text-[9px] font-black text-gray-500 uppercase tracking-widest group-hover:text-white transition-colors">PoC</span>
                 </label>
             </div>
@@ -224,7 +224,7 @@
                 <thead>
                     <tr class="border-b border-white/10 bg-white/5">
                         <th data-col="id" aria-sort="{{if eq .Sort "id"}}{{if eq .Order "asc"}}ascending{{else}}descending{{end}}{{else}}none{{end}}" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 group">
-                            <button type="button" data-sort-col="id" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
+                            <button type="button" aria-label="Sort by Vulnerability ID" data-sort-col="id" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
                                 Vulnerability ID
                                 <span class="material-symbols-outlined text-[14px] {{if ne .Sort "id"}}opacity-0 group-hover:opacity-40{{end}} transition-all" aria-hidden="true">
                                     {{if and (eq .Sort "id") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
@@ -232,7 +232,7 @@
                             </button>
                         </th>
                         <th data-col="severity" aria-sort="{{if eq .Sort "severity"}}{{if eq .Order "asc"}}ascending{{else}}descending{{end}}{{else}}none{{end}}" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 group">
-                            <button type="button" data-sort-col="severity" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
+                            <button type="button" aria-label="Sort by Severity" data-sort-col="severity" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
                                 Severity
                                 <span class="material-symbols-outlined text-[14px] {{if ne .Sort "severity"}}opacity-0 group-hover:opacity-40{{end}} transition-all" aria-hidden="true">
                                     {{if and (eq .Sort "severity") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
@@ -240,7 +240,7 @@
                             </button>
                         </th>
                         <th data-col="epss" aria-sort="{{if eq .Sort "epss"}}{{if eq .Order "asc"}}ascending{{else}}descending{{end}}{{else}}none{{end}}" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 group">
-                            <button type="button" data-sort-col="epss" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
+                            <button type="button" aria-label="Sort by EPSS" data-sort-col="epss" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
                                 Exploit Telemetry
                                 <span class="material-symbols-outlined text-[14px] {{if ne .Sort "epss"}}opacity-0 group-hover:opacity-40{{end}} transition-all" aria-hidden="true">
                                     {{if and (eq .Sort "epss") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
@@ -249,7 +249,7 @@
                         </th>
                         <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Description</th>
                         <th data-col="published" aria-sort="{{if eq .Sort "published"}}{{if eq .Order "asc"}}ascending{{else}}descending{{end}}{{else}}none{{end}}" class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 group">
-                            <button type="button" data-sort-col="published" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
+                            <button type="button" aria-label="Sort by Published Date" data-sort-col="published" class="flex items-center gap-2 hover:text-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg p-1 -m-1">
                                 Published
                                 <span class="material-symbols-outlined text-[14px] {{if ne .Sort "published"}}opacity-0 group-hover:opacity-40{{end}} transition-all" aria-hidden="true">
                                     {{if and (eq .Sort "published") (eq .Order "asc")}}arrow_upward{{else}}arrow_downward{{end}}
