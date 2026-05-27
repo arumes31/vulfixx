@@ -225,6 +225,7 @@ MetricsCached:
 	defer rows.Close()
 
 	var cves []models.CVE
+	var cveIDs []int
 	for rows.Next() {
 		var c models.CVE
 		var notes sql.NullString
@@ -234,11 +235,30 @@ MetricsCached:
 		}
 		c.Notes = notes.String
 		c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
-		_ = a.Pool.QueryRow(r.Context(), "SELECT cisa_ransomware FROM cves WHERE id = $1", c.ID).Scan(&c.CISARansomware)
 		cves = append(cves, c)
+		cveIDs = append(cveIDs, c.ID)
 	}
 	if err := rows.Err(); err != nil {
 		log.Printf("Error iterating dashboard CVEs: %v", err)
+	}
+
+	// Batch fetch cisa_ransomware to avoid N+1 query
+	if len(cveIDs) > 0 {
+		rRows, err := a.Pool.Query(r.Context(), "SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)", cveIDs)
+		if err == nil {
+			defer rRows.Close()
+			rMap := make(map[int]bool)
+			for rRows.Next() {
+				var id int
+				var cr bool
+				if rRows.Scan(&id, &cr) == nil {
+					rMap[id] = cr
+				}
+			}
+			for i := range cves {
+				cves[i].CISARansomware = rMap[cves[i].ID]
+			}
+		}
 	}
 
 	threatLevel := "LOW"
@@ -1431,6 +1451,7 @@ func (a *App) fetchPublicDashboardCVEs(ctx context.Context, filters publicDashbo
 	}
 	defer rows.Close()
 
+	var cveIDs []int
 	for rows.Next() {
 		var c models.CVE
 		err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.Vendor, &c.Product, &c.AffectedProducts, &c.Priority)
@@ -1438,9 +1459,29 @@ func (a *App) fetchPublicDashboardCVEs(ctx context.Context, filters publicDashbo
 			continue
 		}
 		c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
-		_ = a.Pool.QueryRow(ctx, "SELECT cisa_ransomware FROM cves WHERE id = $1", c.ID).Scan(&c.CISARansomware)
 		cves = append(cves, c)
+		cveIDs = append(cveIDs, c.ID)
 	}
+
+	// Batch fetch cisa_ransomware to avoid N+1 query
+	if len(cveIDs) > 0 {
+		rRows, err := a.Pool.Query(ctx, "SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)", cveIDs)
+		if err == nil {
+			defer rRows.Close()
+			rMap := make(map[int]bool)
+			for rRows.Next() {
+				var id int
+				var cr bool
+				if rRows.Scan(&id, &cr) == nil {
+					rMap[id] = cr
+				}
+			}
+			for i := range cves {
+				cves[i].CISARansomware = rMap[cves[i].ID]
+			}
+		}
+	}
+
 	return cves, nil
 }
 
