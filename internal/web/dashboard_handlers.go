@@ -21,6 +21,35 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+type dashboardFilters struct {
+	page         int
+	pageSize     int
+	offset       int
+	searchQuery  string
+	startDate    string
+	endDate      string
+	searchAll    bool
+	statusFilter string
+	kevOnly      bool
+	minCvss      float64
+	maxCvss      float64
+}
+
+type dashboardMetrics struct {
+	Total      int
+	Kev        int
+	Critical   int
+	InProgress int
+	SevCrit    int
+	SevHigh    int
+	SevMed     int
+	SevLow     int
+	StatActive int
+	StatProg   int
+	StatRes    int
+	StatIgn    int
+}
+
 func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := a.GetUserID(r)
 	if !ok {
@@ -29,294 +58,61 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	activeTeamID, _ := a.GetActiveTeamID(r)
+	filters := a.parseDashboardFilters(r)
+	whereClause, args, argIdx, statusJoinCond, notesJoinCond := a.buildDashboardWhereClause(filters, userID, activeTeamID)
 
-	pageStr := r.URL.Query().Get("page")
-	page, _ := strconv.Atoi(pageStr)
-	if page < 1 {
-		page = 1
-	}
-	pageSize := 20
-	offset := (page - 1) * pageSize
-
-	searchQuery := strings.TrimSpace(r.URL.Query().Get("q"))
-	startDate := r.URL.Query().Get("start_date")
-	endDate := r.URL.Query().Get("end_date")
-	searchAll := r.URL.Query().Get("all") == "true"
-	statusFilter := r.URL.Query().Get("status")
-	// Whitelist valid statuses to prevent unexpected DB comparisons
-	validStatuses := map[string]bool{"active": true, "in_progress": true, "resolved": true, "ignored": true}
-	if statusFilter != "" && !validStatuses[statusFilter] {
-		statusFilter = ""
-	}
-	kevOnly := r.URL.Query().Get("kev") == "true"
-	minCvssStr := r.URL.Query().Get("min_cvss")
-	maxCvssStr := r.URL.Query().Get("max_cvss")
-
-	minCvss, _ := strconv.ParseFloat(minCvssStr, 64)
-	maxCvss, _ := strconv.ParseFloat(maxCvssStr, 64)
-	if maxCvss == 0 {
-		maxCvss = 10.0
+	metrics, err := a.fetchDashboardMetrics(r.Context(), userID, activeTeamID, statusJoinCond, whereClause, args)
+	if err != nil {
+		log.Printf("Dashboard metrics error: %v", err)
 	}
 
-	var metrics struct {
-		Total      int
-		Kev        int
-		Critical   int
-		InProgress int
-		SevCrit    int
-		SevHigh    int
-		SevMed     int
-		SevLow     int
-		StatActive int
-		StatProg   int
-		StatRes    int
-		StatIgn    int
-	}
-
-	args := []any{userID}
-	argIdx := 2
-
-	teamArgIdx := -1
-	statusJoinCond := "ucs.user_id = $1 AND ucs.team_id IS NULL"
-	if activeTeamID > 0 {
-		statusJoinCond = "ucs.team_id = $" + strconv.Itoa(argIdx)
-		teamArgIdx = argIdx
-		args = append(args, activeTeamID)
-		argIdx++
-	}
-
-	var where strings.Builder
-	where.WriteString(" WHERE (1=1) ")
-	if !searchAll {
-		where.WriteString(` AND (
-			EXISTS (
-				SELECT 1 FROM user_subscriptions us 
-				WHERE (us.user_id = $1 OR us.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
-				  AND c.cvss_score >= us.min_severity 
-				  AND (us.keyword = '' OR c.description ILIKE '%%' || us.keyword || '%%')
-			)
-		) `)
-		where.WriteString(" AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) ")
-	} else {
-		if statusFilter == "" || statusFilter == "active" {
-			where.WriteString(" AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) ")
-		} else if statusFilter != "" {
-			where.WriteString(" AND ucs.status = $")
-			where.WriteString(strconv.Itoa(argIdx))
-			where.WriteString(" ")
-			args = append(args, statusFilter)
-			argIdx++
-		}
-	}
-
-	if searchQuery != "" {
-		where.WriteString(" AND (c.cve_id ILIKE $")
-		where.WriteString(strconv.Itoa(argIdx))
-		where.WriteString(" OR c.description ILIKE $")
-		where.WriteString(strconv.Itoa(argIdx))
-		where.WriteString(") ")
-		args = append(args, "%"+escapeLikePattern(searchQuery)+"%")
-		argIdx++
-	}
-	if kevOnly {
-		where.WriteString(" AND c.cisa_kev = true ")
-	}
-	if minCvss > 0 {
-		where.WriteString(" AND c.cvss_score >= $")
-		where.WriteString(strconv.Itoa(argIdx))
-		where.WriteString(" ")
-		args = append(args, minCvss)
-		argIdx++
-	}
-	if maxCvss < 10 {
-		where.WriteString(" AND c.cvss_score <= $")
-		where.WriteString(strconv.Itoa(argIdx))
-		where.WriteString(" ")
-		args = append(args, maxCvss)
-		argIdx++
-	}
-	if startDate != "" {
-		where.WriteString(" AND c.published_date >= $")
-		where.WriteString(strconv.Itoa(argIdx))
-		where.WriteString(" ")
-		args = append(args, startDate)
-		argIdx++
-	}
-	if endDate != "" {
-		where.WriteString(" AND c.published_date <= $")
-		where.WriteString(strconv.Itoa(argIdx))
-		where.WriteString(" ")
-		args = append(args, endDate)
-		argIdx++
-	}
-
-	whereClause := where.String()
-
-	consolidatedMetricsQuery := `
-		SELECT
-			COUNT(c.id) as total_cves,
-			COUNT(CASE WHEN c.cisa_kev = true THEN 1 END) as kev_count,
-			COUNT(CASE WHEN c.cvss_score >= 9.0 THEN 1 END) as critical_count,
-			COUNT(CASE WHEN ucs.status = 'in_progress' THEN 1 END) as in_progress_count,
-			-- Severity
-			COUNT(CASE WHEN c.cvss_score >= 9.0 THEN 1 END) as sev_crit,
-			COUNT(CASE WHEN c.cvss_score >= 7.0 AND c.cvss_score < 9.0 THEN 1 END) as sev_high,
-			COUNT(CASE WHEN c.cvss_score >= 4.0 AND c.cvss_score < 7.0 THEN 1 END) as sev_med,
-			COUNT(CASE WHEN c.cvss_score < 4.0 THEN 1 END) as sev_low,
-			-- Status
-			COUNT(CASE WHEN COALESCE(ucs.status, 'active') = 'active' THEN 1 END) as stat_active,
-			COUNT(CASE WHEN ucs.status = 'in_progress' THEN 1 END) as stat_prog,
-			COUNT(CASE WHEN ucs.status = 'resolved' THEN 1 END) as stat_res,
-			COUNT(CASE WHEN ucs.status = 'ignored' THEN 1 END) as stat_ign
-		FROM cves c
-		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ` + statusJoinCond + `
-		` + whereClause
-
-	// Generate deterministic cache key
-	cacheKeyStr := fmt.Sprintf("%d:%d:%s:%v", userID, activeTeamID, consolidatedMetricsQuery, args)
-	cacheKeyHash := sha256.Sum256([]byte(cacheKeyStr))
-	cacheKey := fmt.Sprintf("dashboard_metrics_v2:%x", cacheKeyHash)
-
-	if cachedData, err := a.Redis.Get(r.Context(), cacheKey).Result(); err == nil {
-		if err := json.Unmarshal([]byte(cachedData), &metrics); err == nil {
-			goto MetricsCached
-		}
-	}
-
-	if err := a.Pool.QueryRow(r.Context(), consolidatedMetricsQuery, args...).Scan(
-		&metrics.Total, &metrics.Kev, &metrics.Critical, &metrics.InProgress,
-		&metrics.SevCrit, &metrics.SevHigh, &metrics.SevMed, &metrics.SevLow,
-		&metrics.StatActive, &metrics.StatProg, &metrics.StatRes, &metrics.StatIgn,
-	); err != nil {
-		log.Printf("Dashboard consolidated metrics error: %v", err)
-	} else {
-		if dataToCache, err := json.Marshal(metrics); err == nil {
-			a.Redis.SetEx(r.Context(), cacheKey, dataToCache, 60*time.Second)
-		}
-	}
-
-MetricsCached:
-	totalItems, kevCount, critCount, progressCount := metrics.Total, metrics.Kev, metrics.Critical, metrics.InProgress
-	severityCounts := SeverityCounts{Critical: metrics.SevCrit, High: metrics.SevHigh, Medium: metrics.SevMed, Low: metrics.SevLow}
-	statusCounts := StatusCounts{Active: metrics.StatActive, InProgress: metrics.StatProg, Resolved: metrics.StatRes, Ignored: metrics.StatIgn}
-
-	notesJoinCond := "ucn.user_id = $1 AND ucn.team_id IS NULL"
-	if teamArgIdx != -1 {
-		notesJoinCond = "ucn.team_id = $" + strconv.Itoa(teamArgIdx)
-	}
-
-	query := `
-		SELECT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, COALESCE(c."references", '{}'), ucn.notes,
-		COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0), COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'), COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]'), COALESCE(c.priority, 'P3') as priority
-		FROM cves c
-		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ` + statusJoinCond + `
-		LEFT JOIN cve_notes ucn ON c.id = ucn.cve_id AND ` + notesJoinCond + `
-		` + whereClause + `
-		ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $` + strconv.Itoa(argIdx) + ` OFFSET $` + strconv.Itoa(argIdx+1)
-
-	finalArgs := append(args, pageSize, offset)
-
-	rows, err := a.Pool.Query(r.Context(), query, finalArgs...)
+	cves, err := a.fetchDashboardCVEs(r.Context(), statusJoinCond, notesJoinCond, whereClause, args, argIdx, filters.pageSize, filters.offset)
 	if err != nil {
 		log.Printf("Dashboard query error: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
 
-	var cves []models.CVE
-	var cveIDs []int
-	for rows.Next() {
-		var c models.CVE
-		var notes sql.NullString
-		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &notes, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.Vendor, &c.Product, &c.AffectedProducts, &c.Priority); err != nil {
-			log.Printf("Error scanning dashboard CVE row (CVEID=%s): %v", c.CVEID, err)
-			continue
-		}
-		c.Notes = notes.String
-		c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
-		cves = append(cves, c)
-		cveIDs = append(cveIDs, c.ID)
-	}
-	if err := rows.Err(); err != nil {
-		log.Printf("Error iterating dashboard CVEs: %v", err)
-	}
-
-	// Batch fetch cisa_ransomware to avoid N+1 query
-	if len(cveIDs) > 0 {
-		rRows, err := a.Pool.Query(r.Context(), "SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)", cveIDs)
-		if err == nil {
-			defer rRows.Close()
-			rMap := make(map[int]bool)
-			for rRows.Next() {
-				var id int
-				var cr bool
-				if rRows.Scan(&id, &cr) == nil {
-					rMap[id] = cr
-				}
-			}
-			for i := range cves {
-				cves[i].CISARansomware = rMap[cves[i].ID]
-			}
-		}
-	}
 
 	threatLevel := "LOW"
 	threatColor := "text-blue-400"
-	if kevCount > 0 || critCount > 0 {
+	if metrics.Kev > 0 || metrics.Critical > 0 {
 		threatLevel = "HIGH"
 		threatColor = "text-red-500"
 	}
 
-	totalPages := (totalItems + pageSize - 1) / pageSize
+	totalPages := (metrics.Total + filters.pageSize - 1) / filters.pageSize
 	if totalPages < 1 {
 		totalPages = 1
 	}
 
-	// Distribution counts are now fetched in the consolidated metrics query above
-
-	var topCWEs []CWEStat
-	cweQuery := "SELECT cwe_id, COALESCE(MAX(cwe_name), 'Unknown'), COUNT(c.id) as cnt FROM cves c " +
-		" LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND " + statusJoinCond + " " +
-		whereClause + " AND cwe_id IS NOT NULL AND cwe_id != '' GROUP BY cwe_id ORDER BY cnt DESC LIMIT 15"
-
-	cweQueryRows, err := a.Pool.Query(r.Context(), cweQuery, args...)
+	topCWEs, err := a.fetchDashboardTopCWEs(r.Context(), statusJoinCond, whereClause, args)
 	if err != nil {
 		log.Printf("CWE distribution error: %v", err)
-	} else {
-		defer cweQueryRows.Close()
-		for cweQueryRows.Next() {
-			var s CWEStat
-			if err := cweQueryRows.Scan(&s.ID, &s.Name, &s.Count); err == nil {
-				s.Name = models.GetCWEName(s.ID, s.Name)
-				topCWEs = append(topCWEs, s)
-			}
-		}
 	}
 
 	a.RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
 		"CVEs":           cves,
-		"Total":          totalItems,
-		"KevCount":       kevCount,
-		"CritCount":      critCount,
-		"ProgressCount":  progressCount,
+		"Total":          metrics.Total,
+		"KevCount":       metrics.Kev,
+		"CritCount":      metrics.Critical,
+		"ProgressCount":  metrics.InProgress,
 		"ThreatLevel":    threatLevel,
 		"ThreatColor":    threatColor,
-		"CurrentPage":    page,
+		"CurrentPage":    filters.page,
 		"TotalPages":     totalPages,
-		"HasPrev":        page > 1,
-		"HasNext":        page < totalPages,
-		"PrevPage":       page - 1,
-		"NextPage":       page + 1,
-		"Query":          searchQuery,
+		"HasPrev":        filters.page > 1,
+		"HasNext":        filters.page < totalPages,
+		"PrevPage":       filters.page - 1,
+		"NextPage":       filters.page + 1,
+		"Query":          filters.searchQuery,
 		"ActiveTeamID":   activeTeamID,
-		"SeverityCounts": severityCounts,
-		"StatusCounts":   statusCounts,
+		"SeverityCounts": SeverityCounts{Critical: metrics.SevCrit, High: metrics.SevHigh, Medium: metrics.SevMed, Low: metrics.SevLow},
+		"StatusCounts":   StatusCounts{Active: metrics.StatActive, InProgress: metrics.StatProg, Resolved: metrics.StatRes, Ignored: metrics.StatIgn},
 		"TopCWEs":        topCWEs,
 		"csrfToken":      csrf.Token(r),
 	})
 }
-
 func (a *App) UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -1482,53 +1278,6 @@ func (a *App) tryServePublicDashboardFromCache(w http.ResponseWriter, r *http.Re
 	return false
 }
 
-func (a *App) preparePublicDashboardRenderData(r *http.Request, filters publicDashboardFilters, metrics publicDashboardMetrics, cves []models.CVE, stats publicDashboardStats) map[string]interface{} {
-	totalPages := (metrics.totalItems + filters.pageSize - 1) / filters.pageSize
-	if totalPages < 1 {
-		totalPages = 1
-	}
-
-	threatLevel := "LOW"
-	threatColor := "text-blue-400"
-	if metrics.kevCount > 0 || metrics.critCount > 0 {
-		threatLevel = "HIGH"
-		threatColor = "text-red-500"
-	}
-
-	return map[string]interface{}{
-		"CVEs":            cves,
-		"Total":           metrics.totalItems,
-		"KevCount":        metrics.kevCount,
-		"CritCount":       metrics.critCount,
-		"ThreatLevel":     threatLevel,
-		"ThreatColor":     threatColor,
-		"Page":            filters.page,
-		"TotalPages":      totalPages,
-		"Query":           filters.searchQuery,
-		"Vendor":          filters.vendorQuery,
-		"Product":         filters.productQuery,
-		"CVE":             filters.cveIDQuery,
-		"CWE":             filters.cweQuery,
-		"StartDate":       filters.startDate,
-		"EndDate":         filters.endDate,
-		"KevOnly":         filters.kevOnly,
-		"HasPoC":          filters.hasPoC,
-		"MinCvss":         filters.minCvss,
-		"MaxCvss":         filters.maxCvss,
-		"MinEpss":         filters.minEpss,
-		"MaxEpss":         filters.maxEpss,
-		"SeverityCounts":  stats.severityCounts,
-		"TopCWEs":         stats.topCWEs,
-		"EPSSDist":        stats.epssDist,
-		"Sort":            filters.sort,
-		"Order":           filters.order,
-		"MetaTitle":       "Vulfixx - CVE Tracker",
-		"MetaDescription": "Monitor real-time vulnerability data, CISA KEV listings, and critical security advisories. The ultimate tracker for security professionals.",
-		"Trending":        a.getTrendingCVEs(r),
-		"csrfField":       csrf.TemplateField(r),
-	}
-}
-
 func (a *App) savePublicDashboardToCache(ctx context.Context, filters publicDashboardFilters, metrics publicDashboardMetrics, cves []models.CVE, stats publicDashboardStats, renderData map[string]interface{}) {
 	cacheKey := "public_dashboard_default_v2"
 	totalPages := (metrics.totalItems + filters.pageSize - 1) / filters.pageSize
@@ -1571,4 +1320,256 @@ func (a *App) savePublicDashboardToCache(ctx context.Context, filters publicDash
 	if jsonData, err := json.Marshal(cachedData); err == nil {
 		_ = a.Redis.Set(ctx, cacheKey, jsonData, 5*time.Minute).Err()
 	}
+}
+
+func (a *App) parseDashboardFilters(r *http.Request) dashboardFilters {
+	pageStr := r.URL.Query().Get("page")
+	page, _ := strconv.Atoi(pageStr)
+	if page < 1 {
+		page = 1
+	}
+	pageSize := 20
+	offset := (page - 1) * pageSize
+
+	searchQuery := strings.TrimSpace(r.URL.Query().Get("q"))
+	startDate := r.URL.Query().Get("start_date")
+	endDate := r.URL.Query().Get("end_date")
+	searchAll := r.URL.Query().Get("all") == "true"
+	statusFilter := r.URL.Query().Get("status")
+	validStatuses := map[string]bool{"active": true, "in_progress": true, "resolved": true, "ignored": true}
+	if statusFilter != "" && !validStatuses[statusFilter] {
+		statusFilter = ""
+	}
+	kevOnly := r.URL.Query().Get("kev") == "true"
+	minCvssStr := r.URL.Query().Get("min_cvss")
+	maxCvssStr := r.URL.Query().Get("max_cvss")
+
+	minCvss, _ := strconv.ParseFloat(minCvssStr, 64)
+	maxCvss, _ := strconv.ParseFloat(maxCvssStr, 64)
+	if maxCvss == 0 {
+		maxCvss = 10.0
+	}
+
+	return dashboardFilters{
+		page:         page,
+		pageSize:     pageSize,
+		offset:       offset,
+		searchQuery:  searchQuery,
+		startDate:    startDate,
+		endDate:      endDate,
+		searchAll:    searchAll,
+		statusFilter: statusFilter,
+		kevOnly:      kevOnly,
+		minCvss:      minCvss,
+		maxCvss:      maxCvss,
+	}
+}
+
+func (a *App) buildDashboardWhereClause(filters dashboardFilters, userID int, activeTeamID int) (string, []any, int, string, string) {
+	args := []any{userID}
+	argIdx := 2
+
+	teamArgIdx := -1
+	statusJoinCond := "ucs.user_id = $1 AND ucs.team_id IS NULL"
+	if activeTeamID > 0 {
+		statusJoinCond = "ucs.team_id = $" + strconv.Itoa(argIdx)
+		teamArgIdx = argIdx
+		args = append(args, activeTeamID)
+		argIdx++
+	}
+
+	notesJoinCond := "ucn.user_id = $1 AND ucn.team_id IS NULL"
+	if teamArgIdx != -1 {
+		notesJoinCond = "ucn.team_id = $" + strconv.Itoa(teamArgIdx)
+	}
+
+	var where strings.Builder
+	where.WriteString(" WHERE (1=1) ")
+	if !filters.searchAll {
+		where.WriteString(` AND (
+			EXISTS (
+				SELECT 1 FROM user_subscriptions us
+				WHERE (us.user_id = $1 OR us.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
+				  AND c.cvss_score >= us.min_severity
+				  AND (us.keyword = '' OR c.description ILIKE '%%' || us.keyword || '%%')
+			)
+		) `)
+		where.WriteString(" AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) ")
+	} else {
+		if filters.statusFilter == "" || filters.statusFilter == "active" {
+			where.WriteString(" AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) ")
+		} else if filters.statusFilter != "" {
+			where.WriteString(" AND ucs.status = $")
+			where.WriteString(strconv.Itoa(argIdx))
+			where.WriteString(" ")
+			args = append(args, filters.statusFilter)
+			argIdx++
+		}
+	}
+
+	if filters.searchQuery != "" {
+		where.WriteString(" AND (c.cve_id ILIKE $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" OR c.description ILIKE $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(") ")
+		args = append(args, "%"+escapeLikePattern(filters.searchQuery)+"%")
+		argIdx++
+	}
+	if filters.kevOnly {
+		where.WriteString(" AND c.cisa_kev = true ")
+	}
+	if filters.minCvss > 0 {
+		where.WriteString(" AND c.cvss_score >= $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" ")
+		args = append(args, filters.minCvss)
+		argIdx++
+	}
+	if filters.maxCvss < 10 {
+		where.WriteString(" AND c.cvss_score <= $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" ")
+		args = append(args, filters.maxCvss)
+		argIdx++
+	}
+	if filters.startDate != "" {
+		where.WriteString(" AND c.published_date >= $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" ")
+		args = append(args, filters.startDate)
+		argIdx++
+	}
+	if filters.endDate != "" {
+		where.WriteString(" AND c.published_date <= $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" ")
+		args = append(args, filters.endDate)
+		argIdx++
+	}
+
+	return where.String(), args, argIdx, statusJoinCond, notesJoinCond
+}
+
+func (a *App) fetchDashboardMetrics(ctx context.Context, userID int, activeTeamID int, statusJoinCond string, whereClause string, args []any) (dashboardMetrics, error) {
+	var metrics dashboardMetrics
+
+	consolidatedMetricsQuery := `
+		SELECT
+			COUNT(c.id) as total_cves,
+			COUNT(CASE WHEN c.cisa_kev = true THEN 1 END) as kev_count,
+			COUNT(CASE WHEN c.cvss_score >= 9.0 THEN 1 END) as critical_count,
+			COUNT(CASE WHEN ucs.status = 'in_progress' THEN 1 END) as in_progress_count,
+			-- Severity
+			COUNT(CASE WHEN c.cvss_score >= 9.0 THEN 1 END) as sev_crit,
+			COUNT(CASE WHEN c.cvss_score >= 7.0 AND c.cvss_score < 9.0 THEN 1 END) as sev_high,
+			COUNT(CASE WHEN c.cvss_score >= 4.0 AND c.cvss_score < 7.0 THEN 1 END) as sev_med,
+			COUNT(CASE WHEN c.cvss_score < 4.0 THEN 1 END) as sev_low,
+			-- Status
+			COUNT(CASE WHEN COALESCE(ucs.status, 'active') = 'active' THEN 1 END) as stat_active,
+			COUNT(CASE WHEN ucs.status = 'in_progress' THEN 1 END) as stat_prog,
+			COUNT(CASE WHEN ucs.status = 'resolved' THEN 1 END) as stat_res,
+			COUNT(CASE WHEN ucs.status = 'ignored' THEN 1 END) as stat_ign
+		FROM cves c
+		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ` + statusJoinCond + `
+		` + whereClause
+
+	// Generate deterministic cache key
+	cacheKeyStr := fmt.Sprintf("%d:%d:%s:%v", userID, activeTeamID, consolidatedMetricsQuery, args)
+	cacheKeyHash := sha256.Sum256([]byte(cacheKeyStr))
+	cacheKey := fmt.Sprintf("dashboard_metrics_v2:%x", cacheKeyHash)
+
+	if cachedData, err := a.Redis.Get(ctx, cacheKey).Result(); err == nil {
+		if err := json.Unmarshal([]byte(cachedData), &metrics); err == nil {
+			return metrics, nil
+		}
+	}
+
+	if err := a.Pool.QueryRow(ctx, consolidatedMetricsQuery, args...).Scan(
+		&metrics.Total, &metrics.Kev, &metrics.Critical, &metrics.InProgress,
+		&metrics.SevCrit, &metrics.SevHigh, &metrics.SevMed, &metrics.SevLow,
+		&metrics.StatActive, &metrics.StatProg, &metrics.StatRes, &metrics.StatIgn,
+	); err != nil {
+		return metrics, err
+	}
+
+	if dataToCache, err := json.Marshal(metrics); err == nil {
+		a.Redis.SetEx(ctx, cacheKey, dataToCache, 60*time.Second)
+	}
+
+	return metrics, nil
+}
+
+func (a *App) fetchDashboardCVEs(ctx context.Context, statusJoinCond string, notesJoinCond string, whereClause string, args []any, argIdx int, pageSize, offset int) ([]models.CVE, error) {
+	query := `
+		SELECT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, COALESCE(c."references", '{}'), ucn.notes,
+		COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0), COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'), COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]'), COALESCE(c.priority, 'P3') as priority
+		FROM cves c
+		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ` + statusJoinCond + `
+		LEFT JOIN cve_notes ucn ON c.id = ucn.cve_id AND ` + notesJoinCond + `
+		` + whereClause + `
+		ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $` + strconv.Itoa(argIdx) + ` OFFSET $` + strconv.Itoa(argIdx+1)
+
+	finalArgs := append(args, pageSize, offset)
+
+	rows, err := a.Pool.Query(ctx, query, finalArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cves []models.CVE
+	var cveIDs []int
+	for rows.Next() {
+		var c models.CVE
+		var notes sql.NullString
+		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &notes, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.Vendor, &c.Product, &c.AffectedProducts, &c.Priority); err != nil {
+			continue
+		}
+		c.Notes = notes.String
+		c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
+		cves = append(cves, c)
+		cveIDs = append(cveIDs, c.ID)
+	}
+
+	if len(cveIDs) > 0 {
+		rRows, err := a.Pool.Query(ctx, "SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)", cveIDs)
+		if err == nil {
+			defer rRows.Close()
+			rMap := make(map[int]bool)
+			for rRows.Next() {
+				var id int
+				var cr bool
+				if rRows.Scan(&id, &cr) == nil {
+					rMap[id] = cr
+				}
+			}
+			for i := range cves {
+				cves[i].CISARansomware = rMap[cves[i].ID]
+			}
+		}
+	}
+	return cves, rows.Err()
+}
+
+func (a *App) fetchDashboardTopCWEs(ctx context.Context, statusJoinCond string, whereClause string, args []any) ([]CWEStat, error) {
+	var topCWEs []CWEStat
+	cweQuery := "SELECT cwe_id, COALESCE(MAX(cwe_name), 'Unknown'), COUNT(c.id) as cnt FROM cves c " +
+		" LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND " + statusJoinCond + " " +
+		whereClause + " AND cwe_id IS NOT NULL AND cwe_id != '' GROUP BY cwe_id ORDER BY cnt DESC LIMIT 15"
+
+	cweQueryRows, err := a.Pool.Query(ctx, cweQuery, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer cweQueryRows.Close()
+
+	for cweQueryRows.Next() {
+		var s CWEStat
+		if err := cweQueryRows.Scan(&s.ID, &s.Name, &s.Count); err == nil {
+			s.Name = models.GetCWEName(s.ID, s.Name)
+			topCWEs = append(topCWEs, s)
+		}
+	}
+	return topCWEs, cweQueryRows.Err()
 }
