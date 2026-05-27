@@ -618,54 +618,11 @@ type PublicDashboardData struct {
 
 func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	isAJAX := r.URL.Query().Get("ajax") == "true"
-	filters := a.parsePublicDashboardFilters(r)
-
-	// Redis Caching for Default View
-	cacheKey := "public_dashboard_default_v2"
-	if (r.URL.RawQuery == "" || r.URL.RawQuery == "page=1") && r.URL.Query().Get("sort") == "" && r.URL.Query().Get("order") == "" {
-		if val, err := a.Redis.Get(r.Context(), cacheKey).Result(); err == nil {
-			var cachedData PublicDashboardData
-			if err := json.Unmarshal([]byte(val), &cachedData); err == nil {
-				renderData := map[string]interface{}{
-					"CVEs":           cachedData.CVEs,
-					"Total":          cachedData.Total,
-					"KevCount":       cachedData.KevCount,
-					"CritCount":      cachedData.CritCount,
-					"ThreatLevel":    cachedData.ThreatLevel,
-					"ThreatColor":    cachedData.ThreatColor,
-					"Page":           cachedData.Page,
-					"TotalPages":     cachedData.TotalPages,
-					"Query":          cachedData.Query,
-					"Vendor":         cachedData.Vendor,
-					"Product":        cachedData.Product,
-					"CVE":            cachedData.CVE,
-					"CWE":            cachedData.CWE,
-					"StartDate":      cachedData.StartDate,
-					"EndDate":        cachedData.EndDate,
-					"KevOnly":        cachedData.KevOnly,
-					"HasPoC":         cachedData.HasPoC,
-					"MinCvss":        cachedData.MinCvss,
-					"MaxCvss":        cachedData.MaxCvss,
-					"MinEpss":        cachedData.MinEpss,
-					"MaxEpss":        cachedData.MaxEpss,
-					"SeverityCounts": cachedData.SeverityCounts,
-					"TopCWEs":        cachedData.TopCWEs,
-					"EPSSDist":       cachedData.EPSSDist,
-					"Trending":       cachedData.Trending,
-					"ActiveTab":      "cves",
-					"CanScroll":      cachedData.Total > cachedData.Page*20,
-					"csrfField":      csrf.TemplateField(r),
-				}
-				if isAJAX {
-					a.renderAJAX(w, renderData)
-					return
-				}
-				a.RenderTemplate(w, r, "public_dashboard.html", renderData)
-				return
-			}
-		}
+	if a.tryServePublicDashboardFromCache(w, r, isAJAX) {
+		return
 	}
 
+	filters := a.parsePublicDashboardFilters(r)
 	whereClause, args, argIdx := a.buildPublicDashboardWhereClause(filters)
 
 	metrics, err := a.fetchPublicDashboardMetrics(r.Context(), whereClause, args)
@@ -684,85 +641,10 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Public dashboard stats error: %v", err)
 	}
 
-	totalPages := (metrics.totalItems + filters.pageSize - 1) / filters.pageSize
-	if totalPages < 1 {
-		totalPages = 1
-	}
+	renderData := a.preparePublicDashboardRenderData(r, filters, metrics, cves, stats)
 
-	threatLevel := "LOW"
-	threatColor := "text-blue-400"
-	if metrics.kevCount > 0 || metrics.critCount > 0 {
-		threatLevel = "HIGH"
-		threatColor = "text-red-500"
-	}
-
-	renderData := map[string]interface{}{
-		"CVEs":            cves,
-		"Total":           metrics.totalItems,
-		"KevCount":        metrics.kevCount,
-		"CritCount":       metrics.critCount,
-		"ThreatLevel":     threatLevel,
-		"ThreatColor":     threatColor,
-		"Page":            filters.page,
-		"TotalPages":      totalPages,
-		"Query":           filters.searchQuery,
-		"Vendor":          filters.vendorQuery,
-		"Product":         filters.productQuery,
-		"CVE":             filters.cveIDQuery,
-		"CWE":             filters.cweQuery,
-		"StartDate":       filters.startDate,
-		"EndDate":         filters.endDate,
-		"KevOnly":         filters.kevOnly,
-		"HasPoC":          filters.hasPoC,
-		"MinCvss":         filters.minCvss,
-		"MaxCvss":         filters.maxCvss,
-		"MinEpss":         filters.minEpss,
-		"MaxEpss":         filters.maxEpss,
-		"SeverityCounts":  stats.severityCounts,
-		"TopCWEs":         stats.topCWEs,
-		"EPSSDist":        stats.epssDist,
-		"Sort":            filters.sort,
-		"Order":           filters.order,
-		"MetaTitle":       "Vulfixx - CVE Tracker",
-		"MetaDescription": "Monitor real-time vulnerability data, CISA KEV listings, and critical security advisories. The ultimate tracker for security professionals.",
-		"Trending":        a.getTrendingCVEs(r),
-		"csrfField":       csrf.TemplateField(r),
-	}
-
-	// Cache Default View
 	if r.URL.RawQuery == "" || r.URL.RawQuery == "page=1" {
-		cachedData := PublicDashboardData{
-			CVEs:            cves,
-			Total:           metrics.totalItems,
-			KevCount:        metrics.kevCount,
-			CritCount:       metrics.critCount,
-			ThreatLevel:     threatLevel,
-			ThreatColor:     threatColor,
-			Page:            filters.page,
-			TotalPages:      totalPages,
-			Query:           filters.searchQuery,
-			Vendor:          filters.vendorQuery,
-			Product:         filters.productQuery,
-			CVE:             filters.cveIDQuery,
-			CWE:             filters.cweQuery,
-			StartDate:       filters.startDate,
-			EndDate:         filters.endDate,
-			KevOnly:         filters.kevOnly,
-			HasPoC:          filters.hasPoC,
-			MinCvss:         filters.minCvss,
-			MaxCvss:         filters.maxCvss,
-			MinEpss:         filters.minEpss,
-			MaxEpss:         filters.maxEpss,
-			SeverityCounts:  stats.severityCounts,
-			TopCWEs:         stats.topCWEs,
-			EPSSDist:        stats.epssDist,
-			MetaTitle:       renderData["MetaTitle"].(string),
-			MetaDescription: renderData["MetaDescription"].(string),
-			Trending:        renderData["Trending"].([]models.CVE),
-		}
-		if jsonData, err := json.Marshal(cachedData); err == nil {
-			_ = a.Redis.Set(r.Context(), cacheKey, jsonData, 5*time.Minute).Err()
-		}
+		a.savePublicDashboardToCache(r.Context(), filters, metrics, cves, stats, renderData)
 	}
 
 	if isAJAX {
@@ -1486,4 +1368,143 @@ func (a *App) fetchPublicDashboardStats(ctx context.Context, whereClause string,
 	stats.epssDist = []int{e1, e2, e3, e4}
 
 	return stats, nil
+}
+
+func (a *App) tryServePublicDashboardFromCache(w http.ResponseWriter, r *http.Request, isAJAX bool) bool {
+	cacheKey := "public_dashboard_default_v2"
+	if (r.URL.RawQuery == "" || r.URL.RawQuery == "page=1") && r.URL.Query().Get("sort") == "" && r.URL.Query().Get("order") == "" {
+		if val, err := a.Redis.Get(r.Context(), cacheKey).Result(); err == nil {
+			var cachedData PublicDashboardData
+			if err := json.Unmarshal([]byte(val), &cachedData); err == nil {
+				renderData := map[string]interface{}{
+					"CVEs":           cachedData.CVEs,
+					"Total":          cachedData.Total,
+					"KevCount":       cachedData.KevCount,
+					"CritCount":      cachedData.CritCount,
+					"ThreatLevel":    cachedData.ThreatLevel,
+					"ThreatColor":    cachedData.ThreatColor,
+					"Page":           cachedData.Page,
+					"TotalPages":     cachedData.TotalPages,
+					"Query":          cachedData.Query,
+					"Vendor":         cachedData.Vendor,
+					"Product":        cachedData.Product,
+					"CVE":            cachedData.CVE,
+					"CWE":            cachedData.CWE,
+					"StartDate":      cachedData.StartDate,
+					"EndDate":        cachedData.EndDate,
+					"KevOnly":        cachedData.KevOnly,
+					"HasPoC":         cachedData.HasPoC,
+					"MinCvss":        cachedData.MinCvss,
+					"MaxCvss":        cachedData.MaxCvss,
+					"MinEpss":        cachedData.MinEpss,
+					"MaxEpss":        cachedData.MaxEpss,
+					"SeverityCounts": cachedData.SeverityCounts,
+					"TopCWEs":        cachedData.TopCWEs,
+					"EPSSDist":       cachedData.EPSSDist,
+					"Trending":       cachedData.Trending,
+					"ActiveTab":      "cves",
+					"CanScroll":      cachedData.Total > cachedData.Page*20,
+					"csrfField":      csrf.TemplateField(r),
+				}
+				if isAJAX {
+					a.renderAJAX(w, renderData)
+					return true
+				}
+				a.RenderTemplate(w, r, "public_dashboard.html", renderData)
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (a *App) preparePublicDashboardRenderData(r *http.Request, filters publicDashboardFilters, metrics publicDashboardMetrics, cves []models.CVE, stats publicDashboardStats) map[string]interface{} {
+	totalPages := (metrics.totalItems + filters.pageSize - 1) / filters.pageSize
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
+	threatLevel := "LOW"
+	threatColor := "text-blue-400"
+	if metrics.kevCount > 0 || metrics.critCount > 0 {
+		threatLevel = "HIGH"
+		threatColor = "text-red-500"
+	}
+
+	return map[string]interface{}{
+		"CVEs":            cves,
+		"Total":           metrics.totalItems,
+		"KevCount":        metrics.kevCount,
+		"CritCount":       metrics.critCount,
+		"ThreatLevel":     threatLevel,
+		"ThreatColor":     threatColor,
+		"Page":            filters.page,
+		"TotalPages":      totalPages,
+		"Query":           filters.searchQuery,
+		"Vendor":          filters.vendorQuery,
+		"Product":         filters.productQuery,
+		"CVE":             filters.cveIDQuery,
+		"CWE":             filters.cweQuery,
+		"StartDate":       filters.startDate,
+		"EndDate":         filters.endDate,
+		"KevOnly":         filters.kevOnly,
+		"HasPoC":          filters.hasPoC,
+		"MinCvss":         filters.minCvss,
+		"MaxCvss":         filters.maxCvss,
+		"MinEpss":         filters.minEpss,
+		"MaxEpss":         filters.maxEpss,
+		"SeverityCounts":  stats.severityCounts,
+		"TopCWEs":         stats.topCWEs,
+		"EPSSDist":        stats.epssDist,
+		"Sort":            filters.sort,
+		"Order":           filters.order,
+		"MetaTitle":       "Vulfixx - CVE Tracker",
+		"MetaDescription": "Monitor real-time vulnerability data, CISA KEV listings, and critical security advisories. The ultimate tracker for security professionals.",
+		"Trending":        a.getTrendingCVEs(r),
+		"csrfField":       csrf.TemplateField(r),
+	}
+}
+
+func (a *App) savePublicDashboardToCache(ctx context.Context, filters publicDashboardFilters, metrics publicDashboardMetrics, cves []models.CVE, stats publicDashboardStats, renderData map[string]interface{}) {
+	cacheKey := "public_dashboard_default_v2"
+	totalPages := (metrics.totalItems + filters.pageSize - 1) / filters.pageSize
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
+	threatLevel := renderData["ThreatLevel"].(string)
+	threatColor := renderData["ThreatColor"].(string)
+
+	cachedData := PublicDashboardData{
+		CVEs:            cves,
+		Total:           metrics.totalItems,
+		KevCount:        metrics.kevCount,
+		CritCount:       metrics.critCount,
+		ThreatLevel:     threatLevel,
+		ThreatColor:     threatColor,
+		Page:            filters.page,
+		TotalPages:      totalPages,
+		Query:           filters.searchQuery,
+		Vendor:          filters.vendorQuery,
+		Product:         filters.productQuery,
+		CVE:             filters.cveIDQuery,
+		CWE:             filters.cweQuery,
+		StartDate:       filters.startDate,
+		EndDate:         filters.endDate,
+		KevOnly:         filters.kevOnly,
+		HasPoC:          filters.hasPoC,
+		MinCvss:         filters.minCvss,
+		MaxCvss:         filters.maxCvss,
+		MinEpss:         filters.minEpss,
+		MaxEpss:         filters.maxEpss,
+		SeverityCounts:  stats.severityCounts,
+		TopCWEs:         stats.topCWEs,
+		EPSSDist:        stats.epssDist,
+		MetaTitle:       renderData["MetaTitle"].(string),
+		MetaDescription: renderData["MetaDescription"].(string),
+		Trending:        renderData["Trending"].([]models.CVE),
+	}
+	if jsonData, err := json.Marshal(cachedData); err == nil {
+		_ = a.Redis.Set(ctx, cacheKey, jsonData, 5*time.Minute).Err()
+	}
 }
