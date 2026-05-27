@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"cve-tracker/internal/db"
 	"net/http"
 	"net/http/httptest"
@@ -99,6 +100,74 @@ func TestIndexHandler(t *testing.T) {
 		if rr2.Code != http.StatusFound {
 			t.Errorf("expected 302 redirect, got %d", rr2.Code)
 		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+}
+
+func TestGetClientIP(t *testing.T) {
+	mock, _ := db.SetupTestDB()
+	defer mock.Close()
+	app := setupTestApp(t, mock)
+
+	t.Run("FromContext", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		ctx := context.WithValue(req.Context(), clientIPKey, "1.2.3.4")
+		req = req.WithContext(ctx)
+		ip := app.GetClientIP(req)
+		if ip != "1.2.3.4" {
+			t.Errorf("expected 1.2.3.4, got %s", ip)
+		}
+	})
+
+	t.Run("FromRemoteAddr", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.RemoteAddr = "5.6.7.8:1234"
+		ip := app.GetClientIP(req)
+		if ip != "5.6.7.8" {
+			t.Errorf("expected 5.6.7.8, got %s", ip)
+		}
+	})
+
+	t.Run("InvalidRemoteAddr", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.RemoteAddr = "invalid-addr"
+		ip := app.GetClientIP(req)
+		if ip != "invalid-addr" {
+			t.Errorf("expected invalid-addr, got %s", ip)
+		}
+	})
+}
+
+func TestLogActivity_Extended(t *testing.T) {
+	mock, _ := db.SetupTestDB()
+	defer mock.Close()
+	app := setupTestApp(t, mock)
+
+	t.Run("SuccessWithLongIP", func(t *testing.T) {
+		longIP := "2001:0db8:85a3:0000:0000:8a2e:0370:7334:extra-garbage-that-makes-it-too-long"
+		expectedIP := longIP[:45]
+
+		mock.ExpectExec("INSERT INTO user_activity_logs").
+			WithArgs(1, "test", "desc", expectedIP, "agent", pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		app.LogActivity(context.Background(), 1, "test", "desc", longIP, "agent")
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("DBError", func(t *testing.T) {
+		mock.ExpectExec("INSERT INTO user_activity_logs").
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnError(context.DeadlineExceeded)
+
+		// This should log the error and not panic
+		app.LogActivity(context.Background(), 1, "test", "desc", "1.2.3.4", "agent")
+
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
 		}
