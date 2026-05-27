@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"cve-tracker/internal/models"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type osvResponse struct {
@@ -69,11 +71,23 @@ func (w *Worker) syncOSV(ctx context.Context) {
 		}
 	}
 
-	count := 0
+	if len(cves) == 0 {
+		w.updateTaskStats(ctx, "osv_sync")
+		return
+	}
+
+	type updateItem struct {
+		cve     models.CVE
+		osvData *osvResponse
+		hasData bool
+		changed bool
+	}
+	var updates []updateItem
+
 	for _, cve := range cves {
 		select {
 		case <-ctx.Done():
-			return
+			goto executeUpdates
 		default:
 		}
 
@@ -82,9 +96,10 @@ func (w *Worker) syncOSV(ctx context.Context) {
 			continue
 		}
 
+		item := updateItem{cve: cve, osvData: osvData}
 		if osvData != nil {
+			item.hasData = true
 			// Deep Enrichment: Extract products and versions
-			changed := false
 			for _, aff := range osvData.Affected {
 				vendor := aff.Package.Ecosystem
 				product := aff.Package.Name
@@ -123,34 +138,74 @@ func (w *Worker) syncOSV(ctx context.Context) {
 					}
 				}
 
-				cve.AddAffectedProduct(vendor, product, versionStr, false)
+				item.cve.AddAffectedProduct(vendor, product, versionStr, false)
 
 				// If primary vendor/product is missing, use OSV as authoritative
-				if cve.Vendor == "" {
-					cve.Vendor = vendor
+				if item.cve.Vendor == "" {
+					item.cve.Vendor = vendor
 				}
-				if cve.Product == "" {
-					cve.Product = product
+				if item.cve.Product == "" {
+					item.cve.Product = product
 				}
-				changed = true
+				item.changed = true
 			}
+		}
+		updates = append(updates, item)
+		time.Sleep(100 * time.Millisecond) // OSV is fast, but we're being polite
+	}
 
-			if changed {
-				dataJSON, _ := json.Marshal(osvData)
-				_, err = w.Pool.Exec(ctx, "UPDATE cves SET osv_data = $1, osv_last_updated = NOW(), vendor = $2, product = $3, affected_products = $4 WHERE id = $5",
-					dataJSON, cve.Vendor, cve.Product, cve.AffectedProducts, cve.ID)
+executeUpdates:
+	if len(updates) == 0 {
+		w.updateTaskStats(ctx, "osv_sync")
+		return
+	}
+
+	tx, err := w.Pool.Begin(ctx)
+	if err != nil {
+		log.Printf("Worker: [ERROR] Failed to begin transaction for OSV updates: %v", err)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	count := 0
+	batch := &pgx.Batch{}
+	for _, item := range updates {
+		if item.hasData && item.changed {
+			dataJSON, _ := json.Marshal(item.osvData)
+			batch.Queue("UPDATE cves SET osv_data = $1, osv_last_updated = NOW(), vendor = $2, product = $3, affected_products = $4 WHERE id = $5",
+				dataJSON, item.cve.Vendor, item.cve.Product, item.cve.AffectedProducts, item.cve.ID)
+		} else {
+			batch.Queue("UPDATE cves SET osv_last_updated = NOW() WHERE id = $1", item.cve.ID)
+		}
+	}
+
+	br := tx.SendBatch(ctx, batch)
+	if br != nil {
+		for i := 0; i < len(updates); i++ {
+			if _, err := br.Exec(); err == nil {
+				count++
+			}
+		}
+		br.Close()
+	} else {
+		// Fallback for mocks/drivers that don't support batching
+		for _, item := range updates {
+			var err error
+			if item.hasData && item.changed {
+				dataJSON, _ := json.Marshal(item.osvData)
+				_, err = tx.Exec(ctx, "UPDATE cves SET osv_data = $1, osv_last_updated = NOW(), vendor = $2, product = $3, affected_products = $4 WHERE id = $5",
+					dataJSON, item.cve.Vendor, item.cve.Product, item.cve.AffectedProducts, item.cve.ID)
 			} else {
-				_, err = w.Pool.Exec(ctx, "UPDATE cves SET osv_last_updated = NOW() WHERE id = $1", cve.ID)
+				_, err = tx.Exec(ctx, "UPDATE cves SET osv_last_updated = NOW() WHERE id = $1", item.cve.ID)
 			}
 			if err == nil {
 				count++
 			}
-		} else {
-			// Mark as checked even if no data found
-			_, _ = w.Pool.Exec(ctx, "UPDATE cves SET osv_last_updated = NOW() WHERE id = $1", cve.ID)
 		}
+	}
 
-		time.Sleep(200 * time.Millisecond) // OSV is fast
+	if err := tx.Commit(ctx); err != nil {
+		log.Printf("Worker: [ERROR] Failed to commit OSV updates: %v", err)
 	}
 
 	w.updateTaskStats(ctx, "osv_sync")
