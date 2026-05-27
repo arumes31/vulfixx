@@ -897,4 +897,5 @@ func TestDashboardHandler_QueryError(t *testing.T) {
 
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("expected status code %d, got %d", http.StatusInternalServerError, rr.Code)
+	}
 }

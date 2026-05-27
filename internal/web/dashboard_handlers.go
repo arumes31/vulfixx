@@ -1142,8 +1142,6 @@ func (a *App) fetchPublicDashboardCVEs(ctx context.Context, filters publicDashbo
 		cves = append(cves, c)
 		cveIDs = append(cveIDs, c.ID)
 	}
-
-<<<<<<< HEAD
 	// Batch fetch cisa_ransomware to avoid N+1 query
 	if len(cveIDs) > 0 {
 		rRows, err := a.Pool.Query(ctx, "SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)", cveIDs)
@@ -1159,28 +1157,6 @@ func (a *App) fetchPublicDashboardCVEs(ctx context.Context, filters publicDashbo
 			}
 			for i := range cves {
 				cves[i].CISARansomware = rMap[cves[i].ID]
-=======
-	if len(cves) > 0 {
-		var ids []int
-		for _, c := range cves {
-			ids = append(ids, c.ID)
-		}
-		crRows, crErr := a.Pool.Query(ctx, "SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)", ids)
-		if crErr == nil {
-			crMap := make(map[int]bool)
-			for crRows.Next() {
-				var id int
-				var cr bool
-				if err := crRows.Scan(&id, &cr); err == nil {
-					crMap[id] = cr
-				}
-			}
-			crRows.Close()
-			for i := range cves {
-				if cr, ok := crMap[cves[i].ID]; ok {
-					cves[i].CISARansomware = cr
-				}
->>>>>>> origin/bolt-n-plus-one-query-fix-8767901538051849482
 			}
 		}
 	}
@@ -1278,6 +1254,53 @@ func (a *App) tryServePublicDashboardFromCache(w http.ResponseWriter, r *http.Re
 		}
 	}
 	return false
+}
+
+func (a *App) preparePublicDashboardRenderData(r *http.Request, filters publicDashboardFilters, metrics publicDashboardMetrics, cves []models.CVE, stats publicDashboardStats) map[string]interface{} {
+	totalPages := (metrics.totalItems + filters.pageSize - 1) / filters.pageSize
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
+	threatLevel := "LOW"
+	threatColor := "text-blue-400"
+	if metrics.kevCount > 0 || metrics.critCount > 0 {
+		threatLevel = "HIGH"
+		threatColor = "text-red-500"
+	}
+
+	return map[string]interface{}{
+		"CVEs":            cves,
+		"Total":           metrics.totalItems,
+		"KevCount":        metrics.kevCount,
+		"CritCount":       metrics.critCount,
+		"ThreatLevel":     threatLevel,
+		"ThreatColor":     threatColor,
+		"Page":            filters.page,
+		"TotalPages":      totalPages,
+		"Query":           filters.searchQuery,
+		"Vendor":          filters.vendorQuery,
+		"Product":         filters.productQuery,
+		"CVE":             filters.cveIDQuery,
+		"CWE":             filters.cweQuery,
+		"StartDate":       filters.startDate,
+		"EndDate":         filters.endDate,
+		"KevOnly":         filters.kevOnly,
+		"HasPoC":          filters.hasPoC,
+		"MinCvss":         filters.minCvss,
+		"MaxCvss":         filters.maxCvss,
+		"MinEpss":         filters.minEpss,
+		"MaxEpss":         filters.maxEpss,
+		"SeverityCounts":  stats.severityCounts,
+		"TopCWEs":         stats.topCWEs,
+		"EPSSDist":        stats.epssDist,
+		"Sort":            filters.sort,
+		"Order":           filters.order,
+		"MetaTitle":       "Vulfixx - CVE Tracker",
+		"MetaDescription": "Monitor real-time vulnerability data, CISA KEV listings, and critical security advisories. The ultimate tracker for security professionals.",
+		"Trending":        a.getTrendingCVEs(r),
+		"csrfField":       csrf.TemplateField(r),
+	}
 }
 
 func (a *App) savePublicDashboardToCache(ctx context.Context, filters publicDashboardFilters, metrics publicDashboardMetrics, cves []models.CVE, stats publicDashboardStats, renderData map[string]interface{}) {
