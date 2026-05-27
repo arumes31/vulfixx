@@ -1,8 +1,8 @@
 package web
 
 import (
-	"errors"
 	"cve-tracker/internal/db"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -107,61 +107,61 @@ func TestAdminDeleteUserHandler(t *testing.T) {
 			expectedStatus: http.StatusFound,
 		},
 		{
-			name:          "MethodNotAllowed",
-			method:        "GET",
-			form:          url.Values{"id": {"2"}, "csrf_token": {"correct"}},
-			userID:        1,
-			csrfInSession: "correct",
+			name:           "MethodNotAllowed",
+			method:         "GET",
+			form:           url.Values{"id": {"2"}, "csrf_token": {"correct"}},
+			userID:         1,
+			csrfInSession:  "correct",
 			mockExpect:     func(mock pgxmock.PgxPoolIface) {},
 			expectedStatus: http.StatusMethodNotAllowed,
 		},
 		{
-			name:          "InvalidCSRF",
-			method:        "POST",
-			form:          url.Values{"id": {"2"}, "csrf_token": {"wrong"}},
-			userID:        1,
-			csrfInSession: "correct",
+			name:           "InvalidCSRF",
+			method:         "POST",
+			form:           url.Values{"id": {"2"}, "csrf_token": {"wrong"}},
+			userID:         1,
+			csrfInSession:  "correct",
 			mockExpect:     func(mock pgxmock.PgxPoolIface) {},
 			expectedStatus: http.StatusForbidden,
 		},
 		{
-			name:          "UserIDMissing",
-			method:        "POST",
-			form:          url.Values{"id": {""}, "csrf_token": {"correct"}},
-			userID:        1,
-			csrfInSession: "correct",
+			name:           "UserIDMissing",
+			method:         "POST",
+			form:           url.Values{"id": {""}, "csrf_token": {"correct"}},
+			userID:         1,
+			csrfInSession:  "correct",
 			mockExpect:     func(mock pgxmock.PgxPoolIface) {},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:          "UserIDInvalid",
-			method:        "POST",
-			form:          url.Values{"id": {"abc"}, "csrf_token": {"correct"}},
-			userID:        1,
-			csrfInSession: "correct",
+			name:           "UserIDInvalid",
+			method:         "POST",
+			form:           url.Values{"id": {"abc"}, "csrf_token": {"correct"}},
+			userID:         1,
+			csrfInSession:  "correct",
 			mockExpect:     func(mock pgxmock.PgxPoolIface) {},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:          "CannotDeleteYourself",
-			method:        "POST",
-			form:          url.Values{"id": {"1"}, "csrf_token": {"correct"}},
-			userID:        1,
-			csrfInSession: "correct",
+			name:           "CannotDeleteYourself",
+			method:         "POST",
+			form:           url.Values{"id": {"1"}, "csrf_token": {"correct"}},
+			userID:         1,
+			csrfInSession:  "correct",
 			mockExpect:     func(mock pgxmock.PgxPoolIface) {},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:          "Unauthorized",
-			method:        "POST",
-			form:          url.Values{"id": {"2"}, "csrf_token": {"correct"}},
-			userID:        0, // no session user
-			csrfInSession: "correct",
+			name:           "Unauthorized",
+			method:         "POST",
+			form:           url.Values{"id": {"2"}, "csrf_token": {"correct"}},
+			userID:         0, // no session user
+			csrfInSession:  "correct",
 			mockExpect:     func(mock pgxmock.PgxPoolIface) {},
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
-			name: "DeleteQueryError",
+			name:          "DeleteQueryError",
 			method:        "POST",
 			form:          url.Values{"id": {"2"}, "csrf_token": {"correct"}},
 			userID:        1,

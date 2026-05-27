@@ -91,8 +91,6 @@ func expectBaseQueries(mock pgxmock.PgxPoolIface, userID int) {
 		WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(1, "Team1"))
 }
 
-
-
 func setupTestServerFull(t *testing.T, mock pgxmock.PgxPoolIface) (*httptest.Server, *App, *http.Client) {
 	app := setupTestApp(t, mock)
 

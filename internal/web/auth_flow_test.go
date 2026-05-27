@@ -19,7 +19,7 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 		t.Fatalf("failed to setup mock db: %v", err)
 	}
 	mock.MatchExpectationsInOrder(false)
-	
+
 	oldPool := db.Pool
 	db.Pool = mock
 	t.Cleanup(func() {
@@ -103,7 +103,7 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 	// 3. Resend Verification
 	t.Run("ResendVerification", func(t *testing.T) {
 		app.Redis.Del(context.Background(), "reg_limit:127.0.0.1")
-		
+
 		// Refresh captcha
 		respCap, err := client.Get(ts.URL + "/captcha")
 		if err != nil {
@@ -179,7 +179,7 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 			WithArgs(email).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
 				AddRow(1, email, string(hash), true, false, "", false))
-		
+
 		mock.ExpectExec("INSERT INTO user_activity_logs").
 			WithArgs(1, "login", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))

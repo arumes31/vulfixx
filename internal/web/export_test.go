@@ -62,6 +62,10 @@ func TestExportCVEsHandler(t *testing.T) {
 		}
 
 		body := rr.Body.String()
+		header := "CVE ID,Description,CVSS Score,CISA KEV,Published Date,Priority"
+		if !strings.Contains(body, header) {
+			t.Errorf("expected body to contain header, got: %s", body)
+		}
 		if !strings.Contains(body, "CVE-2023-0001,Desc 1,9.8,true,"+now.Format("2006-01-02")+",P0") {
 			t.Errorf("expected body to contain first row, got: %s", body)
 		}
@@ -146,7 +150,7 @@ func TestExportCVEsHandler(t *testing.T) {
 			WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score", "cisa_kev", "published_date", "priority"}).
 				AddRow("CVE-2023-0001", "Desc 1", 9.8, true, now, "P0").
-				RowError(0, fmt.Errorf("iteration error")))
+				RowError(1, fmt.Errorf("iteration error")))
 
 		rr := httptest.NewRecorder()
 		app.ExportCVEsHandler(rr, req)
@@ -162,41 +166,104 @@ func TestExportCVEsHandler(t *testing.T) {
 
 type failingResponseWriter struct {
 	http.ResponseWriter
+	failAt    int
+	currWrite int
 }
 
 func (f *failingResponseWriter) Write(b []byte) (int, error) {
-	return 0, fmt.Errorf("write error")
+	if f.currWrite == f.failAt {
+		return 0, fmt.Errorf("triggered write error")
+	}
+	f.currWrite++
+	return f.ResponseWriter.Write(b)
 }
 
 func (f *failingResponseWriter) Header() http.Header {
 	return f.ResponseWriter.Header()
 }
 
-func TestExportCVEsHandler_WriteError(t *testing.T) {
-	mock, err := pgxmock.NewPool()
-	if err != nil {
-		t.Fatalf("failed to create mock pool: %v", err)
-	}
-	defer mock.Close()
-	app := setupTestApp(t, mock)
+func (f *failingResponseWriter) WriteHeader(statusCode int) {
+	f.ResponseWriter.WriteHeader(statusCode)
+}
 
-	req, _ := http.NewRequest("GET", "/export", nil)
-	setSessionUser(t, app, req, 1, false)
+func TestExportCVEsHandler_WriteErrors(t *testing.T) {
+	t.Run("FailAtHeaderWrite", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
 
-	mock.ExpectQuery(`(?is)SELECT DISTINCT c.cve_id`).
-		WithArgs(1).
-		WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score", "cisa_kev", "published_date", "priority"}).
-			AddRow("CVE-2023-0001", "Desc 1", 9.8, true, time.Now(), "P0"))
+		req, _ := http.NewRequest("GET", "/export", nil)
+		setSessionUser(t, app, req, 1, false)
 
-	rr := httptest.NewRecorder()
-	fw := &failingResponseWriter{ResponseWriter: rr}
-	app.ExportCVEsHandler(fw, req)
+		mock.ExpectQuery(`(?is)SELECT DISTINCT c.cve_id`).
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score", "cisa_kev", "published_date", "priority"}).
+				AddRow("CVE-2023-0001", "Desc 1", 9.8, true, time.Now(), "P0"))
 
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Errorf("there were unfulfilled expectations: %s", err)
-	}
-	if rr.Body.Len() > 0 {
-		t.Errorf("expected empty body, got %d bytes", rr.Body.Len())
-	}
-	// Since we fail at the first Write (the header), it returns early.
+		rr := httptest.NewRecorder()
+		fw := &failingResponseWriter{ResponseWriter: rr, failAt: 0}
+		app.ExportCVEsHandler(fw, req)
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("FailAtRowWrite", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		req, _ := http.NewRequest("GET", "/export", nil)
+		setSessionUser(t, app, req, 1, false)
+
+		largeDesc := strings.Repeat("A", 1000)
+		rows := pgxmock.NewRows([]string{"cve_id", "description", "cvss_score", "cisa_kev", "published_date", "priority"})
+		for i := 0; i < 10; i++ {
+			rows.AddRow(fmt.Sprintf("CVE-2023-%04d", i), largeDesc, 7.5, false, time.Now(), "P2")
+		}
+
+		mock.ExpectQuery(`(?is)SELECT DISTINCT c.cve_id`).
+			WithArgs(1).
+			WillReturnRows(rows)
+
+		rr := httptest.NewRecorder()
+		fw := &failingResponseWriter{ResponseWriter: rr, failAt: 1}
+		app.ExportCVEsHandler(fw, req)
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("FailAtFlush", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		req, _ := http.NewRequest("GET", "/export", nil)
+		setSessionUser(t, app, req, 1, false)
+
+		mock.ExpectQuery(`(?is)SELECT DISTINCT c.cve_id`).
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score", "cisa_kev", "published_date", "priority"}).
+				AddRow("CVE-2023-0001", "Desc 1", 9.8, true, time.Now(), "P0"))
+
+		rr := httptest.NewRecorder()
+		fw := &failingResponseWriter{ResponseWriter: rr, failAt: 1}
+		app.ExportCVEsHandler(fw, req)
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
 }
