@@ -186,7 +186,7 @@ executeUpdates:
 				count++
 			}
 		}
-		br.Close()
+		_ = br.Close()
 	} else {
 		// Fallback for mocks/drivers that don't support batching
 		for _, item := range updates {
