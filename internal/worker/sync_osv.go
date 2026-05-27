@@ -171,7 +171,11 @@ executeUpdates:
 	batch := &pgx.Batch{}
 	for _, item := range updates {
 		if item.hasData && item.changed {
-			dataJSON, _ := json.Marshal(item.osvData)
+			dataJSON, marshalErr := json.Marshal(item.osvData)
+			if marshalErr != nil {
+				slog.Error("Worker: [ERROR] Failed to marshal OSV data in batch", "error", marshalErr, "cve_id", item.cve.CVEID, "osvData", item.osvData)
+				continue
+			}
 			batch.Queue("UPDATE cves SET osv_data = $1, osv_last_updated = NOW(), vendor = $2, product = $3, affected_products = $4 WHERE id = $5",
 				dataJSON, item.cve.Vendor, item.cve.Product, item.cve.AffectedProducts, item.cve.ID)
 		} else {
@@ -192,7 +196,11 @@ executeUpdates:
 		for _, item := range updates {
 			var err error
 			if item.hasData && item.changed {
-				dataJSON, _ := json.Marshal(item.osvData)
+				dataJSON, marshalErr := json.Marshal(item.osvData)
+				if marshalErr != nil {
+					slog.Error("Worker: [ERROR] Failed to marshal OSV data in fallback", "error", marshalErr, "cve_id", item.cve.CVEID, "osvData", item.osvData)
+					continue
+				}
 				_, err = tx.Exec(ctx, "UPDATE cves SET osv_data = $1, osv_last_updated = NOW(), vendor = $2, product = $3, affected_products = $4 WHERE id = $5",
 					dataJSON, item.cve.Vendor, item.cve.Product, item.cve.AffectedProducts, item.cve.ID)
 			} else {

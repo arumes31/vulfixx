@@ -258,20 +258,27 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 
 	if data != nil {
 		v := reflect.ValueOf(data)
+		isNilPtr := false
 		if v.Kind() == reflect.Ptr {
-			v = v.Elem()
+			if v.IsNil() {
+				isNilPtr = true
+			} else {
+				v = v.Elem()
+			}
 		}
 
-		if v.Kind() == reflect.Map {
-			for _, key := range v.MapKeys() {
-				renderData[key.String()] = v.MapIndex(key).Interface()
-			}
-		} else if v.Kind() == reflect.Struct {
-			t := v.Type()
-			for i := 0; i < v.NumField(); i++ {
-				field := t.Field(i)
-				if field.PkgPath == "" { // exported field
-					renderData[field.Name] = v.Field(i).Interface()
+		if !isNilPtr {
+			if v.Kind() == reflect.Map {
+				for _, key := range v.MapKeys() {
+					renderData[key.String()] = v.MapIndex(key).Interface()
+				}
+			} else if v.Kind() == reflect.Struct {
+				t := v.Type()
+				for i := 0; i < v.NumField(); i++ {
+					field := t.Field(i)
+					if field.PkgPath == "" { // exported field
+						renderData[field.Name] = v.Field(i).Interface()
+					}
 				}
 			}
 		}

@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v3"
 	"github.com/redis/go-redis/v9"
@@ -103,18 +102,6 @@ func TestHandleAlertAction(t *testing.T) {
 		app.HandleAlertAction(rr, req)
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr.Code)
-		}
-
-		// GET renders confirmation page (path param)
-		reqPath := httptest.NewRequest("GET", "/alert-action/acknowledge/"+token, nil)
-		rctx := chi.NewRouteContext()
-		rctx.URLParams.Add("action", "acknowledge")
-		rctx.URLParams.Add("token", token)
-		reqPath = reqPath.WithContext(context.WithValue(reqPath.Context(), chi.RouteCtxKey, rctx))
-		rrPath := httptest.NewRecorder()
-		app.HandleAlertAction(rrPath, reqPath)
-		if rrPath.Code != http.StatusOK {
-			t.Errorf("expected 200 OK for path param, got %d", rrPath.Code)
 		}
 
 		// POST actually writes to DB with status 'in_progress'

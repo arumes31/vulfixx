@@ -51,3 +51,7 @@ results/*.json
 # Local runtime directories
 /data/
 /results/
+
+# Ignore generated coverage html reports
+coverage_base.html
+coverage*.html

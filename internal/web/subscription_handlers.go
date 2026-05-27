@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"github.com/go-chi/chi/v5"
 
 	"github.com/gorilla/csrf"
 )
@@ -426,18 +425,12 @@ func (a *App) RSSFeedHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) HandleAlertAction(w http.ResponseWriter, r *http.Request) {
-	token := chi.URLParam(r, "token")
-	if token == "" {
-		token = r.URL.Query().Get("token")
-	}
+	token := r.URL.Query().Get("token")
 	if token == "" && r.Method == "POST" {
 		token = r.FormValue("token")
 	}
 
-	action := chi.URLParam(r, "action")
-	if action == "" {
-		action = r.URL.Query().Get("action")
-	}
+	action := r.URL.Query().Get("action")
 	if action == "" && r.Method == "POST" {
 		action = r.FormValue("action")
 	}

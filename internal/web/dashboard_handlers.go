@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -1209,6 +1210,10 @@ func (a *App) fetchPublicDashboardStats(ctx context.Context, whereClause string,
 }
 
 func (a *App) tryServePublicDashboardFromCache(w http.ResponseWriter, r *http.Request, isAJAX bool) bool {
+	if a.Redis == nil {
+		slog.Warn("tryServePublicDashboardFromCache: Redis is nil, skipping cache behavior")
+		return false
+	}
 	cacheKey := "public_dashboard_default_v2"
 	if (r.URL.RawQuery == "" || r.URL.RawQuery == "page=1") && r.URL.Query().Get("sort") == "" && r.URL.Query().Get("order") == "" {
 		if val, err := a.Redis.Get(r.Context(), cacheKey).Result(); err == nil {
@@ -1343,7 +1348,11 @@ func (a *App) savePublicDashboardToCache(ctx context.Context, filters publicDash
 		Trending:        renderData["Trending"].([]models.CVE),
 	}
 	if jsonData, err := json.Marshal(cachedData); err == nil {
-		_ = a.Redis.Set(ctx, cacheKey, jsonData, 5*time.Minute).Err()
+		if a.Redis == nil {
+			slog.Warn("cachePublicDashboardData: Redis is nil, skipping cache set")
+		} else {
+			_ = a.Redis.Set(ctx, cacheKey, jsonData, 5*time.Minute).Err()
+		}
 	}
 }
 
@@ -1504,9 +1513,13 @@ func (a *App) fetchDashboardMetrics(ctx context.Context, userID int, activeTeamI
 	cacheKeyHash := sha256.Sum256([]byte(cacheKeyStr))
 	cacheKey := fmt.Sprintf("dashboard_metrics_v2:%x", cacheKeyHash)
 
-	if cachedData, err := a.Redis.Get(ctx, cacheKey).Result(); err == nil {
-		if err := json.Unmarshal([]byte(cachedData), &metrics); err == nil {
-			return metrics, nil
+	if a.Redis == nil {
+		slog.Warn("fetchDashboardMetricsFromCache: Redis is nil, skipping cache behavior")
+	} else {
+		if cachedData, err := a.Redis.Get(ctx, cacheKey).Result(); err == nil {
+			if err := json.Unmarshal([]byte(cachedData), &metrics); err == nil {
+				return metrics, nil
+			}
 		}
 	}
 
@@ -1519,7 +1532,11 @@ func (a *App) fetchDashboardMetrics(ctx context.Context, userID int, activeTeamI
 	}
 
 	if dataToCache, err := json.Marshal(metrics); err == nil {
-		a.Redis.SetEx(ctx, cacheKey, dataToCache, 60*time.Second)
+		if a.Redis == nil {
+			slog.Warn("fetchDashboardMetrics: Redis is nil, skipping cache set")
+		} else {
+			a.Redis.SetEx(ctx, cacheKey, dataToCache, 60*time.Second)
+		}
 	}
 
 	return metrics, nil
