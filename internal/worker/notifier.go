@@ -208,7 +208,7 @@ func (w *Worker) sendTeamsAlert(webhookURL string, cve *models.CVE, asset string
 func (w *Worker) sendBrowserPush(userID int, cve *models.CVE) bool {
 	// Implementation would use web-push-go and VAPID keys
 	// For now, we log the intent and could trigger a WebSocket event as a fallback
-	log.Printf("Browser Push triggered for user %d, CVE %s", userID, cve.CVEID)
+	slog.Info("Browser Push triggered", "user_id", userID, "cve_id", cve.CVEID)
 	return false 
 }
 

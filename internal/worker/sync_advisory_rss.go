@@ -6,7 +6,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"time"

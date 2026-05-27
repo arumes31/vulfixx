@@ -1463,6 +1463,7 @@ func (a *App) fetchPublicDashboardCVEs(ctx context.Context, filters publicDashbo
 		cveIDs = append(cveIDs, c.ID)
 	}
 
+<<<<<<< HEAD
 	// Batch fetch cisa_ransomware to avoid N+1 query
 	if len(cveIDs) > 0 {
 		rRows, err := a.Pool.Query(ctx, "SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)", cveIDs)
@@ -1478,6 +1479,28 @@ func (a *App) fetchPublicDashboardCVEs(ctx context.Context, filters publicDashbo
 			}
 			for i := range cves {
 				cves[i].CISARansomware = rMap[cves[i].ID]
+=======
+	if len(cves) > 0 {
+		var ids []int
+		for _, c := range cves {
+			ids = append(ids, c.ID)
+		}
+		crRows, crErr := a.Pool.Query(ctx, "SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)", ids)
+		if crErr == nil {
+			crMap := make(map[int]bool)
+			for crRows.Next() {
+				var id int
+				var cr bool
+				if err := crRows.Scan(&id, &cr); err == nil {
+					crMap[id] = cr
+				}
+			}
+			crRows.Close()
+			for i := range cves {
+				if cr, ok := crMap[cves[i].ID]; ok {
+					cves[i].CISARansomware = cr
+				}
+>>>>>>> origin/bolt-n-plus-one-query-fix-8767901538051849482
 			}
 		}
 	}

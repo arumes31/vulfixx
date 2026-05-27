@@ -325,7 +325,7 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 			if !found {
 				err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
 				if err != nil {
-					log.Printf("Error fetching active team name: %v", err)
+				slog.Error("Error fetching active team name", "error", err)
 				} else {
 					data["ActiveTeamName"] = teamName
 				}
@@ -358,13 +358,13 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 	tmpl, ok := a.TemplateMap[name]
 	a.TemplateMu.RUnlock()
 	if !ok {
-		log.Printf("Template %s not found", name)
+		slog.Error("Template not found", "name", name)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 	buf := new(bytes.Buffer)
 	if err := tmpl.ExecuteTemplate(buf, "base", data); err != nil {
-		log.Printf("Error executing template %s: %v", name, err)
+		slog.Error("Error executing template", "name", name, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}

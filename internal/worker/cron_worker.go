@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"cve-tracker/internal/config"
+	"fmt"
 	"cve-tracker/internal/llm"
 	"cve-tracker/internal/models"
 	"database/sql"

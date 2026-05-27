@@ -5,7 +5,7 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"

@@ -5,6 +5,7 @@ import (
 	"cve-tracker/internal/db"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"testing"
 	"time"
 
