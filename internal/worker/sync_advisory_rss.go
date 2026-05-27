@@ -11,8 +11,8 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"cve-tracker/internal/models"
+	"github.com/jackc/pgx/v5"
 )
 
 var (
@@ -67,8 +67,8 @@ type RSS1Feed struct {
 
 type AtomFeed struct {
 	Entries []struct {
-		Title   string `xml:"title"`
-		Link    struct {
+		Title string `xml:"title"`
+		Link  struct {
 			Href string `xml:"href,attr"`
 		} `xml:"link"`
 		Summary string `xml:"summary"`
@@ -195,7 +195,7 @@ func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
 		// Extract CVEs from Title and Description
 		text := item.Title + " " + item.Description
 		foundCVEs := cveRegex.FindAllString(text, -1)
-		
+
 		if len(foundCVEs) == 0 {
 			continue // Strictly follow user request: only sync matched data
 		}

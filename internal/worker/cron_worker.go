@@ -11,12 +11,6 @@ import (
 	"time"
 )
 
-type Rows interface {
-	Next() bool
-	Scan(dest ...any) error
-	Close()
-}
-
 func (w *Worker) runWeeklySummaryWithLock(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
@@ -79,14 +73,14 @@ func (w *Worker) startIntelligenceEnrichmentTask(ctx context.Context) {
 		log.Println("Worker: [CRON] Intelligence enrichment task shutting down")
 		return
 	}
-	
+
 	// Check queue size to determine initial interval
 	var missingCount int
 	err := w.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = ''").Scan(&missingCount)
 	if err != nil && errors.Is(err, context.Canceled) {
 		return
 	}
-	
+
 	interval := 24 * time.Hour
 	if missingCount > 5000 {
 		interval = 4 * time.Hour
@@ -110,7 +104,7 @@ func (w *Worker) startIntelligenceEnrichmentTask(ctx context.Context) {
 				return
 			}
 			w.enrichMissingIntelligence(ctx)
-			
+
 			// Re-evaluate interval based on remaining backlog
 			_ = w.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = ''").Scan(&missingCount)
 			newInterval := 24 * time.Hour
@@ -123,17 +117,17 @@ func (w *Worker) startIntelligenceEnrichmentTask(ctx context.Context) {
 }
 
 func (w *Worker) enrichSingleCVE(ctx context.Context, id int) {
-	rows, err := w.Pool.Query(ctx, "SELECT id, cve_id, description, configurations, references FROM cves WHERE id = $1", id)
+	var c models.CVE
+	err := w.Pool.QueryRow(ctx, "SELECT id, cve_id, description, configurations, references FROM cves WHERE id = $1", id).Scan(&c.ID, &c.CVEID, &c.Description, &c.Configurations, &c.References)
 	if err != nil {
 		return
 	}
-	defer rows.Close()
-	w.processEnrichmentRows(ctx, rows, 1)
+	w.processEnrichmentRows(ctx, []models.CVE{c}, 1)
 }
 
 func (w *Worker) enrichMissingIntelligence(ctx context.Context) {
 	log.Println("Worker: [CRON] Starting intelligence enrichment for missing vendor data...")
-	
+
 	// Suggestion 3: Priority-based selection (highest CVSS first)
 	rows, err := w.Pool.Query(ctx, "SELECT id, cve_id, description, configurations, references FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' ORDER BY cvss_score DESC, cisa_kev DESC LIMIT 1000")
 	if err != nil {
@@ -142,27 +136,34 @@ func (w *Worker) enrichMissingIntelligence(ctx context.Context) {
 	}
 	defer rows.Close()
 
+	var cves []models.CVE
+	for rows.Next() {
+		var c models.CVE
+		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.Configurations, &c.References); err != nil {
+			continue
+		}
+		cves = append(cves, c)
+	}
+	rows.Close()
+
 	// Get total for progress tracking
 	var total int
 	_ = w.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM (SELECT id FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' LIMIT 1000) sub").Scan(&total)
-	if total == 0 { total = 1 }
+	if total == 0 {
+		total = 1
+	}
 
-	w.processEnrichmentRows(ctx, rows, total)
+	w.processEnrichmentRows(ctx, cves, total)
 }
 
-func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows, total int) {
+func (w *Worker) processEnrichmentRows(ctx context.Context, cves []models.CVE, total int) {
 	start := time.Now()
 	var count int
 	var llmCount int
 	var heuristicCount int
 	var consecutiveFailures int
 
-	for rows.Next() {
-		var c models.CVE
-		if err := rows.Scan(&c.ID, &c.CVEID, &c.Description, &c.Configurations, &c.References); err != nil {
-			continue
-		}
-
+	for _, c := range cves {
 		// Suggestion 2: Adaptive Backoff
 		if consecutiveFailures >= 3 {
 			log.Printf("Worker: [CRON] 3 consecutive LLM failures. Backing off for 15 minutes.")
@@ -178,7 +179,7 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, rows Rows, total int
 
 		var vendor, product string
 		var extractedProducts []llm.ProductResult
-		if (config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama" || config.AppConfig.ArliAIAPIKey != "") {
+		if config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama" || config.AppConfig.ArliAIAPIKey != "" {
 			// Call LLM as primary for missing data with isolated timeout
 			llmCtx, cancel := context.WithTimeout(ctx, time.Duration(config.AppConfig.LLMTimeout+10)*time.Second)
 			products, err := llm.ExtractVendorProduct(llmCtx, c.Description, c.References)

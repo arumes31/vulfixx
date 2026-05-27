@@ -312,11 +312,11 @@ func TestWorkerAlert_ProcessUserBuffer(t *testing.T) {
 		}
 		rdb2 := redis.NewClient(&redis.Options{Addr: mr2.Addr()})
 		mr2.Close() // Force connection error
-		
+
 		w2 := &Worker{Redis: rdb2}
 		cve := &models.CVE{CVSSScore: 7.0}
 		sub := models.UserSubscription{}
-		
+
 		success := w2.bufferAlert(context.Background(), 1, cve, sub, "user@example.com", "Asset")
 		if success {
 			t.Errorf("expected bufferAlert to fail for redis error")

@@ -28,7 +28,7 @@ func (w *Worker) syncGreyNoisePeriodically(ctx context.Context) {
 
 func (w *Worker) syncGreyNoise(ctx context.Context) {
 	log.Println("Worker: [SYNC] Starting GreyNoise Intelligence synchronization...")
-	
+
 	// Prioritize CVEs that haven't been checked yet, then oldest ones (older than 30 days)
 	rows, err := w.Pool.Query(ctx, `
 		SELECT cve_id FROM cves 
@@ -77,7 +77,7 @@ func (w *Worker) syncGreyNoise(ctx context.Context) {
 		// Respect Community API rate limits (~60 rpm)
 		time.Sleep(1100 * time.Millisecond)
 	}
-	
+
 	w.updateTaskStats(ctx, "greynoise_sync")
 	log.Printf("Worker: [SYNC] GreyNoise synchronization complete. Processed %d CVEs.", count)
 }
