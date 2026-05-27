@@ -12,6 +12,12 @@ import (
 	"github.com/hibiken/asynq"
 )
 
+const (
+	defaultRedisAddr         = "localhost:6379"
+	defaultRedisSentinelAddr = "localhost:26379"
+	defaultAsynqConcurrency  = 10
+)
+
 // GetAsynqRedisConnOpt constructs the Redis connection options for Asynq based on environment variables.
 func GetAsynqRedisConnOpt() asynq.RedisConnOpt {
 	password := os.Getenv("REDIS_PASSWORD")
@@ -22,7 +28,7 @@ func GetAsynqRedisConnOpt() asynq.RedisConnOpt {
 			sentinelAddrsStr = os.Getenv("REDIS_URL")
 		}
 		if sentinelAddrsStr == "" {
-			sentinelAddrsStr = "localhost:26379"
+			sentinelAddrsStr = defaultRedisSentinelAddr
 		}
 		sentinelAddrs := strings.Split(sentinelAddrsStr, ",")
 		for i := range sentinelAddrs {
@@ -53,7 +59,7 @@ func GetAsynqRedisConnOpt() asynq.RedisConnOpt {
 
 	url := os.Getenv("REDIS_URL")
 	if url == "" {
-		url = "localhost:6379"
+		url = defaultRedisAddr
 	}
 	return asynq.RedisClientOpt{
 		Addr:     url,
@@ -69,7 +75,6 @@ func (l *asynqLogger) Warn(args ...interface{})  { slog.Warn(fmt.Sprint(args...)
 func (l *asynqLogger) Error(args ...interface{}) { slog.Error(fmt.Sprint(args...)) }
 func (l *asynqLogger) Fatal(args ...interface{}) {
 	slog.Error(fmt.Sprint(args...))
-	os.Exit(1)
 }
 
 // StartAsynqServer starts the Asynq server to process decoupled jobs.
@@ -83,7 +88,7 @@ func (w *Worker) StartAsynqServer(ctx context.Context, opts ...asynq.RedisConnOp
 	}
 
 	srv := asynq.NewServer(connOpt, asynq.Config{
-		Concurrency: 10,
+		Concurrency: defaultAsynqConcurrency,
 		Logger:      &asynqLogger{},
 	})
 

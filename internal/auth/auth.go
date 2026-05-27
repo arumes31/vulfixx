@@ -29,17 +29,10 @@ func HashPassword(password string) (string, error) {
 	return argon2idGeneratePassword(password)
 }
 
-var dummyHash string
-
-func init() {
-	// Generate a dummy hash for constant-time comparisons when user is not found.
-	// This prevents email enumeration via timing attacks.
-	hash, err := hashPasswordArgon2id("dummy-password-for-timing-consistency")
-	if err != nil {
-		panic(fmt.Sprintf("failed to generate dummy hash: %v", err))
-	}
-	dummyHash = string(hash)
-}
+// dummyHash is a pre-computed valid argon2id hash of a dummy string.
+// This prevents email enumeration via timing attacks when a user is not found,
+// while avoiding runtime initialization panics.
+var dummyHash = "$argon2id$v=19$m=65536,t=3,p=4$X4fUoUhti1NYpyJWO4K5EQ$eMu2NZT+fjCsjS5+1+DQhG+nJT+wS1ZLXDaZjEvT0d0"
 
 func GenerateToken() (string, error) {
 	bytes := make([]byte, 32)
