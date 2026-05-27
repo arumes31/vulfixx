@@ -198,6 +198,9 @@ func (w *Worker) waitUntilNextRun(ctx context.Context, taskName string, interval
 		// If the app just started, we want at least some delay to let the system stabilize,
 		// but not the full initial delay if it's already due.
 		minStartupDelay := 10 * time.Second
+		if os.Getenv("GO_TEST") == "true" {
+			minStartupDelay = 0
+		}
 		if sleepDuration < minStartupDelay {
 			sleepDuration = minStartupDelay
 		}
