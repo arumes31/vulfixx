@@ -137,26 +137,6 @@ func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
 	}
 }
 
-func (w *Worker) getJSON(ctx context.Context, url string, target interface{}) error {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", "Vulfixx/2.0 (Threat Intelligence Bot)")
-
-	resp, err := w.HTTP.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP error: %s", resp.Status)
-	}
-
-	return json.NewDecoder(resp.Body).Decode(target)
-}
-
 func (w *Worker) fetchHNMentions(ctx context.Context, cveID string) (int, []map[string]string, error) {
 	if w.HNClient == nil {
 		return 0, nil, fmt.Errorf("HNClient not initialized")
