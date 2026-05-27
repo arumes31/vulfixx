@@ -679,10 +679,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		metrics.totalItems = 0
 	}
 
-	stats, err := a.fetchPublicDashboardStats(r.Context(), whereClause, args)
-	if err != nil {
-		log.Printf("Public dashboard stats error: %v", err)
-	}
+	stats := a.fetchPublicDashboardStats(r.Context(), whereClause, args)
 
 	totalPages := (metrics.totalItems + filters.pageSize - 1) / filters.pageSize
 	if totalPages < 1 {
@@ -1444,7 +1441,7 @@ func (a *App) fetchPublicDashboardCVEs(ctx context.Context, filters publicDashbo
 	return cves, nil
 }
 
-func (a *App) fetchPublicDashboardStats(ctx context.Context, whereClause string, args []any) (publicDashboardStats, error) {
+func (a *App) fetchPublicDashboardStats(ctx context.Context, whereClause string, args []any) publicDashboardStats {
 	var stats publicDashboardStats
 	if whereClause == " WHERE (1=1) " {
 		statsCache.RLock()
@@ -1452,7 +1449,7 @@ func (a *App) fetchPublicDashboardStats(ctx context.Context, whereClause string,
 		stats.topCWEs = statsCache.topCWEs
 		stats.epssDist = statsCache.epssDist
 		statsCache.RUnlock()
-		return stats, nil
+		return stats
 	}
 
 	severityQuery := "SELECT " +
@@ -1485,5 +1482,5 @@ func (a *App) fetchPublicDashboardStats(ctx context.Context, whereClause string,
 	_ = a.Pool.QueryRow(ctx, epssQuery, args...).Scan(&e1, &e2, &e3, &e4)
 	stats.epssDist = []int{e1, e2, e3, e4}
 
-	return stats, nil
+	return stats
 }

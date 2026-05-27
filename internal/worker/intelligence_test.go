@@ -53,7 +53,7 @@ func TestWorker_FetchOSINTLinks(t *testing.T) {
 
 	t.Run("Success", func(t *testing.T) {
 		data := w.fetchOSINTLinks(context.Background(), "CVE-2024-TEST")
-		
+
 		hn, ok := data["hn"].([]map[string]string)
 		if !ok || len(hn) == 0 || hn[0]["title"] != "HN Story" {
 			t.Errorf("expected HN story, got %v", data["hn"])
@@ -87,7 +87,7 @@ func TestWorker_FetchOSINTLinks(t *testing.T) {
 			},
 		}
 		w2 := NewWorker(mock, rdb, &EmailSenderMock{}, httpClientRateLimit)
-		
+
 		_ = w2.fetchOSINTLinks(context.Background(), "CVE-2024-LIMIT")
 		if callCount < 2 {
 			t.Errorf("expected Reddit retry, but only called %d times", callCount)
@@ -124,7 +124,7 @@ func TestWorker_Intelligence(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cve_id, description, configurations, references FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' ORDER BY cvss_score DESC, cisa_kev DESC LIMIT 1000")).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "configurations", "references"}).
 				AddRow(1, "CVE-INTEL-1", "Test desc", []byte(`{}`), []string{}))
-		
+
 		// Note: The task actually calls updateTaskStats with "intelligence_enrichment"
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO worker_sync_stats (task_name, last_run) VALUES ($1, NOW()) ON CONFLICT (task_name) DO UPDATE SET last_run = NOW(), updated_at = NOW()")).
 			WithArgs("intelligence_enrichment").
@@ -195,10 +195,10 @@ func TestWorker_Health_Coverage(t *testing.T) {
 		mock.ExpectQuery("SELECT last_run FROM worker_sync_stats").
 			WithArgs("wait_task").
 			WillReturnRows(pgxmock.NewRows([]string{"last_run"}).AddRow(time.Now()))
-		
+
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 		defer cancel()
-		
+
 		w.waitUntilNextRun(ctx, "wait_task", 1*time.Hour, 0)
 	})
 }

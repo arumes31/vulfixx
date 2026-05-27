@@ -44,7 +44,7 @@ func (w *Worker) Start(ctx context.Context) {
 		return
 	}
 	slog.Info("Worker: Starting background tasks...")
-	
+
 	// Test LLM connectivity on startup if provider is configured
 	go func() {
 		testCtx, cancel := context.WithTimeout(ctx, 10*time.Second)

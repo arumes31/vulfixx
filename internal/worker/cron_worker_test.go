@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/pashagolub/pgxmock/v3"
 	"net/http"
 	"testing"
-	"github.com/pashagolub/pgxmock/v3"
 )
 
 func TestWorker_cronWorker_Coverage(t *testing.T) {
@@ -64,7 +64,7 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 		w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		
+
 		w.startWeeklySummaryTask(ctx)
 
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -79,11 +79,11 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 		}
 		defer mock.Close()
 		w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
-		
+
 		// Run with a context that we cancel immediately to verify shutdown
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		
+
 		w.startIntelligenceEnrichmentTask(ctx)
 
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -93,9 +93,6 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 
 	t.Run("sendWeeklySummaries", func(t *testing.T) {
 		w := NewWorker(nil, nil, &EmailSenderMock{}, http.DefaultClient)
-		err := w.sendWeeklySummaries(context.Background())
-		if err != nil {
-			t.Errorf("expected no error, got %v", err)
-		}
+		w.sendWeeklySummaries(context.Background())
 	})
 }

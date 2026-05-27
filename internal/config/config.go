@@ -1,8 +1,8 @@
 package config
 
 import (
-	"cve-tracker/internal/security"
 	"crypto/rand"
+	"cve-tracker/internal/security"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -161,14 +161,16 @@ func LoadConfig() {
 	}
 
 	// Validate and decode keys
-	AppConfig.CSRFKey = decodeKey("CSRFKey", AppConfig.CSRFKey, 32, appEnv)
-	AppConfig.SessionKey = decodeKey("SessionKey", AppConfig.SessionKey, 32, appEnv)
+	AppConfig.CSRFKey = decodeKey("CSRFKey", AppConfig.CSRFKey, appEnv)
+	AppConfig.SessionKey = decodeKey("SessionKey", AppConfig.SessionKey, appEnv)
 }
 
-func decodeKey(name, val string, expectedLen int, appEnv string) string {
+func decodeKey(name, val string, appEnv string) string {
 	if val == "" {
 		return ""
 	}
+
+	expectedLen := 32
 
 	var decoded []byte
 	var err error

@@ -150,8 +150,8 @@ func TestLoadConfig(t *testing.T) {
 			name: "SMTPMailFrom defaults to SMTPUser if empty",
 			envs: map[string]string{
 				"APP_ENV":       "development",
-				"SMTP_USER":      "default@example.com",
-				"SMTP_MAILFROM":  "",
+				"SMTP_USER":     "default@example.com",
+				"SMTP_MAILFROM": "",
 			},
 			wantFatal: false,
 			checkConfig: func(t *testing.T, c Config) {
@@ -350,7 +350,7 @@ func TestDecodeKey_Detailed(t *testing.T) {
 
 	t.Run("HexDecode", func(t *testing.T) {
 		hexKey := strings.Repeat("a", 64) // 64 chars = 32 bytes hex
-		decoded := decodeKey("Key", hexKey, 32, "production")
+		decoded := decodeKey("Key", hexKey, "production")
 		if len(decoded) != 32 {
 			t.Errorf("expected 32 bytes, got %d", len(decoded))
 		}
@@ -358,7 +358,7 @@ func TestDecodeKey_Detailed(t *testing.T) {
 
 	t.Run("Base64Decode", func(t *testing.T) {
 		base64Key := base64.StdEncoding.EncodeToString(make([]byte, 32))
-		decoded := decodeKey("Key", base64Key, 32, "production")
+		decoded := decodeKey("Key", base64Key, "production")
 		if len(decoded) != 32 {
 			t.Errorf("expected 32 bytes, got %d", len(decoded))
 		}
@@ -369,7 +369,7 @@ func TestDecodeKey_Detailed(t *testing.T) {
 		logFatalf = func(format string, v ...interface{}) {
 			fatalCalled = true
 		}
-		decodeKey("Key", "short", 32, "production")
+		decodeKey("Key", "short", "production")
 		if !fatalCalled {
 			t.Error("expected logFatalf to be called in production")
 		}
@@ -380,11 +380,9 @@ func TestDecodeKey_Detailed(t *testing.T) {
 		logPrintf = func(format string, v ...interface{}) {
 			warningCalled = true
 		}
-		decodeKey("Key", "short", 32, "development")
+		decodeKey("Key", "short", "development")
 		if !warningCalled {
 			t.Error("expected logPrintf warning to be called in development")
 		}
 	})
 }
-
-

@@ -162,7 +162,7 @@ func TestWorker_Health_Comprehensive(t *testing.T) {
 		mock.ExpectQuery("SELECT task_name, last_run FROM worker_sync_stats WHERE task_name = ANY\\(\\$1\\)").
 			WithArgs(tasks).
 			WillReturnRows(pgxmock.NewRows([]string{"task_name", "last_run"}).
-				AddRow("nvd_sync", time.Now().Add(-48 * time.Hour)).
+				AddRow("nvd_sync", time.Now().Add(-48*time.Hour)).
 				AddRow("epss_sync", time.Now()).
 				AddRow("github_buzz_sync", time.Now()).
 				AddRow("osv_sync", time.Now()).

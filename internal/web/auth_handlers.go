@@ -91,7 +91,7 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if hasPreAuth && totpCode != "" {
-		preAuthTS, _ := getSessionInt64(session.Values["pre_auth_ts"])
+		preAuthTS := getSessionInt64(session.Values["pre_auth_ts"])
 
 		if time.Now().Unix()-preAuthTS > 300 {
 			delete(session.Values, "pre_auth_user_id")

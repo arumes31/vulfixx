@@ -75,21 +75,21 @@ func getSessionInt(v any) (int, bool) {
 	return 0, false
 }
 
-func getSessionInt64(v any) (int64, bool) {
+func getSessionInt64(v any) int64 {
 	if v == nil {
-		return 0, false
+		return 0
 	}
 	switch val := v.(type) {
 	case int:
-		return int64(val), true
+		return int64(val)
 	case int64:
-		return val, true
+		return val
 	case float64:
-		return int64(val), true
+		return int64(val)
 	case float32:
-		return int64(val), true
+		return int64(val)
 	}
-	return 0, false
+	return 0
 }
 
 func (a *App) GetUserID(r *http.Request) (int, bool) {
