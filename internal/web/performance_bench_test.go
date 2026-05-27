@@ -5,6 +5,7 @@ import (
 	"cve-tracker/internal/db"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"testing"
 	"time"
 
@@ -35,9 +36,9 @@ func BenchmarkDashboardHandler(b *testing.B) {
 				AddRow(1, "CVE-2023-1234", "Test", 9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", true, time.Now(), time.Now(), "in_progress", []string{}, "note", 0.5, "CWE-79", "XSS", 2, 0, "", []byte(`{}`), "V", "P", []byte(`[]`), "P0"))
 
 		// Mock inner cisa_ransomware query
-		mock.ExpectQuery("(?is)SELECT cisa_ransomware FROM cves").
-			WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"cisa_ransomware"}).AddRow(false))
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)")).
+			WithArgs([]int{1}).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cisa_ransomware"}).AddRow(1, false))
 
 		// Mock CWE distribution query
 		mock.ExpectQuery("(?is)SELECT cwe_id.*FROM cves").

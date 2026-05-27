@@ -234,11 +234,34 @@ MetricsCached:
 		}
 		c.Notes = notes.String
 		c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
-		_ = a.Pool.QueryRow(r.Context(), "SELECT cisa_ransomware FROM cves WHERE id = $1", c.ID).Scan(&c.CISARansomware)
 		cves = append(cves, c)
 	}
 	if err := rows.Err(); err != nil {
 		log.Printf("Error iterating dashboard CVEs: %v", err)
+	}
+
+	if len(cves) > 0 {
+		var ids []int
+		for _, c := range cves {
+			ids = append(ids, c.ID)
+		}
+		crRows, crErr := a.Pool.Query(r.Context(), "SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)", ids)
+		if crErr == nil {
+			crMap := make(map[int]bool)
+			for crRows.Next() {
+				var id int
+				var cr bool
+				if err := crRows.Scan(&id, &cr); err == nil {
+					crMap[id] = cr
+				}
+			}
+			crRows.Close()
+			for i := range cves {
+				if cr, ok := crMap[cves[i].ID]; ok {
+					cves[i].CISARansomware = cr
+				}
+			}
+		}
 	}
 
 	threatLevel := "LOW"
@@ -1438,9 +1461,33 @@ func (a *App) fetchPublicDashboardCVEs(ctx context.Context, filters publicDashbo
 			continue
 		}
 		c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
-		_ = a.Pool.QueryRow(ctx, "SELECT cisa_ransomware FROM cves WHERE id = $1", c.ID).Scan(&c.CISARansomware)
 		cves = append(cves, c)
 	}
+
+	if len(cves) > 0 {
+		var ids []int
+		for _, c := range cves {
+			ids = append(ids, c.ID)
+		}
+		crRows, crErr := a.Pool.Query(ctx, "SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)", ids)
+		if crErr == nil {
+			crMap := make(map[int]bool)
+			for crRows.Next() {
+				var id int
+				var cr bool
+				if err := crRows.Scan(&id, &cr); err == nil {
+					crMap[id] = cr
+				}
+			}
+			crRows.Close()
+			for i := range cves {
+				if cr, ok := crMap[cves[i].ID]; ok {
+					cves[i].CISARansomware = cr
+				}
+			}
+		}
+	}
+
 	return cves, nil
 }
 

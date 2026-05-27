@@ -64,7 +64,7 @@ func TestIndexHandler(t *testing.T) {
 				AddRow(1, "CVE-2024-0001", "Test", 7.5, "", false, time.Now(), time.Now(), "active", []string{}, 0.123, "CWE-79", "XSS", 1, 0, "", []byte("{}"), "", "", []byte("[]"), "P2"))
 
 		// 2. Ransomware check for scanning results
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT cisa_ransomware FROM cves WHERE id = $1")).WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"cisa_ransomware"}).AddRow(false))
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)")).WithArgs([]int{1}).WillReturnRows(pgxmock.NewRows([]string{"id", "cisa_ransomware"}).AddRow(1, false))
 
 		// 3. Trending CVEs query
 		// Columns (20): id, cve_id, description, cvss_score, vector_string, cisa_kev, published_date, updated_date, status, references, epss_score, cwe_id, cwe_name, github_poc_count, greynoise_hits, greynoise_classification, osv_data, vendor, product, affected_products
