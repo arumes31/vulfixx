@@ -39,7 +39,7 @@ func (w *Worker) processEmailVerification(ctx context.Context) {
 		token, _ := payload["token"].(string)
 		log.Printf("Worker: Picked up verification email for %s", maskEmail(email))
 		if email == "" || token == "" {
-			log.Printf("Worker: Invalid email verification payload: email=%q, token_present=%v", maskEmail(email), token != "")
+			log.Printf("Worker: Invalid email verification payload: email=%q", maskEmail(email))
 			continue
 		}
 

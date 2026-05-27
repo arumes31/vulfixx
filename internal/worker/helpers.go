@@ -37,18 +37,6 @@ func sanitizeHeader(s string) string {
 	}, s)
 }
 
-// redactToken safely redacts a token for logging.
-func redactToken(token string) string {
-	n := 8
-	if len(token) < n {
-		n = len(token)
-	}
-	if n == 0 {
-		return "<empty>"
-	}
-	return token[:n] + "..."
-}
-
 // redactURL redacts a URL for logging by removing Userinfo, Query, and Path.
 func redactURL(u string) string {
 	parsed, err := url.Parse(u)
