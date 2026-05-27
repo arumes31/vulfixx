@@ -50,9 +50,9 @@ func TestPublicDashboardHandler_DefaultView_CacheMiss(t *testing.T) {
 			0.1, "CWE-1", "A", 0, 0, "", []byte("{}"), "V", "P", []byte("[]"), "P3"))
 
 	// 2. CISA Ransomware
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT cisa_ransomware FROM cves WHERE id = ")).
-		WithArgs(201).
-		WillReturnRows(pgxmock.NewRows([]string{"cisa_ransomware"}).AddRow(false))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)")).
+		WithArgs([]int{201}).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "cisa_ransomware"}).AddRow(201, false))
 
 	// 3. Trending CVEs
 	mock.ExpectQuery("SELECT c.id, c.cve_id.*FROM cves c").
@@ -144,9 +144,9 @@ func TestPublicDashboardHandler_AJAX(t *testing.T) {
 			0.1, "CWE-1", "A", 0, 0, "", []byte("{}"), "V", "P", []byte("[]"), "P3"))
 
 	// 2. CISA Ransomware
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT cisa_ransomware FROM cves WHERE id = ")).
-		WithArgs(301).
-		WillReturnRows(pgxmock.NewRows([]string{"cisa_ransomware"}).AddRow(false))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)")).
+		WithArgs([]int{301}).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "cisa_ransomware"}).AddRow(301, false))
 
 	// 3. Trending CVEs
 	mock.ExpectQuery("SELECT c.id, c.cve_id.*FROM cves c").
