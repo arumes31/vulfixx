@@ -17,9 +17,9 @@ func TestWorker_ExploitDetection(t *testing.T) {
 		t.Fatalf("failed to create mock pool: %v", err)
 	}
 	defer mock.Close()
-	
+
 	w := &Worker{Pool: mock}
-	
+
 	entries := []NVDCVEEntry{
 		{
 			CVE: NVDCVE{
@@ -41,23 +41,23 @@ func TestWorker_ExploitDetection(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Expect UPSERT with exploit_available = true (arg 13) inside a transaction
 	mock.ExpectBegin()
 	mock.ExpectQuery("(?i)INSERT INTO cves").
 		WithArgs(
-			"CVE-EXPLOIT", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), 
-			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), 
-			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), 
+			"CVE-EXPLOIT", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			true, // ExploitAvailable
 		).
 		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectCommit()
-	
+
 	if err := w.upsertCVEs(context.Background(), entries, true); err != nil {
 		t.Fatalf("upsertCVEs failed: %v", err)
 	}
-	
+
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("Exploit detection failed expectations: %v", err)
 	}
@@ -69,33 +69,33 @@ func TestWorker_InTheWildSync(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer ts.Close()
-	
+
 	mock, err := pgxmock.NewPool()
 	if err != nil {
 		t.Fatalf("failed to create mock pool: %v", err)
 	}
 	defer mock.Close()
-	
+
 	t.Setenv("INTHEWILD_API_URL", ts.URL)
-	
+
 	w := &Worker{Pool: mock, HTTP: ts.Client()}
 	ctx := context.Background()
-	
+
 	mock.ExpectQuery("SELECT cve_id FROM cves").
 		WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-2024-TEST"))
-	
+
 	// Expect the data update
 	mock.ExpectExec("UPDATE cves SET inthewild_data").
 		WithArgs(pgxmock.AnyArg(), "CVE-2024-TEST").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-		
+
 	// Expect the final task stats update
 	mock.ExpectExec("INSERT INTO worker_sync_stats").
 		WithArgs("inthewild_sync").
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	w.syncInTheWild(ctx)
-	
+
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("InTheWild sync failed expectations: %v", err)
 	}

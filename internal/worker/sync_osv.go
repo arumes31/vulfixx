@@ -21,7 +21,7 @@ type osvResponse struct {
 			Ecosystem string `json:"ecosystem"`
 		} `json:"package"`
 		Ranges []struct {
-			Type   string `json:"type"`
+			Type   string              `json:"type"`
 			Events []map[string]string `json:"events"`
 		} `json:"ranges"`
 		Versions []string `json:"versions"`

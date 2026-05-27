@@ -139,7 +139,7 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 		var sub models.UserSubscription
 		var email string
 		var slackURL, teamsURL string
-		if err := rows.Scan(&sub.ID, &sub.UserID, &sub.Keyword, &sub.MinSeverity, 
+		if err := rows.Scan(&sub.ID, &sub.UserID, &sub.Keyword, &sub.MinSeverity,
 			&sub.WebhookURL, &slackURL, &teamsURL,
 			&sub.EnableEmail, &sub.EnableWebhook, &sub.EnableSlack, &sub.EnableTeams, &sub.EnableBrowserPush,
 			&sub.FilterLogic, &sub.AggregationMode, &email); err != nil {
@@ -315,7 +315,6 @@ func (w *Worker) notifyIfNewWithCache(ctx context.Context, userID int, cve *mode
 			return false
 		}
 	}
-
 
 	// 21. Alert Flood Protection (Rate limiting per user/hour)
 	floodKey := fmt.Sprintf("flood_protection:%d", userID)

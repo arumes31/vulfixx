@@ -298,4 +298,3 @@ func TestWorkerHelpers(t *testing.T) {
 		}
 	})
 }
-

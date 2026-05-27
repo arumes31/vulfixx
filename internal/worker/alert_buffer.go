@@ -306,7 +306,7 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 				}
 			}
 			msg += fmt.Sprintf("\n<%s/dashboard|Analyze in Command Console>", baseURLStr)
-			
+
 			payload := map[string]interface{}{"text": msg}
 			success, errMsg := w.postJSON(target.URL, payload)
 			w.logDelivery(userID, target.SubID, 0, "slack", success, errMsg)
