@@ -133,7 +133,7 @@ func TestWorker_Health_Comprehensive(t *testing.T) {
 		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM notification_delivery_logs").
 			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 
-		tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync"}
+		tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync", "inthewild_sync", "threat_intel_sync", "advisory_rss_sync", "intelligence_sync", "intelligence_enrichment", "health_check"}
 		mock.ExpectQuery("SELECT task_name, last_run FROM worker_sync_stats WHERE task_name = ANY\\(\\$1\\)").
 			WithArgs(tasks).
 			WillReturnRows(pgxmock.NewRows([]string{"task_name", "last_run"}).
@@ -158,7 +158,7 @@ func TestWorker_Health_Comprehensive(t *testing.T) {
 		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM notification_delivery_logs").
 			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(2))
 
-		tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync"}
+		tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync", "inthewild_sync", "threat_intel_sync", "advisory_rss_sync", "intelligence_sync", "intelligence_enrichment", "health_check"}
 		mock.ExpectQuery("SELECT task_name, last_run FROM worker_sync_stats WHERE task_name = ANY\\(\\$1\\)").
 			WithArgs(tasks).
 			WillReturnRows(pgxmock.NewRows([]string{"task_name", "last_run"}).
