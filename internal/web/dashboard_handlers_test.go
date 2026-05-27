@@ -69,9 +69,9 @@ func TestDashboardHandler_Authenticated_Default(t *testing.T) {
 			0.1, "CWE-79", "XSS", 1, 0, "", []byte("{}"), "Vendor", "Product", []byte("[]"), "P2"))
 
 	// 3. CISA Ransomware (1 column) - called inside the loop for each CVE
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT cisa_ransomware FROM cves WHERE id = ")).
-		WithArgs(101).
-		WillReturnRows(pgxmock.NewRows([]string{"cisa_ransomware"}).AddRow(false))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)")).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "cisa_ransomware"}).AddRow(101, false))
 
 	// 4. CWE Distribution (3 columns)
 	mock.ExpectQuery("SELECT cwe_id, COALESCE.*MAX.*cwe_name.*COUNT").
@@ -130,9 +130,9 @@ func TestDashboardHandler_GlobalView(t *testing.T) {
 			0.1, "CWE-79", "XSS", 1, 0, "", []byte("{}"), "Vendor", "Product", []byte("[]"), "P2"))
 
 	// 3. CISA Ransomware
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT cisa_ransomware FROM cves WHERE id = ")).
-		WithArgs(101).
-		WillReturnRows(pgxmock.NewRows([]string{"cisa_ransomware"}).AddRow(false))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)")).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "cisa_ransomware"}).AddRow(101, false))
 
 	// 4. CWE Distribution
 	mock.ExpectQuery("SELECT cwe_id, COALESCE.*MAX.*cwe_name.*COUNT").
@@ -191,9 +191,9 @@ func TestDashboardHandler_Search(t *testing.T) {
 			0.1, "CWE-79", "XSS", 1, 0, "", []byte("{}"), "Vendor", "Product", []byte("[]"), "P2"))
 
 	// 3. CISA Ransomware
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT cisa_ransomware FROM cves WHERE id = ")).
-		WithArgs(101).
-		WillReturnRows(pgxmock.NewRows([]string{"cisa_ransomware"}).AddRow(false))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)")).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "cisa_ransomware"}).AddRow(101, false))
 
 	// 4. CWE Distribution
 	mock.ExpectQuery("SELECT cwe_id, COALESCE.*MAX.*cwe_name.*COUNT").
@@ -261,9 +261,9 @@ func TestDashboardHandler_TeamView(t *testing.T) {
 			0.1, "CWE-79", "XSS", 1, 0, "", []byte("{}"), "Vendor", "Product", []byte("[]"), "P2"))
 
 	// 3. CISA Ransomware
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT cisa_ransomware FROM cves WHERE id = ")).
-		WithArgs(101).
-		WillReturnRows(pgxmock.NewRows([]string{"cisa_ransomware"}).AddRow(false))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)")).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "cisa_ransomware"}).AddRow(101, false))
 
 	// 4. CWE Distribution
 	mock.ExpectQuery("SELECT cwe_id, COALESCE.*MAX.*cwe_name.*COUNT").
@@ -332,9 +332,9 @@ func TestDashboardHandler_Filters(t *testing.T) {
 			0.9, "CWE-78", "OS Injection", 5, 10, "exploit", []byte("{}"), "Vendor", "Product", []byte("[]"), "P1"))
 
 	// 3. CISA Ransomware
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT cisa_ransomware FROM cves WHERE id = ")).
-		WithArgs(101).
-		WillReturnRows(pgxmock.NewRows([]string{"cisa_ransomware"}).AddRow(true))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)")).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "cisa_ransomware"}).AddRow(101, true))
 
 	// 4. CWE Distribution
 	mock.ExpectQuery("SELECT cwe_id, COALESCE.*MAX.*cwe_name.*COUNT").
@@ -455,9 +455,9 @@ func TestPublicDashboardHandler_WithFilters(t *testing.T) {
 			0.1, "CWE-79", "XSS", 1, 0, "", []byte("{}"), "V", "P", []byte("[]"), "P2"))
 
 	// 3. CISA Ransomware
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT cisa_ransomware FROM cves WHERE id = ")).
-		WithArgs(101).
-		WillReturnRows(pgxmock.NewRows([]string{"cisa_ransomware"}).AddRow(false))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)")).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "cisa_ransomware"}).AddRow(101, false))
 
 	// 4. Severity Distribution
 	mock.ExpectQuery("SELECT.*COUNT.*FILTER.*cvss_score").
