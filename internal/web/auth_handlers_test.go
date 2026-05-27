@@ -64,7 +64,7 @@ func TestConfirmEmailChangeHandler(t *testing.T) {
 		mock.ExpectExec("UPDATE users SET email = \\$1").WithArgs(newEmail, userID).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectExec("DELETE FROM email_change_requests").WithArgs(userID).WillReturnResult(pgxmock.NewResult("DELETE", 1))
 		mock.ExpectCommit()
-		
+
 		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(userID, "email_change", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		req, _ := http.NewRequest("GET", "/confirm-email-change?token="+token, nil)
@@ -163,16 +163,16 @@ func TestLogoutHandler(t *testing.T) {
 	defer mock.Close()
 
 	app := setupTestApp(t, mock)
-	
+
 	req, err := http.NewRequest("POST", "/logout", nil)
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)
 	}
 	setSessionUser(t, app, req, 1, false)
-	
+
 	rr := httptest.NewRecorder()
 	app.LogoutHandler(rr, req)
-	
+
 	if rr.Code != http.StatusFound {
 		t.Errorf("expected redirect, got %d", rr.Code)
 	}
@@ -191,7 +191,7 @@ func TestVerifyEmailHandler(t *testing.T) {
 	defer mock.Close()
 
 	app := setupTestApp(t, mock)
-	
+
 	// auth.VerifyEmail uses db.Pool
 	oldPool := db.Pool
 	db.Pool = mock
@@ -200,7 +200,7 @@ func TestVerifyEmailHandler(t *testing.T) {
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE users SET is_email_verified = TRUE, email_verify_token = NULL WHERE email_verify_token = $1")).
 		WithArgs("valid-token").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-	
+
 	req, err := http.NewRequest("GET", "/verify-email?token=valid-token", nil)
 	if err != nil {
 		t.Fatalf("failed to create request: %v", err)
@@ -208,7 +208,7 @@ func TestVerifyEmailHandler(t *testing.T) {
 
 	rr := httptest.NewRecorder()
 	app.VerifyEmailHandler(rr, req)
-	
+
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", rr.Code)
 	}

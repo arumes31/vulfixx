@@ -76,17 +76,17 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == "POST" {
 		var jsonData struct {
-			Keyword         string  `json:"keyword"`
-			MinSeverity     float64 `json:"min_severity"`
-			WebhookURL      string  `json:"webhook_url"`
-			SlackWebhookURL string  `json:"slack_webhook_url"`
-			TeamsWebhookURL string  `json:"teams_webhook_url"`
-			EnableEmail     bool    `json:"enable_email"`
-			EnableWebhook   bool    `json:"enable_webhook"`
-			EnableSlack     bool    `json:"enable_slack"`
-			EnableTeams     bool    `json:"enable_teams"`
-			EnableBrowserPush bool  `json:"enable_browser_push"`
-			AggregationMode string  `json:"aggregation_mode"`
+			Keyword           string  `json:"keyword"`
+			MinSeverity       float64 `json:"min_severity"`
+			WebhookURL        string  `json:"webhook_url"`
+			SlackWebhookURL   string  `json:"slack_webhook_url"`
+			TeamsWebhookURL   string  `json:"teams_webhook_url"`
+			EnableEmail       bool    `json:"enable_email"`
+			EnableWebhook     bool    `json:"enable_webhook"`
+			EnableSlack       bool    `json:"enable_slack"`
+			EnableTeams       bool    `json:"enable_teams"`
+			EnableBrowserPush bool    `json:"enable_browser_push"`
+			AggregationMode   string  `json:"aggregation_mode"`
 		}
 
 		if strings.Contains(r.Header.Get("Content-Type"), "application/json") {
@@ -263,18 +263,18 @@ func (a *App) UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var jsonData struct {
-		ID              int     `json:"id"`
-		Keyword         string  `json:"keyword"`
-		MinSeverity     float64 `json:"min_severity"`
-		WebhookURL      string  `json:"webhook_url"`
-		SlackWebhookURL string  `json:"slack_webhook_url"`
-		TeamsWebhookURL string  `json:"teams_webhook_url"`
-		EnableEmail     bool    `json:"enable_email"`
-		EnableWebhook   bool    `json:"enable_webhook"`
-		EnableSlack     bool    `json:"enable_slack"`
-		EnableTeams     bool    `json:"enable_teams"`
-		EnableBrowserPush bool  `json:"enable_browser_push"`
-		AggregationMode string  `json:"aggregation_mode"`
+		ID                int     `json:"id"`
+		Keyword           string  `json:"keyword"`
+		MinSeverity       float64 `json:"min_severity"`
+		WebhookURL        string  `json:"webhook_url"`
+		SlackWebhookURL   string  `json:"slack_webhook_url"`
+		TeamsWebhookURL   string  `json:"teams_webhook_url"`
+		EnableEmail       bool    `json:"enable_email"`
+		EnableWebhook     bool    `json:"enable_webhook"`
+		EnableSlack       bool    `json:"enable_slack"`
+		EnableTeams       bool    `json:"enable_teams"`
+		EnableBrowserPush bool    `json:"enable_browser_push"`
+		AggregationMode   string  `json:"aggregation_mode"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&jsonData); err != nil {

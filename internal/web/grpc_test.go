@@ -126,4 +126,3 @@ func TestGRPC_StartServer(t *testing.T) {
 		t.Fatal("expected error starting secure gRPC server with missing cert files")
 	}
 }
-
