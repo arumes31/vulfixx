@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v3"
 	"github.com/redis/go-redis/v9"
@@ -33,7 +34,7 @@ func TestRSSFeedHandler(t *testing.T) {
 			WithArgs(token).
 			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 
-		mock.ExpectQuery("SELECT DISTINCT c.cve_id").
+		mock.ExpectQuery("(?is)SELECT DISTINCT c.cve_id, c.description, c.cvss_score, c.published_date").
 			WithArgs(1, 0.0, "").
 			WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score", "published_date"}).
 				AddRow("CVE-2024-RSS", "RSS Test", 8.0, time.Now()))
@@ -43,7 +44,7 @@ func TestRSSFeedHandler(t *testing.T) {
 		app.RSSFeedHandler(rr, req)
 
 		if rr.Code != http.StatusOK {
-			t.Errorf("expected 200 OK, got %d", rr.Code)
+			t.Errorf("expected 200 OK, got %d. Body: %s", rr.Code, rr.Body.String())
 		}
 		if rr.Header().Get("Content-Type") != "application/rss+xml" {
 			t.Errorf("wrong content type")
@@ -96,7 +97,7 @@ func TestHandleAlertAction(t *testing.T) {
 		}
 		db.RedisClient.Set(context.Background(), "alert_action:"+token, data, time.Hour)
 
-		// GET renders confirmation page
+		// GET renders confirmation page (legacy query param)
 		req := httptest.NewRequest("GET", "/alert-action?token="+token+"&action=acknowledge", nil)
 		rr := httptest.NewRecorder()
 		app.HandleAlertAction(rr, req)
@@ -104,11 +105,28 @@ func TestHandleAlertAction(t *testing.T) {
 			t.Errorf("expected 200 OK, got %d", rr.Code)
 		}
 
+		// GET renders confirmation page (path param)
+		reqPath := httptest.NewRequest("GET", "/alert-action/acknowledge/"+token, nil)
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("action", "acknowledge")
+		rctx.URLParams.Add("token", token)
+		reqPath = reqPath.WithContext(context.WithValue(reqPath.Context(), chi.RouteCtxKey, rctx))
+		rrPath := httptest.NewRecorder()
+		app.HandleAlertAction(rrPath, reqPath)
+		if rrPath.Code != http.StatusOK {
+			t.Errorf("expected 200 OK for path param, got %d", rrPath.Code)
+		}
+
 		// POST actually writes to DB with status 'in_progress'
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO user_cve_status")).WithArgs(1, 100).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO user_activity_logs")).WithArgs(1, "remediation", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-		reqPost := httptest.NewRequest("POST", "/alert-action?token="+token+"&action=acknowledge", nil)
+		form := url.Values{
+			"token":  {token},
+			"action": {"acknowledge"},
+		}
+		reqPost := httptest.NewRequest("POST", "/alert-action", strings.NewReader(form.Encode()))
+		reqPost.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rrPost := httptest.NewRecorder()
 		app.HandleAlertAction(rrPost, reqPost)
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -159,7 +177,12 @@ func TestHandleAlertAction(t *testing.T) {
 		}
 
 		// POST execution with DB error
-		reqPost := httptest.NewRequest("POST", "/alert-action?token="+token+"&action="+action, nil)
+		form := url.Values{
+			"token":  {token},
+			"action": {action},
+		}
+		reqPost := httptest.NewRequest("POST", "/alert-action", strings.NewReader(form.Encode()))
+		reqPost.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rrPost := httptest.NewRecorder()
 
 		mock.ExpectExec("INSERT INTO user_cve_status").
