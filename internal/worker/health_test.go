@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/pashagolub/pgxmock/v3"
 )
@@ -40,15 +41,16 @@ func TestWorker_health_Coverage(t *testing.T) {
 	})
 
 	t.Run("startHealthCheckPeriodically", func(t *testing.T) {
+		t.Setenv("GO_TEST", "true")
 		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
 
 		tasks := []string{"nvd_sync", "cisa_kev_sync", "epss_sync", "github_buzz_sync", "osv_sync", "greynoise_sync", "inthewild_sync", "threat_intel_sync", "advisory_rss_sync", "intelligence_sync", "intelligence_enrichment", "health_check"}
 
 		// startHealthCheckPeriodically calls waitUntilNextRun first
+		// Return a time in the past so it's due
 		mock.ExpectQuery("SELECT last_run FROM worker_sync_stats WHERE task_name = \\$1").
 			WithArgs("health_check").
-			WillReturnRows(pgxmock.NewRows([]string{"last_run"}))
+			WillReturnRows(pgxmock.NewRows([]string{"last_run"}).AddRow(time.Now().Add(-1 * time.Hour)))
 
 		// Then calls checkWorkerHealth
 		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM notification_delivery_logs").
@@ -59,6 +61,12 @@ func TestWorker_health_Coverage(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"task_name", "last_run"}))
 
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("health_check").WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		// Cancel after a short delay to break the loop
+		go func() {
+			time.Sleep(50 * time.Millisecond)
+			cancel()
+		}()
 
 		w.startHealthCheckPeriodically(ctx)
 
