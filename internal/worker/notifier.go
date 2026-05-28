@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"cve-tracker/internal/auth"
 	"cve-tracker/internal/models"
+	"cve-tracker/internal/security"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -21,7 +22,7 @@ import (
 )
 
 func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName string) bool {
-	redacted := redactEmail(email)
+	redacted := security.MaskEmail(email)
 	slog.Info("ALERT: Processing multi-channel alert", "email", redacted, "cve_id", cve.CVEID)
 
 	sev, color := getSeverityInfo(cve.CVSSScore)
@@ -483,13 +484,3 @@ func (w *Worker) sendGenericWebhook(webhookURL string, cve *models.CVE, asset, e
 	return false, fmt.Sprintf("status %d", resp.StatusCode)
 }
 
-func redactEmail(email string) string {
-	parts := strings.Split(email, "@")
-	if len(parts) != 2 {
-		return "[invalid-email]"
-	}
-	if len(parts[0]) <= 2 {
-		return "*@" + parts[1]
-	}
-	return parts[0][:2] + "****@" + parts[1]
-}

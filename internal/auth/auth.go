@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
+	"cve-tracker/internal/security"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -65,7 +66,7 @@ func Register(ctx context.Context, email, password string) (string, error) {
 	if err != nil {
 		// Normalize error to prevent email enumeration
 		if !strings.Contains(err.Error(), "unique constraint") && !strings.Contains(err.Error(), "duplicate key") {
-			masked := maskEmail(email)
+			masked := security.MaskEmail(email)
 			slog.Error("Registration error", "email", masked, "error", err)
 		}
 		return "", ErrConflict
@@ -121,7 +122,7 @@ func ResendVerificationToken(ctx context.Context, email string) (string, string,
 
 	newToken, err := GenerateToken()
 	if err != nil {
-		slog.Error("Error generating token for resend", "email", maskEmail(email), "error", err)
+		slog.Error("Error generating token for resend", "email", security.MaskEmail(email), "error", err)
 		return "", "", nil, errors.New(genericMsg)
 	}
 
@@ -133,12 +134,12 @@ func ResendVerificationToken(ctx context.Context, email string) (string, string,
 		WHERE id = $2
 	`, newToken, userID)
 	if err != nil {
-		slog.Error("Error updating verification token", "email", maskEmail(email), "error", err)
+		slog.Error("Error updating verification token", "email", security.MaskEmail(email), "error", err)
 		return "", "", nil, errors.New(genericMsg)
 	}
 
 	if err = tx.Commit(ctx); err != nil {
-		slog.Error("Error committing resend transaction", "email", maskEmail(email), "error", err)
+		slog.Error("Error committing resend transaction", "email", security.MaskEmail(email), "error", err)
 		return "", "", nil, errors.New(genericMsg)
 	}
 
@@ -162,13 +163,7 @@ func RollbackResend(ctx context.Context, email string, oldToken string, oldLastR
 	return err
 }
 
-func maskEmail(email string) string {
-	at := strings.Index(email, "@")
-	if at <= 1 {
-		return email
-	}
-	return email[:1] + "***" + email[at:]
-}
+
 
 func Login(ctx context.Context, email, password string) (*models.User, error) {
 	var user models.User

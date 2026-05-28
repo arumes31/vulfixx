@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"cve-tracker/internal/models"
+	"cve-tracker/internal/security"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -269,7 +270,7 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 
 	for email := range uniqueEmails {
 		if err := w.Mailer.SendEmail(email, "Threat Brief: Multiple Vulnerabilities Detected", body); err != nil {
-			log.Printf("Failed to send threat brief to %s: %v", redactEmail(email), err)
+			log.Printf("Failed to send threat brief to %s: %v", security.MaskEmail(email), err)
 			w.logDelivery(userID, 0, 0, "email", false, err.Error())
 		} else {
 			w.logDelivery(userID, 0, 0, "email", true, "")
