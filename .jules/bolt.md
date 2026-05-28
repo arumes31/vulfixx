@@ -17,6 +17,7 @@
 ## 2026-05-27 - Fixed Synchronous Blocking Sleep inside Database Row Iteration
 **Learning:** Sleeping (e.g., for backoff) while iterating over database `Rows` holds a connection from the pool for the duration of the sleep, leading to potential connection exhaustion.
 **Action:** Load database rows into an in-memory slice and close the `Rows` iterator immediately before starting the processing loop that contains sleep/backoff logic.
+
 ## 2026-05-28 - Combined Multiple Database COUNT Queries using PostgreSQL FILTER
 **Performance Issue:** Execution of multiple single `SELECT COUNT(*)` queries for different conditions on the same table.
 **Learning:** Running consecutive `SELECT COUNT(*)` queries on the same table but with different `WHERE` conditions causes multiple database roundtrips and increases latency.
@@ -31,3 +32,7 @@
 **Learning:** Consolidating complex database operations (transactions, quota checks, keyword mapping) into a dedicated Repository layer simplifies handler logic and improves testability by decoupling HTTP concerns from data persistence.
 **Optimization:** Created `AssetRepository` to encapsulate SQL logic and transaction management. Split `AssetsHandler` into specialized internal methods for GET and POST.
 **Impact:** Improved code readability, reduced cyclomatic complexity of the handler, and centralized asset-related database logic for reuse.
+
+## 2026-05-28 - Parallelizing InTheWild Sync with Worker Pool
+**Learning:** Sequential HTTP requests in synchronization loops cause significant latency, especially when throtlling is required for API compliance. Using a worker pool with a centralized ticker allows for controlled parallelism while strictly adhering to rate limits.
+**Action:** Identify sync loops with blocking I/O and refactor them to use `errgroup` and a shared `time.Ticker` for rate-limited concurrent processing.

@@ -20,6 +20,9 @@ func TestWorkerSync_InTheWild(t *testing.T) {
 	}
 	defer mock.Close()
 
+	// Disable order verification for concurrent execution
+	mock.MatchExpectationsInOrder(false)
+
 	mr, err := db.SetupTestRedis()
 	if err != nil {
 		t.Fatalf("failed to setup test redis: %v", err)
@@ -79,4 +82,57 @@ func TestWorkerSync_InTheWild(t *testing.T) {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
+}
+
+func TestWorkerSync_InTheWild_Concurrent(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+	mock.MatchExpectationsInOrder(false)
+
+	httpClient := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"exploited":true}`)),
+			}, nil
+		},
+	}
+	w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, httpClient)
+
+	// Test with 3 CVEs
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT cve_id FROM cves")).
+		WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).
+			AddRow("CVE-2024-0001").
+			AddRow("CVE-2024-0002").
+			AddRow("CVE-2024-0003"))
+
+	for i := 1; i <= 3; i++ {
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE cves SET inthewild_data = $1, inthewild_last_updated = NOW() WHERE cve_id = $2")).
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	}
+
+	mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("inthewild_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	w.syncInTheWild(ctx)
+	duration := time.Since(start)
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+
+	// We have 3 CVEs.
+	// The first one is requested almost immediately (after ticker.C wait in one of the workers).
+	// The next 2 will take at least 2 * 1.5s = 3s.
+	// However, because we use a ticker and multiple workers, the first request also waits for the first tick.
+	// So 3 * 1.5s = 4.5s is the expected minimum duration.
+	if duration < 4*time.Second {
+		t.Errorf("Rate limiting might not be working, duration too short: %v", duration)
+	}
 }
