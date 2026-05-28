@@ -170,9 +170,9 @@ func (w *Worker) sendSlackAlert(webhookURL string, cve *models.CVE, asset string
 				"type": "actions",
 				"elements": []interface{}{
 					map[string]interface{}{
-						"type": "button",
-						"text": map[string]interface{}{"type": "plain_text", "text": "Acknowledge"},
-						"url":  fmt.Sprintf("%s/alert-action?action=acknowledge&token=%s", baseURL, token),
+						"type":  "button",
+						"text":  map[string]interface{}{"type": "plain_text", "text": "Acknowledge"},
+						"url":   fmt.Sprintf("%s/alert-action?action=acknowledge&token=%s", baseURL, token),
 						"style": "primary",
 					},
 					map[string]interface{}{
