@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -175,6 +176,7 @@ func TestLogActivity_Extended(t *testing.T) {
 	})
 }
 
+
 func TestSendResponse(t *testing.T) {
 	mock, _ := db.SetupTestDB()
 	defer mock.Close()
@@ -316,4 +318,89 @@ func TestSendResponse(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRenderTemplate(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+	app := setupTestApp(t, mock)
+
+	t.Run("Unauthenticated", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		rr := httptest.NewRecorder()
+
+		// Render a simple template
+		app.RenderTemplate(rr, req, "login.html", nil)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+	})
+
+	t.Run("Authenticated", func(t *testing.T) {
+		userID := 1
+		req := httptest.NewRequest("GET", "/", nil)
+		setSessionUser(t, app, req, userID, false)
+
+		// Expectations for RenderTemplate queries
+		expectBaseQueries(mock, userID)
+
+		rr := httptest.NewRecorder()
+		app.RenderTemplate(rr, req, "dashboard.html", nil)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("DataTypes", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+
+		t.Run("Map", func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			app.RenderTemplate(rr, req, "message.html", map[string]interface{}{"Message": "Test Map"})
+			if !strings.Contains(rr.Body.String(), "Test Map") {
+				t.Error("template did not contain map data")
+			}
+		})
+
+		t.Run("Struct", func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			type TestData struct {
+				Message string
+			}
+			app.RenderTemplate(rr, req, "message.html", TestData{Message: "Test Struct"})
+			if !strings.Contains(rr.Body.String(), "Test Struct") {
+				t.Error("template did not contain struct data")
+			}
+		})
+
+		t.Run("Pointer", func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			type TestData struct {
+				Message string
+			}
+			app.RenderTemplate(rr, req, "message.html", &TestData{Message: "Test Pointer"})
+			if !strings.Contains(rr.Body.String(), "Test Pointer") {
+				t.Error("template did not contain pointer data")
+			}
+		})
+	})
+
+	t.Run("TemplateNotFound", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		rr := httptest.NewRecorder()
+		app.RenderTemplate(rr, req, "non-existent.html", nil)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500 Internal Server Error, got %d", rr.Code)
+		}
+	})
 }
