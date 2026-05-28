@@ -1,8 +1,8 @@
 package config
 
 import (
-	"cve-tracker/internal/security"
 	"crypto/rand"
+	"cve-tracker/internal/security"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
