@@ -10,6 +10,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 var (
@@ -30,6 +32,11 @@ func (w *Worker) syncGitHubBuzzPeriodically(ctx context.Context) {
 			w.syncGitHubBuzz(ctx)
 		}
 	}
+}
+
+type githubUpdateItem struct {
+	cveID      string
+	totalCount int
 }
 
 func (w *Worker) syncGitHubBuzz(ctx context.Context) {
@@ -56,12 +63,14 @@ func (w *Worker) syncGitHubBuzz(ctx context.Context) {
 	}
 
 	start := time.Now()
+	var pendingUpdates []githubUpdateItem
+
 CVELoop:
 	for _, cveID := range cveIDs {
 
 		select {
 		case <-ctx.Done():
-			return
+			goto executeRemaining
 		default:
 		}
 
@@ -88,7 +97,7 @@ CVELoop:
 				waitDur := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
 				select {
 				case <-ctx.Done():
-					return
+					goto executeRemaining
 				case <-time.After(waitDur):
 				}
 				continue // retry
@@ -115,7 +124,7 @@ CVELoop:
 				slog.Warn("Worker: [WARN] GitHub rate limited", "cve_id", cveID, "wait_duration", waitDur, "attempt", attempt+1, "max_retries", maxGHRetries)
 				select {
 				case <-ctx.Done():
-					return
+					goto executeRemaining
 				case <-time.After(waitDur):
 				}
 				continue // retry
@@ -126,7 +135,7 @@ CVELoop:
 				waitDur := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
 				select {
 				case <-ctx.Done():
-					return
+					goto executeRemaining
 				case <-time.After(waitDur):
 				}
 				continue // retry
@@ -143,7 +152,7 @@ CVELoop:
 				waitDur := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
 				select {
 				case <-ctx.Done():
-					return
+					goto executeRemaining
 				case <-time.After(waitDur):
 				}
 				continue // retry
@@ -152,19 +161,67 @@ CVELoop:
 			break // success
 		}
 		if fetchOK {
-			_, err := w.Pool.Exec(ctx, "UPDATE cves SET github_poc_count = $1 WHERE cve_id = $2", ghResp.TotalCount, cveID)
-			if err != nil {
-				slog.Error("Worker: [ERROR] Failed to update GitHub buzz in DB", "cve_id", cveID, "error", err)
+			pendingUpdates = append(pendingUpdates, githubUpdateItem{cveID: cveID, totalCount: ghResp.TotalCount})
+			if len(pendingUpdates) >= 50 {
+				w.updateGitHubBatch(ctx, pendingUpdates)
+				pendingUpdates = nil
 			}
 		} else {
 			slog.Warn("Worker: [WARN] Skipping DB update for CVE — all GitHub retries failed", "cve_id", cveID)
 		}
 		select {
 		case <-ctx.Done():
-			return
+			goto executeRemaining
 		case <-time.After(githubSyncDelay):
 		}
 	}
+
+executeRemaining:
+	if len(pendingUpdates) > 0 {
+		w.updateGitHubBatch(ctx, pendingUpdates)
+	}
+
 	w.updateTaskStats(ctx, "github_buzz_sync")
 	slog.Info("Worker: [SYNC] GitHub Social Buzz synchronization complete.", "duration", time.Since(start))
+}
+
+func (w *Worker) updateGitHubBatch(ctx context.Context, updates []githubUpdateItem) {
+	if len(updates) == 0 {
+		return
+	}
+
+	tx, err := w.Pool.Begin(ctx)
+	if err != nil {
+		slog.Error("Worker: [ERROR] Failed to begin transaction for GitHub updates", "error", err)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	batch := &pgx.Batch{}
+	query := "UPDATE cves SET github_poc_count = $1 WHERE cve_id = $2"
+	for _, up := range updates {
+		batch.Queue(query, up.totalCount, up.cveID)
+	}
+
+	br := tx.SendBatch(ctx, batch)
+	if br != nil {
+		for i := 0; i < len(updates); i++ {
+			if _, err := br.Exec(); err != nil {
+				slog.Error("Worker: [ERROR] Failed to update GitHub buzz in batch", "cve_id", updates[i].cveID, "error", err)
+			}
+		}
+		_ = br.Close()
+	} else {
+		// Fallback for mocks
+		for _, up := range updates {
+			_, err := tx.Exec(ctx, query, up.totalCount, up.cveID)
+			if err != nil {
+				slog.Error("Worker: [ERROR] Failed to update GitHub buzz in fallback", "cve_id", up.cveID, "error", err)
+			}
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		slog.Error("Worker: [ERROR] Failed to commit GitHub updates", "error", err)
+	}
 }
