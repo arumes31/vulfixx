@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/subtle"
 	"cve-tracker/internal/config"
-	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
 
 	"encoding/json"
@@ -411,7 +410,7 @@ type GlobalCVEStatsJSON struct {
 }
 
 func (a *App) StartStatsTicker(ctx context.Context) {
-	ticker := time.NewTicker(5 * time.Minute)
+	ticker := time.NewTicker(a.StatsInterval)
 	defer ticker.Stop()
 
 	refresh := func() {
@@ -422,8 +421,8 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 		var statsJSON GlobalCVEStatsJSON
 		cacheFound := false
 
-		if db.RedisClient != nil {
-			val, err := db.RedisClient.Get(refreshCtx, "vulfixx:dashboard_stats").Result()
+		if a.Redis != nil {
+			val, err := a.Redis.Get(refreshCtx, "vulfixx:dashboard_stats").Result()
 			if err == nil && val != "" {
 				if err := json.Unmarshal([]byte(val), &statsJSON); err == nil {
 					cacheFound = true
@@ -506,7 +505,7 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 		statsCache.Unlock()
 
 		// Save to Redis (Expiration = 5 minutes)
-		if db.RedisClient != nil {
+		if a.Redis != nil {
 			statsJSON = GlobalCVEStatsJSON{
 				Total:          total,
 				NewLast24h:     new24h,
@@ -519,7 +518,7 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 			}
 			data, err := json.Marshal(statsJSON)
 			if err == nil {
-				_ = db.RedisClient.Set(refreshCtx, "vulfixx:dashboard_stats", string(data), 5*time.Minute).Err()
+				_ = a.Redis.Set(refreshCtx, "vulfixx:dashboard_stats", string(data), 5*time.Minute).Err()
 			}
 		}
 

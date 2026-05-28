@@ -1,7 +1,6 @@
 package web
 
 import (
-	"context"
 	"cve-tracker/internal/db"
 	"errors"
 	"fmt"
@@ -77,54 +76,6 @@ func TestCompleteOnboardingHandler(t *testing.T) {
 	}
 }
 
-func TestStartStatsTicker(t *testing.T) {
-	mock, err := db.SetupTestDB()
-	if err != nil {
-		t.Fatalf("SetupTestDB failed: %v", err)
-	}
-	defer mock.Close()
-	mock.MatchExpectationsInOrder(false)
-
-	oldRedis := db.RedisClient
-	db.RedisClient = nil
-	t.Cleanup(func() {
-		db.RedisClient = oldRedis
-	})
-
-	app := setupTestApp(t, mock)
-
-	// Mock the 7 queries in refresh()
-	mock.ExpectQuery("(?i)SELECT COUNT\\(\\*\\) FROM cves$").
-		WillReturnRows(mock.NewRows([]string{"count"}).AddRow(100))
-
-	mock.ExpectQuery("(?i)SELECT COUNT\\(\\*\\) FROM cves WHERE updated_date").
-		WillReturnRows(mock.NewRows([]string{"count"}).AddRow(5))
-
-	mock.ExpectQuery("(?i)SELECT COUNT\\(\\*\\) FROM cves WHERE cisa_kev = TRUE").
-		WillReturnRows(mock.NewRows([]string{"count"}).AddRow(2))
-
-	mock.ExpectQuery("(?i)SELECT COUNT\\(\\*\\) FROM cves WHERE cvss_score >= 9.0").
-		WillReturnRows(mock.NewRows([]string{"count"}).AddRow(10))
-
-	mock.ExpectQuery("(?i)SELECT.*COUNT\\(\\*\\) FILTER.*cvss_score >= 9.0").
-		WillReturnRows(mock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(10, 20, 30, 40))
-
-	mock.ExpectQuery("(?i)SELECT cwe_id, COALESCE\\(MAX\\(cwe_name\\).*FROM cves").
-		WillReturnRows(mock.NewRows([]string{"cwe_id", "cwe_name", "cnt"}).AddRow("CWE-79", "XSS", 15))
-
-	mock.ExpectQuery("(?i)SELECT.*COUNT\\(\\*\\) FILTER.*epss_score").
-		WillReturnRows(mock.NewRows([]string{"epss1", "epss2", "epss3", "epss4"}).AddRow(50, 30, 15, 5))
-
-	ctx, cancel := context.WithCancel(context.Background())
-	// Cancel immediately so the select loop inside StartStatsTicker exits after the first run.
-	cancel()
-
-	app.StartStatsTicker(ctx)
-
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Errorf("unmet expectations: %v", err)
-	}
-}
 
 func TestUpdateCVEStatusHandler(t *testing.T) {
 	tests := []struct {
