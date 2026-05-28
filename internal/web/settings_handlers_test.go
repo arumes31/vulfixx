@@ -16,8 +16,6 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-
-
 func TestChangePasswordHandler(t *testing.T) {
 	t.Run("Unauthenticated", func(t *testing.T) {
 		mock, err := pgxmock.NewPool()
@@ -726,4 +724,3 @@ func TestChangeEmailHandler(t *testing.T) {
 		}
 	})
 }
-
