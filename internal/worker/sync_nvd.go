@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -330,11 +331,10 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			}
 
 			// Check for exploit tags
-			for _, tag := range ref.Tags {
-				if strings.ToLower(tag) == "exploit" {
-					exploitAvailable = true
-					break
-				}
+			if slices.ContainsFunc(ref.Tags, func(tag string) bool {
+				return strings.ToLower(tag) == "exploit"
+			}) {
+				exploitAvailable = true
 			}
 
 			// Also heuristic check on common exploit sites

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"slices"
 	"time"
 
 	"cve-tracker/internal/models"
@@ -239,13 +240,7 @@ func (w *Worker) integrateAdvisoryCVE(ctx context.Context, cveID string, item Ge
 	}
 
 	// Check if this reference is already known
-	refExists := false
-	for _, ref := range model.References {
-		if ref == item.Link {
-			refExists = true
-			break
-		}
-	}
+	refExists := slices.Contains(model.References, item.Link)
 
 	if !refExists {
 		model.References = append(model.References, item.Link)

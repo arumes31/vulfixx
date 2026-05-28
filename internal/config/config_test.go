@@ -150,8 +150,8 @@ func TestLoadConfig(t *testing.T) {
 			name: "SMTPMailFrom defaults to SMTPUser if empty",
 			envs: map[string]string{
 				"APP_ENV":       "development",
-				"SMTP_USER":      "default@example.com",
-				"SMTP_MAILFROM":  "",
+				"SMTP_USER":     "default@example.com",
+				"SMTP_MAILFROM": "",
 			},
 			wantFatal: false,
 			checkConfig: func(t *testing.T, c Config) {
@@ -193,11 +193,8 @@ func TestLoadConfig(t *testing.T) {
 				val, ok := os.LookupEnv(k)
 				if ok {
 					_ = os.Unsetenv(k)
-					// Use a local variable to capture current key and value
-					currKey := k
-					currVal := val
 					t.Cleanup(func() {
-						_ = os.Setenv(currKey, currVal)
+						_ = os.Setenv(k, val)
 					})
 				}
 			}
@@ -386,5 +383,3 @@ func TestDecodeKey_Detailed(t *testing.T) {
 		}
 	})
 }
-
-

@@ -5,12 +5,12 @@ import (
 	"cve-tracker/internal/db"
 	"fmt"
 	"github.com/pashagolub/pgxmock/v3"
+	"html/template"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
-	"testing"
-	"html/template"
 	"strings"
+	"testing"
 	"time"
 )
 
