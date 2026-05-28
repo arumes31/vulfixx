@@ -3,12 +3,13 @@ package worker
 import (
 	"context"
 	"cve-tracker/internal/config"
-	"fmt"
 	"cve-tracker/internal/llm"
 	"cve-tracker/internal/models"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 )
 
@@ -74,7 +75,7 @@ func (w *Worker) startIntelligenceEnrichmentTask(ctx context.Context) {
 		slog.Info("Worker: [CRON] Intelligence enrichment task shutting down")
 		return
 	}
-	
+
 	// Check queue size to determine initial interval
 	var missingCount int
 	err := w.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = ''").Scan(&missingCount)
@@ -216,13 +217,9 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, cves []models.CVE, t
 		affected := c.GetAffectedProducts()
 		// If we extracted products via LLM, add them to affected_products
 		for _, p := range extractedProducts {
-			found := false
-			for _, ap := range affected {
-				if ap.Vendor == p.Vendor && ap.Product == p.Product {
-					found = true
-					break
-				}
-			}
+			found := slices.ContainsFunc(affected, func(ap models.AffectedProduct) bool {
+				return ap.Vendor == p.Vendor && ap.Product == p.Product
+			})
 			if !found {
 				affected = append(affected, models.AffectedProduct{
 					Vendor:      p.Vendor,
