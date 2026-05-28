@@ -18,6 +18,7 @@ type EmailSender interface {
 
 type App struct {
 	Pool          db.DBPool
+	AssetRepo     db.AssetRepository
 	Redis         db.RedisProvider
 	SessionStore  sessions.Store
 	Mailer        EmailSender
@@ -32,6 +33,7 @@ type App struct {
 func NewApp(pool db.DBPool, redis db.RedisProvider, sessionStore sessions.Store, mailer EmailSender) *App {
 	return &App{
 		Pool:         pool,
+		AssetRepo:    db.NewAssetRepository(pool),
 		Redis:        redis,
 		SessionStore: sessionStore,
 		Mailer:       mailer,

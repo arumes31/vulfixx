@@ -23,40 +23,39 @@ type User struct {
 }
 
 type CVE struct {
-	ID             int                    `json:"id"`
-	CVEID          string                 `json:"cve_id"`
-	Description    string                 `json:"description"`
-	CVSSScore      float64                `json:"cvss_score"`
-	VectorString   string                 `json:"vector_string"`
-	CISAKEV        bool                   `json:"cisa_kev"`
-	CISARansomware bool                   `json:"cisa_ransomware"`
-	EPSSScore      float64                `json:"epss_score"`
-	CWEID          string                 `json:"cwe_id"`
-	CWEName        string                 `json:"cwe_name"`
-	GitHubPoCCount int                    `json:"github_poc_count"`
-	GreyNoiseHits  int                    `json:"greynoise_hits"`
-	GreyNoiseClass string                 `json:"greynoise_classification"`
-	OSVData        JSONBMap               `json:"osv_data"`
-	OSINTData      JSONBMap               `json:"osint_data"`
-	OSVLastUpdated *time.Time             `json:"osv_last_updated,omitempty"`
-	GreyNoiseLastUpdated *time.Time       `json:"greynoise_last_updated,omitempty"`
-	InTheWildData        JSONBMap               `json:"inthewild_data"`
-	InTheWildLastUpdated *time.Time             `json:"inthewild_last_updated,omitempty"`
-	ExploitAvailable     bool                   `json:"exploit_available"`
-	Status         string                 `json:"status"`
-	Notes          string                 `json:"notes"`
-	References     []string               `json:"references"`
-	Configurations CVEConfigurations      `json:"configurations"`
-	Vendor         string                 `json:"vendor"`
-	Product        string                 `json:"product"`
-	AffectedProducts AffectedProducts     `json:"affected_products"`
+	ID                   int               `json:"id"`
+	CVEID                string            `json:"cve_id"`
+	Description          string            `json:"description"`
+	CVSSScore            float64           `json:"cvss_score"`
+	VectorString         string            `json:"vector_string"`
+	CISAKEV              bool              `json:"cisa_kev"`
+	CISARansomware       bool              `json:"cisa_ransomware"`
+	EPSSScore            float64           `json:"epss_score"`
+	CWEID                string            `json:"cwe_id"`
+	CWEName              string            `json:"cwe_name"`
+	GitHubPoCCount       int               `json:"github_poc_count"`
+	GreyNoiseHits        int               `json:"greynoise_hits"`
+	GreyNoiseClass       string            `json:"greynoise_classification"`
+	OSVData              JSONBMap          `json:"osv_data"`
+	OSINTData            JSONBMap          `json:"osint_data"`
+	OSVLastUpdated       *time.Time        `json:"osv_last_updated,omitempty"`
+	GreyNoiseLastUpdated *time.Time        `json:"greynoise_last_updated,omitempty"`
+	InTheWildData        JSONBMap          `json:"inthewild_data"`
+	InTheWildLastUpdated *time.Time        `json:"inthewild_last_updated,omitempty"`
+	ExploitAvailable     bool              `json:"exploit_available"`
+	Status               string            `json:"status"`
+	Notes                string            `json:"notes"`
+	References           []string          `json:"references"`
+	Configurations       CVEConfigurations `json:"configurations"`
+	Vendor               string            `json:"vendor"`
+	Product              string            `json:"product"`
+	AffectedProducts     AffectedProducts  `json:"affected_products"`
 
-	PublishedDate  time.Time              `json:"published_date"`
-	UpdatedDate    time.Time              `json:"updated_date"`
-	CreatedAt      time.Time              `json:"created_at"`
-	Priority       string                 `json:"priority"`
+	PublishedDate time.Time `json:"published_date"`
+	UpdatedDate   time.Time `json:"updated_date"`
+	CreatedAt     time.Time `json:"created_at"`
+	Priority      string    `json:"priority"`
 }
-
 
 type CVEConfigurations []CVEConfiguration
 
@@ -414,7 +413,6 @@ func (c *CVE) GetDetectedProduct() (vendor, product string) {
 	return "", ""
 }
 
-
 func (c *CVE) GetCPEs() []string {
 	var cpes []string
 	seen := make(map[string]bool)
@@ -514,62 +512,62 @@ func ParseCPE(cpe string) (vendor, product, version, part string) {
 
 var nameAliases = map[string]string{
 	// Microsoft
-	"microsoft":                  "Microsoft",
-	"microsoft_corp":             "Microsoft",
-	"microsoft_corporation":      "Microsoft",
+	"microsoft":             "Microsoft",
+	"microsoft_corp":        "Microsoft",
+	"microsoft_corporation": "Microsoft",
 	// Apple
-	"apple":                      "Apple",
-	"apple_inc":                  "Apple",
-	"apple_inc.":                 "Apple",
+	"apple":      "Apple",
+	"apple_inc":  "Apple",
+	"apple_inc.": "Apple",
 	// Google
-	"google":                     "Google",
-	"google_inc":                 "Google",
-	"google_inc.":                "Google",
-	"google_llc":                 "Google",
-	"alphabet":                   "Google",
+	"google":      "Google",
+	"google_inc":  "Google",
+	"google_inc.": "Google",
+	"google_llc":  "Google",
+	"alphabet":    "Google",
 	// Linux
-	"linux":                      "Linux",
-	"linux_kernel":               "Linux Kernel",
-	"torvalds":                   "Linux",
+	"linux":        "Linux",
+	"linux_kernel": "Linux Kernel",
+	"torvalds":     "Linux",
 	// Apache
 	"apache":                     "Apache",
 	"apache_software_foundation": "Apache",
 	// Red Hat / Fedora
-	"redhat":                     "Red Hat",
-	"red_hat":                    "Red Hat",
-	"fedoraproject":              "Fedora",
+	"redhat":        "Red Hat",
+	"red_hat":       "Red Hat",
+	"fedoraproject": "Fedora",
 	// Debian / Ubuntu
-	"debian":                     "Debian",
-	"debian_linux":               "Debian",
-	"canonical":                  "Ubuntu",
-	"canonical_ltd":              "Ubuntu",
+	"debian":        "Debian",
+	"debian_linux":  "Debian",
+	"canonical":     "Ubuntu",
+	"canonical_ltd": "Ubuntu",
 	// Oracle
-	"oracle":                     "Oracle",
-	"oracle_corp":                "Oracle",
-	"oracle_corporation":         "Oracle",
+	"oracle":             "Oracle",
+	"oracle_corp":        "Oracle",
+	"oracle_corporation": "Oracle",
 	// IBM
-	"ibm":                        "IBM",
-	"ibm_corporation":            "IBM",
+	"ibm":             "IBM",
+	"ibm_corporation": "IBM",
 	// Cisco
-	"cisco":                      "Cisco",
-	"cisco_systems":              "Cisco",
-	"cisco_systems_inc":          "Cisco",
+	"cisco":             "Cisco",
+	"cisco_systems":     "Cisco",
+	"cisco_systems_inc": "Cisco",
 	// VMware / Broadcom
-	"vmware":                     "VMware",
-	"vmware_inc":                 "VMware",
-	"broadcom":                   "Broadcom",
+	"vmware":     "VMware",
+	"vmware_inc": "VMware",
+	"broadcom":   "Broadcom",
 	// Fortinet
-	"fortinet":                   "Fortinet",
-	"fortinet_inc":               "Fortinet",
+	"fortinet":     "Fortinet",
+	"fortinet_inc": "Fortinet",
 	// Palo Alto Networks
-	"paloaltonetworks":           "Palo Alto Networks",
-	"palo_alto_networks":         "Palo Alto Networks",
+	"paloaltonetworks":   "Palo Alto Networks",
+	"palo_alto_networks": "Palo Alto Networks",
 	// Juniper
-	"juniper":                    "Juniper",
-	"juniper_networks":           "Juniper",
+	"juniper":          "Juniper",
+	"juniper_networks": "Juniper",
 	// Citrix
-	"citrix":                     "Citrix",
-	"citrix_systems":             "Citrix",
+	"citrix":         "Citrix",
+	"citrix_systems": "Citrix",
 	// Dell / HP / HPE
 	"dell":                       "Dell",
 	"dell_inc":                   "Dell",
@@ -578,72 +576,72 @@ var nameAliases = map[string]string{
 	"hewlett_packard_enterprise": "HPE",
 	"hpe":                        "HPE",
 	// SAP
-	"sap":                        "SAP",
-	"sap_se":                     "SAP",
+	"sap":    "SAP",
+	"sap_se": "SAP",
 	// Mozilla
-	"mozilla":                    "Mozilla",
-	"mozilla_foundation":         "Mozilla",
+	"mozilla":            "Mozilla",
+	"mozilla_foundation": "Mozilla",
 	// Samsung / Huawei
-	"samsung":                    "Samsung",
-	"huawei":                     "Huawei",
+	"samsung": "Samsung",
+	"huawei":  "Huawei",
 	// Atlassian
-	"atlassian":                  "Atlassian",
-	"atlassian_pty":              "Atlassian",
+	"atlassian":     "Atlassian",
+	"atlassian_pty": "Atlassian",
 	// F5
-	"f5":                         "F5",
-	"f5_networks":                "F5",
+	"f5":          "F5",
+	"f5_networks": "F5",
 	// SonicWall
-	"sonicwall":                  "SonicWall",
-	"sonicwall_inc":              "SonicWall",
+	"sonicwall":     "SonicWall",
+	"sonicwall_inc": "SonicWall",
 	// Sophos
-	"sophos":                     "Sophos",
-	"sophos_ltd":                 "Sophos",
+	"sophos":     "Sophos",
+	"sophos_ltd": "Sophos",
 	// Zyxel
-	"zyxel":                      "Zyxel",
-	"zyxel_communications":       "Zyxel",
+	"zyxel":                "Zyxel",
+	"zyxel_communications": "Zyxel",
 	// Network gear
-	"netgear":                    "NETGEAR",
-	"tp-link":                    "TP-Link",
-	"d-link":                     "D-Link",
-	"dlink":                      "D-Link",
+	"netgear": "NETGEAR",
+	"tp-link": "TP-Link",
+	"d-link":  "D-Link",
+	"dlink":   "D-Link",
 	// NAS / IoT
-	"synology":                   "Synology",
-	"qnap":                       "QNAP",
-	"qnap_systems":               "QNAP",
-	"hikvision":                  "Hikvision",
-	"dahua":                      "Dahua",
+	"synology":     "Synology",
+	"qnap":         "QNAP",
+	"qnap_systems": "QNAP",
+	"hikvision":    "Hikvision",
+	"dahua":        "Dahua",
 	// Cloud / DevOps
-	"hashicorp":                  "HashiCorp",
-	"docker":                     "Docker",
-	"docker_inc":                 "Docker",
-	"gitlab":                     "GitLab",
-	"github":                     "GitHub",
-	"elastic":                    "Elastic",
-	"elasticsearch":              "Elastic",
-	"grafana":                    "Grafana",
-	"jenkins":                    "Jenkins",
+	"hashicorp":     "HashiCorp",
+	"docker":        "Docker",
+	"docker_inc":    "Docker",
+	"gitlab":        "GitLab",
+	"github":        "GitHub",
+	"elastic":       "Elastic",
+	"elasticsearch": "Elastic",
+	"grafana":       "Grafana",
+	"jenkins":       "Jenkins",
 	// Security vendors
-	"ivanti":                     "Ivanti",
-	"ivanti_inc":                 "Ivanti",
-	"veeam":                      "Veeam",
-	"trendmicro":                 "Trend Micro",
-	"trend_micro":                "Trend Micro",
-	"mcafee":                     "McAfee",
-	"kaspersky":                  "Kaspersky",
-	"crowdstrike":                "CrowdStrike",
-	"symantec":                   "Symantec",
+	"ivanti":      "Ivanti",
+	"ivanti_inc":  "Ivanti",
+	"veeam":       "Veeam",
+	"trendmicro":  "Trend Micro",
+	"trend_micro": "Trend Micro",
+	"mcafee":      "McAfee",
+	"kaspersky":   "Kaspersky",
+	"crowdstrike": "CrowdStrike",
+	"symantec":    "Symantec",
 	// CMS
-	"wordpress":                  "WordPress",
-	"automattic":                 "WordPress",
-	"drupal":                     "Drupal",
-	"joomla":                     "Joomla",
-	"typo3":                      "TYPO3",
+	"wordpress":  "WordPress",
+	"automattic": "WordPress",
+	"drupal":     "Drupal",
+	"joomla":     "Joomla",
+	"typo3":      "TYPO3",
 	// Databases
-	"postgresql":                 "PostgreSQL",
-	"mongodb":                    "MongoDB",
-	"mongodb_inc":                "MongoDB",
-	"redis":                      "Redis",
-	"redis_ltd":                  "Redis",
+	"postgresql":  "PostgreSQL",
+	"mongodb":     "MongoDB",
+	"mongodb_inc": "MongoDB",
+	"redis":       "Redis",
+	"redis_ltd":   "Redis",
 	// Other
 	"openssl":                    "OpenSSL",
 	"openssl_project":            "OpenSSL",
@@ -891,3 +889,8 @@ type ThreatAssociation struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
+type AssetWithKeywords struct {
+	Asset
+	Keywords []string `json:"keywords"`
+	TeamName string   `json:"team_name"`
+}

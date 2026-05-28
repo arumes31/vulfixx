@@ -74,7 +74,6 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	threatLevel := "LOW"
 	threatColor := "text-blue-400"
 	if metrics.Kev > 0 || metrics.Critical > 0 {
