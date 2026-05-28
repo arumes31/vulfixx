@@ -169,3 +169,113 @@ func TestAsynqLogger_Fatal(t *testing.T) {
 	}
 	t.Fatalf("process ran with err %v, want exit status 1", err)
 }
+
+func TestGetAsynqRedisConnOpt(t *testing.T) {
+	// Clear relevant environment variables to ensure a clean state for default tests
+	envVars := []string{"REDIS_PASSWORD", "REDIS_SENTINEL_MASTER", "REDIS_SENTINEL_ADDRS", "REDIS_CLUSTER_ADDRS", "REDIS_URL"}
+	for _, v := range envVars {
+		t.Setenv(v, "")
+	}
+
+	t.Run("DefaultCase", func(t *testing.T) {
+		opt := GetAsynqRedisConnOpt()
+		clientOpt, ok := opt.(asynq.RedisClientOpt)
+		if !ok {
+			t.Fatalf("expected asynq.RedisClientOpt, got %T", opt)
+		}
+		if clientOpt.Addr != defaultRedisAddr {
+			t.Errorf("expected Addr %s, got %s", defaultRedisAddr, clientOpt.Addr)
+		}
+	})
+
+	t.Run("SingleNodeWithEnv", func(t *testing.T) {
+		t.Setenv("REDIS_URL", "redis:6379")
+		t.Setenv("REDIS_PASSWORD", "secret")
+		opt := GetAsynqRedisConnOpt()
+		clientOpt, ok := opt.(asynq.RedisClientOpt)
+		if !ok {
+			t.Fatalf("expected asynq.RedisClientOpt, got %T", opt)
+		}
+		if clientOpt.Addr != "redis:6379" {
+			t.Errorf("expected Addr redis:6379, got %s", clientOpt.Addr)
+		}
+		if clientOpt.Password != "secret" {
+			t.Errorf("expected Password secret, got %s", clientOpt.Password)
+		}
+	})
+
+	t.Run("SentinelCase", func(t *testing.T) {
+		t.Setenv("REDIS_SENTINEL_MASTER", "mymaster")
+		t.Setenv("REDIS_SENTINEL_ADDRS", "s1:26379, s2:26379")
+		t.Setenv("REDIS_PASSWORD", "sentinel-secret")
+		opt := GetAsynqRedisConnOpt()
+		failoverOpt, ok := opt.(asynq.RedisFailoverClientOpt)
+		if !ok {
+			t.Fatalf("expected asynq.RedisFailoverClientOpt, got %T", opt)
+		}
+		if failoverOpt.MasterName != "mymaster" {
+			t.Errorf("expected MasterName mymaster, got %s", failoverOpt.MasterName)
+		}
+		if len(failoverOpt.SentinelAddrs) != 2 || failoverOpt.SentinelAddrs[0] != "s1:26379" || failoverOpt.SentinelAddrs[1] != "s2:26379" {
+			t.Errorf("expected SentinelAddrs [s1:26379, s2:26379], got %v", failoverOpt.SentinelAddrs)
+		}
+		if failoverOpt.Password != "sentinel-secret" {
+			t.Errorf("expected Password sentinel-secret, got %s", failoverOpt.Password)
+		}
+	})
+
+	t.Run("SentinelFallbackToURL", func(t *testing.T) {
+		t.Setenv("REDIS_SENTINEL_MASTER", "mymaster")
+		t.Setenv("REDIS_URL", "s3:26379")
+		opt := GetAsynqRedisConnOpt()
+		failoverOpt, ok := opt.(asynq.RedisFailoverClientOpt)
+		if !ok {
+			t.Fatalf("expected asynq.RedisFailoverClientOpt, got %T", opt)
+		}
+		if len(failoverOpt.SentinelAddrs) != 1 || failoverOpt.SentinelAddrs[0] != "s3:26379" {
+			t.Errorf("expected SentinelAddrs [s3:26379], got %v", failoverOpt.SentinelAddrs)
+		}
+	})
+
+	t.Run("SentinelDefaultAddr", func(t *testing.T) {
+		t.Setenv("REDIS_SENTINEL_MASTER", "mymaster")
+		t.Setenv("REDIS_SENTINEL_ADDRS", "")
+		t.Setenv("REDIS_URL", "")
+		opt := GetAsynqRedisConnOpt()
+		failoverOpt, ok := opt.(asynq.RedisFailoverClientOpt)
+		if !ok {
+			t.Fatalf("expected asynq.RedisFailoverClientOpt, got %T", opt)
+		}
+		if len(failoverOpt.SentinelAddrs) != 1 || failoverOpt.SentinelAddrs[0] != defaultRedisSentinelAddr {
+			t.Errorf("expected SentinelAddrs [%s], got %v", defaultRedisSentinelAddr, failoverOpt.SentinelAddrs)
+		}
+	})
+
+	t.Run("ClusterCaseExplicit", func(t *testing.T) {
+		t.Setenv("REDIS_CLUSTER_ADDRS", "c1:6379, c2:6379")
+		t.Setenv("REDIS_PASSWORD", "cluster-secret")
+		opt := GetAsynqRedisConnOpt()
+		clusterOpt, ok := opt.(asynq.RedisClusterClientOpt)
+		if !ok {
+			t.Fatalf("expected asynq.RedisClusterClientOpt, got %T", opt)
+		}
+		if len(clusterOpt.Addrs) != 2 || clusterOpt.Addrs[0] != "c1:6379" || clusterOpt.Addrs[1] != "c2:6379" {
+			t.Errorf("expected Addrs [c1:6379, c2:6379], got %v", clusterOpt.Addrs)
+		}
+		if clusterOpt.Password != "cluster-secret" {
+			t.Errorf("expected Password cluster-secret, got %s", clusterOpt.Password)
+		}
+	})
+
+	t.Run("ClusterCaseImplicitURL", func(t *testing.T) {
+		t.Setenv("REDIS_URL", "c3:6379, c4:6379")
+		opt := GetAsynqRedisConnOpt()
+		clusterOpt, ok := opt.(asynq.RedisClusterClientOpt)
+		if !ok {
+			t.Fatalf("expected asynq.RedisClusterClientOpt, got %T", opt)
+		}
+		if len(clusterOpt.Addrs) != 2 || clusterOpt.Addrs[0] != "c3:6379" || clusterOpt.Addrs[1] != "c4:6379" {
+			t.Errorf("expected Addrs [c3:6379, c4:6379], got %v", clusterOpt.Addrs)
+		}
+	})
+}
