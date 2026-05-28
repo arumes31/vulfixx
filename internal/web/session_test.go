@@ -93,7 +93,9 @@ func TestSessionMethods(t *testing.T) {
 
 		// We need to save the session to a recorder to get the cookie
 		rr := httptest.NewRecorder()
-		session.Save(req, rr)
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("failed to save session: %v", err)
+		}
 		req.AddCookie(rr.Result().Cookies()[0])
 
 		id, ok := app.GetActiveTeamID(req)
@@ -117,7 +119,9 @@ func TestSessionMethods(t *testing.T) {
 		session.Values["user_id"] = 456
 
 		rr := httptest.NewRecorder()
-		session.Save(req, rr)
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("failed to save session: %v", err)
+		}
 		req.AddCookie(rr.Result().Cookies()[0])
 
 		id, ok := app.GetUserID(req)
@@ -149,7 +153,9 @@ func TestSessionMethods(t *testing.T) {
 		session.Values["is_admin"] = true
 
 		rr := httptest.NewRecorder()
-		session.Save(req, rr)
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("failed to save session: %v", err)
+		}
 		req.AddCookie(rr.Result().Cookies()[0])
 
 		if !app.IsAdmin(req) {
@@ -159,7 +165,9 @@ func TestSessionMethods(t *testing.T) {
 		session, _ = app.SessionStore.Get(req, "vulfixx-session")
 		session.Values["is_admin"] = false
 		rr = httptest.NewRecorder()
-		session.Save(req, rr)
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("failed to save session: %v", err)
+		}
 		req.AddCookie(rr.Result().Cookies()[0])
 
 		if app.IsAdmin(req) {
@@ -187,7 +195,9 @@ func TestSessionMethods(t *testing.T) {
 			session.Values["team_id"] = tc.val
 
 			rr := httptest.NewRecorder()
-			session.Save(req, rr)
+			if err := session.Save(req, rr); err != nil {
+				t.Fatalf("failed to save session: %v", err)
+			}
 			req.AddCookie(rr.Result().Cookies()[0])
 
 			id, ok := app.GetActiveTeamID(req)
