@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strconv"
 	"time"
 )
 
@@ -148,50 +147,30 @@ func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []
 	encodedID := url.QueryEscape(cveID)
 	redditURL := fmt.Sprintf("https://www.reddit.com/search.json?q=%s&sort=new&limit=10", encodedID)
 
-	var resp *http.Response
-	var err error
-	for retries := 0; retries < 3; retries++ {
-		req, errReq := http.NewRequestWithContext(ctx, "GET", redditURL, nil)
-		if errReq != nil {
-			return 0, nil, errReq
+	resp, err := DoWithRetry(ctx, w.HTTP, RetryConfig{
+		MaxRetries:  3,
+		ShouldRetry: DefaultShouldRetry,
+		Label:       "Reddit Mention Fetch",
+	}, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, "GET", redditURL, nil)
+		if err != nil {
+			return nil, err
 		}
 		req.Header.Set("User-Agent", "Vulfixx/2.0 (Threat Intelligence Bot)")
-
-		resp, err = w.HTTP.Do(req)
-		if err != nil {
-			return 0, nil, err
-		}
-
-		if resp.StatusCode == http.StatusTooManyRequests {
-			_ = resp.Body.Close()
-			waitTime := 5 * time.Second
-			if ra := resp.Header.Get("Retry-After"); ra != "" {
-				if seconds, errSec := strconv.Atoi(ra); errSec == nil {
-					waitTime = time.Duration(seconds) * time.Second
-				}
-			}
-			slog.Warn("Worker: Reddit rate limited", "cve_id", cveID, "retry_after", waitTime)
-			select {
-			case <-ctx.Done():
-				return 0, nil, ctx.Err()
-			case <-time.After(waitTime):
-				continue
-			}
-		}
-		break
+		return req, nil
+	})
+	if err != nil {
+		return 0, nil, err
 	}
 
 	if resp == nil {
 		return 0, nil, fmt.Errorf("Reddit API returned nil response")
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		if resp.Body != nil {
-			_ = resp.Body.Close()
-		}
 		return 0, nil, fmt.Errorf("Reddit API returned status %d", resp.StatusCode)
 	}
-	defer resp.Body.Close()
 
 	var rResp struct {
 		Data struct {
