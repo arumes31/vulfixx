@@ -15,3 +15,7 @@
 ## 2026-05-27 - Fixed Synchronous Blocking Sleep inside Database Row Iteration
 **Learning:** Sleeping (e.g., for backoff) while iterating over database `Rows` holds a connection from the pool for the duration of the sleep, leading to potential connection exhaustion.
 **Action:** Load database rows into an in-memory slice and close the `Rows` iterator immediately before starting the processing loop that contains sleep/backoff logic.
+## 2026-05-28 - Combined Multiple Database COUNT Queries using PostgreSQL FILTER
+**Performance Issue:** Execution of multiple single `SELECT COUNT(*)` queries for different conditions on the same table.
+**Learning:** Running consecutive `SELECT COUNT(*)` queries on the same table but with different `WHERE` conditions causes multiple database roundtrips and increases latency.
+**Action:** Use PostgreSQL's `FILTER` clause (e.g., `COUNT(*) FILTER (WHERE condition)`) inside a single `SELECT` statement to aggregate multiple counts in a single database roundtrip.

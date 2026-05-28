@@ -448,10 +448,14 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 
 		// Cache miss - query DB
 		var total, new24h, kevCount, critCount int
-		_ = a.Pool.QueryRow(refreshCtx, "SELECT COUNT(*) FROM cves").Scan(&total)
-		_ = a.Pool.QueryRow(refreshCtx, "SELECT COUNT(*) FROM cves WHERE updated_date >= NOW() - INTERVAL '24 hours'").Scan(&new24h)
-		_ = a.Pool.QueryRow(refreshCtx, "SELECT COUNT(*) FROM cves WHERE cisa_kev = TRUE").Scan(&kevCount)
-		_ = a.Pool.QueryRow(refreshCtx, "SELECT COUNT(*) FROM cves WHERE cvss_score >= 9.0").Scan(&critCount)
+		_ = a.Pool.QueryRow(refreshCtx, `
+			SELECT
+				COUNT(*),
+				COUNT(*) FILTER (WHERE updated_date >= NOW() - INTERVAL '24 hours'),
+				COUNT(*) FILTER (WHERE cisa_kev = TRUE),
+				COUNT(*) FILTER (WHERE cvss_score >= 9.0)
+			FROM cves
+		`).Scan(&total, &new24h, &kevCount, &critCount)
 
 		var sevCounts SeverityCounts
 		_ = a.Pool.QueryRow(refreshCtx, `

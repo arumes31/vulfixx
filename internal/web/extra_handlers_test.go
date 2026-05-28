@@ -93,18 +93,9 @@ func TestStartStatsTicker(t *testing.T) {
 
 	app := setupTestApp(t, mock)
 
-	// Mock the 7 queries in refresh()
-	mock.ExpectQuery("(?i)SELECT COUNT\\(\\*\\) FROM cves$").
-		WillReturnRows(mock.NewRows([]string{"count"}).AddRow(100))
-
-	mock.ExpectQuery("(?i)SELECT COUNT\\(\\*\\) FROM cves WHERE updated_date").
-		WillReturnRows(mock.NewRows([]string{"count"}).AddRow(5))
-
-	mock.ExpectQuery("(?i)SELECT COUNT\\(\\*\\) FROM cves WHERE cisa_kev = TRUE").
-		WillReturnRows(mock.NewRows([]string{"count"}).AddRow(2))
-
-	mock.ExpectQuery("(?i)SELECT COUNT\\(\\*\\) FROM cves WHERE cvss_score >= 9.0").
-		WillReturnRows(mock.NewRows([]string{"count"}).AddRow(10))
+	// Mock the 4 queries in refresh()
+	mock.ExpectQuery("(?i)SELECT.*COUNT\\(\\*\\).*COUNT\\(\\*\\) FILTER.*updated_date.*COUNT\\(\\*\\) FILTER.*cisa_kev.*COUNT\\(\\*\\) FILTER.*cvss_score").
+		WillReturnRows(mock.NewRows([]string{"total", "new24h", "kev", "crit"}).AddRow(100, 5, 2, 10))
 
 	mock.ExpectQuery("(?i)SELECT.*COUNT\\(\\*\\) FILTER.*cvss_score >= 9.0").
 		WillReturnRows(mock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(10, 20, 30, 40))
