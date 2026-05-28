@@ -117,9 +117,9 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 
 func TestEnrichSingleCVE(t *testing.T) {
 	tests := []struct {
-		name     string
-		cveID    int
-		setup    func(mock pgxmock.PgxPoolIface, id int)
+		name  string
+		cveID int
+		setup func(mock pgxmock.PgxPoolIface, id int)
 	}{
 		{
 			name:  "Query Error",

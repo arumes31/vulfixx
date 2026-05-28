@@ -192,4 +192,3 @@ func TestMaskEmail(t *testing.T) {
 		})
 	}
 }
-

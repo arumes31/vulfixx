@@ -25,10 +25,10 @@ func FuzzParseCPE(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, cpe string) {
 		vendor, product, version, part := ParseCPE(cpe)
-		
+
 		// Basic sanity check: if it started with the prefix, we might expect some results
 		// but since it splits by colon, even "cpe:2.3:" might return something.
-		
+
 		// The main goal is to ensure no panics.
 		_ = vendor
 		_ = product

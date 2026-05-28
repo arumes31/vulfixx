@@ -150,8 +150,8 @@ func TestLoadConfig(t *testing.T) {
 			name: "SMTPMailFrom defaults to SMTPUser if empty",
 			envs: map[string]string{
 				"APP_ENV":       "development",
-				"SMTP_USER":      "default@example.com",
-				"SMTP_MAILFROM":  "",
+				"SMTP_USER":     "default@example.com",
+				"SMTP_MAILFROM": "",
 			},
 			wantFatal: false,
 			checkConfig: func(t *testing.T, c Config) {
@@ -386,5 +386,3 @@ func TestDecodeKey_Detailed(t *testing.T) {
 		}
 	})
 }
-
-
