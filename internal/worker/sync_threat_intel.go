@@ -58,10 +58,8 @@ func (w *Worker) syncThreatIntel(ctx context.Context) {
 	// Attempt to download the latest threat intel feed
 	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(timeoutCtx, "GET", defaultThreatIntelURL, nil)
+	resp, err := w.sendRequest(timeoutCtx, "GET", defaultThreatIntelURL, UABot, nil)
 	if err == nil {
-		req.Header.Set("User-Agent", "Vulfixx-Threat-Intel-Bot/1.0")
-		resp, err := w.HTTP.Do(req)
 		if err == nil {
 			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode == http.StatusOK {

@@ -7,10 +7,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"sync"
 	"time"
 
 	"github.com/hibiken/asynq"
+)
+
+const (
+	// UAIntel is used for core vulnerability data synchronization (OSV, GreyNoise, InTheWild).
+	UAIntel = "Vulfixx-Threat-Intel/2.0"
+	// UABot is used for general threat intelligence feeds (CISA, EPSS).
+	UABot = "Vulfixx-Threat-Intel-Bot/1.0"
+	// UASocialBot is used for scraping or searching social platforms (Reddit, Hacker News).
+	UASocialBot = "Vulfixx/2.0 (Threat Intelligence Bot)"
+	// UAGitHub is used specifically for GitHub API interactions.
+	UAGitHub = "Vulfixx-Threat-Intel"
+	// UABrowser is used for RSS feeds that might block non-browser agents.
+	UABrowser = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 
 type Worker struct {
@@ -39,6 +53,28 @@ func NewWorker(pool db.DBPool, redis db.RedisProvider, mailer EmailSender, http 
 	}
 	w.HNClient = NewHNClient(http)
 	return w
+}
+
+// sendRequest is a helper to create and execute HTTP requests with a consistent User-Agent and basic error handling.
+func (w *Worker) sendRequest(ctx context.Context, method, url string, userAgent string, headers map[string]string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("User-Agent", userAgent)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	resp, err := w.HTTP.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP request failed: %w", err)
+	}
+
+	// Note: We don't check status codes here as some handlers (like OSV)
+	// handle 404s specifically as "not found" rather than an error.
+	return resp, nil
 }
 
 func (w *Worker) Start(ctx context.Context) {

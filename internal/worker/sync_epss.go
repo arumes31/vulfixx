@@ -32,14 +32,7 @@ func (w *Worker) syncEPSS(ctx context.Context) {
 	slog.Info("Worker: [SYNC] Starting EPSS score synchronization...")
 	start := time.Now()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", defaultEPSSBaseURL, nil)
-	if err != nil {
-		slog.Error("Worker: [ERROR] Failed to create EPSS bulk request", "error", err)
-		return
-	}
-	req.Header.Set("User-Agent", "Vulfixx-Threat-Intel-Bot/1.0")
-
-	resp, err := w.HTTP.Do(req)
+	resp, err := w.sendRequest(ctx, "GET", defaultEPSSBaseURL, UABot, nil)
 	if err != nil {
 		slog.Error("Worker: [ERROR] Failed to download EPSS bulk CSV", "error", err)
 		return

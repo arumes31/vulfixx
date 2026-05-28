@@ -36,11 +36,20 @@ func (c *algoliaHNClient) FetchMentions(ctx context.Context, query string) (int,
 	var resp *http.Response
 	var err error
 	for retries := 0; retries < 3; retries++ {
+		// We use sendRequest from the worker. Since HNClient is a separate struct,
+		// but it has access to w.HTTP, it is better to pass the worker or just use the same logic.
+		// Wait, HNClient is initialized with HTTPClient. It doesn	 have access to Worker.
+		// I should probably move sendRequest to a common place or just keep it in HNClient too.
+		// Actually, I can just manually do what sendRequest does here to keep it consistent
+		// if I don	 want to change the interface.
+		// But the goal is to REDUCE boilerplate.
+		// Let\s see if I can change HNClient to take Worker or just accept a helper.
+		// Alternatively, just refactor the manual part here to use the constant.
 		req, errReq := http.NewRequestWithContext(ctx, "GET", hnURL, nil)
 		if errReq != nil {
 			return 0, nil, errReq
 		}
-		req.Header.Set("User-Agent", "Vulfixx/2.0 (Threat Intelligence Bot)")
+		req.Header.Set("User-Agent", UASocialBot)
 
 		resp, err = c.httpClient.Do(req)
 		if err != nil {

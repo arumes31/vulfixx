@@ -115,16 +115,11 @@ func (w *Worker) syncAdvisoryRSS(ctx context.Context) {
 
 func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
 	slog.Debug("Worker: [DEBUG] Syncing feed", "name", feed.Name, "url", feed.URL)
-	req, err := http.NewRequestWithContext(ctx, "GET", feed.URL, nil)
-	if err != nil {
-		slog.Error("Worker: [ERROR] Failed to create request for feed", "name", feed.Name, "error", err)
-		return
+	headers := map[string]string{
+		"Accept":          "application/atom+xml, application/rss+xml, application/xml;q=0.9, */*;q=0.8",
+		"Accept-Language": "en-US,en;q=0.9",
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-	req.Header.Set("Accept", "application/atom+xml, application/rss+xml, application/xml;q=0.9, */*;q=0.8")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-
-	resp, err := w.HTTP.Do(req)
+	resp, err := w.sendRequest(ctx, "GET", feed.URL, UABrowser, headers)
 	if err != nil {
 		slog.Error("Worker: [ERROR] HTTP request failed for feed", "name", feed.Name, "error", err)
 		return

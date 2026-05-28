@@ -1,39 +1,58 @@
---- internal/web/dashboard_handlers.go
-+++ internal/web/dashboard_handlers.go
-@@ -1447,6 +1447,7 @@
-	defer rows.Close()
+--- internal/worker/worker.go
++++ internal/worker/worker.go
+@@ -10,6 +10,7 @@
+	"fmt"
+	"log/slog"
++	"net/http"
+	"sync"
+	"time"
 
-	var cves []models.CVE
-+	var cveIDs []int
+@@ -17,6 +18,17 @@
+	"github.com/hibiken/asynq"
+ )
 
-	for rows.Next() {
-		var c models.CVE
-@@ -1455,9 +1456,27 @@
-			continue
-		}
-		c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
--		_ = a.Pool.QueryRow(ctx, "SELECT cisa_ransomware FROM cves WHERE id = $1", c.ID).Scan(&c.CISARansomware)
-		cves = append(cves, c)
-+		cveIDs = append(cveIDs, c.ID)
++const (
++	// UAIntel is used for core vulnerability data synchronization (OSV, GreyNoise, InTheWild).
++	UAIntel = "Vulfixx-Threat-Intel/2.0"
++	// UABot is used for general threat intelligence feeds (CISA, EPSS).
++	UABot = "Vulfixx-Threat-Intel-Bot/1.0"
++	// UASocialBot is used for scraping or searching social platforms (Reddit, Hacker News).
++	UASocialBot = "Vulfixx/2.0 (Threat Intelligence Bot)"
++	// UAGitHub is used specifically for GitHub API interactions.
++	UAGitHub = "Vulfixx-Threat-Intel"
++	// UABrowser is used for RSS feeds that might block non-browser agents.
++	UABrowser = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
++)
++
+ type Worker struct {
+	Pool               db.DBPool
+	Redis              db.RedisProvider
+@@ -43,6 +55,27 @@
+	return w
+ }
+
++// sendRequest is a helper to create and execute HTTP requests with a consistent User-Agent and basic error handling.
++func (w *Worker) sendRequest(ctx context.Context, method, url string, userAgent string, headers map[string]string) (*http.Response, error) {
++	req, err := http.NewRequestWithContext(ctx, method, url, nil)
++	if err != nil {
++		return nil, fmt.Errorf("failed to create request: %w", err)
 +	}
 +
-+	// Batch fetch cisa_ransomware to avoid N+1 query
-+	if len(cveIDs) > 0 {
-+		rRows, err := a.Pool.Query(ctx, "SELECT id, cisa_ransomware FROM cves WHERE id = ANY($1)", cveIDs)
-+		if err == nil {
-+			defer rRows.Close()
-+			rMap := make(map[int]bool)
-+			for rRows.Next() {
-+				var id int
-+				var cr bool
-+				if rRows.Scan(&id, &cr) == nil {
-+					rMap[id] = cr
-+				}
-+			}
-+			for i := range cves {
-+				cves[i].CISARansomware = rMap[cves[i].ID]
-+			}
-+		}
-	}
-	return cves, nil
- }
++	req.Header.Set("User-Agent", userAgent)
++	for k, v := range headers {
++		req.Header.Set(k, v)
++	}
++
++	resp, err := w.HTTP.Do(req)
++	if err != nil {
++		return nil, fmt.Errorf("HTTP request failed: %w", err)
++	}
++
++	// Note: We don't check status codes here as some handlers (like OSV)
++	// handle 404s specifically as "not found" rather than an error.
++	return resp, nil
++}
++
+ func (w *Worker) Start(ctx context.Context) {
+	if ctx.Err() != nil {
+		slog.Info("Worker: Context already cancelled, not starting background tasks.")

@@ -151,13 +151,7 @@ func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []
 	var resp *http.Response
 	var err error
 	for retries := 0; retries < 3; retries++ {
-		req, errReq := http.NewRequestWithContext(ctx, "GET", redditURL, nil)
-		if errReq != nil {
-			return 0, nil, errReq
-		}
-		req.Header.Set("User-Agent", "Vulfixx/2.0 (Threat Intelligence Bot)")
-
-		resp, err = w.HTTP.Do(req)
+		resp, err = w.sendRequest(ctx, "GET", redditURL, UASocialBot, nil)
 		if err != nil {
 			return 0, nil, err
 		}

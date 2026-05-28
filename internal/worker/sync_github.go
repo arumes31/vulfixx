@@ -72,17 +72,11 @@ CVELoop:
 		fetchOK := false
 		for attempt := 0; attempt < maxGHRetries; attempt++ {
 			githubURL := fmt.Sprintf("https://api.github.com/search/repositories?q=%s", cveID)
-			req, err := http.NewRequestWithContext(ctx, "GET", githubURL, nil)
-			if err != nil {
-				slog.Error("Worker: [ERROR] Failed to create GitHub request", "cve_id", cveID, "error", err)
-				continue CVELoop
-			}
-			req.Header.Set("Accept", "application/vnd.github.v3+json")
-			req.Header.Set("User-Agent", "Vulfixx-Threat-Intel")
+			headers := map[string]string{"Accept": "application/vnd.github.v3+json"}
 			if token := os.Getenv("GITHUB_TOKEN"); token != "" {
-				req.Header.Set("Authorization", "token "+token)
+				headers["Authorization"] = "token " + token
 			}
-			resp, err := w.HTTP.Do(req)
+			resp, err := w.sendRequest(ctx, "GET", githubURL, UAGitHub, headers)
 			if err != nil {
 				slog.Error("Worker: [ERROR] Failed to fetch GitHub buzz", "cve_id", cveID, "error", err)
 				waitDur := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second

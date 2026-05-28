@@ -145,18 +145,11 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool, startIndex in
 		params.Set("startIndex", fmt.Sprintf("%d", startIndex))
 
 		fullURL := baseURL + "?" + params.Encode()
-		/* #nosec G704 */
-		req, err := http.NewRequestWithContext(ctx, "GET", fullURL, nil)
-		if err != nil {
-			slog.Error("Worker: Error creating NVD request", "error", err)
-			return
-		}
-
+		headers := make(map[string]string)
 		if apiKey := os.Getenv("NVD_API_KEY"); apiKey != "" {
-			req.Header.Set("apiKey", apiKey)
+			headers["apiKey"] = apiKey
 		}
-
-		resp, err := w.HTTP.Do(req)
+		resp, err := w.sendRequest(ctx, "GET", fullURL, UABot, headers)
 		if err != nil {
 			retryCount++
 			slog.Error("Worker: Error fetching from NVD", "attempt", retryCount, "max_retries", maxNVDRetries, "error", err)
