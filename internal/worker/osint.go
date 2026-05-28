@@ -5,18 +5,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
+	"cve-tracker/internal/models"
+
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/sync/errgroup"
 )
 
 // fetchOSINTLinks collects links from external platforms (HN, Reddit) for a given CVE.
-func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) map[string]interface{} {
+func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) models.JSONBMap {
 	cacheKey := fmt.Sprintf("osint_links:%s", cveID)
 
 	// Try to get from cache first
 	if val, err := w.Redis.Get(ctx, cacheKey).Result(); err == nil {
-		var cachedData map[string]interface{}
+		var cachedData models.JSONBMap
 		if err := json.Unmarshal([]byte(val), &cachedData); err == nil {
 			return cachedData
 		}
@@ -24,21 +28,35 @@ func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) map[string]i
 		slog.Warn("Worker: Failed to get OSINT cache", "cve_id", cveID, "error", err)
 	}
 
-	data := make(map[string]interface{})
+	data := make(models.JSONBMap)
+	var mu sync.Mutex
+	g, ctx := errgroup.WithContext(ctx)
 
 	// Hacker News
-	if _, links, err := w.fetchHNMentions(ctx, cveID); err == nil {
-		data["hn"] = links
-	} else {
-		slog.Error("Worker: Failed to fetch HN results", "cve_id", cveID, "error", err)
-	}
+	g.Go(func() error {
+		if _, links, err := w.fetchHNMentions(ctx, cveID); err == nil {
+			mu.Lock()
+			data["hn"] = links
+			mu.Unlock()
+		} else {
+			slog.Error("Worker: Failed to fetch HN results", "cve_id", cveID, "error", err)
+		}
+		return nil
+	})
 
 	// Reddit
-	if _, links, err := w.fetchRedditMentions(ctx, cveID); err == nil {
-		data["reddit"] = links
-	} else {
-		slog.Error("Worker: Failed to fetch Reddit results", "cve_id", cveID, "error", err)
-	}
+	g.Go(func() error {
+		if _, links, err := w.fetchRedditMentions(ctx, cveID); err == nil {
+			mu.Lock()
+			data["reddit"] = links
+			mu.Unlock()
+		} else {
+			slog.Error("Worker: Failed to fetch Reddit results", "cve_id", cveID, "error", err)
+		}
+		return nil
+	})
+
+	_ = g.Wait()
 
 	// Cache the result for 6 hours
 	if encoded, err := json.Marshal(data); err == nil {
