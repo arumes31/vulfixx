@@ -144,8 +144,35 @@ func TestWorker_Intelligence(t *testing.T) {
 	})
 
 	t.Run("processIntelligence", func(t *testing.T) {
-		// processIntelligence(ctx) - no second arg
-		_ = w.processIntelligence(context.Background())
+		// Mock the initial SELECT query
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, COALESCE(cvss_score, 0), osint_data, github_poc_count, cwe_id, published_date
+			FROM cves
+			ORDER BY published_date DESC, id DESC LIMIT 100`)).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "osint_data", "github_poc_count", "cwe_id", "published_date"}).
+				AddRow(1, "CVE-2024-0001", "Description 1", 7.5, []byte(`{}`), 0, "CWE-79", time.Now()))
+
+		// Mock the transaction and batch update
+		mock.ExpectBegin()
+		// Since pgxmock might not perfectly support SendBatch, we handle both SendBatch and the fallback tx.Exec
+		// If SendBatch is called and returns nil (typical for mock), it falls back to tx.Exec
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE cves SET osint_data = $1 WHERE id = $2")).
+			WithArgs(pgxmock.AnyArg(), 1).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectCommit()
+
+		// Mock updateTaskStats
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO worker_sync_stats (task_name, last_run) VALUES ($1, NOW()) ON CONFLICT (task_name) DO UPDATE SET last_run = NOW(), updated_at = NOW()")).
+			WithArgs("intelligence_sync").
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		err := w.processIntelligence(context.Background())
+		if err != nil {
+			t.Errorf("processIntelligence failed: %v", err)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
 	})
 
 	t.Run("updateSocialSentiment", func(t *testing.T) {
