@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -26,6 +27,41 @@ func TestSetupHelpers(t *testing.T) {
 		}
 		if ReplicaPool != mock {
 			t.Error("SetupTestDB did not set ReplicaPool correctly")
+		}
+	})
+
+	t.Run("SetupTestDB Operations", func(t *testing.T) {
+		oldPool := Pool
+		oldReplicaPool := ReplicaPool
+		t.Cleanup(func() {
+			Pool = oldPool
+			ReplicaPool = oldReplicaPool
+		})
+
+		mock, err := SetupTestDB()
+		if err != nil {
+			t.Fatalf("SetupTestDB failed: %v", err)
+		}
+
+		ctx := context.Background()
+
+		// Test Pool integration
+		mock.ExpectExec("SELECT 1").WillReturnResult(pgxmock.NewResult("SELECT", 1))
+		_, err = Pool.Exec(ctx, "SELECT 1")
+		if err != nil {
+			t.Errorf("Pool.Exec failed: %v", err)
+		}
+
+		// Test ReplicaPool integration
+		mock.ExpectQuery("SELECT 2").WillReturnRows(pgxmock.NewRows([]string{"col"}).AddRow(2))
+		rows, err := ReplicaPool.Query(ctx, "SELECT 2")
+		if err != nil {
+			t.Errorf("ReplicaPool.Query failed: %v", err)
+		}
+		rows.Close()
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("there were unfulfilled expectations: %s", err)
 		}
 	})
 
