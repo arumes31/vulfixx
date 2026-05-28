@@ -1,5 +1,4 @@
-/* stylelint-disable */
-/*! tailwindcss v4.2.4 | MIT License | https://tailwindcss.com */
+/*! tailwindcss v4.3.0 | MIT License | https://tailwindcss.com */
 @layer properties;
 @layer theme, base, components, utilities;
 @layer theme {
@@ -299,12 +298,6 @@
   }
   .inset-4 {
     inset: calc(var(--spacing) * 4);
-  }
-  .start {
-    inset-inline-start: var(--spacing);
-  }
-  .end {
-    inset-inline-end: var(--spacing);
   }
   .-top-4 {
     top: calc(var(--spacing) * -4);
@@ -2968,6 +2961,14 @@
       --tw-ring-color: color-mix(in srgb, #00daf3 40%, transparent);
       @supports (color: color-mix(in lab, red, red)) {
         --tw-ring-color: color-mix(in oklab, var(--color-primary) 40%, transparent);
+      }
+    }
+  }
+  .focus\:ring-primary\/50 {
+    &:focus {
+      --tw-ring-color: color-mix(in srgb, #00daf3 50%, transparent);
+      @supports (color: color-mix(in lab, red, red)) {
+        --tw-ring-color: color-mix(in oklab, var(--color-primary) 50%, transparent);
       }
     }
   }
