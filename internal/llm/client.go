@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"google.golang.org/genai"
 	"cve-tracker/internal/config"
+	"google.golang.org/genai"
 )
 
 type ProductResult struct {
@@ -283,6 +283,7 @@ Description: ` + description
 
 	return res.Products, nil
 }
+
 var timeSleep = time.Sleep
 
 func extractWithArliAI(ctx context.Context, apiKey, model, endpoint, description string) ([]ProductResult, error) {
@@ -341,7 +342,7 @@ Output: {"products": [
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	client := &http.Client{Timeout: time.Duration(config.AppConfig.LLMTimeout) * time.Second}
-	
+
 	var lastErr error
 	for i := 0; i < 3; i++ {
 		if i > 0 {

@@ -5,9 +5,9 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"net/http"
-	"testing"
-	"os/exec"
 	"os"
+	"os/exec"
+	"testing"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
