@@ -173,3 +173,43 @@ func TestLogActivity_Extended(t *testing.T) {
 		}
 	})
 }
+
+func TestStopStatsTicker(t *testing.T) {
+	t.Run("CancelStatsIsNil", func(t *testing.T) {
+		statsMu.Lock()
+		cancelStats = nil
+		statsMu.Unlock()
+
+		// Should not panic
+		StopStatsTicker()
+
+		statsMu.Lock()
+		if cancelStats != nil {
+			t.Errorf("expected cancelStats to be nil")
+		}
+		statsMu.Unlock()
+	})
+
+	t.Run("CancelStatsIsSet", func(t *testing.T) {
+		cancelled := false
+		cancel := func() {
+			cancelled = true
+		}
+
+		statsMu.Lock()
+		cancelStats = cancel
+		statsMu.Unlock()
+
+		StopStatsTicker()
+
+		if !cancelled {
+			t.Errorf("expected cancelStats to be called")
+		}
+
+		statsMu.Lock()
+		if cancelStats != nil {
+			t.Errorf("expected cancelStats to be nil after call")
+		}
+		statsMu.Unlock()
+	})
+}
