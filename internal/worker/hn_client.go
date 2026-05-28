@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -30,6 +31,10 @@ func NewHNClient(httpClient HTTPClient) HNClient {
 
 // FetchMentions searches Hacker News for stories matching the query.
 func (c *algoliaHNClient) FetchMentions(ctx context.Context, query string) (int, []map[string]string, error) {
+	if !isValidCVEID(query) {
+		return 0, nil, fmt.Errorf("invalid CVE ID for HN search: %s", query)
+	}
+
 	encodedQuery := url.QueryEscape(query)
 	hnURL := fmt.Sprintf("https://hn.algolia.com/api/v1/search?query=%s&tags=story", encodedQuery)
 
@@ -83,12 +88,16 @@ func (c *algoliaHNClient) FetchMentions(ctx context.Context, query string) (int,
 		} `json:"hits"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&hnResp); err != nil {
+	// Limit response size to 1MB to prevent DoS
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1024*1024)).Decode(&hnResp); err != nil {
 		return 0, nil, err
 	}
 
 	links := []map[string]string{}
 	for _, hit := range hnResp.Hits {
+		if !isNumeric(hit.ObjectID) {
+			continue
+		}
 		hnLink := fmt.Sprintf("https://news.ycombinator.com/item?id=%s", hit.ObjectID)
 		links = append(links, map[string]string{"title": hit.Title, "url": hnLink})
 	}

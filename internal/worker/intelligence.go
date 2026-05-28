@@ -5,6 +5,7 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -145,6 +146,10 @@ func (w *Worker) fetchHNMentions(ctx context.Context, cveID string) (int, []map[
 }
 
 func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []map[string]string, error) {
+	if !isValidCVEID(cveID) {
+		return 0, nil, fmt.Errorf("invalid CVE ID: %s", cveID)
+	}
+
 	encodedID := url.QueryEscape(cveID)
 	redditURL := fmt.Sprintf("https://www.reddit.com/search.json?q=%s&sort=new&limit=10", encodedID)
 
@@ -204,12 +209,16 @@ func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []
 		} `json:"data"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&rResp); err != nil {
+	// Limit response size to 1MB to prevent DoS
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1024*1024)).Decode(&rResp); err != nil {
 		return 0, nil, err
 	}
 
 	links := []map[string]string{}
 	for _, child := range rResp.Data.Children {
+		if !isValidRedditPermalink(child.Data.Permalink) {
+			continue
+		}
 		redditLink := fmt.Sprintf("https://www.reddit.com%s", child.Data.Permalink)
 		links = append(links, map[string]string{"title": child.Data.Title, "url": redditLink})
 	}
