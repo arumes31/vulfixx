@@ -72,6 +72,25 @@ func TestCSRFProtection(t *testing.T) {
 			t.Errorf("expected CSRF validation to pass")
 		}
 	})
+	t.Run("ValidHeaderToken", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/admin/delete", nil)
+		req.Header.Set("X-CSRF-Token", "valid")
+
+		rr := httptest.NewRecorder()
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["admin_csrf_token"] = "valid"
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("failed to save session: %v", err)
+		}
+
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		if !app.ValidateCSRF(req) {
+			t.Errorf("expected CSRF validation to pass with X-CSRF-Token header")
+		}
+	})
 
 	t.Run("InvalidToken", func(t *testing.T) {
 		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=invalid"))
