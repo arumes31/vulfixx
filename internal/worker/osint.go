@@ -2,26 +2,43 @@ package worker
 
 import (
 	"context"
-	"log"
+	"cve-tracker/internal/models"
+	"log/slog"
+	"sync"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // fetchOSINTLinks collects links from external platforms (HN, Reddit) for a given CVE.
-func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) map[string]interface{} {
-	data := make(map[string]interface{})
+func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) models.JSONBMap {
+	data := make(models.JSONBMap)
+	var mu sync.Mutex
+	var g errgroup.Group
 
 	// Hacker News
-	if _, links, err := w.fetchHNMentions(ctx, cveID); err == nil {
-		data["hn"] = links
-	} else {
-		log.Printf("Worker: Failed to fetch HN results for %s: %v", cveID, err)
-	}
+	g.Go(func() error {
+		if _, links, err := w.fetchHNMentions(ctx, cveID); err == nil {
+			mu.Lock()
+			data["hn"] = links
+			mu.Unlock()
+		} else {
+			slog.Error("Worker: Failed to fetch HN results", "cve_id", cveID, "error", err)
+		}
+		return nil
+	})
 
 	// Reddit
-	if _, links, err := w.fetchRedditMentions(ctx, cveID); err == nil {
-		data["reddit"] = links
-	} else {
-		log.Printf("Worker: Failed to fetch Reddit results for %s: %v", cveID, err)
-	}
+	g.Go(func() error {
+		if _, links, err := w.fetchRedditMentions(ctx, cveID); err == nil {
+			mu.Lock()
+			data["reddit"] = links
+			mu.Unlock()
+		} else {
+			slog.Error("Worker: Failed to fetch Reddit results", "cve_id", cveID, "error", err)
+		}
+		return nil
+	})
 
+	_ = g.Wait()
 	return data
 }
