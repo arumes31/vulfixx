@@ -57,6 +57,7 @@ func NewWorker(pool db.DBPool, redis db.RedisProvider, mailer EmailSender, http 
 
 // sendRequest is a helper to create and execute HTTP requests with a consistent User-Agent and basic error handling.
 func (w *Worker) sendRequest(ctx context.Context, method, url string, userAgent string, headers map[string]string) (*http.Response, error) {
+	/* #nosec G704 -- URLs are from trusted hardcoded sources or controlled environment variables */
 	req, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
