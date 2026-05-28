@@ -2,6 +2,8 @@ package web
 
 import (
 	"html/template"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -129,6 +131,75 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 		}
 		if funcs["max"].(func(float64, float64) float64)(10, 20) != 20 {
 			t.Error("max failed")
+		}
+	})
+}
+
+func TestInitTemplatesWithFuncs(t *testing.T) {
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get wd: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origWd)
+	})
+
+	tmpDir := t.TempDir()
+
+	t.Run("Success", func(t *testing.T) {
+		templatesDir := filepath.Join(tmpDir, "templates")
+		if err := os.MkdirAll(templatesDir, 0755); err != nil {
+			t.Fatalf("failed to create templates dir: %v", err)
+		}
+
+		baseContent := `{{define "base"}}Base {{template "content" .}}{{end}}`
+		pageContent := `{{define "content"}}Page{{end}}`
+		brokenContent := `{{define "content"}}Broken {{ .UnknownFunc }}`
+
+		if err := os.WriteFile(filepath.Join(templatesDir, "base.html"), []byte(baseContent), 0644); err != nil {
+			t.Fatalf("failed to write base.html: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(templatesDir, "page.html"), []byte(pageContent), 0644); err != nil {
+			t.Fatalf("failed to write page.html: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(templatesDir, "broken.html"), []byte(brokenContent), 0644); err != nil {
+			t.Fatalf("failed to write broken.html: %v", err)
+		}
+
+		if err := os.Chdir(tmpDir); err != nil {
+			t.Fatalf("failed to chdir: %v", err)
+		}
+
+		app := &App{
+			TemplateMap: make(map[string]*template.Template),
+		}
+
+		err := app.InitTemplatesWithFuncs()
+		if err != nil {
+			t.Fatalf("InitTemplatesWithFuncs failed: %v", err)
+		}
+
+		if _, ok := app.TemplateMap["page.html"]; !ok {
+			t.Errorf("expected page.html in TemplateMap")
+		}
+		if _, ok := app.TemplateMap["broken.html"]; ok {
+			t.Errorf("did not expect broken.html in TemplateMap")
+		}
+	})
+
+	t.Run("NoTemplatesDir", func(t *testing.T) {
+		emptyDir := t.TempDir()
+		if err := os.Chdir(emptyDir); err != nil {
+			t.Fatalf("failed to chdir: %v", err)
+		}
+
+		app := &App{
+			TemplateMap: make(map[string]*template.Template),
+		}
+
+		err := app.InitTemplatesWithFuncs()
+		if err == nil {
+			t.Error("expected error when no templates directory found")
 		}
 	})
 }
