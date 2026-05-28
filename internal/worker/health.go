@@ -217,4 +217,3 @@ func (w *Worker) waitUntilNextRun(ctx context.Context, taskName string, interval
 		}
 	}
 }
-

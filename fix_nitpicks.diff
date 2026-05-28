@@ -1,0 +1,46 @@
+<<<<<<< SEARCH
+func newSafeHTTPClient(timeout time.Duration) *http.Client {
+	dialer := &net.Dialer{
+		Timeout:   timeout,
+		KeepAlive: 30 * time.Second,
+	}
+
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, portStr, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+
+			// Port restriction: allow only 80 and 443
+			if portStr != "80" && portStr != "443" {
+				if os.Getenv("TEST_MODE") != "1" {
+					return nil, fmt.Errorf("blocked non-standard port: %s", portStr)
+				}
+			}
+
+			ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+=======
+func newSafeHTTPClient(timeout time.Duration) *http.Client {
+	dialer := &net.Dialer{
+		Timeout:   timeout,
+		KeepAlive: 30 * time.Second,
+	}
+
+	transport := &http.Transport{
+		DisableKeepAlives: true, // Short-lived client for webhooks
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, portStr, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+
+			// Port restriction: allow only standard web ports
+			if portStr != "80" && portStr != "443" && portStr != "8443" && portStr != "8080" {
+				if os.Getenv("TEST_MODE") != "1" {
+					return nil, fmt.Errorf("blocked non-standard port: %s", portStr)
+				}
+			}
+
+			ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+>>>>>>> REPLACE
