@@ -2,6 +2,7 @@ package web
 
 import (
 	"cve-tracker/internal/models"
+	"cve-tracker/internal/security"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -145,7 +146,7 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			for _, ip := range ips {
-				if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() {
+				if !security.IsIPSafe(ip) {
 					a.SendResponse(w, r, false, "", "", "Internal or restricted webhook URLs are not allowed")
 					return
 				}

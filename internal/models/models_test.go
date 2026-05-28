@@ -364,20 +364,20 @@ func TestGetAffectedProducts(t *testing.T) {
 			},
 			wantLen:         1,
 			wantUnconfirmed: false,
-			wantVendor:      "Kleneway", // Normalized
+			wantVendor:      "Kleneway",                  // Normalized
 			wantProduct:     "Awesome-cursor-mpc-server", // Normalized
 		},
 		{
-			name:            "Version Range Including",
+			name:           "Version Range Including",
 			configurations: CVEConfigurations{{Nodes: []ConfigNode{{CPEMatch: []CPEMatch{{Criteria: "cpe:2.3:a:v:p:*:*:*:*:*:*:*:*", VersionStartIncluding: "1.0", VersionEndExcluding: "2.0"}}}}}},
-			wantLen:         1,
-			wantVersion:     "≥1.0 <2.0",
+			wantLen:        1,
+			wantVersion:    "≥1.0 <2.0",
 		},
 		{
-			name:            "Version Range Excluding",
+			name:           "Version Range Excluding",
 			configurations: CVEConfigurations{{Nodes: []ConfigNode{{CPEMatch: []CPEMatch{{Criteria: "cpe:2.3:a:v:p:*:*:*:*:*:*:*:*", VersionStartExcluding: "1.0", VersionEndIncluding: "2.0"}}}}}},
-			wantLen:         1,
-			wantVersion:     ">1.0 ≤2.0",
+			wantLen:        1,
+			wantVersion:    ">1.0 ≤2.0",
 		},
 		{
 			name:            "Fallback to Heuristic",
@@ -572,4 +572,3 @@ func TestWebhookEncryption(t *testing.T) {
 		t.Error("expected GCM authentication check failure error, got nil")
 	}
 }
-

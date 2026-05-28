@@ -3,11 +3,11 @@ package worker
 import (
 	"context"
 	"cve-tracker/internal/config"
-	"fmt"
 	"cve-tracker/internal/llm"
 	"cve-tracker/internal/models"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 )
@@ -74,7 +74,7 @@ func (w *Worker) startIntelligenceEnrichmentTask(ctx context.Context) {
 		slog.Info("Worker: [CRON] Intelligence enrichment task shutting down")
 		return
 	}
-	
+
 	// Check queue size to determine initial interval
 	var missingCount int
 	err := w.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = ''").Scan(&missingCount)

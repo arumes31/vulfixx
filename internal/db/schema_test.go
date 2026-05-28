@@ -75,23 +75,23 @@ func TestMigrate_Success(t *testing.T) {
 		{
 			name: "Default SSLMode and No Port",
 			envs: map[string]string{
-				"DB_SSLMODE": "",
-				"DB_HOST":    "localhost",
-				"DB_PORT":    "",
-				"DB_USER":    "user",
+				"DB_SSLMODE":  "",
+				"DB_HOST":     "localhost",
+				"DB_PORT":     "",
+				"DB_USER":     "user",
 				"DB_PASSWORD": "pass",
-				"DB_NAME":    "db",
+				"DB_NAME":     "db",
 			},
 		},
 		{
 			name: "Explicit SSLMode and Port",
 			envs: map[string]string{
-				"DB_SSLMODE": "disable",
-				"DB_HOST":    "localhost",
-				"DB_PORT":    "5432",
-				"DB_USER":    "user",
+				"DB_SSLMODE":  "disable",
+				"DB_HOST":     "localhost",
+				"DB_PORT":     "5432",
+				"DB_USER":     "user",
 				"DB_PASSWORD": "pass",
-				"DB_NAME":    "db",
+				"DB_NAME":     "db",
 			},
 		},
 	}
