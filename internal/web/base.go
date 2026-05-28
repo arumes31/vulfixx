@@ -353,7 +353,7 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 			if !found {
 				err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
 				if err != nil {
-				slog.Error("Error fetching active team name", "error", err)
+					slog.Error("Error fetching active team name", "error", err)
 				} else {
 					renderData["ActiveTeamName"] = teamName
 				}
