@@ -26,13 +26,13 @@
 
                 {{if .EmailError}}
                 <div class="bg-error-container/30 border border-error/30 text-error px-4 py-3 rounded-md text-sm mb-6 flex items-start gap-2">
-                    <span class="material-symbols-outlined text-[18px]">warning</span>
+                    <span class="material-symbols-outlined text-[18px]" aria-hidden="true">warning</span>
                     <span>{{.EmailError}}</span>
                 </div>
                 {{end}}
                 {{if .EmailSuccess}}
                 <div class="bg-primary/10 border border-primary/30 text-primary px-4 py-3 rounded-md text-sm mb-6 flex items-start gap-2">
-                    <span class="material-symbols-outlined text-[18px]">check_circle</span>
+                    <span class="material-symbols-outlined text-[18px]" aria-hidden="true">check_circle</span>
                     <span>{{.EmailSuccess}}</span>
                 </div>
                 {{end}}
@@ -63,7 +63,7 @@
 
             {{if .IsTOTPEnabled}}
                 <div class="flex items-center gap-3 p-4 bg-tertiary-container/10 border border-tertiary/30 rounded-lg">
-                    <span class="material-symbols-outlined text-tertiary text-2xl">verified_user</span>
+                    <span class="material-symbols-outlined text-tertiary text-2xl" aria-hidden="true">verified_user</span>
                     <div>
                         <p class="font-display text-on-surface font-medium">Protocol Active</p>
                         <p class="text-xs font-label text-on-surface-variant uppercase tracking-widest mt-1">Maximum security enforced</p>
@@ -71,7 +71,7 @@
                 </div>
             {{else}}
                 <div class="flex items-center gap-3 p-4 bg-error-container/10 border border-error/30 rounded-lg mb-6">
-                    <span class="material-symbols-outlined text-error text-2xl">gpp_maybe</span>
+                    <span class="material-symbols-outlined text-error text-2xl" aria-hidden="true">gpp_maybe</span>
                     <div>
                         <p class="font-display text-on-surface font-medium">Protocol Inactive</p>
                         <p class="text-xs font-label text-error uppercase tracking-widest mt-1">System vulnerable</p>
@@ -116,19 +116,19 @@
         <!-- Password Change -->
         <div class="glass rounded-[2rem] border border-white/10 overflow-hidden shadow-xl p-8">
             <h3 class="font-display font-medium tracking-wide flex items-center gap-2 mb-6 text-xl border-b border-white/5 pb-4 text-white">
-                <span class="material-symbols-outlined text-primary">key</span>
+                <span class="material-symbols-outlined text-primary" aria-hidden="true">key</span>
                 Access Credentials
             </h3>
 
             {{if .PasswordError}}
             <div class="bg-error-container/30 border border-error/30 text-error px-4 py-3 rounded-md text-sm mb-6 flex items-start gap-2">
-                <span class="material-symbols-outlined text-[18px]">warning</span>
+                <span class="material-symbols-outlined text-[18px]" aria-hidden="true">warning</span>
                 <span>{{.PasswordError}}</span>
             </div>
             {{end}}
             {{if .PasswordSuccess}}
             <div class="bg-primary/10 border border-primary/30 text-primary px-4 py-3 rounded-md text-sm mb-6 flex items-start gap-2">
-                <span class="material-symbols-outlined text-[18px]">check_circle</span>
+                <span class="material-symbols-outlined text-[18px]" aria-hidden="true">check_circle</span>
                 <span>{{.PasswordSuccess}}</span>
             </div>
             {{end}}
@@ -171,7 +171,7 @@
 
             {{if .DeleteError}}
             <div class="bg-error-container/30 border border-error/30 text-error px-4 py-3 rounded-md text-sm mb-6 flex items-start gap-2">
-                <span class="material-symbols-outlined text-[18px]">warning</span>
+                <span class="material-symbols-outlined text-[18px]" aria-hidden="true">warning</span>
                 <span>{{.DeleteError}}</span>
             </div>
             {{end}}

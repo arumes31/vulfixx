@@ -6,7 +6,7 @@
         <div class="relative z-10">
             <div class="text-center mb-10">
                 <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 mb-6">
-                    <span class="material-symbols-outlined text-4xl text-primary">mail</span>
+                    <span class="material-symbols-outlined text-4xl text-primary" aria-hidden="true">mail</span>
                 </div>
                 <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60 mb-2">Resend Verification</h1>
                 <p class="text-slate-400">Enter your email to receive a new link</p>
@@ -14,14 +14,14 @@
 
             {{if .Error}}
             <div role="alert" aria-atomic="true" class="bg-red-500/10 border border-red-500/20 text-red-400 px-6 py-4 rounded-2xl mb-8 flex items-center gap-3">
-                <span class="material-symbols-outlined text-xl">error</span>
+                <span class="material-symbols-outlined text-xl" aria-hidden="true">error</span>
                 <p class="text-sm">{{.Error}}</p>
             </div>
             {{end}}
 
             {{if .Message}}
             <div role="status" aria-live="polite" class="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-6 py-4 rounded-2xl mb-8 flex items-center gap-3">
-                <span class="material-symbols-outlined text-xl">check_circle</span>
+                <span class="material-symbols-outlined text-xl" aria-hidden="true">check_circle</span>
                 <p class="text-sm">{{.Message}}</p>
             </div>
             {{end}}
@@ -32,7 +32,7 @@
                 <div>
                     <label for="resend-email" class="block text-sm font-medium text-slate-400 mb-2 ml-1">Email Address</label>
                     <div class="relative group">
-                        <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary transition-colors">mail</span>
+                        <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary transition-colors" aria-hidden="true">mail</span>
                         <input id="resend-email" type="email" name="email" value="{{.Email}}" required 
                                class="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white focus:outline-none focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all"
                                placeholder="name@company.com">

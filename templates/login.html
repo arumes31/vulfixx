@@ -14,13 +14,13 @@
 
         {{if .Message}}
             <div class="bg-primary/10 border border-primary/30 text-primary px-4 py-3 rounded-md text-sm mb-6 flex items-start gap-2">
-                <span class="material-symbols-outlined text-[18px]">info</span>
+                <span class="material-symbols-outlined text-[18px]" aria-hidden="true">info</span>
                 <span>{{.Message}}</span>
             </div>
         {{end}}
         {{if .Error}}
             <div class="bg-error-container/30 border border-error/30 text-error px-4 py-3 rounded-md text-sm mb-6 flex items-start gap-2">
-                <span class="material-symbols-outlined text-[18px]">warning</span>
+                <span class="material-symbols-outlined text-[18px]" aria-hidden="true">warning</span>
                 <span>{{.Error}}</span>
             </div>
         {{end}}
