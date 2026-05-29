@@ -13,6 +13,7 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v3"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestWorker_StartAndPeriodics(t *testing.T) {
@@ -313,5 +314,75 @@ func TestWorker_PeriodicLoopExecutionWithMocks(t *testing.T) {
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet mock expectations: %v", err)
+	}
+}
+
+func TestWorker_DistributedLock(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed: %v", err)
+	}
+	defer mock.Close()
+
+	w := NewWorker(mock, rdb, &EmailSenderMock{}, http.DefaultClient)
+
+	ctx := context.Background()
+
+	// 1. Verify acquireLock sets lock in Redis
+	acquired := w.acquireLock(ctx, "test_task", 1*time.Minute)
+	if !acquired {
+		t.Fatal("expected to acquire lock on first try")
+	}
+
+	// Lock key must exist in Redis
+	if !mr.Exists("lock:task:test_task") {
+		t.Error("expected lock key to exist in Redis")
+	}
+
+	// 2. Second acquire try must fail (already locked)
+	acquiredAgain := w.acquireLock(ctx, "test_task", 1*time.Minute)
+	if acquiredAgain {
+		t.Fatal("expected second acquire attempt to fail")
+	}
+
+	// 3. releaseLock should delete lock key from Redis
+	w.releaseLock(ctx, "test_task")
+	if mr.Exists("lock:task:test_task") {
+		t.Error("expected lock key to be deleted from Redis after release")
+	}
+
+	// 4. Verify runWithLock executes task only if lock can be acquired
+	calledCount := 0
+	taskFn := func(c context.Context) {
+		calledCount++
+	}
+
+	// Runs successfully
+	w.runWithLock(ctx, "test_task_run", 1*time.Minute, taskFn)
+	if calledCount != 1 {
+		t.Errorf("expected task to be executed once, got %d", calledCount)
+	}
+
+	// Lock is released after runWithLock completes
+	if mr.Exists("lock:task:test_task_run") {
+		t.Error("expected lock to be released after runWithLock completes")
+	}
+
+	// Acquire lock manually
+	_ = w.acquireLock(ctx, "test_task_run", 1*time.Minute)
+
+	// Attempts runWithLock again - should skip executing since it is locked
+	w.runWithLock(ctx, "test_task_run", 1*time.Minute, taskFn)
+	if calledCount != 1 {
+		t.Errorf("expected task execution to be skipped, calledCount remains 1, got %d", calledCount)
 	}
 }

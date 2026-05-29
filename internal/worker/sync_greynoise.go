@@ -15,7 +15,7 @@ import (
 
 func (w *Worker) syncGreyNoisePeriodically(ctx context.Context) {
 	w.waitUntilNextRun(ctx, "greynoise_sync", 6*time.Hour, 2*time.Minute)
-	w.syncGreyNoise(ctx)
+	w.runWithLock(ctx, "greynoise_sync", 30*time.Minute, w.syncGreyNoise)
 
 	ticker := w.TickerFactory(6 * time.Hour)
 	defer ticker.Stop()
@@ -25,7 +25,7 @@ func (w *Worker) syncGreyNoisePeriodically(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.Chan():
-			w.syncGreyNoise(ctx)
+			w.runWithLock(ctx, "greynoise_sync", 30*time.Minute, w.syncGreyNoise)
 		}
 	}
 }

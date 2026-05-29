@@ -20,9 +20,11 @@ func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
 		return
 	}
 	w.waitUntilNextRun(ctx, "intelligence_sync", 2*time.Hour, 4*time.Minute)
-	if err := w.processIntelligence(ctx); err != nil {
-		slog.Error("Worker: Initial intelligence sync error", "error", err)
-	}
+	w.runWithLock(ctx, "intelligence_sync", 30*time.Minute, func(c context.Context) {
+		if err := w.processIntelligence(c); err != nil {
+			slog.Error("Worker: Initial intelligence sync error", "error", err)
+		}
+	})
 
 	ticker := w.TickerFactory(2 * time.Hour)
 	defer ticker.Stop()
@@ -33,9 +35,11 @@ func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
 			return
 		case <-ticker.Chan():
 			slog.Info("Worker: Starting Intelligence Sync (Social Sentiment & Duplicate Detection)...")
-			if err := w.processIntelligence(ctx); err != nil {
-				slog.Error("Worker: Intelligence sync error", "error", err)
-			}
+			w.runWithLock(ctx, "intelligence_sync", 30*time.Minute, func(c context.Context) {
+				if err := w.processIntelligence(c); err != nil {
+					slog.Error("Worker: Intelligence sync error", "error", err)
+				}
+			})
 		}
 	}
 }

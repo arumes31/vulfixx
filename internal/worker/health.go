@@ -12,7 +12,7 @@ import (
 
 func (w *Worker) startHealthCheckPeriodically(ctx context.Context) {
 	w.waitUntilNextRun(ctx, "health_check", 30*time.Minute, 1*time.Minute)
-	w.checkWorkerHealth(ctx)
+	w.runWithLock(ctx, "health_check", 5*time.Minute, w.checkWorkerHealth)
 
 	ticker := w.TickerFactory(30 * time.Minute)
 	defer ticker.Stop()
@@ -22,7 +22,7 @@ func (w *Worker) startHealthCheckPeriodically(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.Chan():
-			w.checkWorkerHealth(ctx)
+			w.runWithLock(ctx, "health_check", 5*time.Minute, w.checkWorkerHealth)
 		}
 	}
 }

@@ -17,7 +17,7 @@ import (
 func (w *Worker) syncInTheWildPeriodically(ctx context.Context) {
 	// Initial wait and first run
 	w.waitUntilNextRun(ctx, "inthewild_sync", 12*time.Hour, 4*time.Minute)
-	w.syncInTheWild(ctx)
+	w.runWithLock(ctx, "inthewild_sync", 30*time.Minute, w.syncInTheWild)
 
 	ticker := w.TickerFactory(12 * time.Hour)
 	defer ticker.Stop()
@@ -27,7 +27,7 @@ func (w *Worker) syncInTheWildPeriodically(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.Chan():
-			w.syncInTheWild(ctx)
+			w.runWithLock(ctx, "inthewild_sync", 30*time.Minute, w.syncInTheWild)
 		}
 	}
 }

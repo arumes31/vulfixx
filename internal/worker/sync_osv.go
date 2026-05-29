@@ -35,7 +35,7 @@ type osvResponse struct {
 
 func (w *Worker) syncOSVPeriodically(ctx context.Context) {
 	w.waitUntilNextRun(ctx, "osv_sync", 12*time.Hour, 3*time.Minute)
-	w.syncOSV(ctx)
+	w.runWithLock(ctx, "osv_sync", 30*time.Minute, w.syncOSV)
 
 	ticker := w.TickerFactory(12 * time.Hour)
 	defer ticker.Stop()
@@ -45,7 +45,7 @@ func (w *Worker) syncOSVPeriodically(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.Chan():
-			w.syncOSV(ctx)
+			w.runWithLock(ctx, "osv_sync", 30*time.Minute, w.syncOSV)
 		}
 	}
 }

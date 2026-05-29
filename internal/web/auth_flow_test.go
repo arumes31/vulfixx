@@ -194,3 +194,49 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 		}
 	})
 }
+
+func TestApp_CaptchaHandler_RateLimit(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	mock.MatchExpectationsInOrder(false)
+
+	oldPool := db.Pool
+	db.Pool = mock
+	t.Cleanup(func() {
+		db.Pool = oldPool
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	ts, app, client := setupTestServer(t, mock)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/captcha", app.CaptchaHandler)
+	ts.Config.Handler = mux
+
+	// Trigger 10 captcha requests (under the limit of 10)
+	for i := 0; i < 10; i++ {
+		resp, err := client.Get(ts.URL + "/captcha")
+		if err != nil {
+			t.Fatalf("failed to call captcha at attempt %d: %v", i+1, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d at attempt %d", resp.StatusCode, i+1)
+		}
+	}
+
+	// The 11th request must fail with 429 Too Many Requests
+	resp, err := client.Get(ts.URL + "/captcha")
+	if err != nil {
+		t.Fatalf("failed to call 11th captcha request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("expected 429 Too Many Requests, got %d", resp.StatusCode)
+	}
+}

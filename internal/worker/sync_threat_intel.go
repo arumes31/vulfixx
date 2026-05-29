@@ -24,7 +24,7 @@ type ThreatIntelFeed struct {
 
 func (w *Worker) syncThreatIntelPeriodically(ctx context.Context) {
 	w.waitUntilNextRun(ctx, "threat_intel_sync", 24*time.Hour, 5*time.Minute)
-	w.syncThreatIntel(ctx)
+	w.runWithLock(ctx, "threat_intel_sync", 30*time.Minute, w.syncThreatIntel)
 	ticker := w.TickerFactory(24 * time.Hour)
 	defer ticker.Stop()
 	for {
@@ -32,7 +32,7 @@ func (w *Worker) syncThreatIntelPeriodically(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.Chan():
-			w.syncThreatIntel(ctx)
+			w.runWithLock(ctx, "threat_intel_sync", 30*time.Minute, w.syncThreatIntel)
 		}
 	}
 }

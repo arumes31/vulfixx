@@ -22,7 +22,7 @@ type CISAKEVResponse struct {
 
 func (w *Worker) fetchCISAKEVPeriodically(ctx context.Context) {
 	w.waitUntilNextRun(ctx, "cisa_kev_sync", 24*time.Hour, 5*time.Minute)
-	w.fetchFromCISAKEV(ctx)
+	w.runWithLock(ctx, "cisa_kev_sync", 30*time.Minute, w.fetchFromCISAKEV)
 	ticker := w.TickerFactory(24 * time.Hour)
 	defer ticker.Stop()
 	for {
@@ -30,7 +30,7 @@ func (w *Worker) fetchCISAKEVPeriodically(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.Chan():
-			w.fetchFromCISAKEV(ctx)
+			w.runWithLock(ctx, "cisa_kev_sync", 30*time.Minute, w.fetchFromCISAKEV)
 		}
 	}
 }

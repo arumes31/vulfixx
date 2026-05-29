@@ -160,3 +160,37 @@ func (w *Worker) enqueueAlertsForCVE(ctx context.Context, cve models.CVE) error 
 
 	return fmt.Errorf("failed to enqueue alert for %s after retries: %w", cve.CVEID, lastErr)
 }
+
+// acquireLock attempts to acquire a Redis-based distributed lock for a task.
+// If Redis is not configured, it falls back to local execution (returns true).
+func (w *Worker) acquireLock(ctx context.Context, taskName string, ttl time.Duration) bool {
+	if w.Redis == nil {
+		return true
+	}
+	key := "lock:task:" + taskName
+	ok, err := w.Redis.SetNX(ctx, key, "locked", ttl).Result()
+	if err != nil {
+		slog.Error("Worker: Failed to acquire Redis lock", "task", taskName, "error", err)
+		return true // Fallback to let it run in case of Redis errors
+	}
+	return ok
+}
+
+// releaseLock deletes the Redis key for a task lock.
+func (w *Worker) releaseLock(ctx context.Context, taskName string) {
+	if w.Redis == nil {
+		return
+	}
+	key := "lock:task:" + taskName
+	_, _ = w.Redis.Del(ctx, key).Result()
+}
+
+// runWithLock executes the given sync task within a Redis distributed lock, preventing concurrent executions in replicas.
+func (w *Worker) runWithLock(ctx context.Context, taskName string, ttl time.Duration, taskFn func(context.Context)) {
+	if !w.acquireLock(ctx, taskName, ttl) {
+		slog.Info("Worker: Task already running or locked in another instance", "task", taskName)
+		return
+	}
+	defer w.releaseLock(context.Background(), taskName)
+	taskFn(ctx)
+}

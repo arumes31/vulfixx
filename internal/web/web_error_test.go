@@ -7,6 +7,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestErrorReportHandler(t *testing.T) {
@@ -88,5 +91,61 @@ func TestWebErrorPaths(t *testing.T) {
 	app.RSSFeedHandler(rr, req)
 	if rr.Code != http.StatusUnauthorized {
 		t.Errorf("RSSFeedHandler should return 401 for missing token, got %d", rr.Code)
+	}
+}
+
+func TestApp_ErrorReportHandler_Throttling(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	app := &App{
+		Redis: rdb,
+	}
+
+	data := map[string]string{
+		"message": "test duplicate error",
+		"type":    "TypeError",
+		"url":     "http://localhost/test",
+	}
+	body, _ := json.Marshal(data)
+
+	// Send 5 successful requests (under the limit)
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("POST", "/api/errors", strings.NewReader(string(body)))
+		rr := httptest.NewRecorder()
+		app.ErrorReportHandler(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d on attempt %d", rr.Code, i+1)
+		}
+	}
+
+	// Send a 6th request - should be throttled but still return 200 OK (soft-fail)
+	req := httptest.NewRequest("POST", "/api/errors", strings.NewReader(string(body)))
+	rr := httptest.NewRecorder()
+	app.ErrorReportHandler(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected 200 OK for throttled request, got %d", rr.Code)
+	}
+
+	// Verify key exists in Redis and count is 6
+	keys := mr.Keys()
+	found := false
+	for _, k := range keys {
+		if strings.HasPrefix(k, "err_limit:") {
+			found = true
+			val, _ := mr.Get(k)
+			if val != "6" {
+				t.Errorf("expected redis counter to be 6, got %s", val)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected err_limit key to be stored in Redis")
 	}
 }

@@ -13,7 +13,7 @@ import (
 
 func (w *Worker) syncEPSSPeriodically(ctx context.Context) {
 	w.waitUntilNextRun(ctx, "epss_sync", 24*time.Hour, 5*time.Minute)
-	w.syncEPSS(ctx)
+	w.runWithLock(ctx, "epss_sync", 30*time.Minute, w.syncEPSS)
 	ticker := w.TickerFactory(24 * time.Hour)
 	defer ticker.Stop()
 	for {
@@ -21,7 +21,7 @@ func (w *Worker) syncEPSSPeriodically(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.Chan():
-			w.syncEPSS(ctx)
+			w.runWithLock(ctx, "epss_sync", 30*time.Minute, w.syncEPSS)
 		}
 	}
 }
