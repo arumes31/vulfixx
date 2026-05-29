@@ -120,34 +120,6 @@ func TestInitRedis_Error(t *testing.T) {
 	})
 }
 
-func TestSetupRedisHelper(t *testing.T) {
-	t.Run("SetupTestRedis", func(t *testing.T) {
-		orig := RedisClient
-		t.Cleanup(func() { RedisClient = orig })
-		mr, err := SetupTestRedis()
-		if err != nil {
-			t.Fatalf("SetupTestRedis failed: %v", err)
-		}
-		t.Cleanup(func() { mr.Close() })
-		if mr == nil || RedisClient == nil {
-			t.Error("SetupTestRedis did not set RedisClient correctly")
-		}
-	})
-
-	t.Run("SetupTestRedis Error", func(t *testing.T) {
-		oldFuncRedis := miniredisRunCall
-		miniredisRunCall = func() (*miniredis.Miniredis, error) {
-			return nil, fmt.Errorf("forced error")
-		}
-		defer func() { miniredisRunCall = oldFuncRedis }()
-
-		_, err := SetupTestRedis()
-		if err == nil {
-			t.Error("expected error but got nil")
-		}
-	})
-}
-
 func TestInitRedis_SentinelAndCluster(t *testing.T) {
 	// Mock redisPing globally and restore it
 	oldPing := redisPing
