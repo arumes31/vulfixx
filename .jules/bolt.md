@@ -25,3 +25,9 @@
 ## 2026-05-28 - Optimized OSV Sync with Concurrent Worker Pool
 **Learning:** Sequential HTTP requests in a loop cause significant latency and underutilize resources. Using a concurrent worker pool (e.g., errgroup or sync.WaitGroup with channels) allows for parallel processing of I/O-bound tasks while maintaining a controllable level of concurrency.
 **Action:** Implement a worker pool pattern for loops containing synchronous HTTP requests to improve performance and throughput.
+
+## 2026-05-28 - Refactored Overly Complex AssetsHandler to Repository Pattern
+**Performance Issue:** Bloated handler logic combining request parsing, validation, database transactions, and UI rendering.
+**Learning:** Consolidating complex database operations (transactions, quota checks, keyword mapping) into a dedicated Repository layer simplifies handler logic and improves testability by decoupling HTTP concerns from data persistence.
+**Optimization:** Created `AssetRepository` to encapsulate SQL logic and transaction management. Split `AssetsHandler` into specialized internal methods for GET and POST.
+**Impact:** Improved code readability, reduced cyclomatic complexity of the handler, and centralized asset-related database logic for reuse.

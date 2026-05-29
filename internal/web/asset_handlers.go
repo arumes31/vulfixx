@@ -1,7 +1,6 @@
 package web
 
 import (
-	"cve-tracker/internal/models"
 	"fmt"
 	"log"
 	"net/http"
@@ -16,207 +15,111 @@ func (a *App) AssetsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Method == "GET" {
-		rows, err := a.Pool.Query(r.Context(), `
-			SELECT a.id, a.name, COALESCE(a.type, ''), a.priority, a.created_at, 
-			       COALESCE(array_agg(ak.keyword) FILTER (WHERE ak.keyword IS NOT NULL), '{}'),
-			       COALESCE(t.name, '') as team_name
-			FROM assets a
-			LEFT JOIN asset_keywords ak ON a.id = ak.asset_id
-			LEFT JOIN teams t ON a.team_id = t.id
-			WHERE a.user_id = $1 OR a.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
-			GROUP BY a.id, t.id, t.name
-			ORDER BY a.created_at DESC
-		`, userID)
-		if err != nil {
-			log.Printf("Error fetching assets: %v", err)
-			http.Error(w, "Error fetching assets", http.StatusInternalServerError)
-			return
-		}
-		defer rows.Close()
+	switch r.Method {
+	case "GET":
+		a.listAssets(w, r, userID)
+	case "POST":
+		a.createAsset(w, r, userID)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
 
-		type AssetWithKeywords struct {
-			models.Asset
-			Keywords []string
-			TeamName string
-		}
-		var assets []AssetWithKeywords
-		for rows.Next() {
-			var as AssetWithKeywords
-			if err := rows.Scan(&as.ID, &as.Name, &as.Type, &as.Priority, &as.CreatedAt, &as.Keywords, &as.TeamName); err != nil {
-				log.Printf("Error scanning asset row: %v", err)
-				http.Error(w, "Error parsing assets", http.StatusInternalServerError)
-				return
-			}
-			assets = append(assets, as)
-		}
-		if err := rows.Err(); err != nil {
-			log.Printf("Error iterating asset rows: %v", err)
-			http.Error(w, "Error fetching assets", http.StatusInternalServerError)
-			return
-		}
-		a.RenderTemplate(w, r, "assets.html", map[string]interface{}{"Assets": assets})
+func (a *App) listAssets(w http.ResponseWriter, r *http.Request, userID int) {
+	assets, err := a.AssetRepo.ListAssets(r.Context(), userID)
+	if err != nil {
+		log.Printf("Error fetching assets: %v", err)
+		http.Error(w, "Error fetching assets", http.StatusInternalServerError)
 		return
 	}
 
-	if r.Method == "POST" {
-		if err := r.ParseForm(); err != nil {
-			a.SendResponse(w, r, false, "", "", "Error parsing form")
-			return
-		}
-		name := r.FormValue("name")
-		assetType := r.FormValue("type")
-		priority := r.FormValue("priority")
-		if priority == "" {
-			priority = "P3"
-		}
-		keywords := r.FormValue("keywords")
-		teamIDStr := r.FormValue("team_id")
+	a.RenderTemplate(w, r, "assets.html", map[string]interface{}{"Assets": assets})
+}
 
-		var teamID *int
-		if teamIDStr != "" && teamIDStr != "0" {
-			tid, err := strconv.Atoi(teamIDStr)
-			if err != nil {
-				a.SendResponse(w, r, false, "", "", "Invalid team_id")
-				return
-			}
-			teamID = &tid
-			// Verify membership
-			var isMember bool
-			err = a.Pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", tid, userID).Scan(&isMember)
-			if err != nil || !isMember {
-				a.SendResponse(w, r, false, "", "", "You are not a member of this team")
-				return
-			}
-		}
+func (a *App) createAsset(w http.ResponseWriter, r *http.Request, userID int) {
+	if err := r.ParseForm(); err != nil {
+		a.SendResponse(w, r, false, "", "", "Error parsing form")
+		return
+	}
 
-		if len(name) < 1 || len(name) > 255 {
-			a.SendResponse(w, r, false, "", "", "Asset name must be between 1 and 255 characters")
-			return
-		}
-		allowedTypes := map[string]bool{
-			"Server":   true,
-			"Software": true,
-			"Network":  true,
-			"Cloud":    true,
-			"IoT":      true,
-		}
-		if !allowedTypes[assetType] {
-			a.SendResponse(w, r, false, "", "", "Invalid asset category")
-			return
-		}
+	name := r.FormValue("name")
+	assetType := r.FormValue("type")
+	priority := r.FormValue("priority")
+	if priority == "" {
+		priority = "P3"
+	}
+	keywords := r.FormValue("keywords")
+	teamIDStr := r.FormValue("team_id")
 
-		allowedPriorities := map[string]bool{"P0": true, "P1": true, "P2": true, "P3": true}
-		if !allowedPriorities[priority] {
-			a.SendResponse(w, r, false, "", "", "Invalid priority level")
-			return
-		}
-
-		var kwList []string
-		if keywords != "" {
-			rawKws := strings.Split(keywords, ",")
-			for _, kw := range rawKws {
-				kw = strings.TrimSpace(kw)
-				if kw != "" {
-					if len(kw) > 50 {
-						a.SendResponse(w, r, false, "", "", "Keyword too long (maximum 50 characters)")
-						return
-					}
-					kwList = append(kwList, kw)
-				}
-			}
-			if len(kwList) > 10 {
-				a.SendResponse(w, r, false, "", "", "Too many keywords (maximum 10)")
-				return
-			}
-		}
-
-		ctx := r.Context()
-		tx, err := a.Pool.Begin(ctx)
+	var teamID *int
+	if teamIDStr != "" && teamIDStr != "0" {
+		tid, err := strconv.Atoi(teamIDStr)
 		if err != nil {
-			log.Printf("Error starting transaction: %v", err)
-			a.SendResponse(w, r, false, "", "", "Internal server error")
+			a.SendResponse(w, r, false, "", "", "Invalid team_id")
 			return
 		}
-		defer func() { _ = tx.Rollback(ctx) }()
+		teamID = &tid
+	}
 
-		// Enforce Quota
-		var currentCount int
-		var maxAssets int
-		if teamID != nil {
-			// Re-verify membership inside transaction
-			var exists bool
-			err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", *teamID, userID).Scan(&exists)
-			if err != nil || !exists {
-				a.SendResponse(w, r, false, "", "", "Permission denied")
-				return
-			}
-			err = tx.QueryRow(ctx, "SELECT max_assets FROM teams WHERE id = $1 FOR UPDATE", *teamID).Scan(&maxAssets)
-			if err != nil {
-				a.SendResponse(w, r, false, "", "", "Internal server error")
-				return
-			}
-			err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM assets WHERE team_id = $1", *teamID).Scan(&currentCount)
-		} else {
-			err = tx.QueryRow(ctx, "SELECT max_assets FROM users WHERE id = $1 FOR UPDATE", userID).Scan(&maxAssets)
-			if err != nil {
-				a.SendResponse(w, r, false, "", "", "Internal server error")
-				return
-			}
-			err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM assets WHERE user_id = $1 AND team_id IS NULL", userID).Scan(&currentCount)
-		}
-		if err != nil {
-			a.SendResponse(w, r, false, "", "", "Internal server error")
-			return
-		}
+	// Basic validation
+	if len(name) < 1 || len(name) > 255 {
+		a.SendResponse(w, r, false, "", "", "Asset name must be between 1 and 255 characters")
+		return
+	}
 
-		if currentCount >= maxAssets {
-			a.SendResponse(w, r, false, "", "", fmt.Sprintf("Maximum of %d assets allowed for this %s", maxAssets, func() string {
-				if teamID != nil {
-					return "team"
-				}
-				return "account"
-			}()))
-			return
-		}
+	allowedTypes := map[string]bool{
+		"Server":   true,
+		"Software": true,
+		"Network":  true,
+		"Cloud":    true,
+		"IoT":      true,
+	}
+	if !allowedTypes[assetType] {
+		a.SendResponse(w, r, false, "", "", "Invalid asset category")
+		return
+	}
 
-		var assetID int
-		err = tx.QueryRow(ctx, `
-			INSERT INTO assets (user_id, team_id, name, type, priority) VALUES ($1, $2, $3, $4, $5) RETURNING id
-		`, userID, teamID, name, assetType, priority).Scan(&assetID)
-		if err != nil {
-			log.Printf("Error creating asset: %v", err)
-			a.SendResponse(w, r, false, "", "", "Internal server error")
-			return
-		}
+	allowedPriorities := map[string]bool{"P0": true, "P1": true, "P2": true, "P3": true}
+	if !allowedPriorities[priority] {
+		a.SendResponse(w, r, false, "", "", "Invalid priority level")
+		return
+	}
 
-		if len(kwList) > 0 {
-			for _, kw := range kwList {
-				if kw == "" {
-					continue
-				}
-				_, err = tx.Exec(ctx, `
-					INSERT INTO asset_keywords (asset_id, keyword) VALUES ($1, $2)
-					ON CONFLICT DO NOTHING
-				`, assetID, kw)
-				if err != nil {
-					a.SendResponse(w, r, false, "", "", "Error adding keyword")
+	var kwList []string
+	if keywords != "" {
+		rawKws := strings.Split(keywords, ",")
+		for _, kw := range rawKws {
+			kw = strings.TrimSpace(kw)
+			if kw != "" {
+				if len(kw) > 50 {
+					a.SendResponse(w, r, false, "", "", "Keyword too long (maximum 50 characters)")
 					return
 				}
+				kwList = append(kwList, kw)
 			}
 		}
-
-		if err = tx.Commit(ctx); err != nil {
-			a.SendResponse(w, r, false, "", "", "Internal server error")
+		if len(kwList) > 10 {
+			a.SendResponse(w, r, false, "", "", "Too many keywords (maximum 10)")
 			return
 		}
+	}
 
-		a.LogActivity(ctx, userID, "asset_registered", fmt.Sprintf("Registered asset %q", name), a.GetClientIP(r), r.UserAgent())
-		a.SendResponse(w, r, true, "Asset registered successfully", "/assets", "")
+	_, err := a.AssetRepo.CreateAsset(r.Context(), userID, teamID, name, assetType, priority, kwList)
+	if err != nil {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "permission denied") {
+			a.SendResponse(w, r, false, "", "", "You are not a member of this team")
+		} else if strings.Contains(errMsg, "maximum of") {
+			a.SendResponse(w, r, false, "", "", errMsg)
+		} else {
+			log.Printf("Error creating asset: %v", err)
+			a.SendResponse(w, r, false, "", "", "Internal server error")
+		}
 		return
 	}
 
-	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	a.LogActivity(r.Context(), userID, "asset_registered", fmt.Sprintf("Registered asset %q", name), a.GetClientIP(r), r.UserAgent())
+	a.SendResponse(w, r, true, "Asset registered successfully", "/assets", "")
 }
 
 func (a *App) DeleteAssetHandler(w http.ResponseWriter, r *http.Request) {
@@ -224,23 +127,28 @@ func (a *App) DeleteAssetHandler(w http.ResponseWriter, r *http.Request) {
 		a.SendResponse(w, r, false, "", "", "Method not allowed")
 		return
 	}
+
 	userID, ok := a.GetUserID(r)
 	if !ok {
 		a.SendResponse(w, r, false, "", "", "Unauthorized")
 		return
 	}
+
 	idStr := r.FormValue("id")
 	assetID, err := strconv.Atoi(idStr)
 	if err != nil {
 		a.SendResponse(w, r, false, "", "", "Invalid asset ID")
 		return
 	}
-	commandTag, err := a.Pool.Exec(r.Context(), "DELETE FROM assets WHERE id = $1 AND (user_id = $2 OR team_id IN (SELECT team_id FROM team_members WHERE user_id = $2 AND role IN ('owner', 'admin')))", assetID, userID)
+
+	rowsAffected, err := a.AssetRepo.DeleteAsset(r.Context(), assetID, userID)
 	if err != nil {
+		log.Printf("Error deleting asset: %v", err)
 		a.SendResponse(w, r, false, "", "", "Error deleting asset")
 		return
 	}
-	if commandTag.RowsAffected() == 0 {
+
+	if rowsAffected == 0 {
 		a.SendResponse(w, r, false, "", "", "Asset not found or access denied")
 		return
 	}

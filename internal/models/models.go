@@ -888,3 +888,8 @@ type ThreatAssociation struct {
 	Source     string    `json:"source"`
 	CreatedAt  time.Time `json:"created_at"`
 }
+type AssetWithKeywords struct {
+	Asset
+	Keywords []string `json:"keywords"`
+	TeamName string   `json:"team_name"`
+}
