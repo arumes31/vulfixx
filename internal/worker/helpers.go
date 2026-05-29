@@ -2,6 +2,7 @@ package worker
 
 import (
 	"crypto/tls"
+	"cve-tracker/internal/security"
 	"fmt"
 	"log"
 	"net"
@@ -50,7 +51,7 @@ func sanitizeEmail(email string) (string, error) {
 	// Validate with net/mail
 	addr, err := mail.ParseAddress(email)
 	if err != nil {
-		return "", fmt.Errorf("invalid email address %q: %w", maskEmail(email), err)
+		return "", fmt.Errorf("invalid email address %q: %w", security.MaskEmail(email), err)
 	}
 	return addr.Address, nil
 }
@@ -78,17 +79,7 @@ func redactURL(u string) string {
 	return parsed.String()
 }
 
-// maskEmail redacts an email address for logging.
-func maskEmail(email string) string {
-	parts := strings.Split(email, "@")
-	if len(parts) != 2 {
-		return "[invalid-email]"
-	}
-	if len(parts[0]) <= 2 {
-		return "*@" + parts[1]
-	}
-	return parts[0][:2] + "****@" + parts[1]
-}
+
 
 // sendMailWithTimeout is a replacement for smtp.SendMail that supports deadlines.
 func sendMailWithTimeout(host, port, user, password, from string, to []string, msg []byte) error {
@@ -105,7 +96,7 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 	for _, t := range to {
 		ct, err := sanitizeEmail(t)
 		if err != nil {
-			return fmt.Errorf("invalid to address %q: %w", maskEmail(t), err)
+			return fmt.Errorf("invalid to address %q: %w", security.MaskEmail(t), err)
 		}
 		cleanTo = append(cleanTo, ct)
 	}
@@ -154,7 +145,7 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 		if !hasTLS {
 			return fmt.Errorf("TLS is required for authentication but not supported by host %s", host)
 		}
-		log.Printf("Worker: Attempting SMTP authentication for user %s", maskEmail(user))
+		log.Printf("Worker: Attempting SMTP authentication for user %s", security.MaskEmail(user))
 		auth := smtp.PlainAuth("", user, password, host)
 		if err := client.Auth(auth); err != nil {
 			return fmt.Errorf("auth: %w", err)
@@ -165,12 +156,12 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 	}
 
 	// #nosec G707 -- Email addresses are sanitized via sanitizeEmail() before use
-	log.Printf("Worker: Sending MAIL FROM: %s", maskEmail(cleanFrom))
+	log.Printf("Worker: Sending MAIL FROM: %s", security.MaskEmail(cleanFrom))
 	if err := client.Mail(cleanFrom); err != nil {
 		return err
 	}
 	for _, addr := range cleanTo {
-		log.Printf("Worker: Sending RCPT TO: %s", maskEmail(addr))
+		log.Printf("Worker: Sending RCPT TO: %s", security.MaskEmail(addr))
 		if err := client.Rcpt(addr); err != nil {
 			return err
 		}

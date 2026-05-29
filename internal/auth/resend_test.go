@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"cve-tracker/internal/security"
 	"cve-tracker/internal/db"
 	"testing"
 	"time"
@@ -177,17 +178,17 @@ func TestMaskEmail(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"", ""},
-		{"a", "a"},
-		{"a@b.com", "a@b.com"},
-		{"ab@c.com", "a***@c.com"},
-		{"abcde@f.com", "a***@f.com"},
+			{"test@example.com", "te****@example.com"},
+			{"a@b.com", "*@b.com"},
+			{"ab@c.com", "*@c.com"},
+			{"abc@d.com", "ab****@d.com"},
+			{"invalid", "[invalid-email]"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.input, func(t *testing.T) {
-			res := maskEmail(tc.input)
+			res := security.MaskEmail(tc.input)
 			if res != tc.expected {
-				t.Errorf("maskEmail(%q) = %q; expected %q", tc.input, res, tc.expected)
+				t.Errorf("security.MaskEmail(%q) = %q; expected %q", tc.input, res, tc.expected)
 			}
 		})
 	}

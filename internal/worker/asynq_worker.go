@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"cve-tracker/internal/security"
 	"context"
 	"cve-tracker/internal/models"
 	"encoding/json"
@@ -130,12 +131,12 @@ func (w *Worker) handleEmailVerificationTask(ctx context.Context, t *asynq.Task)
 		return fmt.Errorf("invalid verification payload email/token: %w", asynq.SkipRetry)
 	}
 	if isEmailDomainBlacklisted(email) {
-		slog.Warn("Worker: Blocked verification email to blacklisted domain", "email", maskEmail(email))
+		slog.Warn("Worker: Blocked verification email to blacklisted domain", "email", security.MaskEmail(email))
 		return nil
 	}
 
 	if err := w.sendVerificationEmail(email, token); err != nil {
-		return fmt.Errorf("failed to send verification email to %s: %w", maskEmail(email), err)
+		return fmt.Errorf("failed to send verification email to %s: %w", security.MaskEmail(email), err)
 	}
 	return nil
 }
@@ -157,20 +158,20 @@ func (w *Worker) handleEmailChangeTask(ctx context.Context, t *asynq.Task) error
 	var oldErr error
 	if !isEmailDomainBlacklisted(oldEmail) {
 		if err := w.sendEmailChangeNotification(oldEmail, oldToken, "old"); err != nil {
-			oldErr = fmt.Errorf("failed to send old email change notification to %s: %w", maskEmail(oldEmail), err)
+			oldErr = fmt.Errorf("failed to send old email change notification to %s: %w", security.MaskEmail(oldEmail), err)
 		}
 	} else {
-		slog.Warn("Worker: Blocked email change notification to blacklisted domain", "email", maskEmail(oldEmail))
+		slog.Warn("Worker: Blocked email change notification to blacklisted domain", "email", security.MaskEmail(oldEmail))
 	}
 
 	// Send new email change notification
 	var newErr error
 	if !isEmailDomainBlacklisted(newEmail) {
 		if err := w.sendEmailChangeNotification(newEmail, newToken, "new"); err != nil {
-			newErr = fmt.Errorf("failed to send new email change notification to %s: %w", maskEmail(newEmail), err)
+			newErr = fmt.Errorf("failed to send new email change notification to %s: %w", security.MaskEmail(newEmail), err)
 		}
 	} else {
-		slog.Warn("Worker: Blocked email change notification to blacklisted domain", "email", maskEmail(newEmail))
+		slog.Warn("Worker: Blocked email change notification to blacklisted domain", "email", security.MaskEmail(newEmail))
 	}
 
 	if oldErr != nil && newErr != nil {
