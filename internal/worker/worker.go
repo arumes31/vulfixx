@@ -19,6 +19,7 @@ type Worker struct {
 	Mailer             EmailSender
 	HTTP               HTTPClient
 	AdminEmail         string
+	WebhookSecret      string
 	alertTimestamps    map[string]time.Time
 	alertMu            sync.Mutex
 	alertResendBackoff time.Duration

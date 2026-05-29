@@ -143,6 +143,7 @@ func TestLoadConfig(t *testing.T) {
 				"ADMIN_EMAIL":       "admin@example.com",
 				"ADMIN_PASSWORD":    "ap",
 				"ADMIN_TOTP_SECRET": "at",
+				"WEBHOOK_SECRET":    "w",
 			},
 			wantFatal: false,
 		},
@@ -187,7 +188,7 @@ func TestLoadConfig(t *testing.T) {
 				"APP_ENV", "DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME",
 				"REDIS_URL", "SESSION_KEY", "CSRF_KEY", "BASE_URL", "SMTP_HOST",
 				"SMTP_PORT", "SMTP_USER", "SMTP_PASS", "ADMIN_EMAIL", "ADMIN_PASSWORD",
-				"ADMIN_TOTP_SECRET", "SECURE_COOKIE",
+				"ADMIN_TOTP_SECRET", "SECURE_COOKIE", "WEBHOOK_SECRET",
 			}
 			for _, k := range keys {
 				val, ok := os.LookupEnv(k)

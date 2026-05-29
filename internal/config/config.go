@@ -58,6 +58,7 @@ type Config struct {
 	GRPCPort        string
 	GRPCCertFile    string
 	GRPCKeyFile     string
+	WebhookSecret   string
 }
 
 var (
@@ -98,6 +99,7 @@ func LoadConfig() {
 		GRPCPort:        getEnv("GRPC_PORT", "9091"),
 		GRPCCertFile:    getEnv("GRPC_CERT_FILE", ""),
 		GRPCKeyFile:     getEnv("GRPC_KEY_FILE", ""),
+		WebhookSecret:   getEnv("WEBHOOK_SECRET", ""),
 	}
 
 	port, err := strconv.Atoi(getEnv("SMTP_PORT", "587"))
@@ -151,6 +153,14 @@ func LoadConfig() {
 	}
 	if AppConfig.AdminTOTPSecret == "" {
 		missingFields = append(missingFields, "AdminTOTPSecret")
+	}
+	if AppConfig.WebhookSecret == "" {
+		if appEnv == "development" || appEnv == "local" || appEnv == "test" {
+			logPrintf("Warning: WEBHOOK_SECRET is not set. Generating a random one for development.")
+			AppConfig.WebhookSecret = generateRandomKey(32)
+		} else {
+			missingFields = append(missingFields, "WebhookSecret")
+		}
 	}
 	if len(missingFields) > 0 {
 		if appEnv != "development" {
