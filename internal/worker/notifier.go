@@ -6,13 +6,13 @@ import (
 	"crypto/sha256"
 	"cve-tracker/internal/auth"
 	"cve-tracker/internal/models"
+	"cve-tracker/internal/security"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"os"
 	"strings"
@@ -245,12 +245,7 @@ func (w *Worker) postJSON(webhookURL string, payload interface{}) (bool, string)
 			ips, _ := net.DefaultResolver.LookupIPAddr(dialCtx, parsedURL.Hostname())
 			var safeIP net.IP
 			for _, ipAddr := range ips {
-				if addr, ok := netip.AddrFromSlice(ipAddr.IP); ok {
-					if addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified() {
-						if os.Getenv("TEST_MODE") != "1" {
-							continue
-						}
-					}
+				if security.IsIPSafe(ipAddr.IP) {
 					safeIP = ipAddr.IP
 					break
 				}
@@ -416,12 +411,7 @@ func (w *Worker) sendGenericWebhook(webhookURL string, cve *models.CVE, asset, e
 			}
 			var safeIP net.IP
 			for _, ipAddr := range ips {
-				if addr, ok := netip.AddrFromSlice(ipAddr.IP); ok {
-					if addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified() {
-						if os.Getenv("TEST_MODE") != "1" {
-							continue
-						}
-					}
+				if security.IsIPSafe(ipAddr.IP) {
 					safeIP = ipAddr.IP
 					break
 				}
