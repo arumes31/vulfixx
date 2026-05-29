@@ -27,6 +27,7 @@ type App struct {
 	rateLimiter   *limiter.Limiter
 	rateLimiterMu sync.Mutex
 	AsynqClient   *asynq.Client
+	StatsInterval time.Duration
 }
 
 func NewApp(pool db.DBPool, redis db.RedisProvider, sessionStore sessions.Store, mailer EmailSender) *App {
@@ -37,5 +38,6 @@ func NewApp(pool db.DBPool, redis db.RedisProvider, sessionStore sessions.Store,
 		Mailer:       mailer,
 		TemplateMap:  make(map[string]*template.Template),
 		Now:          time.Now,
+		StatsInterval: 5 * time.Minute,
 	}
 }
