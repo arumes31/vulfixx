@@ -1135,14 +1135,32 @@ func (a *App) fetchPublicDashboardCVEs(ctx context.Context, filters publicDashbo
 			if sortOrder == "ASC" {
 				tieBreakOp = ">"
 			}
-			keysetCond := fmt.Sprintf(" AND (%s %s $%d%s OR (%s = $%d%s AND c.id %s $%d)) ", sortCol, op, argIdx, castType, sortCol, argIdx+1, castType, tieBreakOp, argIdx+2)
-			whereClause += keysetCond
+			var keysetCond strings.Builder
+			keysetCond.WriteString(" AND (")
+			keysetCond.WriteString(sortCol)
+			keysetCond.WriteString(" ")
+			keysetCond.WriteString(op)
+			keysetCond.WriteString(" $")
+			keysetCond.WriteString(strconv.Itoa(argIdx))
+			keysetCond.WriteString(castType)
+			keysetCond.WriteString(" OR (")
+			keysetCond.WriteString(sortCol)
+			keysetCond.WriteString(" = $")
+			keysetCond.WriteString(strconv.Itoa(argIdx + 1))
+			keysetCond.WriteString(castType)
+			keysetCond.WriteString(" AND c.id ")
+			keysetCond.WriteString(tieBreakOp)
+			keysetCond.WriteString(" $")
+			keysetCond.WriteString(strconv.Itoa(argIdx + 2))
+			keysetCond.WriteString(")) ")
+			whereClause += keysetCond.String()
 			args = append(args, filters.cursorStr, filters.cursorStr, cursorID)
 			argIdx += 3
 		}
 	}
 
-	query := `
+	var qBuilder strings.Builder
+	qBuilder.WriteString(`
 		SELECT
 			c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev,
 			c.published_date, c.updated_date, 'active' as status, COALESCE(c."references", '{}'),
@@ -1150,9 +1168,19 @@ func (a *App) fetchPublicDashboardCVEs(ctx context.Context, filters publicDashbo
 			COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'),
 			COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]'), COALESCE(c.priority, 'P3') as priority
 		FROM cves c
-	`
-	query += whereClause
-	query += fmt.Sprintf(" ORDER BY %s %s NULLS LAST, c.id DESC LIMIT $%d OFFSET $%d ", sortCol, sortOrder, argIdx, argIdx+1)
+	`)
+	qBuilder.WriteString(whereClause)
+	qBuilder.WriteString(" ORDER BY ")
+	qBuilder.WriteString(sortCol)
+	qBuilder.WriteString(" ")
+	qBuilder.WriteString(sortOrder)
+	qBuilder.WriteString(" NULLS LAST, c.id DESC LIMIT $")
+	qBuilder.WriteString(strconv.Itoa(argIdx))
+	qBuilder.WriteString(" OFFSET $")
+	qBuilder.WriteString(strconv.Itoa(argIdx + 1))
+	qBuilder.WriteString(" ")
+	query := qBuilder.String()
+
 	finalArgs := append(args, filters.pageSize, filters.offset)
 
 	var cves []models.CVE
