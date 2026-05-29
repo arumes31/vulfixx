@@ -49,3 +49,19 @@ func TestIsIPSafe(t *testing.T) {
 		})
 	}
 }
+
+func TestIsIPSafe_NilAndMalformed(t *testing.T) {
+	t.Run("NilIP", func(t *testing.T) {
+		if IsIPSafe(nil) {
+			t.Error("expected IsIPSafe(nil) to be false")
+		}
+	})
+
+	t.Run("MalformedIPLength", func(t *testing.T) {
+		// A 3-byte IP slice is neither 4 nor 16 bytes, making netip.AddrFromSlice return ok=false
+		malformed := net.IP([]byte{1, 2, 3})
+		if IsIPSafe(malformed) {
+			t.Error("expected IsIPSafe(malformed) to be false")
+		}
+	})
+}

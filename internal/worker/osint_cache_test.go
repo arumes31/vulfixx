@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -27,10 +28,10 @@ func TestWorker_FetchOSINTLinks_Caching(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	defer rdb.Close()
 
-	callCount := 0
+	var callCount atomic.Int32
 	httpClient := &MockHTTPClient{
 		DoFunc: func(req *http.Request) (*http.Response, error) {
-			callCount++
+			callCount.Add(1)
 			if strings.Contains(req.URL.String(), "hn.algolia.com") {
 				return &http.Response{
 					StatusCode: http.StatusOK,
@@ -53,16 +54,16 @@ func TestWorker_FetchOSINTLinks_Caching(t *testing.T) {
 
 	// First call - should fetch from APIs
 	data1 := w.fetchOSINTLinks(context.Background(), cveID)
-	if callCount == 0 {
+	if callCount.Load() == 0 {
 		t.Error("Expected API calls on first fetch, but got none")
 	}
 
-	currentCallCount := callCount
+	currentCallCount := callCount.Load()
 
 	// Second call - should fetch from cache
 	data2 := w.fetchOSINTLinks(context.Background(), cveID)
-	if callCount != currentCallCount {
-		t.Errorf("Expected no new API calls on second fetch (cached), but callCount increased from %d to %d", currentCallCount, callCount)
+	if callCount.Load() != currentCallCount {
+		t.Errorf("Expected no new API calls on second fetch (cached), but callCount increased from %d to %d", currentCallCount, callCount.Load())
 	}
 
 	// Verify data is the same
