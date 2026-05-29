@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
@@ -64,6 +66,7 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		cves = append(cves, c)
 	}
 
+	batch := &pgx.Batch{}
 	for _, c := range cves {
 		// 1. Social Sentiment (Reddit & HN)
 		w.updateSocialSentiment(ctx, &c)
@@ -71,15 +74,45 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		// 2. Duplicate Detection (Simplified)
 		w.detectDuplicates(ctx, &c)
 
-		// Update DB
+		// Queue update
 		osintData, _ := json.Marshal(c.OSINTData)
-		_, err = w.Pool.Exec(ctx, "UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
-		if err != nil {
-			slog.Error("Worker: Failed to update OSINT data", "cve_id", c.CVEID, "error", err)
-		}
+		batch.Queue("UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
 
 		// Throttle to avoid rate limits
 		time.Sleep(500 * time.Millisecond)
+	}
+
+	if batch.Len() > 0 {
+		tx, err := w.Pool.Begin(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to begin transaction for intelligence sync: %w", err)
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+
+		br := tx.SendBatch(ctx, batch)
+		if br != nil {
+			for i := 0; i < batch.Len(); i++ {
+				if _, err := br.Exec(); err != nil {
+					slog.Error("Worker: Batch item failed in intelligence sync", "error", err)
+				}
+			}
+			if err := br.Close(); err != nil {
+				slog.Error("Worker: Failed to close batch results in intelligence sync", "error", err)
+			}
+		} else {
+			// Fallback for mock drivers
+			for _, c := range cves {
+				osintData, _ := json.Marshal(c.OSINTData)
+				_, err = tx.Exec(ctx, "UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
+				if err != nil {
+					slog.Error("Worker: Fallback update failed in intelligence sync", "cve_id", c.CVEID, "error", err)
+				}
+			}
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("failed to commit intelligence sync batch: %w", err)
+		}
 	}
 
 	w.updateTaskStats(ctx, "intelligence_sync")
