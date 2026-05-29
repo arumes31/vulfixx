@@ -26,19 +26,15 @@ func TestStartStatsTicker(t *testing.T) {
 		defer cancel()
 
 		// Expectations for initial refresh
-		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM cves").WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(10))
-		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM cves WHERE updated_date >= NOW\\(\\) - INTERVAL '24 hours'").WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(2))
-		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM cves WHERE cisa_kev = TRUE").WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(3))
-		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM cves WHERE cvss_score >= 9.0").WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
+		mock.ExpectQuery("(?i)SELECT.*COUNT\\(\\*\\).*COUNT\\(\\*\\) FILTER.*updated_date.*COUNT\\(\\*\\) FILTER.*cisa_kev.*COUNT\\(\\*\\) FILTER.*cvss_score").
+			WillReturnRows(pgxmock.NewRows([]string{"total", "new24h", "kev", "crit"}).AddRow(10, 2, 3, 1))
 		mock.ExpectQuery("SELECT.*COUNT\\(\\*\\) FILTER.*FROM cves").WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(1, 2, 3, 4))
 		mock.ExpectQuery("SELECT cwe_id, COALESCE\\(MAX\\(cwe_name\\), 'Unknown'\\), COUNT\\(\\*\\) as cnt").WillReturnRows(pgxmock.NewRows([]string{"cwe_id", "cwe_name", "cnt"}).AddRow("CWE-79", "XSS", 5))
 		mock.ExpectQuery("SELECT.*COUNT\\(\\*\\) FILTER.*FROM cves").WillReturnRows(pgxmock.NewRows([]string{"e1", "e2", "e3", "e4"}).AddRow(1, 1, 1, 1))
 
 		// Expectations for second refresh (ticker)
-		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM cves").WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(11))
-		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM cves WHERE updated_date >= NOW\\(\\) - INTERVAL '24 hours'").WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(3))
-		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM cves WHERE cisa_kev = TRUE").WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(4))
-		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM cves WHERE cvss_score >= 9.0").WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(2))
+		mock.ExpectQuery("(?i)SELECT.*COUNT\\(\\*\\).*COUNT\\(\\*\\) FILTER.*updated_date.*COUNT\\(\\*\\) FILTER.*cisa_kev.*COUNT\\(\\*\\) FILTER.*cvss_score").
+			WillReturnRows(pgxmock.NewRows([]string{"total", "new24h", "kev", "crit"}).AddRow(11, 3, 4, 2))
 		mock.ExpectQuery("SELECT.*COUNT\\(\\*\\) FILTER.*FROM cves").WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(2, 3, 4, 2))
 		mock.ExpectQuery("SELECT cwe_id, COALESCE\\(MAX\\(cwe_name\\), 'Unknown'\\), COUNT\\(\\*\\) as cnt").WillReturnRows(pgxmock.NewRows([]string{"cwe_id", "cwe_name", "cnt"}).AddRow("CWE-89", "SQLi", 6))
 		mock.ExpectQuery("SELECT.*COUNT\\(\\*\\) FILTER.*FROM cves").WillReturnRows(pgxmock.NewRows([]string{"e1", "e2", "e3", "e4"}).AddRow(2, 2, 2, 2))
