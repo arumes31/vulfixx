@@ -7,12 +7,15 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"cve-tracker/internal/models"
 
 	"github.com/jackc/pgx/v5"
 )
+
+const osvConcurrency = 10
 
 type osvResponse struct {
 	ID       string `json:"id"`
@@ -47,6 +50,13 @@ func (w *Worker) syncOSVPeriodically(ctx context.Context) {
 	}
 }
 
+type updateItem struct {
+	cve     models.CVE
+	osvData *osvResponse
+	hasData bool
+	changed bool
+}
+
 func (w *Worker) syncOSV(ctx context.Context) {
 	slog.Info("Worker: [SYNC] Starting OSV (Open Source Vulnerabilities) synchronization...")
 
@@ -76,85 +86,98 @@ func (w *Worker) syncOSV(ctx context.Context) {
 		return
 	}
 
-	type updateItem struct {
-		cve     models.CVE
-		osvData *osvResponse
-		hasData bool
-		changed bool
-	}
 	var updates []updateItem
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	cveChan := make(chan models.CVE, len(cves))
 
-	for _, cve := range cves {
-		select {
-		case <-ctx.Done():
-			goto executeUpdates
-		default:
-		}
+	// Start workers
+	for i := 0; i < osvConcurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for cve := range cveChan {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
 
-		osvData, err := w.fetchOSVData(ctx, cve.CVEID)
-		if err != nil {
-			continue
-		}
+				osvData, err := w.fetchOSVData(ctx, cve.CVEID)
+				if err != nil {
+					continue
+				}
 
-		item := updateItem{cve: cve, osvData: osvData}
-		if osvData != nil {
-			item.hasData = true
-			// Deep Enrichment: Extract products and versions
-			for _, aff := range osvData.Affected {
-				vendor := aff.Package.Ecosystem
-				product := aff.Package.Name
+				item := updateItem{cve: cve, osvData: osvData}
+				if osvData != nil {
+					item.hasData = true
+					// Deep Enrichment: Extract products and versions
+					for _, aff := range osvData.Affected {
+						vendor := aff.Package.Ecosystem
+						product := aff.Package.Name
 
-				// Build version string from ranges
-				var versionParts []string
-				for _, r := range aff.Ranges {
-					var start, end string
-					for _, ev := range r.Events {
-						if v, ok := ev["introduced"]; ok && v != "0" {
-							start = "≥" + v
+						// Build version string from ranges
+						var versionParts []string
+						for _, r := range aff.Ranges {
+							var start, end string
+							for _, ev := range r.Events {
+								if v, ok := ev["introduced"]; ok && v != "0" {
+									start = "≥" + v
+								}
+								if v, ok := ev["fixed"]; ok {
+									end = "<" + v
+								}
+								if v, ok := ev["last_affected"]; ok {
+									end = "≤" + v
+								}
+							}
+							if start != "" && end != "" {
+								versionParts = append(versionParts, start+" "+end)
+							} else if start != "" {
+								versionParts = append(versionParts, start)
+							} else if end != "" {
+								versionParts = append(versionParts, end)
+							}
 						}
-						if v, ok := ev["fixed"]; ok {
-							end = "<" + v
+
+						versionStr := strings.Join(versionParts, ", ")
+						if versionStr == "" && len(aff.Versions) > 0 {
+							// Fallback to first few versions if no ranges
+							if len(aff.Versions) > 3 {
+								versionStr = strings.Join(aff.Versions[:3], ", ") + "..."
+							} else {
+								versionStr = strings.Join(aff.Versions, ", ")
+							}
 						}
-						if v, ok := ev["last_affected"]; ok {
-							end = "≤" + v
+
+						item.cve.AddAffectedProduct(vendor, product, versionStr, false)
+
+						// If primary vendor/product is missing, use OSV as authoritative
+						if item.cve.Vendor == "" {
+							item.cve.Vendor = vendor
 						}
-					}
-					if start != "" && end != "" {
-						versionParts = append(versionParts, start+" "+end)
-					} else if start != "" {
-						versionParts = append(versionParts, start)
-					} else if end != "" {
-						versionParts = append(versionParts, end)
+						if item.cve.Product == "" {
+							item.cve.Product = product
+						}
+						item.changed = true
 					}
 				}
-
-				versionStr := strings.Join(versionParts, ", ")
-				if versionStr == "" && len(aff.Versions) > 0 {
-					// Fallback to first few versions if no ranges
-					if len(aff.Versions) > 3 {
-						versionStr = strings.Join(aff.Versions[:3], ", ") + "..."
-					} else {
-						versionStr = strings.Join(aff.Versions, ", ")
-					}
-				}
-
-				item.cve.AddAffectedProduct(vendor, product, versionStr, false)
-
-				// If primary vendor/product is missing, use OSV as authoritative
-				if item.cve.Vendor == "" {
-					item.cve.Vendor = vendor
-				}
-				if item.cve.Product == "" {
-					item.cve.Product = product
-				}
-				item.changed = true
+				mu.Lock()
+				updates = append(updates, item)
+				mu.Unlock()
+				// Reduced sleep since we are concurrent but still want to be polite
+				time.Sleep(50 * time.Millisecond)
 			}
-		}
-		updates = append(updates, item)
-		time.Sleep(100 * time.Millisecond) // OSV is fast, but we're being polite
+		}()
 	}
 
-executeUpdates:
+	// Feed workers
+	for _, cve := range cves {
+		cveChan <- cve
+	}
+	close(cveChan)
+	wg.Wait()
+
 	if len(updates) == 0 {
 		w.updateTaskStats(ctx, "osv_sync")
 		return
