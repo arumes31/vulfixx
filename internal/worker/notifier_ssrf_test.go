@@ -2,6 +2,7 @@ package worker
 
 import (
 	"cve-tracker/internal/models"
+	"cve-tracker/internal/security"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -22,7 +23,7 @@ func TestWebhookSSRF_Vulnerabilities(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	w := &Worker{HTTP: http.DefaultClient}
+	w := &Worker{HTTP: http.DefaultClient, WebhookSecret: "test_secret"}
 	cve := &models.CVE{CVEID: "CVE-2024-TEST", Description: "Test", CVSSScore: 5.0}
 
 	t.Run("BlocksNonStandardPort", func(t *testing.T) {
@@ -57,7 +58,7 @@ func TestWebhookSSRF_AllowedPorts(t *testing.T) {
 		os.Unsetenv("WEBHOOK_SECRET")
 	}()
 
-	w := &Worker{HTTP: http.DefaultClient}
+	w := &Worker{HTTP: http.DefaultClient, WebhookSecret: "test_secret"}
 	cve := &models.CVE{CVEID: "CVE-2024-TEST", Description: "Test", CVSSScore: 5.0}
 
     allowedPorts := []string{"80", "443", "8080", "8443"}
@@ -91,7 +92,7 @@ func TestWebhookSSRF_Redirects(t *testing.T) {
 	}))
 	defer redirectServer.Close()
 
-	w := &Worker{HTTP: http.DefaultClient}
+	w := &Worker{HTTP: http.DefaultClient, WebhookSecret: "test_secret"}
 	cve := &models.CVE{CVEID: "CVE-2024-TEST", Description: "Test", CVSSScore: 5.0}
 
 	success, err := w.sendGenericWebhook(redirectServer.URL, cve, "Asset", "test@example.com")
@@ -121,8 +122,8 @@ func TestIsSafeIP_Internal(t *testing.T) {
 
 	for _, tc := range tests {
 		ip := net.ParseIP(tc.ip)
-		if isSafeIP(ip) != tc.safe {
-			t.Errorf("isSafeIP(%s) = %v, want %v", tc.ip, !tc.safe, tc.safe)
+		if security.IsIPSafe(ip) != tc.safe {
+			t.Errorf("security.IsIPSafe(%s) = %v, want %v", tc.ip, !tc.safe, tc.safe)
 		}
 	}
 }

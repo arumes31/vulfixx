@@ -30,11 +30,11 @@ func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) models.JSONB
 
 	data := make(models.JSONBMap)
 	var mu sync.Mutex
-	g, ctx := errgroup.WithContext(ctx)
+	g, gctx := errgroup.WithContext(ctx)
 
 	// Hacker News
 	g.Go(func() error {
-		if _, links, err := w.fetchHNMentions(ctx, cveID); err == nil {
+		if _, links, err := w.fetchHNMentions(gctx, cveID); err == nil {
 			mu.Lock()
 			data["hn"] = links
 			mu.Unlock()
@@ -46,7 +46,7 @@ func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) models.JSONB
 
 	// Reddit
 	g.Go(func() error {
-		if _, links, err := w.fetchRedditMentions(ctx, cveID); err == nil {
+		if _, links, err := w.fetchRedditMentions(gctx, cveID); err == nil {
 			mu.Lock()
 			data["reddit"] = links
 			mu.Unlock()
