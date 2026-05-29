@@ -2,12 +2,25 @@ package web
 
 import (
 	"html/template"
+	"os"
+	"strings"
 	"testing"
+	"time"
+
+	"cve-tracker/internal/models"
 )
 
 func TestTemplateFuncs_Logic(t *testing.T) {
 	app := &App{}
 	funcs := app.GetTemplateFuncs()
+
+	t.Run("formatDate", func(t *testing.T) {
+		f := funcs["formatDate"].(func(time.Time) string)
+		dt := time.Date(2024, time.May, 15, 0, 0, 0, 0, time.UTC)
+		if got := f(dt); got != "May 15, 2024" {
+			t.Errorf("expected May 15, 2024, got %s", got)
+		}
+	})
 
 	t.Run("map", func(t *testing.T) {
 		f := funcs["map"].(func(...interface{}) map[string]interface{})
@@ -17,6 +30,20 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 		}
 		if f("a") != nil {
 			t.Error("expected nil for odd number of arguments")
+		}
+		m2 := f(1, "a") // non-string key
+		if len(m2) != 0 {
+			t.Errorf("expected empty map for non-string key, got %v", m2)
+		}
+	})
+
+	t.Run("contains", func(t *testing.T) {
+		f := funcs["contains"].(func(string, string) bool)
+		if !f("hello world", "world") {
+			t.Error("expected true for contains")
+		}
+		if f("hello world", "foo") {
+			t.Error("expected false for contains")
 		}
 	})
 
@@ -50,24 +77,35 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 		fc := funcs["severityColor"].(func(float64) string)
 		fb := funcs["severityBg"].(func(float64) string)
 
-		if fc(9.5) != "text-red-500" {
-			t.Errorf("expected red for 9.5, got %s", fc(9.5))
-		}
-		if fb(9.5) != "bg-red-500" {
-			t.Errorf("expected red for 9.5, got %s", fb(9.5))
+		cases := []struct {
+			score float64
+			color string
+			bg    string
+		}{
+			{9.5, "text-red-500", "bg-red-500"},
+			{7.5, "text-orange-500", "bg-orange-500"},
+			{4.5, "text-yellow-500", "bg-yellow-500"},
+			{2.0, "text-blue-500", "bg-blue-500"},
+			{-1, "text-gray-400", "bg-gray-400"},
+			{11, "text-gray-400", "bg-gray-400"},
 		}
 
-		if fc(7.5) != "text-orange-500" {
-			t.Errorf("expected orange for 7.5, got %s", fc(7.5))
+		for _, tc := range cases {
+			if got := fc(tc.score); got != tc.color {
+				t.Errorf("color for %f: expected %s, got %s", tc.score, tc.color, got)
+			}
+			if got := fb(tc.score); got != tc.bg {
+				t.Errorf("bg for %f: expected %s, got %s", tc.score, tc.bg, got)
+			}
 		}
-		if fc(4.5) != "text-yellow-500" {
-			t.Errorf("expected yellow for 4.5, got %s", fc(4.5))
-		}
-		if fc(2.0) != "text-blue-500" {
-			t.Errorf("expected blue for 2.0, got %s", fc(2.0))
-		}
-		if fc(-1) != "text-gray-400" {
-			t.Errorf("expected gray for -1, got %s", fc(-1))
+	})
+
+	t.Run("marshal", func(t *testing.T) {
+		f := funcs["marshal"].(func(interface{}) template.JS)
+		data := map[string]string{"foo": "bar"}
+		got := string(f(data))
+		if !strings.Contains(got, "\"foo\":\"bar\"") {
+			t.Errorf("expected JSON string, got %s", got)
 		}
 	})
 
@@ -100,6 +138,41 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 		}
 	})
 
+	t.Run("detectProduct", func(t *testing.T) {
+		f := funcs["detectProduct"].(func(models.CVE) map[string]string)
+		cve := models.CVE{
+			Description: "Microsoft Windows vulnerability",
+		}
+		res := f(cve)
+		if res == nil || res["vendor"] != "Microsoft" {
+			t.Errorf("expected Microsoft, got %v", res)
+		}
+
+		cveNil := models.CVE{Description: "Unknown thing"}
+		if f(cveNil) != nil {
+			t.Error("expected nil for unknown product")
+		}
+	})
+
+	t.Run("getLineage", func(t *testing.T) {
+		f := funcs["getLineage"].(func(models.CVE) []string)
+		cve := models.CVE{
+			CVEID:       "CVE-2024-0001",
+			Description: "Related to CVE-2024-0002",
+		}
+		res := f(cve)
+		if len(res) != 1 || res[0] != "CVE-2024-0002" {
+			t.Errorf("expected [CVE-2024-0002], got %v", res)
+		}
+	})
+
+	t.Run("lower", func(t *testing.T) {
+		f := funcs["lower"].(func(string) string)
+		if f("HELLO") != "hello" {
+			t.Errorf("expected hello, got %s", f("HELLO"))
+		}
+	})
+
 	t.Run("parseCPE", func(t *testing.T) {
 		f := funcs["parseCPE"].(func(string) map[string]string)
 		res := f("cpe:2.3:a:microsoft:office:2019:*:*:*:*:*:*:*")
@@ -129,6 +202,20 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 		}
 		if funcs["max"].(func(float64, float64) float64)(10, 20) != 20 {
 			t.Error("max failed")
+		}
+	})
+
+	t.Run("GetBaseURL", func(t *testing.T) {
+		f := funcs["GetBaseURL"].(func() string)
+
+		os.Setenv("BASE_URL", "https://example.com/")
+		if f() != "https://example.com" {
+			t.Errorf("expected https://example.com, got %s", f())
+		}
+
+		os.Setenv("BASE_URL", "")
+		if f() != "http://localhost:8080" {
+			t.Errorf("expected http://localhost:8080, got %s", f())
 		}
 	})
 }
