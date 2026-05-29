@@ -92,7 +92,7 @@ func getSessionInt64(v any) (int64, bool) {
 	return 0, false
 }
 
-func (a *App) GetUserID(r *http.Request) (int, bool) {
+func (a *App) GetActiveUserID(r *http.Request) (int, bool) {
 	if a.SessionStore == nil {
 		return 0, false
 	}
@@ -101,6 +101,10 @@ func (a *App) GetUserID(r *http.Request) (int, bool) {
 		return 0, false
 	}
 	return getSessionInt(session.Values["user_id"])
+}
+
+func (a *App) GetUserID(r *http.Request) (int, bool) {
+	return a.GetActiveUserID(r)
 }
 
 func (a *App) GetActiveTeamID(r *http.Request) (int, bool) {
