@@ -289,6 +289,10 @@ goose -dir internal/db/sql/migrations postgres "host=localhost user=youruser dbn
 The codebase has undergone a comprehensive security audit (April 2026) using automated static analysis (`gosec`), dependency scanning (`govulncheck`), and manual penetration testing of the public surface.
 
 ### Recent Remediation Actions
+- **Route Token Leak Protection**: Removed sensitive tokens from URL path parameters in favor of query-based extraction, preventing token leakage in web server access logs and browser histories.
+- **Nil-Pointer Safety in RenderTemplate**: Implemented dynamic reflection checks on templates using `v.IsNil()` to completely eliminate runtime nil pointer panics on pointer rendering paths.
+- **Redis Client Safety**: Hardened the dashboard handlers with safety checks to gracefully handle uninitialized Redis caches, falling back cleanly to direct database queries.
+- **JSON Marshaling Error Mitigation**: Ensured all OSV synchronization routines log and gracefully handle JSON serialization errors, avoiding silent database corruption or data loss.
 - **XSS Mitigation (CSP Nonces)**: Implemented unique per-request cryptographic nonces for all inline scripts.
 - **Structured Data Protection**: Hardened JSON-LD generation with backend marshaling and `template.HTML` escaping.
 - **Public Surface Abuse Prevention**: Integrated `RateLimitMiddleware` on all public SEO routes and implemented strict pagination depth validation.
