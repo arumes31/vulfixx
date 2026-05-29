@@ -67,108 +67,75 @@ func (w *Worker) syncGitHubBuzz(ctx context.Context) {
 
 CVELoop:
 	for _, cveID := range cveIDs {
-
 		select {
 		case <-ctx.Done():
 			goto executeRemaining
 		default:
 		}
 
-		const maxGHRetries = 3
 		var ghResp struct {
 			TotalCount int `json:"total_count"`
 		}
-		fetchOK := false
-		for attempt := 0; attempt < maxGHRetries; attempt++ {
-			githubURL := fmt.Sprintf("https://api.github.com/search/repositories?q=%s", cveID)
+
+		githubURL := fmt.Sprintf("https://api.github.com/search/repositories?q=%s", cveID)
+		resp, err := DoWithRetry(ctx, w.HTTP, RetryConfig{
+			MaxRetries:  3,
+			MaxWait:     5 * time.Minute,
+			ShouldRetry: githubShouldRetry,
+			Label:       "GitHub Buzz Sync",
+		}, func() (*http.Request, error) {
 			req, err := http.NewRequestWithContext(ctx, "GET", githubURL, nil)
 			if err != nil {
-				slog.Error("Worker: [ERROR] Failed to create GitHub request", "cve_id", cveID, "error", err)
-				continue CVELoop
+				return nil, err
 			}
 			req.Header.Set("Accept", "application/vnd.github.v3+json")
 			req.Header.Set("User-Agent", "Vulfixx-Threat-Intel")
 			if token := os.Getenv("GITHUB_TOKEN"); token != "" {
 				req.Header.Set("Authorization", "token "+token)
 			}
-			resp, err := w.HTTP.Do(req)
+		resp, err := DoWithRetry(ctx, w.HTTP, RetryConfig{
+			MaxRetries:  3,
+			MaxWait:     5 * time.Minute,
+			ShouldRetry: githubShouldRetry,
+			Label:       "GitHub Buzz Sync",
+		}, func() (*http.Request, error) {
+			req, err := http.NewRequestWithContext(ctx, "GET", githubURL, nil)
 			if err != nil {
-				slog.Error("Worker: [ERROR] Failed to fetch GitHub buzz", "cve_id", cveID, "error", err)
-				waitDur := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
-				select {
-				case <-ctx.Done():
-					goto executeRemaining
-				case <-time.After(waitDur):
-				}
-				continue // retry
+				return nil, err
 			}
-			if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
-				_ = resp.Body.Close()
-				var waitDur time.Duration
-				if reset := resp.Header.Get("X-RateLimit-Reset"); reset != "" {
-					if ts, err := strconv.ParseInt(reset, 10, 64); err == nil {
-						waitDur = time.Until(time.Unix(ts, 0))
-						if waitDur < 0 {
-							waitDur = 0
-						}
-					}
-				}
-				if waitDur == 0 {
-					waitDur = time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
-				}
-				// Clamp to a safe maximum
-				maxWait := 5 * time.Minute
-				if waitDur > maxWait {
-					waitDur = maxWait
-				}
-				slog.Warn("Worker: [WARN] GitHub rate limited", "cve_id", cveID, "wait_duration", waitDur, "attempt", attempt+1, "max_retries", maxGHRetries)
-				select {
-				case <-ctx.Done():
-					goto executeRemaining
-				case <-time.After(waitDur):
-				}
-				continue // retry
+			req.Header.Set("Accept", "application/vnd.github.v3+json")
+			req.Header.Set("User-Agent", "Vulfixx-Threat-Intel")
+			if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+				req.Header.Set("Authorization", "token "+token)
 			}
-			if resp.StatusCode >= 500 {
-				slog.Warn("Worker: [WARN] GitHub API returned server error", "status", resp.StatusCode, "cve_id", cveID)
-				_ = resp.Body.Close()
-				waitDur := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
-				select {
-				case <-ctx.Done():
-					goto executeRemaining
-				case <-time.After(waitDur):
-				}
-				continue // retry
-			}
-			if resp.StatusCode != http.StatusOK {
-				slog.Warn("Worker: [WARN] GitHub API returned non-OK status", "status", resp.StatusCode, "cve_id", cveID)
-				_ = resp.Body.Close()
-				continue CVELoop
-			}
-			err = json.NewDecoder(resp.Body).Decode(&ghResp)
-			_ = resp.Body.Close()
-			if err != nil {
-				slog.Error("Worker: [ERROR] Failed to decode GitHub response", "cve_id", cveID, "error", err)
-				waitDur := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
-				select {
-				case <-ctx.Done():
-					goto executeRemaining
-				case <-time.After(waitDur):
-				}
-				continue // retry
-			}
-			fetchOK = true
-			break // success
+			return req, nil
+		})
+
+		if err != nil {
+			slog.Error("Worker: [ERROR] GitHub request failed after retries", "cve_id", cveID, "error", err)
+			continue CVELoop
 		}
-		if fetchOK {
-			pendingUpdates = append(pendingUpdates, githubUpdateItem{cveID: cveID, totalCount: ghResp.TotalCount})
-			if len(pendingUpdates) >= 50 {
-				w.updateGitHubBatch(ctx, pendingUpdates)
-				pendingUpdates = nil
-			}
-		} else {
-			slog.Warn("Worker: [WARN] Skipping DB update for CVE — all GitHub retries failed", "cve_id", cveID)
+		if resp == nil {
+			continue CVELoop
 		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			slog.Warn("Worker: [WARN] GitHub API returned non-OK status", "status", resp.StatusCode, "cve_id", cveID)
+			continue CVELoop
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&ghResp); err != nil {
+			slog.Error("Worker: [ERROR] Failed to decode GitHub response", "cve_id", cveID, "error", err)
+			continue CVELoop
+		}
+
+		pendingUpdates = append(pendingUpdates, githubUpdateItem{cveID: cveID, totalCount: ghResp.TotalCount})
+		if len(pendingUpdates) >= 50 {
+			w.updateGitHubBatch(ctx, pendingUpdates)
+			pendingUpdates = nil
+		}
+
 		select {
 		case <-ctx.Done():
 			goto executeRemaining
@@ -224,4 +191,35 @@ func (w *Worker) updateGitHubBatch(ctx context.Context, updates []githubUpdateIt
 	if err := tx.Commit(ctx); err != nil {
 		slog.Error("Worker: [ERROR] Failed to commit GitHub updates", "error", err)
 	}
+}
+
+func githubShouldRetry(resp *http.Response, err error, attempt int) (bool, time.Duration) {
+	if err != nil {
+		return true, time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
+	}
+	if resp == nil {
+		return false, 0
+	}
+
+	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
+		var waitDur time.Duration
+		if reset := resp.Header.Get("X-RateLimit-Reset"); reset != "" {
+			if ts, err := strconv.ParseInt(reset, 10, 64); err == nil {
+				waitDur = time.Until(time.Unix(ts, 0))
+				if waitDur < 0 {
+					waitDur = 0
+				}
+			}
+		}
+		if waitDur == 0 {
+			waitDur = time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
+		}
+		return true, waitDur
+	}
+
+	if resp.StatusCode >= 500 {
+		return true, time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
+	}
+
+	return false, 0
 }

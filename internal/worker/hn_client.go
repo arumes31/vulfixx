@@ -8,8 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strconv"
-	"time"
 )
 
 // HNClient defines the interface for fetching Hacker News mentions.
@@ -38,37 +36,20 @@ func (c *algoliaHNClient) FetchMentions(ctx context.Context, query string) (int,
 	encodedQuery := url.QueryEscape(query)
 	hnURL := fmt.Sprintf("https://hn.algolia.com/api/v1/search?query=%s&tags=story", encodedQuery)
 
-	var resp *http.Response
-	var err error
-	for retries := 0; retries < 3; retries++ {
-		req, errReq := http.NewRequestWithContext(ctx, "GET", hnURL, nil)
-		if errReq != nil {
-			return 0, nil, errReq
+	resp, err := DoWithRetry(ctx, c.httpClient, RetryConfig{
+		MaxRetries:  3,
+		ShouldRetry: DefaultShouldRetry,
+		Label:       "HN Mention Fetch",
+	}, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, "GET", hnURL, nil)
+		if err != nil {
+			return nil, err
 		}
 		req.Header.Set("User-Agent", "Vulfixx/2.0 (Threat Intelligence Bot)")
-
-		resp, err = c.httpClient.Do(req)
-		if err != nil {
-			return 0, nil, err
-		}
-
-		if resp.StatusCode == http.StatusTooManyRequests {
-			_ = resp.Body.Close()
-			waitTime := 5 * time.Second
-			if ra := resp.Header.Get("Retry-After"); ra != "" {
-				if seconds, errSec := strconv.Atoi(ra); errSec == nil {
-					waitTime = time.Duration(seconds) * time.Second
-				}
-			}
-			slog.Warn("Worker: HN rate limited", "query", query, "retry_after", waitTime)
-			select {
-			case <-ctx.Done():
-				return 0, nil, ctx.Err()
-			case <-time.After(waitTime):
-				continue
-			}
-		}
-		break
+		return req, nil
+	})
+	if err != nil {
+		return 0, nil, err
 	}
 
 	if resp == nil {
