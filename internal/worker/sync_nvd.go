@@ -76,13 +76,13 @@ type NVDResponse struct {
 func (w *Worker) fetchCVEsPeriodically(ctx context.Context) {
 	w.waitUntilNextRun(ctx, "nvd_sync", 1*time.Hour, 10*time.Second)
 	w.fetchFromNVD(ctx)
-	ticker := time.NewTicker(1 * time.Hour)
+	ticker := w.TickerFactory(1 * time.Hour)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-ticker.Chan():
 			w.fetchFromNVD(ctx)
 		}
 	}

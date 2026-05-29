@@ -20,13 +20,13 @@ func (w *Worker) syncGitHubBuzzPeriodically(ctx context.Context) {
 	w.waitUntilNextRun(ctx, "github_buzz_sync", 4*time.Hour, 1*time.Minute)
 	w.syncGitHubBuzz(ctx)
 
-	ticker := time.NewTicker(4 * time.Hour)
+	ticker := w.TickerFactory(4 * time.Hour)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-ticker.Chan():
 			w.syncGitHubBuzz(ctx)
 		}
 	}

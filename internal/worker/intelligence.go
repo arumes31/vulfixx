@@ -24,14 +24,14 @@ func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
 		slog.Error("Worker: Initial intelligence sync error", "error", err)
 	}
 
-	ticker := time.NewTicker(2 * time.Hour)
+	ticker := w.TickerFactory(2 * time.Hour)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-ticker.Chan():
 			slog.Info("Worker: Starting Intelligence Sync (Social Sentiment & Duplicate Detection)...")
 			if err := w.processIntelligence(ctx); err != nil {
 				slog.Error("Worker: Intelligence sync error", "error", err)

@@ -89,3 +89,67 @@ func TestStaticFileHandler(t *testing.T) {
 		}
 	})
 }
+
+func TestRouter_CSPReportCSRFBypass(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create pgxmock: %v", err)
+	}
+	defer mock.Close()
+
+	app := setupTestApp(t, mock)
+	cfg := &config.Config{
+		CSRFKey:      "01234567890123456789012345678912", // 32 bytes
+		SecureCookie: false,
+	}
+
+	handler, err := app.Routes(cfg)
+	if err != nil {
+		t.Fatalf("failed to construct routes: %v", err)
+	}
+
+	t.Run("GET_RejectedWith405", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/csp-report", nil)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusMethodNotAllowed {
+			t.Errorf("expected 405 Method Not Allowed, got %d", rr.Code)
+		}
+	})
+
+	t.Run("POST_UnsupportedMIME_RejectedWith415", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/csp-report", nil)
+		req.Header.Set("Content-Type", "text/plain")
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusUnsupportedMediaType {
+			t.Errorf("expected 415 Unsupported Media Type, got %d", rr.Code)
+		}
+	})
+
+	t.Run("POST_CSPReportMIME_BypassesCSRF", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/csp-report", nil)
+		req.Header.Set("Content-Type", "application/csp-report")
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		// Bypassing CSRF means it goes to rate limiter or CSPReportHandler.
+		// Since we didn't send a valid body, the handler returns 400 Bad Request instead of 403 Forbidden (CSRF block) or 415.
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 Bad Request from CSPReportHandler, got %d", rr.Code)
+		}
+	})
+
+	t.Run("POST_JSONMIME_BypassesCSRF", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/csp-report", nil)
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 Bad Request from CSPReportHandler, got %d", rr.Code)
+		}
+	})
+}

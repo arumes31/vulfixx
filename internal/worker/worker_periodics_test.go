@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/hibiken/asynq"
@@ -199,5 +200,118 @@ func TestWorker_BrowserPush(t *testing.T) {
 	res := w.sendBrowserPush(123, cve)
 	if !res {
 		t.Error("expected sendBrowserPush to return true (simulated success)")
+	}
+}
+
+type mockTicker struct {
+	c chan time.Time
+}
+
+func (m *mockTicker) Chan() <-chan time.Time {
+	return m.c
+}
+
+func (m *mockTicker) Stop() {}
+
+type mockTimer struct {
+	c chan time.Time
+}
+
+func (m *mockTimer) Chan() <-chan time.Time {
+	return m.c
+}
+
+func (m *mockTimer) Stop() bool { return true }
+
+func TestWorker_PeriodicLoopExecutionWithMocks(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create mock pool: %v", err)
+	}
+	defer mock.Close()
+	mock.MatchExpectationsInOrder(false)
+
+	w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
+
+	// Override factories to use mocks
+	tickerChan := make(chan time.Time)
+	w.TickerFactory = func(d time.Duration) Ticker {
+		return &mockTicker{c: tickerChan}
+	}
+	timerChan := make(chan time.Time)
+	w.TimerFactory = func(d time.Duration) Timer {
+		return &mockTimer{c: timerChan}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Set up mock expectations (expected twice since both waitUntilNextRun and checkWorkerHealth run twice)
+	mock.ExpectQuery("SELECT last_run FROM worker_sync_stats WHERE task_name = \\$1").
+		WithArgs("health_check").
+		WillReturnError(pgx.ErrNoRows)
+	mock.ExpectQuery("SELECT last_run FROM worker_sync_stats WHERE task_name = \\$1").
+		WithArgs("health_check").
+		WillReturnError(pgx.ErrNoRows)
+
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM notification_delivery_logs").
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM notification_delivery_logs").
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
+
+	mock.ExpectQuery("SELECT task_name, last_run FROM worker_sync_stats WHERE task_name = ANY\\(\\$1\\)").
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"task_name", "last_run"}))
+	mock.ExpectQuery("SELECT task_name, last_run FROM worker_sync_stats WHERE task_name = ANY\\(\\$1\\)").
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"task_name", "last_run"}))
+
+	mock.ExpectExec("INSERT INTO worker_sync_stats").
+		WithArgs("health_check").
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectExec("INSERT INTO worker_sync_stats").
+		WithArgs("health_check").
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+	// 1. Verify waitUntilNextRun with timer trigger
+	go func() {
+		w.waitUntilNextRun(ctx, "health_check", 30*time.Minute, 1*time.Minute)
+	}()
+
+	// Feed the timer channel to unblock
+	select {
+	case timerChan <- time.Now():
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting to trigger timer channel")
+	}
+
+	// 2. Verify periodic loop triggering via ticker
+	loopCtx, loopCancel := context.WithCancel(context.Background())
+
+	go func() {
+		w.startHealthCheckPeriodically(loopCtx)
+	}()
+
+	// Feed the timer inside waitUntilNextRun
+	select {
+	case timerChan <- time.Now():
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout triggering timer inside health check periodic startup")
+	}
+
+	// Now trigger the ticker
+	select {
+	case tickerChan <- time.Now():
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout triggering ticker inside health check periodic loop")
+	}
+
+	loopCancel()
+
+	// Wait briefly for goroutine to clean up and verify expectations
+	time.Sleep(50 * time.Millisecond)
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet mock expectations: %v", err)
 	}
 }

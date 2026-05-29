@@ -19,14 +19,14 @@ func (w *Worker) syncInTheWildPeriodically(ctx context.Context) {
 	w.waitUntilNextRun(ctx, "inthewild_sync", 12*time.Hour, 4*time.Minute)
 	w.syncInTheWild(ctx)
 
-	ticker := time.NewTicker(12 * time.Hour)
+	ticker := w.TickerFactory(12 * time.Hour)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-ticker.Chan():
 			w.syncInTheWild(ctx)
 		}
 	}

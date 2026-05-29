@@ -29,6 +29,8 @@ type Worker struct {
 	enrichmentQueue    chan int
 	AsynqClient        *asynq.Client
 	HNClient           HNClient
+	TickerFactory      func(time.Duration) Ticker
+	TimerFactory       func(time.Duration) Timer
 }
 
 func (w *Worker) initLimiters() {
@@ -51,6 +53,12 @@ func NewWorker(pool db.DBPool, redis db.RedisProvider, mailer EmailSender, http 
 		alertTimestamps:    make(map[string]time.Time),
 		alertResendBackoff: 4 * time.Hour,
 		enrichmentQueue:    make(chan int, 1000),
+		TickerFactory: func(d time.Duration) Ticker {
+			return &realTicker{time.NewTicker(d)}
+		},
+		TimerFactory: func(d time.Duration) Timer {
+			return &realTimer{time.NewTimer(d)}
+		},
 	}
 	w.HNClient = NewHNClient(http)
 	return w

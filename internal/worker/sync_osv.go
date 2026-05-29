@@ -37,14 +37,14 @@ func (w *Worker) syncOSVPeriodically(ctx context.Context) {
 	w.waitUntilNextRun(ctx, "osv_sync", 12*time.Hour, 3*time.Minute)
 	w.syncOSV(ctx)
 
-	ticker := time.NewTicker(12 * time.Hour)
+	ticker := w.TickerFactory(12 * time.Hour)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-ticker.Chan():
 			w.syncOSV(ctx)
 		}
 	}

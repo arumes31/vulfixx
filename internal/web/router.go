@@ -115,6 +115,15 @@ func (app *App) Routes(cfg *config.Config) (http.Handler, error) {
 	// Bypass CSRF checks for browser CSP report endpoint
 	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Path == "/api/csp-report" {
+			if req.Method != http.MethodPost {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			contentType := req.Header.Get("Content-Type")
+			if !strings.Contains(contentType, "application/csp-report") && !strings.Contains(contentType, "application/json") {
+				http.Error(w, "Unsupported Media Type", http.StatusUnsupportedMediaType)
+				return
+			}
 			r.ServeHTTP(w, req)
 			return
 		}

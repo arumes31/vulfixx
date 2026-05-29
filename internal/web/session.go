@@ -4,8 +4,10 @@ import (
 	"context"
 	"cve-tracker/internal/db"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/sessions"
 	"github.com/rbcervilla/redisstore/v9"
@@ -145,4 +147,39 @@ func (a *App) IsAdmin(r *http.Request) bool {
 	}
 	isAdmin, ok := session.Values["is_admin"].(bool)
 	return ok && isAdmin
+}
+
+// EnforceConcurrentSessions caps a user's active concurrent sessions to 3, evicting the oldest session.
+func (a *App) EnforceConcurrentSessions(ctx context.Context, userID int, sessionID string) {
+	if a.Redis == nil || sessionID == "" {
+		return
+	}
+	key := fmt.Sprintf("user_sessions:%d", userID)
+	now := time.Now().Unix()
+
+	// Add/update current session ID with timestamp score
+	_, _ = a.Redis.ZAdd(ctx, key, redis.Z{Score: float64(now), Member: sessionID}).Result()
+
+	// Expire the user sessions ZSet key after 30 days of inactivity to prevent Redis memory leaks
+	_, _ = a.Redis.Expire(ctx, key, 30*24*time.Hour).Result()
+
+	// Get total session count
+	count, err := a.Redis.ZCard(ctx, key).Result()
+	if err != nil {
+		return
+	}
+
+	maxSessions := 3
+	if count > int64(maxSessions) {
+		// Fetch oldest session IDs (from index 0 to count - maxSessions - 1)
+		oldSessions, err := a.Redis.ZRange(ctx, key, 0, count-int64(maxSessions)-1).Result()
+		if err == nil {
+			for _, oldSessionID := range oldSessions {
+				// Delete session key in Redis session prefix vulfixx_session:
+				_, _ = a.Redis.Del(ctx, "vulfixx_session:"+oldSessionID).Result()
+				// Remove from ZSet
+				_, _ = a.Redis.ZRem(ctx, key, oldSessionID).Result()
+			}
+		}
+	}
 }

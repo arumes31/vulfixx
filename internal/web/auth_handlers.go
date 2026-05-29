@@ -173,6 +173,7 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
+		a.EnforceConcurrentSessions(r.Context(), preAuthUserID, newSession.ID)
 		a.LogActivity(r.Context(), preAuthUserID, "login", "Successful 2FA login", a.GetClientIP(r), r.UserAgent())
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
 		return
@@ -233,6 +234,7 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+	a.EnforceConcurrentSessions(r.Context(), user.ID, newSession.ID)
 	a.LogActivity(r.Context(), user.ID, "login", "Successful login", clientIP, r.UserAgent())
 
 	http.Redirect(w, r, "/dashboard", http.StatusFound)

@@ -246,13 +246,13 @@ func (w *Worker) sendVerificationEmail(email, token string) error {
 }
 
 func (w *Worker) startEmailRetryPoller(ctx context.Context) {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := w.TickerFactory(5 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-ticker.Chan():
 			w.pollDelayedQueue(ctx, "email_verification_delayed", "email_verification_queue")
 			w.pollDelayedQueue(ctx, "email_change_delayed", "email_change_queue")
 		}

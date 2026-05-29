@@ -23,13 +23,13 @@ type CISAKEVResponse struct {
 func (w *Worker) fetchCISAKEVPeriodically(ctx context.Context) {
 	w.waitUntilNextRun(ctx, "cisa_kev_sync", 24*time.Hour, 5*time.Minute)
 	w.fetchFromCISAKEV(ctx)
-	ticker := time.NewTicker(24 * time.Hour)
+	ticker := w.TickerFactory(24 * time.Hour)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-ticker.Chan():
 			w.fetchFromCISAKEV(ctx)
 		}
 	}

@@ -257,7 +257,7 @@ func (w *Worker) startWeeklySummaryTask(ctx context.Context) {
 		slog.Info("Worker: [CRON] Weekly summary task shutting down")
 		return
 	}
-	ticker := time.NewTicker(7 * 24 * time.Hour)
+	ticker := w.TickerFactory(7 * 24 * time.Hour)
 	defer ticker.Stop()
 
 	// Initial run attempt
@@ -268,7 +268,7 @@ func (w *Worker) startWeeklySummaryTask(ctx context.Context) {
 		case <-ctx.Done():
 			slog.Info("Worker: [CRON] Weekly summary task shutting down")
 			return
-		case <-ticker.C:
+		case <-ticker.Chan():
 			w.runWeeklySummaryWithLock(ctx)
 		}
 	}

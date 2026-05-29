@@ -14,14 +14,14 @@ func (w *Worker) startHealthCheckPeriodically(ctx context.Context) {
 	w.waitUntilNextRun(ctx, "health_check", 30*time.Minute, 1*time.Minute)
 	w.checkWorkerHealth(ctx)
 
-	ticker := time.NewTicker(30 * time.Minute)
+	ticker := w.TickerFactory(30 * time.Minute)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-ticker.Chan():
 			w.checkWorkerHealth(ctx)
 		}
 	}
@@ -208,12 +208,12 @@ func (w *Worker) waitUntilNextRun(ctx context.Context, taskName string, interval
 
 	if sleepDuration > 0 {
 		slog.Info("Worker: Persistent schedule", "task", taskName, "next_run_in", sleepDuration.Round(time.Second))
-		timer := time.NewTimer(sleepDuration)
+		timer := w.TimerFactory(sleepDuration)
 		defer timer.Stop()
 		select {
 		case <-ctx.Done():
 			return
-		case <-timer.C:
+		case <-timer.Chan():
 		}
 	}
 }

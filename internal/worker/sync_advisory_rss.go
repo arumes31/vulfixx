@@ -88,13 +88,13 @@ func (w *Worker) syncAdvisoryRSSPeriodically(ctx context.Context) {
 		w.syncAdvisoryRSS(ctx)
 	}
 
-	ticker := time.NewTicker(12 * time.Hour)
+	ticker := w.TickerFactory(12 * time.Hour)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-ticker.Chan():
 			w.syncAdvisoryRSS(ctx)
 		}
 	}

@@ -17,14 +17,14 @@ func (w *Worker) syncGreyNoisePeriodically(ctx context.Context) {
 	w.waitUntilNextRun(ctx, "greynoise_sync", 6*time.Hour, 2*time.Minute)
 	w.syncGreyNoise(ctx)
 
-	ticker := time.NewTicker(6 * time.Hour)
+	ticker := w.TickerFactory(6 * time.Hour)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-ticker.Chan():
 			w.syncGreyNoise(ctx)
 		}
 	}
