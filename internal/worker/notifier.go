@@ -238,35 +238,7 @@ func (w *Worker) postJSON(webhookURL string, payload interface{}) (bool, string)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// SSRF protection: resolve DNS and block internal IPs
-	dialer := &net.Dialer{Timeout: 10 * time.Second}
-	transport := &http.Transport{
-		DialContext: func(dialCtx context.Context, network, _ string) (net.Conn, error) {
-			ips, _ := net.DefaultResolver.LookupIPAddr(dialCtx, parsedURL.Hostname())
-			var safeIP net.IP
-			for _, ipAddr := range ips {
-				if security.IsIPSafe(ipAddr.IP) {
-					safeIP = ipAddr.IP
-					break
-				}
-			}
-			if safeIP == nil {
-				return nil, fmt.Errorf("no safe IP for webhook host")
-			}
-			port := parsedURL.Port()
-			if port == "" {
-				if parsedURL.Scheme == "https" {
-					port = "443"
-				} else {
-					port = "80"
-				}
-			}
-			return dialer.DialContext(dialCtx, network, net.JoinHostPort(safeIP.String(), port))
-		},
-		IdleConnTimeout: 1 * time.Second,
-	}
-	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport, Timeout: 10 * time.Second}
+	client := newSafeHTTPClient(10 * time.Second)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", webhookURL, strings.NewReader(string(data)))
 	if err != nil {
@@ -274,7 +246,6 @@ func (w *Worker) postJSON(webhookURL string, payload interface{}) (bool, string)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Host = parsedURL.Host
-
 	resp, err := client.Do(req)
 	if err != nil {
 		return false, err.Error()
@@ -381,7 +352,6 @@ func (w *Worker) sendEmailAlert(email string, cve *models.CVE, sev, color, token
 }
 
 func (w *Worker) sendGenericWebhook(webhookURL string, cve *models.CVE, asset, email string) (bool, string) {
-	// Robust Webhook Security Logic (Restored)
 	parsedURL, err := url.Parse(webhookURL)
 	if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
 		return false, "invalid scheme"
@@ -402,37 +372,7 @@ func (w *Worker) sendGenericWebhook(webhookURL string, cve *models.CVE, asset, e
 	httpCtx, httpCancel := context.WithTimeout(context.Background(), webhookTimeout)
 	defer httpCancel()
 
-	dialer := &net.Dialer{Timeout: webhookTimeout}
-	transport := &http.Transport{
-		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-			ips, err := net.DefaultResolver.LookupIPAddr(ctx, parsedURL.Hostname())
-			if err != nil {
-				return nil, fmt.Errorf("DNS lookup failed: %w", err)
-			}
-			var safeIP net.IP
-			for _, ipAddr := range ips {
-				if security.IsIPSafe(ipAddr.IP) {
-					safeIP = ipAddr.IP
-					break
-				}
-			}
-			if safeIP == nil {
-				return nil, fmt.Errorf("no safe IP")
-			}
-			port := parsedURL.Port()
-			if port == "" {
-				if parsedURL.Scheme == "https" {
-					port = "443"
-				} else {
-					port = "80"
-				}
-			}
-			return dialer.DialContext(ctx, network, net.JoinHostPort(safeIP.String(), port))
-		},
-		IdleConnTimeout: 1 * time.Second,
-	}
-	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport, Timeout: webhookTimeout}
+	client := newSafeHTTPClient(webhookTimeout)
 
 	req, _ := http.NewRequestWithContext(httpCtx, "POST", webhookURL, strings.NewReader(string(payload)))
 	req.Header.Set("Content-Type", "application/json")
@@ -462,3 +402,53 @@ func (w *Worker) sendGenericWebhook(webhookURL string, cve *models.CVE, asset, e
 	return false, fmt.Sprintf("status %d", resp.StatusCode)
 }
 
+func newSafeHTTPClient(timeout time.Duration) *http.Client {
+	dialer := &net.Dialer{
+		Timeout:   timeout,
+		KeepAlive: 30 * time.Second,
+	}
+
+	transport := &http.Transport{
+		DisableKeepAlives: true, // Short-lived client for webhooks
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, portStr, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+
+			// Port restriction: allow only standard web ports
+			if portStr != "80" && portStr != "443" && portStr != "8443" && portStr != "8080" {
+				if os.Getenv("TEST_MODE") != "1" {
+					return nil, fmt.Errorf("blocked non-standard port: %s", portStr)
+				}
+			}
+
+			ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+			if err != nil {
+				return nil, err
+			}
+
+			var safeIP net.IP
+			for _, ipAddr := range ips {
+				if security.IsIPSafe(ipAddr.IP) {
+					safeIP = ipAddr.IP
+					break
+				}
+			}
+
+			if safeIP == nil {
+				return nil, fmt.Errorf("no safe IP for %s", host)
+			}
+
+			return dialer.DialContext(ctx, network, net.JoinHostPort(safeIP.String(), portStr))
+		},
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+
+	return &http.Client{
+		Transport: transport,
+		Timeout:   timeout,
+	}
+}
