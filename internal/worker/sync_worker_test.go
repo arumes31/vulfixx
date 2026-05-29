@@ -253,6 +253,7 @@ func TestWorkerSync_EPSS(t *testing.T) {
 	})
 }
 
+
 func TestWorkerSync_GitHub(t *testing.T) {
 	mock, err := db.SetupTestDB()
 	if err != nil {
@@ -278,7 +279,11 @@ func TestWorkerSync_GitHub(t *testing.T) {
 		w.HTTP = httpClient
 
 		mock.ExpectQuery("SELECT cve_id FROM cves").WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-GH-1"))
+
+		mock.ExpectBegin()
 		mock.ExpectExec("UPDATE cves SET github_poc_count = \\$1 WHERE cve_id = \\$2").WithArgs(42, "CVE-GH-1").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectCommit()
+
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("github_buzz_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
@@ -290,7 +295,6 @@ func TestWorkerSync_GitHub(t *testing.T) {
 		}
 	})
 }
-
 func TestWorkerSync_GreyNoise(t *testing.T) {
 	mock, err := db.SetupTestDB()
 	if err != nil {
