@@ -117,7 +117,6 @@ func TestAssetsHandler(t *testing.T) {
 					"team_id": {"10"},
 				},
 				mockExpect: func(mock pgxmock.PgxPoolIface) {
-					mock.ExpectQuery("SELECT EXISTS").WithArgs(10, 1).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
 					mock.ExpectBegin()
 					mock.ExpectQuery("SELECT EXISTS\\(SELECT 1 FROM team_members WHERE team_id = \\$1 AND user_id = \\$2\\)").
 						WithArgs(10, 1).
@@ -157,7 +156,7 @@ func TestAssetsHandler(t *testing.T) {
 				app.AssetsHandler(rr, req)
 
 				if rr.Code != tt.expectedStatus {
-					t.Errorf("expected %d, got %d", tt.expectedStatus, rr.Code)
+					t.Errorf("expected %d, got %d, body: %s", tt.expectedStatus, rr.Code, rr.Body.String())
 				}
 				if tt.expectedBody != "" && !strings.Contains(rr.Body.String(), tt.expectedBody) {
 					t.Errorf("expected body to contain %q, got %q", tt.expectedBody, rr.Body.String())

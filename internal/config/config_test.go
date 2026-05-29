@@ -143,6 +143,7 @@ func TestLoadConfig(t *testing.T) {
 				"ADMIN_EMAIL":       "admin@example.com",
 				"ADMIN_PASSWORD":    "ap",
 				"ADMIN_TOTP_SECRET": "at",
+				"WEBHOOK_SECRET":    "w",
 			},
 			wantFatal: false,
 		},
@@ -150,8 +151,8 @@ func TestLoadConfig(t *testing.T) {
 			name: "SMTPMailFrom defaults to SMTPUser if empty",
 			envs: map[string]string{
 				"APP_ENV":       "development",
-				"SMTP_USER":      "default@example.com",
-				"SMTP_MAILFROM":  "",
+				"SMTP_USER":     "default@example.com",
+				"SMTP_MAILFROM": "",
 			},
 			wantFatal: false,
 			checkConfig: func(t *testing.T, c Config) {
@@ -187,17 +188,15 @@ func TestLoadConfig(t *testing.T) {
 				"APP_ENV", "DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME",
 				"REDIS_URL", "SESSION_KEY", "CSRF_KEY", "BASE_URL", "SMTP_HOST",
 				"SMTP_PORT", "SMTP_USER", "SMTP_PASS", "ADMIN_EMAIL", "ADMIN_PASSWORD",
-				"ADMIN_TOTP_SECRET", "SECURE_COOKIE",
+				"ADMIN_TOTP_SECRET", "SECURE_COOKIE", "WEBHOOK_SECRET",
 			}
 			for _, k := range keys {
 				val, ok := os.LookupEnv(k)
 				if ok {
 					_ = os.Unsetenv(k)
-					// Use a local variable to capture current key and value
-					currKey := k
-					currVal := val
+					kk, vv := k, val
 					t.Cleanup(func() {
-						_ = os.Setenv(currKey, currVal)
+						_ = os.Setenv(kk, vv)
 					})
 				}
 			}
@@ -386,5 +385,3 @@ func TestDecodeKey_Detailed(t *testing.T) {
 		}
 	})
 }
-
-

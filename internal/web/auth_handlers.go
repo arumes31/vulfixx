@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"cve-tracker/internal/auth"
+	"cve-tracker/internal/security"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -330,7 +331,7 @@ func (a *App) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		// Rollback: delete the user we just created since we can't send verification
 		if _, delErr := a.Pool.Exec(r.Context(), "DELETE FROM users WHERE email = $1", email); delErr != nil {
 			// #nosec G706 -- sanitized via sanitizeForLog and redactEmail
-			log.Printf("Error rolling back user creation for %q: %v", sanitizeForLog(redactEmail(email)), delErr)
+			log.Printf("Error rolling back user creation for %q: %v", sanitizeForLog(security.MaskEmail(email)), delErr)
 		}
 		a.RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
 		return
@@ -349,13 +350,13 @@ func (a *App) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		// Rollback: delete the user we just created since we can't send verification
 		if _, delErr := a.Pool.Exec(r.Context(), "DELETE FROM users WHERE email = $1", email); delErr != nil {
 			// #nosec G706 -- sanitized via sanitizeForLog and redactEmail
-			log.Printf("Error rolling back user creation for %q: %v", sanitizeForLog(redactEmail(email)), delErr)
+			log.Printf("Error rolling back user creation for %q: %v", sanitizeForLog(security.MaskEmail(email)), delErr)
 		}
 		a.RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
 		return
 	}
 	// #nosec G706 -- sanitized via sanitizeForLog and redactEmail
-	log.Printf("Verification queued for %q", sanitizeForLog(redactEmail(email)))
+	log.Printf("Verification queued for %q", sanitizeForLog(security.MaskEmail(email)))
 
 	a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Registration successful. Please check your email to verify your account."})
 }
@@ -403,7 +404,7 @@ func (a *App) ResendVerificationHandler(w http.ResponseWriter, r *http.Request) 
 	emailHash := sha256.Sum256([]byte(email))
 	emailRlKey := "resend_email_limit:" + hex.EncodeToString(emailHash[:])
 	if count, err := a.Redis.Get(r.Context(), emailRlKey).Int(); err == nil && count >= 3 {
-		log.Printf("Email rate limit hit for resend: %s", redactEmail(email)) // #nosec G706
+		log.Printf("Email rate limit hit for resend: %s", security.MaskEmail(email)) // #nosec G706
 		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "If this email is registered and unverified, a new verification link will be sent."})
 		return
 	}
@@ -411,7 +412,7 @@ func (a *App) ResendVerificationHandler(w http.ResponseWriter, r *http.Request) 
 	token, oldToken, oldLastResend, err := auth.ResendVerificationToken(r.Context(), email)
 	if err != nil {
 		// Log the real error internally but show generic success message to prevent enumeration
-		log.Printf("Error resending verification for %q: %v", redactEmail(email), err) /* #nosec G706 */
+		log.Printf("Error resending verification for %q: %v", security.MaskEmail(email), err) /* #nosec G706 */
 		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "If this email is registered and unverified, a new verification link will be sent."})
 		return
 	}
@@ -622,15 +623,4 @@ func (a *App) ErrorReportHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("FRONTEND ERROR: [%s] %s at %s", errType, msg, url)
 	sentry.CaptureMessage(fmt.Sprintf("Frontend Error: %s", msg))
-}
-
-func redactEmail(email string) string {
-	parts := strings.Split(email, "@")
-	if len(parts) != 2 {
-		return "[invalid-email]"
-	}
-	if len(parts[0]) <= 2 {
-		return "*@" + parts[1]
-	}
-	return parts[0][:2] + "****@" + parts[1]
 }

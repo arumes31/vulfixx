@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -10,6 +11,8 @@ import (
 )
 
 func TestSetupHelpers(t *testing.T) {
+	ctx := context.Background()
+
 	t.Run("SetupTestDB", func(t *testing.T) {
 		oldPool := Pool
 		oldReplicaPool := ReplicaPool
@@ -42,6 +45,23 @@ func TestSetupHelpers(t *testing.T) {
 		} else if client, ok := RedisClient.(*redis.Client); ok {
 			if client.Options().Addr != mr.Addr() {
 				t.Errorf("SetupTestRedis did not set correct address: expected %s, got %s", mr.Addr(), client.Options().Addr)
+			}
+
+			// Functional Verification
+			if err := RedisClient.Ping(ctx).Err(); err != nil {
+				t.Errorf("expected redis ping to succeed, got %v", err)
+			}
+
+			if err := RedisClient.Set(ctx, "test_key", "test_value", 0).Err(); err != nil {
+				t.Errorf("expected redis set to succeed, got %v", err)
+			}
+
+			val, err := RedisClient.Get(ctx, "test_key").Result()
+			if err != nil {
+				t.Errorf("expected redis get to succeed, got %v", err)
+			}
+			if val != "test_value" {
+				t.Errorf("expected test_value, got %s", val)
 			}
 		} else {
 			t.Error("RedisClient is not *redis.Client")

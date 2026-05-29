@@ -8,12 +8,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"cve-tracker/internal/models"
 )
 
 func (a *App) GetTemplateFuncs() template.FuncMap {
 	return template.FuncMap{
+		"formatDate": func(t time.Time) string {
+			return t.Format("Jan 02, 2006")
+		},
 		"map": func(values ...interface{}) map[string]interface{} {
 			if len(values)%2 != 0 {
 				return nil

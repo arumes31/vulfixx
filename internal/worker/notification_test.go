@@ -124,7 +124,7 @@ func TestWorker_SlackTeamsDelivery(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	w := &Worker{HTTP: http.DefaultClient}
+	w := &Worker{HTTP: http.DefaultClient, WebhookSecret: "test_signing_key_123"}
 	cve := &models.CVE{CVEID: "CVE-2024-TEST", CVSSScore: 8.0, Description: "Test desc"}
 
 	success, err := w.sendSlackAlert(ts.URL, cve, "Asset1", "#ff0000", "token", "http://localhost")
@@ -163,7 +163,7 @@ func TestWorker_SignedWebhookDelivery(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	w := &Worker{HTTP: http.DefaultClient}
+	w := &Worker{HTTP: http.DefaultClient, WebhookSecret: "test_signing_key_123"}
 	cve := &models.CVE{CVEID: "CVE-2024-TEST", CVSSScore: 8.0, Description: "Test desc"}
 
 	success, errStr := w.sendGenericWebhook(ts.URL, cve, "Asset1", "test@example.com")

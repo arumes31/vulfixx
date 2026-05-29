@@ -18,6 +18,7 @@ type EmailSender interface {
 
 type App struct {
 	Pool          db.DBPool
+	AssetRepo     db.AssetRepository
 	Redis         db.RedisProvider
 	SessionStore  sessions.Store
 	Mailer        EmailSender
@@ -27,15 +28,18 @@ type App struct {
 	rateLimiter   *limiter.Limiter
 	rateLimiterMu sync.Mutex
 	AsynqClient   *asynq.Client
+	StatsInterval time.Duration
 }
 
 func NewApp(pool db.DBPool, redis db.RedisProvider, sessionStore sessions.Store, mailer EmailSender) *App {
 	return &App{
-		Pool:         pool,
-		Redis:        redis,
-		SessionStore: sessionStore,
-		Mailer:       mailer,
-		TemplateMap:  make(map[string]*template.Template),
-		Now:          time.Now,
+		Pool:          pool,
+		AssetRepo:     db.NewAssetRepository(pool),
+		Redis:         redis,
+		SessionStore:  sessionStore,
+		Mailer:        mailer,
+		TemplateMap:   make(map[string]*template.Template),
+		Now:           time.Now,
+		StatsInterval: 5 * time.Minute,
 	}
 }

@@ -3,9 +3,11 @@ package web
 import (
 	"context"
 	"cve-tracker/internal/db"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -170,6 +172,234 @@ func TestLogActivity_Extended(t *testing.T) {
 
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+}
+
+func TestSendResponse(t *testing.T) {
+	mock, _ := db.SetupTestDB()
+	defer mock.Close()
+	app := setupTestApp(t, mock)
+
+	tests := []struct {
+		name           string
+		success        bool
+		message        string
+		redirect       string
+		errMsg         string
+		headers        map[string]string
+		expectedStatus int
+		expectedJSON   bool
+		expectedBody   string
+		expectedLoc    string
+	}{
+		{
+			name:           "JSON success",
+			success:        true,
+			message:        "Success",
+			headers:        map[string]string{"X-Requested-With": "XMLHttpRequest"},
+			expectedStatus: http.StatusOK,
+			expectedJSON:   true,
+			expectedBody:   `{"message":"Success","success":true}`,
+		},
+		{
+			name:           "JSON error unauthorized",
+			success:        false,
+			errMsg:         "Unauthorized access",
+			headers:        map[string]string{"Accept": "application/json"},
+			expectedStatus: http.StatusUnauthorized,
+			expectedJSON:   true,
+			expectedBody:   `{"error":"Unauthorized access","success":false}`,
+		},
+		{
+			name:           "JSON error forbidden",
+			success:        false,
+			errMsg:         "Forbidden action",
+			headers:        map[string]string{"Accept": "application/json"},
+			expectedStatus: http.StatusForbidden,
+			expectedJSON:   true,
+		},
+		{
+			name:           "JSON error not found",
+			success:        false,
+			errMsg:         "Resource not found",
+			headers:        map[string]string{"Accept": "application/json"},
+			expectedStatus: http.StatusNotFound,
+			expectedJSON:   true,
+		},
+		{
+			name:           "JSON error internal",
+			success:        false,
+			errMsg:         "Internal server error",
+			headers:        map[string]string{"Accept": "application/json"},
+			expectedStatus: http.StatusInternalServerError,
+			expectedJSON:   true,
+		},
+		{
+			name:           "JSON error method not allowed",
+			success:        false,
+			errMsg:         "Method not allowed",
+			headers:        map[string]string{"Accept": "application/json"},
+			expectedStatus: http.StatusMethodNotAllowed,
+			expectedJSON:   true,
+		},
+		{
+			name:           "JSON error conflict",
+			success:        false,
+			errMsg:         "Conflict detected",
+			headers:        map[string]string{"Accept": "application/json"},
+			expectedStatus: http.StatusConflict,
+			expectedJSON:   true,
+		},
+		{
+			name:           "Redirect success default",
+			success:        true,
+			expectedStatus: http.StatusFound,
+			expectedLoc:    "/",
+		},
+		{
+			name:           "Redirect success custom",
+			success:        true,
+			redirect:       "/dashboard",
+			expectedStatus: http.StatusFound,
+			expectedLoc:    "/dashboard",
+		},
+		{
+			name:           "HTML error",
+			success:        false,
+			errMsg:         "Bad request error",
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "Bad request error\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/", nil)
+			for k, v := range tt.headers {
+				req.Header.Set(k, v)
+			}
+			rr := httptest.NewRecorder()
+
+			app.SendResponse(rr, req, tt.success, tt.message, tt.redirect, tt.errMsg)
+
+			if rr.Code != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr.Code)
+			}
+
+			if tt.expectedJSON {
+				contentType := rr.Header().Get("Content-Type")
+				if contentType != "application/json" {
+					t.Errorf("expected Content-Type application/json, got %s", contentType)
+				}
+				var resp map[string]interface{}
+				if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+					t.Fatalf("failed to unmarshal JSON body: %v", err)
+				}
+				if tt.expectedBody != "" {
+					var expected map[string]interface{}
+					_ = json.Unmarshal([]byte(tt.expectedBody), &expected)
+					for k, v := range expected {
+						if resp[k] != v {
+							t.Errorf("expected key %s to be %v, got %v", k, v, resp[k])
+						}
+					}
+				}
+			} else if tt.expectedLoc != "" {
+				loc := rr.Header().Get("Location")
+				if loc != tt.expectedLoc {
+					t.Errorf("expected Location %s, got %s", tt.expectedLoc, loc)
+				}
+			} else if tt.expectedBody != "" {
+				if rr.Body.String() != tt.expectedBody {
+					t.Errorf("expected body %q, got %q", tt.expectedBody, rr.Body.String())
+				}
+			}
+		})
+	}
+}
+
+func TestRenderTemplate(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+	app := setupTestApp(t, mock)
+
+	t.Run("Unauthenticated", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		rr := httptest.NewRecorder()
+
+		// Render a simple template
+		app.RenderTemplate(rr, req, "login.html", nil)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+	})
+
+	t.Run("Authenticated", func(t *testing.T) {
+		userID := 1
+		req := httptest.NewRequest("GET", "/", nil)
+		setSessionUser(t, app, req, userID, false)
+
+		// Expectations for RenderTemplate queries
+		expectBaseQueries(mock, userID)
+
+		rr := httptest.NewRecorder()
+		app.RenderTemplate(rr, req, "dashboard.html", nil)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("DataTypes", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+
+		t.Run("Map", func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			app.RenderTemplate(rr, req, "message.html", map[string]interface{}{"Message": "Test Map"})
+			if !strings.Contains(rr.Body.String(), "Test Map") {
+				t.Error("template did not contain map data")
+			}
+		})
+
+		t.Run("Struct", func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			type TestData struct {
+				Message string
+			}
+			app.RenderTemplate(rr, req, "message.html", TestData{Message: "Test Struct"})
+			if !strings.Contains(rr.Body.String(), "Test Struct") {
+				t.Error("template did not contain struct data")
+			}
+		})
+
+		t.Run("Pointer", func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			type TestData struct {
+				Message string
+			}
+			app.RenderTemplate(rr, req, "message.html", &TestData{Message: "Test Pointer"})
+			if !strings.Contains(rr.Body.String(), "Test Pointer") {
+				t.Error("template did not contain pointer data")
+			}
+		})
+	})
+
+	t.Run("TemplateNotFound", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		rr := httptest.NewRecorder()
+		app.RenderTemplate(rr, req, "non-existent.html", nil)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500 Internal Server Error, got %d", rr.Code)
 		}
 	})
 }

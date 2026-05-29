@@ -6,6 +6,7 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/time/rate"
 	"log/slog"
 	"sync"
 	"time"
@@ -19,17 +20,31 @@ type Worker struct {
 	Mailer             EmailSender
 	HTTP               HTTPClient
 	AdminEmail         string
+	WebhookSecret      string
 	alertTimestamps    map[string]time.Time
 	alertMu            sync.Mutex
+	HNLimiter          *rate.Limiter
+	RedditLimiter      *rate.Limiter
 	alertResendBackoff time.Duration
 	enrichmentQueue    chan int
 	AsynqClient        *asynq.Client
 	HNClient           HNClient
 }
 
+func (w *Worker) initLimiters() {
+	if w.HNLimiter == nil {
+		w.HNLimiter = rate.NewLimiter(rate.Every(500*time.Millisecond), 1)
+	}
+	if w.RedditLimiter == nil {
+		w.RedditLimiter = rate.NewLimiter(rate.Every(500*time.Millisecond), 1)
+	}
+}
+
 func NewWorker(pool db.DBPool, redis db.RedisProvider, mailer EmailSender, http HTTPClient) *Worker {
 	w := &Worker{
 		Pool:               pool,
+		HNLimiter:          rate.NewLimiter(rate.Every(500*time.Millisecond), 1),
+		RedditLimiter:      rate.NewLimiter(rate.Every(500*time.Millisecond), 1),
 		Redis:              redis,
 		Mailer:             mailer,
 		HTTP:               http,
@@ -47,6 +62,8 @@ func (w *Worker) Start(ctx context.Context) {
 		return
 	}
 	slog.Info("Worker: Starting background tasks...")
+
+	w.initLimiters()
 
 	// Test LLM connectivity on startup if provider is configured
 	go func() {

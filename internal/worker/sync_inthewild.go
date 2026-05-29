@@ -7,7 +7,11 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sync/atomic"
 	"time"
+
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
 )
 
 func (w *Worker) syncInTheWildPeriodically(ctx context.Context) {
@@ -56,53 +60,79 @@ func (w *Worker) syncInTheWild(ctx context.Context) {
 		cveIDs = append(cveIDs, id)
 	}
 
-	count := 0
-	for _, cveID := range cveIDs {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
+	if len(cveIDs) == 0 {
+		w.updateTaskStats(ctx, "inthewild_sync")
+		return
+	}
 
-		data, err := w.fetchInTheWildData(ctx, cveID)
-		if err != nil {
-			// Skip and continue
-			continue
-		}
+	g, ctx := errgroup.WithContext(ctx)
+	cveChan := make(chan string)
+	var processedCount int32
 
-		if data != nil {
-			dataJSON, err := json.Marshal(data)
-			if err != nil {
-				slog.Error("Worker: [ERROR] Failed to marshal InTheWild data", "cve_id", cveID, "error", err)
-				continue
+	// Use a worker pool to process CVEs concurrently while respecting rate limits.
+	// We use a global rate limiter to ensure we don't exceed the API rate limit (approx 40 RPM).
+	numWorkers := 5
+	limiter := rate.NewLimiter(rate.Every(1500*time.Millisecond), 1)
+
+	for i := 0; i < numWorkers; i++ {
+		g.Go(func() error {
+			for cveID := range cveChan {
+				if err := limiter.Wait(ctx); err != nil {
+					return err
+				}
+
+				data, err := w.fetchInTheWildData(ctx, cveID)
+				if err != nil {
+					// Skip and continue
+					continue
+				}
+
+				if data != nil {
+					dataJSON, err := json.Marshal(data)
+					if err != nil {
+						slog.Error("Worker: [ERROR] Failed to marshal InTheWild data", "cve_id", cveID, "error", err)
+						continue
+					}
+					_, err = w.Pool.Exec(ctx, `
+						UPDATE cves
+						SET inthewild_data = $1, inthewild_last_updated = NOW()
+						WHERE cve_id = $2
+					`, dataJSON, cveID)
+					if err != nil {
+						slog.Error("Worker: [ERROR] Failed to update InTheWild data", "cve_id", cveID, "error", err)
+					} else {
+						atomic.AddInt32(&processedCount, 1)
+					}
+				} else {
+					// Mark as checked even if no data found
+					_, err = w.Pool.Exec(ctx, "UPDATE cves SET inthewild_last_updated = NOW() WHERE cve_id = $1", cveID)
+					if err != nil {
+						slog.Error("Worker: [ERROR] Failed to update InTheWild last_updated timestamp", "cve_id", cveID, "error", err)
+					}
+				}
 			}
-			_, err = w.Pool.Exec(ctx, `
-				UPDATE cves 
-				SET inthewild_data = $1, inthewild_last_updated = NOW() 
-				WHERE cve_id = $2
-			`, dataJSON, cveID)
-			if err != nil {
-				slog.Error("Worker: [ERROR] Failed to update InTheWild data", "cve_id", cveID, "error", err)
-			} else {
-				count++
-			}
-		} else {
-			// Mark as checked even if no data found
-			_, _ = w.Pool.Exec(ctx, "UPDATE cves SET inthewild_last_updated = NOW() WHERE cve_id = $1", cveID)
-		}
+			return nil
+		})
+	}
 
-		// "Slow Sync" - Throttle to respect API limits (1.5s delay, cancellable)
-		throttle := time.NewTimer(1500 * time.Millisecond)
-		select {
-		case <-ctx.Done():
-			throttle.Stop()
-			return
-		case <-throttle.C:
+	// Feed the workers
+	go func() {
+		defer close(cveChan)
+		for _, id := range cveIDs {
+			select {
+			case <-ctx.Done():
+				return
+			case cveChan <- id:
+			}
 		}
+	}()
+
+	if err := g.Wait(); err != nil && err != context.Canceled {
+		slog.Error("Worker: [ERROR] InTheWild sync worker group error", "error", err)
 	}
 
 	w.updateTaskStats(ctx, "inthewild_sync")
-	slog.Info("Worker: [SYNC] InTheWild.io synchronization complete.", "processed_count", count)
+	slog.Info("Worker: [SYNC] InTheWild.io synchronization complete.", "processed_count", processedCount)
 }
 
 func (w *Worker) fetchInTheWildData(ctx context.Context, cveID string) (map[string]interface{}, error) {

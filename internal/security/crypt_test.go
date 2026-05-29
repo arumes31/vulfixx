@@ -73,3 +73,15 @@ func TestEncryptionDecryption(t *testing.T) {
 	})
 }
 
+func TestEncryptionDecryption_EmptyKey(t *testing.T) {
+	t.Setenv("ENCRYPTION_KEY", "")
+	_, err := Encrypt("test")
+	if err == nil || err.Error() != "ENCRYPTION_KEY is empty; keyStr must not be empty" {
+		t.Errorf("expected ENCRYPTION_KEY is empty error, got: %v", err)
+	}
+
+	_, err = Decrypt("test")
+	if err == nil || err.Error() != "ENCRYPTION_KEY is empty; keyStr must not be empty" {
+		t.Errorf("expected ENCRYPTION_KEY is empty error, got: %v", err)
+	}
+}

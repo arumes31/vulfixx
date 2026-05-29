@@ -13,8 +13,8 @@
         </div>
 
         {{if .Error}}
-            <div class="bg-error-container/30 border border-error/30 text-error px-4 py-3 rounded-md text-sm mb-6 flex items-start gap-2">
-                <span class="material-symbols-outlined text-[18px]">warning</span>
+            <div role="alert" aria-atomic="true" class="bg-error-container/30 border border-error/30 text-error px-4 py-3 rounded-md text-sm mb-6 flex items-start gap-2">
+                <span class="material-symbols-outlined text-[18px]" aria-hidden="true">warning</span>
                 <span>{{.Error}}</span>
             </div>
         {{end}}
@@ -44,7 +44,7 @@
                     <div id="captcha-container" role="button" tabindex="0" aria-label="Refresh captcha" title="Click to refresh" class="relative group cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/50 rounded-xl">
                         <img id="captcha-img" src="/captcha" alt="Captcha Challenge" class="rounded-xl border border-white/10 h-[58px] min-w-[120px] bg-white/5">
                         <div class="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center">
-                            <span class="material-symbols-outlined text-white text-sm">refresh</span>
+                            <span class="material-symbols-outlined text-white text-sm" aria-hidden="true">refresh</span>
                         </div>
                     </div>
                     <input id="captcha" type="number" name="captcha" required placeholder="?"

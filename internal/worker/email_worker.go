@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"cve-tracker/internal/security"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,14 +38,14 @@ func (w *Worker) processEmailVerification(ctx context.Context) {
 		}
 		email, _ := payload["email"].(string)
 		token, _ := payload["token"].(string)
-		log.Printf("Worker: Picked up verification email for %s", maskEmail(email))
+		log.Printf("Worker: Picked up verification email for %s", security.MaskEmail(email))
 		if email == "" || token == "" {
-			log.Printf("Worker: Invalid email verification payload: email=%q", maskEmail(email))
+			log.Printf("Worker: Invalid email verification payload: email=%q", security.MaskEmail(email))
 			continue
 		}
 
 		if isEmailDomainBlacklisted(email) {
-			log.Printf("Worker: Blocked verification email to blacklisted domain %s", maskEmail(email))
+			log.Printf("Worker: Blocked verification email to blacklisted domain %s", security.MaskEmail(email))
 			continue
 		}
 
@@ -54,24 +55,24 @@ func (w *Worker) processEmailVerification(ctx context.Context) {
 		}
 
 		if err := w.sendVerificationEmail(email, token); err != nil {
-			log.Printf("Worker: Failed to send verification email to %s (attempt %d): %v", maskEmail(email), retries+1, err)
+			log.Printf("Worker: Failed to send verification email to %s (attempt %d): %v", security.MaskEmail(email), retries+1, err)
 			if retries >= maxEmailRetries {
-				log.Printf("Worker: Permanently failed to send verification email to %s after %d attempts", maskEmail(email), maxEmailRetries)
+				log.Printf("Worker: Permanently failed to send verification email to %s after %d attempts", security.MaskEmail(email), maxEmailRetries)
 				continue
 			}
 			payload["retries"] = retries + 1
 			newPayload, marshalErr := json.Marshal(payload)
 			if marshalErr != nil {
-				log.Printf("Worker: Failed to marshal retry payload for %s: %v", maskEmail(email), marshalErr)
+				log.Printf("Worker: Failed to marshal retry payload for %s: %v", security.MaskEmail(email), marshalErr)
 				continue
 			}
 			delay := time.Duration(math.Pow(2, float64(retries))) * time.Second
 			score := float64(time.Now().Add(delay).UnixMilli())
 			if zErr := w.Redis.ZAdd(ctx, "email_verification_delayed", redis.Z{Score: score, Member: string(newPayload)}).Err(); zErr != nil {
-				log.Printf("Worker: Failed to enqueue verification retry for %s: %v", maskEmail(email), zErr)
+				log.Printf("Worker: Failed to enqueue verification retry for %s: %v", security.MaskEmail(email), zErr)
 			}
 		} else {
-			log.Printf("Worker: Successfully sent verification email to %s", maskEmail(email))
+			log.Printf("Worker: Successfully sent verification email to %s", security.MaskEmail(email))
 		}
 	}
 }
@@ -98,9 +99,9 @@ func (w *Worker) processEmailChange(ctx context.Context) {
 		newEmail, _ := payload["new_email"].(string)
 		newToken, _ := payload["new_token"].(string)
 
-		log.Printf("Worker: Picked up combined email change notification for old=%s, new=%s", maskEmail(oldEmail), maskEmail(newEmail))
+		log.Printf("Worker: Picked up combined email change notification for old=%s, new=%s", security.MaskEmail(oldEmail), security.MaskEmail(newEmail))
 		if oldEmail == "" || oldToken == "" || newEmail == "" || newToken == "" {
-			log.Printf("Worker: Invalid email change payload: oldEmail=%q, newEmail=%q", maskEmail(oldEmail), maskEmail(newEmail))
+			log.Printf("Worker: Invalid email change payload: oldEmail=%q, newEmail=%q", security.MaskEmail(oldEmail), security.MaskEmail(newEmail))
 			continue
 		}
 
@@ -115,7 +116,7 @@ func (w *Worker) processEmailChange(ctx context.Context) {
 				oldErr = fmt.Errorf("old email: %w", err)
 			}
 		} else {
-			log.Printf("Worker: Blocked old email change notification to blacklisted domain %s", maskEmail(oldEmail))
+			log.Printf("Worker: Blocked old email change notification to blacklisted domain %s", security.MaskEmail(oldEmail))
 		}
 
 		var newErr error
@@ -124,7 +125,7 @@ func (w *Worker) processEmailChange(ctx context.Context) {
 				newErr = fmt.Errorf("new email: %w", err)
 			}
 		} else {
-			log.Printf("Worker: Blocked new email change notification to blacklisted domain %s", maskEmail(newEmail))
+			log.Printf("Worker: Blocked new email change notification to blacklisted domain %s", security.MaskEmail(newEmail))
 		}
 
 		var sendErr error

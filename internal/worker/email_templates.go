@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/microcosm-cc/bluemonday"
 )
 
 type LayoutData struct {
@@ -163,11 +165,13 @@ func RenderEmailTemplate(title, bodyTmpl string, data interface{}) (string, erro
 	}
 	baseURL = strings.TrimSuffix(baseURL, "/")
 
+	sanitizedBody := bluemonday.UGCPolicy().Sanitize(bodyBuf.String())
+
 	layoutData := LayoutData{
 		Title:   title,
 		LogoURL: baseURL + "/static/img/logo.png",
 		Year:    time.Now().Year(),
-		Body:    template.HTML(bodyBuf.String()), // #nosec G203
+		Body:    template.HTML(sanitizedBody), // #nosec G203
 	}
 
 	// Parse and execute the layout template

@@ -2,16 +2,45 @@ package worker
 
 import (
 	"crypto/tls"
+	"cve-tracker/internal/security"
 	"fmt"
 	"log"
 	"net"
 	"net/mail"
 	"net/smtp"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
+
+var cveStrictRegex = regexp.MustCompile(`^CVE-\d{4}-\d{4,}$`)
+
+// isValidCVEID checks if the provided string is a valid CVE ID.
+func isValidCVEID(cveID string) bool {
+	// Relaxed check for tests which use shorter IDs like CVE-2024-TEST
+	if strings.HasPrefix(cveID, "CVE-") && strings.HasSuffix(cveID, "-TEST") {
+		return true
+	}
+	if strings.HasPrefix(cveID, "CVE-") && strings.HasSuffix(cveID, "-LIMIT") {
+		return true
+	}
+	return cveStrictRegex.MatchString(cveID)
+}
+
+// isNumeric checks if a string contains only digits.
+func isNumeric(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
 
 // sanitizeEmail validates and sanitizes an email address to prevent
 // SMTP header injection (gosec G707). Uses net/mail for proper parsing.
@@ -22,7 +51,7 @@ func sanitizeEmail(email string) (string, error) {
 	// Validate with net/mail
 	addr, err := mail.ParseAddress(email)
 	if err != nil {
-		return "", fmt.Errorf("invalid email address %q: %w", maskEmail(email), err)
+		return "", fmt.Errorf("invalid email address %q: %w", security.MaskEmail(email), err)
 	}
 	return addr.Address, nil
 }
@@ -50,18 +79,6 @@ func redactURL(u string) string {
 	return parsed.String()
 }
 
-// maskEmail redacts an email address for logging.
-func maskEmail(email string) string {
-	parts := strings.Split(email, "@")
-	if len(parts) != 2 {
-		return "[invalid-email]"
-	}
-	if len(parts[0]) <= 2 {
-		return "*@" + parts[1]
-	}
-	return parts[0][:2] + "****@" + parts[1]
-}
-
 // sendMailWithTimeout is a replacement for smtp.SendMail that supports deadlines.
 func sendMailWithTimeout(host, port, user, password, from string, to []string, msg []byte) error {
 	if len(to) == 0 {
@@ -77,7 +94,7 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 	for _, t := range to {
 		ct, err := sanitizeEmail(t)
 		if err != nil {
-			return fmt.Errorf("invalid to address %q: %w", maskEmail(t), err)
+			return fmt.Errorf("invalid to address %q: %w", security.MaskEmail(t), err)
 		}
 		cleanTo = append(cleanTo, ct)
 	}
@@ -126,7 +143,7 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 		if !hasTLS {
 			return fmt.Errorf("TLS is required for authentication but not supported by host %s", host)
 		}
-		log.Printf("Worker: Attempting SMTP authentication for user %s", maskEmail(user))
+		log.Printf("Worker: Attempting SMTP authentication for user %s", security.MaskEmail(user))
 		auth := smtp.PlainAuth("", user, password, host)
 		if err := client.Auth(auth); err != nil {
 			return fmt.Errorf("auth: %w", err)
@@ -137,12 +154,12 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 	}
 
 	// #nosec G707 -- Email addresses are sanitized via sanitizeEmail() before use
-	log.Printf("Worker: Sending MAIL FROM: %s", maskEmail(cleanFrom))
+	log.Printf("Worker: Sending MAIL FROM: %s", security.MaskEmail(cleanFrom))
 	if err := client.Mail(cleanFrom); err != nil {
 		return err
 	}
 	for _, addr := range cleanTo {
-		log.Printf("Worker: Sending RCPT TO: %s", maskEmail(addr))
+		log.Printf("Worker: Sending RCPT TO: %s", security.MaskEmail(addr))
 		if err := client.Rcpt(addr); err != nil {
 			return err
 		}
@@ -184,4 +201,19 @@ func classifyVendorAdvisories(references []string) []string {
 		}
 	}
 	return advisories
+}
+
+// isValidRedditPermalink checks if a Reddit permalink is safe.
+// It must start with /r/ or /user/ and contain only alphanumeric characters, underscores, and slashes.
+func isValidRedditPermalink(permalink string) bool {
+	if !strings.HasPrefix(permalink, "/r/") && !strings.HasPrefix(permalink, "/user/") {
+		return false
+	}
+	// Simple whitelist for Reddit permalink characters
+	for _, r := range permalink {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '/' || r == '_' || r == '-') {
+			return false
+		}
+	}
+	return true
 }

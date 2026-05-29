@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"regexp"
 	"regexp/syntax"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -192,14 +193,10 @@ func (w *Worker) evaluateSubscriptions(ctx context.Context, cve *models.CVE) {
 
 func matchCVE(cve *models.CVE, sub models.UserSubscription) bool {
 	if sub.Keyword != "" {
-		matched := false
-		for _, kw := range strings.Split(sub.Keyword, ",") {
+		matched := slices.ContainsFunc(strings.Split(sub.Keyword, ","), func(kw string) bool {
 			kw = strings.TrimSpace(kw)
-			if kw != "" && getKeywordRegex(kw).MatchString(cve.Description) {
-				matched = true
-				break
-			}
-		}
+			return kw != "" && getKeywordRegex(kw).MatchString(cve.Description)
+		})
 		if !matched {
 			return false
 		}

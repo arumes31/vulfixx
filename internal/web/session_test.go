@@ -2,6 +2,8 @@ package web
 
 import (
 	"cve-tracker/internal/db"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -75,6 +77,172 @@ func TestInitRedisSession(t *testing.T) {
 		}
 		if store == nil {
 			t.Fatal("expected session store to be initialized, got nil")
+		}
+	})
+}
+
+func TestApp_SessionMethods(t *testing.T) {
+	app := &App{
+		SessionStore: sessions.NewCookieStore([]byte("test-secret")),
+	}
+
+	t.Run("GetActiveUserID_Success", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/", nil)
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["user_id"] = 123
+
+		id, ok := app.GetActiveUserID(req)
+		if !ok || id != 123 {
+			t.Errorf("expected (123, true), got (%d, %v)", id, ok)
+		}
+
+		// Test GetUserID as well since it calls GetActiveUserID
+		id, ok = app.GetUserID(req)
+		if !ok || id != 123 {
+			t.Errorf("GetUserID: expected (123, true), got (%d, %v)", id, ok)
+		}
+	})
+
+	t.Run("GetActiveUserID_NilStore", func(t *testing.T) {
+		emptyApp := &App{}
+		req, _ := http.NewRequest("GET", "/", nil)
+		id, ok := emptyApp.GetActiveUserID(req)
+		if ok || id != 0 {
+			t.Errorf("expected (0, false), got (%d, %v)", id, ok)
+		}
+	})
+
+	t.Run("GetActiveTeamID_Success", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/", nil)
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["team_id"] = 456
+
+		id, ok := app.GetActiveTeamID(req)
+		if !ok || id != 456 {
+			t.Errorf("expected (456, true), got (%d, %v)", id, ok)
+		}
+	})
+
+	t.Run("SetActiveTeamID_Success", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/", nil)
+		rr := httptest.NewRecorder()
+
+		err := app.SetActiveTeamID(rr, req, 789)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Verify it was set
+		id, ok := app.GetActiveTeamID(req)
+		if !ok || id != 789 {
+			t.Errorf("expected (789, true), got (%d, %v)", id, ok)
+		}
+	})
+
+	t.Run("IsAdmin_Success", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/", nil)
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["is_admin"] = true
+
+		if !app.IsAdmin(req) {
+			t.Error("expected IsAdmin to return true")
+		}
+
+		session.Values["is_admin"] = false
+		if app.IsAdmin(req) {
+			t.Error("expected IsAdmin to return false")
+		}
+	})
+}
+
+func TestGetSessionHelpers(t *testing.T) {
+	t.Run("getSessionInt", func(t *testing.T) {
+		tests := []struct {
+			input    any
+			expected int
+			ok       bool
+		}{
+			{1, 1, true},
+			{int64(2), 2, true},
+			{float64(3.0), 3, true},
+			{float32(4.0), 4, true},
+			{nil, 0, false},
+			{"string", 0, false},
+		}
+		for _, tt := range tests {
+			res, ok := getSessionInt(tt.input)
+			if ok != tt.ok || res != tt.expected {
+				t.Errorf("getSessionInt(%v) = (%d, %v), want (%d, %v)", tt.input, res, ok, tt.expected, tt.ok)
+			}
+		}
+	})
+
+	t.Run("getSessionInt64", func(t *testing.T) {
+		tests := []struct {
+			input    any
+			expected int64
+			ok       bool
+		}{
+			{1, 1, true},
+			{int64(2), 2, true},
+			{float64(3.0), 3, true},
+			{float32(4.0), 4, true},
+			{nil, 0, false},
+			{"string", 0, false},
+		}
+		for _, tt := range tests {
+			res, ok := getSessionInt64(tt.input)
+			if ok != tt.ok || res != tt.expected {
+				t.Errorf("getSessionInt64(%v) = (%d, %v), want (%d, %v)", tt.input, res, ok, tt.expected, tt.ok)
+			}
+		}
+	})
+}
+
+func TestApp_SessionMethods_Errors(t *testing.T) {
+	// CookieStore.Get returns an error if the securecookie fails to decode (e.g. invalid key)
+	store := sessions.NewCookieStore([]byte("very-secret-key"))
+	app := &App{SessionStore: store}
+
+	t.Run("GetActiveUserID_SessionError", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/", nil)
+		// Add a cookie that will fail to decode because it was encrypted with a different key (if it was even encrypted)
+		// Or just a garbage cookie
+		req.AddCookie(&http.Cookie{Name: "vulfixx-session", Value: "garbage"})
+
+		id, ok := app.GetActiveUserID(req)
+		if ok || id != 0 {
+			t.Errorf("expected (0, false) on session error, got (%d, %v)", id, ok)
+		}
+	})
+
+	t.Run("GetActiveTeamID_SessionError", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/", nil)
+		req.AddCookie(&http.Cookie{Name: "vulfixx-session", Value: "garbage"})
+
+		id, ok := app.GetActiveTeamID(req)
+		if ok || id != 0 {
+			t.Errorf("expected (0, false) on session error, got (%d, %v)", id, ok)
+		}
+	})
+
+	t.Run("IsAdmin_SessionError", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/", nil)
+		req.AddCookie(&http.Cookie{Name: "vulfixx-session", Value: "garbage"})
+
+		if app.IsAdmin(req) {
+			t.Error("expected IsAdmin to return false on session error")
+		}
+	})
+
+	t.Run("SetActiveTeamID_SessionError", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/", nil)
+		req.AddCookie(&http.Cookie{Name: "vulfixx-session", Value: "garbage"})
+		rr := httptest.NewRecorder()
+
+		err := app.SetActiveTeamID(rr, req, 123)
+		if err == nil {
+			t.Error("expected error on SetActiveTeamID with bad session")
 		}
 	})
 }

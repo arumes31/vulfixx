@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -264,177 +265,155 @@ func parseNVDDate(dateStr string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("could not parse date %q", dateStr)
 }
 
-func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfill bool) error {
-	if len(entries) == 0 {
-		return nil
+func getCVSSMetric(metrics NVDCVE) (float64, string) {
+	if len(metrics.Metrics.CvssMetricV31) > 0 {
+		return metrics.Metrics.CvssMetricV31[0].CvssData.BaseScore, metrics.Metrics.CvssMetricV31[0].CvssData.VectorString
 	}
+	if len(metrics.Metrics.CvssMetricV30) > 0 {
+		return metrics.Metrics.CvssMetricV30[0].CvssData.BaseScore, metrics.Metrics.CvssMetricV30[0].CvssData.VectorString
+	}
+	if len(metrics.Metrics.CvssMetricV2) > 0 {
+		return metrics.Metrics.CvssMetricV2[0].CvssData.BaseScore, metrics.Metrics.CvssMetricV2[0].CvssData.VectorString
+	}
+	return 0, ""
+}
 
-	var modelsToUpsert []models.CVE
-	consecutiveLLMFailures := 0
-	skipLLMForBatch := false
-
-	totalInBatch := len(entries)
-	slog.Info("Worker: [NVD] Preparing batch", "count", totalInBatch, "is_backfill", isBackfill)
-
-	for i, entry := range entries {
-		select {
-		case <-ctx.Done():
-			slog.Info("Worker: Context cancelled, aborting NVD batch preparation.")
-			return ctx.Err()
-		default:
-		}
-
-		cve := entry.CVE
-		slog.Info("Worker: [NVD] Processing CVE", "current", i+1, "total", totalInBatch, "cve_id", cve.ID)
-
-		description := ""
-		for _, d := range cve.Descriptions {
-			if d.Lang == "en" {
-				description = d.Value
-				break
+func getCWEID(weaknesses []struct {
+	Description []struct {
+		Lang  string `json:"lang"`
+		Value string `json:"value"`
+	} `json:"description"`
+}) string {
+	for _, weak := range weaknesses {
+		for _, d := range weak.Description {
+			if strings.HasPrefix(d.Value, "CWE-") {
+				return d.Value
 			}
 		}
+	}
+	return ""
+}
 
-		var score float64
-		var vector string
-		if len(cve.Metrics.CvssMetricV31) > 0 {
-			score = cve.Metrics.CvssMetricV31[0].CvssData.BaseScore
-			vector = cve.Metrics.CvssMetricV31[0].CvssData.VectorString
-		} else if len(cve.Metrics.CvssMetricV30) > 0 {
-			score = cve.Metrics.CvssMetricV30[0].CvssData.BaseScore
-			vector = cve.Metrics.CvssMetricV30[0].CvssData.VectorString
-		} else if len(cve.Metrics.CvssMetricV2) > 0 {
-			score = cve.Metrics.CvssMetricV2[0].CvssData.BaseScore
-			vector = cve.Metrics.CvssMetricV2[0].CvssData.VectorString
+func mapNVDEntryToModel(entry NVDCVEEntry) (models.CVE, error) {
+	cve := entry.CVE
+
+	description := ""
+	for _, d := range cve.Descriptions {
+		if d.Lang == "en" {
+			description = d.Value
+			break
 		}
+	}
+	score, vector := getCVSSMetric(cve)
+	cweID := getCWEID(cve.Weaknesses)
 
-		cweID := ""
-		for _, weak := range cve.Weaknesses {
-			for _, d := range weak.Description {
-				if strings.HasPrefix(d.Value, "CWE-") {
-					cweID = d.Value
-					break
-				}
-			}
-			if cweID != "" {
-				break
-			}
-		}
-
-		var references []string
-		exploitAvailable := false
-		for _, ref := range cve.References {
-			u, err := url.Parse(ref.URL)
-			if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
-				continue
-			}
-
-			// Check for exploit tags
-			for _, tag := range ref.Tags {
-				if strings.ToLower(tag) == "exploit" {
-					exploitAvailable = true
-					break
-				}
-			}
-
-			// Also heuristic check on common exploit sites
-			urlLower := strings.ToLower(ref.URL)
-			if strings.Contains(urlLower, "exploit-db.com") ||
-				strings.Contains(urlLower, "packetstormsecurity.com") ||
-				strings.Contains(urlLower, "metasploit.com") ||
-				strings.Contains(urlLower, "rapid7.com/db/modules") ||
-				strings.Contains(urlLower, "github.com/") && (strings.Contains(urlLower, "/exploit") || strings.Contains(urlLower, "/poc")) {
-				exploitAvailable = true
-			}
-
-			// Normalize
-			u.Fragment = ""
-			u.User = nil
-			references = append(references, u.String())
-		}
-
-		pubDate, err := parseNVDDate(cve.Published)
-		if err != nil {
-			slog.Warn("Worker: Invalid published date for CVE, skipping", "cve_id", cve.ID, "published", cve.Published, "error", err)
-			continue
-		}
-		modDate, err := parseNVDDate(cve.LastModified)
-		if err != nil {
-			slog.Warn("Worker: Invalid lastModified date for CVE, skipping", "cve_id", cve.ID, "lastModified", cve.LastModified, "error", err)
+	var references []string
+	exploitAvailable := false
+	for _, ref := range cve.References {
+		u, err := url.Parse(ref.URL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 			continue
 		}
 
-		model := models.CVE{
-			CVEID:            cve.ID,
-			Description:      description,
-			CVSSScore:        score,
-			VectorString:     vector,
-			CWEID:            cweID,
-			References:       references,
-			PublishedDate:    pubDate,
-			UpdatedDate:      modDate,
-			Configurations:   cve.Configurations,
-			ExploitAvailable: exploitAvailable,
+		// Check for exploit tags
+		if slices.ContainsFunc(ref.Tags, func(tag string) bool {
+			return strings.ToLower(tag) == "exploit"
+		}) {
+			exploitAvailable = true
 		}
 
-		var vendor, product string
-		// Call LLM as primary with isolated timeout
-		if !skipLLMForBatch {
-			llmCtx, cancel := context.WithTimeout(ctx, time.Duration(config.AppConfig.LLMTimeout)*time.Second)
-			products, err := llm.ExtractVendorProduct(llmCtx, model.Description, model.References)
-			cancel()
-			if err == nil && len(products) > 0 {
-				consecutiveLLMFailures = 0
-				// Use the first one as primary
-				vendor, product = products[0].Vendor, products[0].Product
-				slog.Debug("Worker: LLM extraction success", "cve_id", model.CVEID, "products_found", len(products), "primary_vendor", vendor, "primary_product", product)
-
-				// Add all to affected_products
-				for _, p := range products {
-					model.AddAffectedProduct(p.Vendor, p.Product, p.Version, true)
-				}
-			} else {
-				if err != nil {
-					slog.Warn("Worker: LLM extraction failed", "cve_id", model.CVEID, "error", err)
-					consecutiveLLMFailures++
-					if consecutiveLLMFailures >= 5 {
-						skipLLMForBatch = true
-						slog.Error("Worker: TOO MANY CONSECUTIVE LLM FAILURES. Switching to HEURISTICS for the rest of this batch.", "consecutive_count", consecutiveLLMFailures, "batch_index", i)
-					}
-				}
-			}
-		} else {
-			slog.Info("Worker: [NVD] Skipping LLM for CVE (heuristic mode active)", "cve_id", cve.ID)
+		// Also heuristic check on common exploit sites
+		urlLower := strings.ToLower(ref.URL)
+		if strings.Contains(urlLower, "exploit-db.com") ||
+			strings.Contains(urlLower, "packetstormsecurity.com") ||
+			strings.Contains(urlLower, "metasploit.com") ||
+			strings.Contains(urlLower, "rapid7.com/db/modules") ||
+			strings.Contains(urlLower, "github.com/") && (strings.Contains(urlLower, "/exploit") || strings.Contains(urlLower, "/poc")) {
+			exploitAvailable = true
 		}
 
-		// Heuristic Fallback
-		if vendor == "" || product == "" {
-			hVendor, hProduct := model.GetDetectedProduct()
-			if hVendor != "" && vendor == "" {
-				vendor = hVendor
-			}
-			if hProduct != "" && product == "" {
-				product = hProduct
-			}
-			if vendor != "" || product != "" {
-				slog.Info("Worker: Heuristic fallback detection", "cve_id", model.CVEID, "vendor", vendor, "product", product)
-			}
-		}
-		model.Vendor = vendor
-		model.Product = product
-		model.AffectedProducts = model.GetAffectedProducts()
-
-		modelsToUpsert = append(modelsToUpsert, model)
+		// Normalize
+		u.Fragment = ""
+		u.User = nil
+		references = append(references, u.String())
 	}
 
+	pubDate, err := parseNVDDate(cve.Published)
+	if err != nil {
+		return models.CVE{}, fmt.Errorf("invalid published date for CVE %s: %w", cve.ID, err)
+	}
+	modDate, err := parseNVDDate(cve.LastModified)
+	if err != nil {
+		return models.CVE{}, fmt.Errorf("invalid lastModified date for CVE %s: %w", cve.ID, err)
+	}
+
+	return models.CVE{
+		CVEID:            cve.ID,
+		Description:      description,
+		CVSSScore:        score,
+		VectorString:     vector,
+		CWEID:            cweID,
+		References:       references,
+		PublishedDate:    pubDate,
+		UpdatedDate:      modDate,
+		Configurations:   cve.Configurations,
+		ExploitAvailable: exploitAvailable,
+	}, nil
+}
+func (w *Worker) enrichCVEWithVendorProduct(ctx context.Context, model *models.CVE, skipLLM bool) (bool, error) {
+	var vendor, product string
+	llmSuccess := false
+
+	if !skipLLM {
+		llmCtx, cancel := context.WithTimeout(ctx, time.Duration(config.AppConfig.LLMTimeout)*time.Second)
+		products, err := llm.ExtractVendorProduct(llmCtx, model.Description, model.References)
+		cancel()
+		if err == nil && len(products) > 0 {
+			llmSuccess = true
+			// Use the first one as primary
+			vendor, product = products[0].Vendor, products[0].Product
+			slog.Debug("Worker: LLM extraction success", "cve_id", model.CVEID, "products_found", len(products), "primary_vendor", vendor, "primary_product", product)
+
+			// Add all to affected_products
+			for _, p := range products {
+				model.AddAffectedProduct(p.Vendor, p.Product, p.Version, true)
+			}
+		} else if err != nil {
+			return false, err
+		}
+	} else {
+		slog.Info("Worker: [NVD] Skipping LLM for CVE (heuristic mode active)", "cve_id", model.CVEID)
+	}
+
+	// Heuristic Fallback
+	if vendor == "" || product == "" {
+		hVendor, hProduct := model.GetDetectedProduct()
+		if hVendor != "" && vendor == "" {
+			vendor = hVendor
+		}
+		if hProduct != "" && product == "" {
+			product = hProduct
+		}
+		if vendor != "" || product != "" {
+			slog.Info("Worker: Heuristic fallback detection", "cve_id", model.CVEID, "vendor", vendor, "product", product)
+		}
+	}
+
+	model.Vendor = vendor
+	model.Product = product
+	model.AffectedProducts = model.GetAffectedProducts()
+
+	return llmSuccess, nil
+}
+func (w *Worker) executeCVEBatchUpsert(ctx context.Context, modelsToUpsert []models.CVE) ([]models.CVE, error) {
 	if len(modelsToUpsert) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	tx, err := w.Pool.Begin(ctx)
 	if err != nil {
 		slog.Error("Worker: Error starting transaction for NVD upserts", "error", err)
-		return err
+		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
@@ -472,14 +451,14 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			if err != nil {
 				_ = br.Close()
 				slog.Error("Worker: Error executing batch item, rolling back transaction", "cve_id", modelsToUpsert[i].CVEID, "error", err)
-				return err
+				return nil, err
 			}
 			modelsToUpsert[i].ID = id
 			successfulCVEs = append(successfulCVEs, modelsToUpsert[i])
 		}
 		if err := br.Close(); err != nil {
 			slog.Error("Worker: Error closing batch results", "error", err)
-			return err
+			return nil, err
 		}
 	} else {
 		slog.Warn("Worker: SendBatch returned nil (likely mock database). Falling back to individual inserts.")
@@ -488,7 +467,7 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			err := tx.QueryRow(ctx, query, modelsToUpsert[i].CVEID, modelsToUpsert[i].Description, modelsToUpsert[i].CVSSScore, modelsToUpsert[i].VectorString, modelsToUpsert[i].CWEID, modelsToUpsert[i].References, modelsToUpsert[i].Configurations, modelsToUpsert[i].PublishedDate, modelsToUpsert[i].UpdatedDate, modelsToUpsert[i].Vendor, modelsToUpsert[i].Product, modelsToUpsert[i].AffectedProducts, modelsToUpsert[i].ExploitAvailable).Scan(&id)
 			if err != nil {
 				slog.Error("Worker: Error upserting CVE in fallback, rolling back transaction", "cve_id", modelsToUpsert[i].CVEID, "error", err)
-				return err
+				return nil, err
 			}
 			modelsToUpsert[i].ID = id
 			successfulCVEs = append(successfulCVEs, modelsToUpsert[i])
@@ -497,21 +476,68 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 
 	if err := tx.Commit(ctx); err != nil {
 		slog.Error("Worker: Error committing NVD batch transaction", "error", err)
+		return nil, err
+	}
+
+	return successfulCVEs, nil
+}
+
+func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfill bool) error {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	var modelsToUpsert []models.CVE
+	consecutiveLLMFailures := 0
+	skipLLMForBatch := false
+
+	totalInBatch := len(entries)
+	slog.Info("Worker: [NVD] Preparing batch", "count", totalInBatch, "is_backfill", isBackfill)
+
+	for i, entry := range entries {
+		select {
+		case <-ctx.Done():
+			slog.Info("Worker: Context cancelled, aborting NVD batch preparation.")
+			return ctx.Err()
+		default:
+		}
+
+		slog.Info("Worker: [NVD] Processing CVE", "current", i+1, "total", totalInBatch, "cve_id", entry.CVE.ID)
+
+		model, err := mapNVDEntryToModel(entry)
+		if err != nil {
+			slog.Warn("Worker: Error mapping NVD entry, skipping", "cve_id", entry.CVE.ID, "error", err)
+			continue
+		}
+
+		llmSuccess, err := w.enrichCVEWithVendorProduct(ctx, &model, skipLLMForBatch)
+		if err != nil {
+			slog.Warn("Worker: LLM extraction failed", "cve_id", model.CVEID, "error", err)
+			consecutiveLLMFailures++
+			if consecutiveLLMFailures >= 5 {
+				skipLLMForBatch = true
+				slog.Error("Worker: TOO MANY CONSECUTIVE LLM FAILURES. Switching to HEURISTICS for the rest of this batch.", "consecutive_count", consecutiveLLMFailures, "batch_index", i)
+			}
+		} else if llmSuccess {
+			consecutiveLLMFailures = 0
+		}
+
+		modelsToUpsert = append(modelsToUpsert, model)
+	}
+
+	successfulCVEs, err := w.executeCVEBatchUpsert(ctx, modelsToUpsert)
+	if err != nil {
 		return err
 	}
 
 	slog.Info("Worker: [DATABASE CONFIRMED] Batch added successfully to DB", "batch_size", len(successfulCVEs))
 
-	// Trigger enrichment and alerts only AFTER successful commit
 	for _, model := range successfulCVEs {
-		// Trigger on-demand enrichment for new/updated CVE
 		select {
 		case w.enrichmentQueue <- model.ID:
 		default:
-			// Queue full, will be picked up by background cron
 		}
 
-		// Check for alerts after successful commit (only if not backfilling)
 		if !isBackfill {
 			if err := w.enqueueAlertsForCVE(ctx, model); err != nil {
 				slog.Error("Worker: Error enqueuing alerts for CVE", "cve_id", model.CVEID, "error", err)

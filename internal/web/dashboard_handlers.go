@@ -74,7 +74,6 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	threatLevel := "LOW"
 	threatColor := "text-blue-400"
 	if metrics.Kev > 0 || metrics.Critical > 0 {
@@ -945,82 +944,113 @@ func (a *App) parsePublicDashboardFilters(r *http.Request) publicDashboardFilter
 }
 
 func (a *App) buildPublicDashboardWhereClause(filters publicDashboardFilters) (string, []any, int) {
-	whereClause := " WHERE (1=1) "
+	var where strings.Builder
+	where.WriteString(" WHERE (1=1) ")
 	args := []any{}
 	argIdx := 1
 
 	if filters.searchQuery != "" {
-		whereClause += fmt.Sprintf(" AND (c.cve_id ILIKE $%d OR c.description ILIKE $%d) ", argIdx, argIdx)
+		where.WriteString(" AND (c.cve_id ILIKE $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" OR c.description ILIKE $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(") ")
 		args = append(args, "%"+escapeLikePattern(filters.searchQuery)+"%")
 		argIdx++
 	}
 
 	if filters.vendorQuery != "" {
-		whereClause += fmt.Sprintf(" AND (c.vendor ILIKE $%d OR c.affected_products::text ILIKE $%d) ", argIdx, argIdx)
+		where.WriteString(" AND (c.vendor ILIKE $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" OR c.affected_products::text ILIKE $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(") ")
 		args = append(args, "%"+escapeLikePattern(filters.vendorQuery)+"%")
 		argIdx++
 	}
 
 	if filters.productQuery != "" {
-		whereClause += fmt.Sprintf(" AND (c.product ILIKE $%d OR c.affected_products::text ILIKE $%d) ", argIdx, argIdx)
+		where.WriteString(" AND (c.product ILIKE $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" OR c.affected_products::text ILIKE $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(") ")
 		args = append(args, "%"+escapeLikePattern(filters.productQuery)+"%")
 		argIdx++
 	}
 
 	if filters.cveIDQuery != "" {
-		whereClause += fmt.Sprintf(" AND c.cve_id ILIKE $%d ", argIdx)
+		where.WriteString(" AND c.cve_id ILIKE $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" ")
 		args = append(args, "%"+escapeLikePattern(filters.cveIDQuery)+"%")
 		argIdx++
 	}
 
 	if filters.kevOnly {
-		whereClause += " AND c.cisa_kev = true "
+		where.WriteString(" AND c.cisa_kev = true ")
 	}
 
 	if filters.minCvss > 0 {
-		whereClause += fmt.Sprintf(" AND c.cvss_score >= $%d ", argIdx)
+		where.WriteString(" AND c.cvss_score >= $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" ")
 		args = append(args, filters.minCvss)
 		argIdx++
 	}
 	if filters.maxCvss < 10 {
-		whereClause += fmt.Sprintf(" AND c.cvss_score <= $%d ", argIdx)
+		where.WriteString(" AND c.cvss_score <= $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" ")
 		args = append(args, filters.maxCvss)
 		argIdx++
 	}
 
 	if filters.startDate != "" {
-		whereClause += fmt.Sprintf(" AND c.published_date >= $%d ", argIdx)
+		where.WriteString(" AND c.published_date >= $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" ")
 		args = append(args, filters.startDate)
 		argIdx++
 	}
 	if filters.endDate != "" {
-		whereClause += fmt.Sprintf(" AND c.published_date <= $%d ", argIdx)
+		where.WriteString(" AND c.published_date <= $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" ")
 		args = append(args, filters.endDate)
 		argIdx++
 	}
 
 	if filters.cweQuery != "" {
-		whereClause += fmt.Sprintf(" AND (c.cwe_id ILIKE $%d OR c.cwe_name ILIKE $%d) ", argIdx, argIdx)
+		where.WriteString(" AND (c.cwe_id ILIKE $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" OR c.cwe_name ILIKE $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(") ")
 		args = append(args, "%"+escapeLikePattern(filters.cweQuery)+"%")
 		argIdx++
 	}
 
 	if filters.hasPoC {
-		whereClause += " AND c.github_poc_count > 0 "
+		where.WriteString(" AND c.github_poc_count > 0 ")
 	}
 
 	if filters.minEpss > 0 {
-		whereClause += fmt.Sprintf(" AND c.epss_score >= $%d ", argIdx)
+		where.WriteString(" AND c.epss_score >= $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" ")
 		args = append(args, filters.minEpss)
 		argIdx++
 	}
 	if filters.maxEpss < 1.0 {
-		whereClause += fmt.Sprintf(" AND c.epss_score <= $%d ", argIdx)
+		where.WriteString(" AND c.epss_score <= $")
+		where.WriteString(strconv.Itoa(argIdx))
+		where.WriteString(" ")
 		args = append(args, filters.maxEpss)
 		argIdx++
 	}
 
-	return whereClause, args, argIdx
+	return where.String(), args, argIdx
 }
 
 func (a *App) fetchPublicDashboardMetrics(ctx context.Context, whereClause string, args []any) (publicDashboardMetrics, error) {
@@ -1105,14 +1135,32 @@ func (a *App) fetchPublicDashboardCVEs(ctx context.Context, filters publicDashbo
 			if sortOrder == "ASC" {
 				tieBreakOp = ">"
 			}
-			keysetCond := fmt.Sprintf(" AND (%s %s $%d%s OR (%s = $%d%s AND c.id %s $%d)) ", sortCol, op, argIdx, castType, sortCol, argIdx+1, castType, tieBreakOp, argIdx+2)
-			whereClause += keysetCond
+			var keysetCond strings.Builder
+			keysetCond.WriteString(" AND (")
+			keysetCond.WriteString(sortCol)
+			keysetCond.WriteString(" ")
+			keysetCond.WriteString(op)
+			keysetCond.WriteString(" $")
+			keysetCond.WriteString(strconv.Itoa(argIdx))
+			keysetCond.WriteString(castType)
+			keysetCond.WriteString(" OR (")
+			keysetCond.WriteString(sortCol)
+			keysetCond.WriteString(" = $")
+			keysetCond.WriteString(strconv.Itoa(argIdx + 1))
+			keysetCond.WriteString(castType)
+			keysetCond.WriteString(" AND c.id ")
+			keysetCond.WriteString(tieBreakOp)
+			keysetCond.WriteString(" $")
+			keysetCond.WriteString(strconv.Itoa(argIdx + 2))
+			keysetCond.WriteString(")) ")
+			whereClause += keysetCond.String()
 			args = append(args, filters.cursorStr, filters.cursorStr, cursorID)
 			argIdx += 3
 		}
 	}
 
-	query := `
+	var qBuilder strings.Builder
+	qBuilder.WriteString(`
 		SELECT
 			c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev,
 			c.published_date, c.updated_date, 'active' as status, COALESCE(c."references", '{}'),
@@ -1120,9 +1168,19 @@ func (a *App) fetchPublicDashboardCVEs(ctx context.Context, filters publicDashbo
 			COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'),
 			COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]'), COALESCE(c.priority, 'P3') as priority
 		FROM cves c
-	`
-	query += whereClause
-	query += fmt.Sprintf(" ORDER BY %s %s NULLS LAST, c.id DESC LIMIT $%d OFFSET $%d ", sortCol, sortOrder, argIdx, argIdx+1)
+	`)
+	qBuilder.WriteString(whereClause)
+	qBuilder.WriteString(" ORDER BY ")
+	qBuilder.WriteString(sortCol)
+	qBuilder.WriteString(" ")
+	qBuilder.WriteString(sortOrder)
+	qBuilder.WriteString(" NULLS LAST, c.id DESC LIMIT $")
+	qBuilder.WriteString(strconv.Itoa(argIdx))
+	qBuilder.WriteString(" OFFSET $")
+	qBuilder.WriteString(strconv.Itoa(argIdx + 1))
+	qBuilder.WriteString(" ")
+	query := qBuilder.String()
+
 	finalArgs := append(args, filters.pageSize, filters.offset)
 
 	var cves []models.CVE

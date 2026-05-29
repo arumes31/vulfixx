@@ -213,10 +213,11 @@ func TestWorkerAlert_SendAlert(t *testing.T) {
 				}
 
 				w := &Worker{
-					Pool:   mock,
-					Redis:  db.RedisClient,
-					Mailer: &EmailSenderMock{},
-					HTTP:   httpClient,
+					WebhookSecret: "test_signing_key_123",
+					Pool:          mock,
+					Redis:         db.RedisClient,
+					Mailer:        &EmailSenderMock{},
+					HTTP:          httpClient,
 				}
 
 				sub := models.UserSubscription{
@@ -235,7 +236,8 @@ func TestWorkerAlert_SendAlert(t *testing.T) {
 
 	t.Run("Email_FullCoverage", func(t *testing.T) {
 		mailer := &EmailSenderMock{}
-		w := &Worker{Pool: mock, Redis: db.RedisClient, Mailer: mailer, HTTP: http.DefaultClient}
+		w := &Worker{
+			WebhookSecret: "test_signing_key_123", Pool: mock, Redis: db.RedisClient, Mailer: mailer, HTTP: http.DefaultClient}
 
 		t.Setenv("BASE_URL", "https://vulfixx.io")
 
@@ -272,10 +274,11 @@ func TestWorkerAlert_ProcessUserBuffer(t *testing.T) {
 	defer mock.Close()
 
 	w := &Worker{
-		Pool:   mock,
-		Redis:  rdb,
-		Mailer: &EmailSenderMock{},
-		HTTP:   http.DefaultClient,
+		WebhookSecret: "test_signing_key_123",
+		Pool:          mock,
+		Redis:         rdb,
+		Mailer:        &EmailSenderMock{},
+		HTTP:          http.DefaultClient,
 	}
 
 	userID := 1
