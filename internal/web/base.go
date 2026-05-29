@@ -91,7 +91,10 @@ func (a *App) ValidateCSRF(r *http.Request) bool {
 	if !ok || token == "" {
 		return false
 	}
-	reqToken := r.FormValue("csrf_token")
+	reqToken := r.Header.Get("X-CSRF-Token")
+	if reqToken == "" {
+		reqToken = r.FormValue("csrf_token")
+	}
 	if reqToken == "" {
 		return false
 	}
