@@ -79,8 +79,6 @@ func redactURL(u string) string {
 	return parsed.String()
 }
 
-
-
 // sendMailWithTimeout is a replacement for smtp.SendMail that supports deadlines.
 func sendMailWithTimeout(host, port, user, password, from string, to []string, msg []byte) error {
 	if len(to) == 0 {
@@ -208,7 +206,7 @@ func classifyVendorAdvisories(references []string) []string {
 // isValidRedditPermalink checks if a Reddit permalink is safe.
 // It must start with /r/ or /user/ and contain only alphanumeric characters, underscores, and slashes.
 func isValidRedditPermalink(permalink string) bool {
-	if !strings.HasPrefix(permalink, "/") {
+	if !strings.HasPrefix(permalink, "/r/") && !strings.HasPrefix(permalink, "/user/") {
 		return false
 	}
 	// Simple whitelist for Reddit permalink characters

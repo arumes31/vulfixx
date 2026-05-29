@@ -624,4 +624,3 @@ func (a *App) ErrorReportHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("FRONTEND ERROR: [%s] %s at %s", errType, msg, url)
 	sentry.CaptureMessage(fmt.Sprintf("Frontend Error: %s", msg))
 }
-

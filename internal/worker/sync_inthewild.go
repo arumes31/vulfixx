@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
 )
 
 func (w *Worker) syncInTheWildPeriodically(ctx context.Context) {
@@ -69,19 +70,15 @@ func (w *Worker) syncInTheWild(ctx context.Context) {
 	var processedCount int32
 
 	// Use a worker pool to process CVEs concurrently while respecting rate limits.
-	// We use a global ticker to ensure we don't exceed the API rate limit (approx 40 RPM).
+	// We use a global rate limiter to ensure we don't exceed the API rate limit (approx 40 RPM).
 	numWorkers := 5
-	ticker := time.NewTicker(1500 * time.Millisecond)
-	defer ticker.Stop()
+	limiter := rate.NewLimiter(rate.Every(1500*time.Millisecond), 1)
 
 	for i := 0; i < numWorkers; i++ {
 		g.Go(func() error {
 			for cveID := range cveChan {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case <-ticker.C:
-					// Proceed with the request
+				if err := limiter.Wait(ctx); err != nil {
+					return err
 				}
 
 				data, err := w.fetchInTheWildData(ctx, cveID)
@@ -108,7 +105,10 @@ func (w *Worker) syncInTheWild(ctx context.Context) {
 					}
 				} else {
 					// Mark as checked even if no data found
-					_, _ = w.Pool.Exec(ctx, "UPDATE cves SET inthewild_last_updated = NOW() WHERE cve_id = $1", cveID)
+					_, err = w.Pool.Exec(ctx, "UPDATE cves SET inthewild_last_updated = NOW() WHERE cve_id = $1", cveID)
+					if err != nil {
+						slog.Error("Worker: [ERROR] Failed to update InTheWild last_updated timestamp", "cve_id", cveID, "error", err)
+					}
 				}
 			}
 			return nil

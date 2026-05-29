@@ -63,7 +63,7 @@ func TestStartStatsTicker(t *testing.T) {
 		app.StatsInterval = 1 * time.Hour // Don't tick
 
 		stats := GlobalCVEStatsJSON{
-			Total: 500,
+			Total:       500,
 			LastUpdated: time.Now(),
 		}
 		data, _ := json.Marshal(stats)

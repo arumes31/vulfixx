@@ -176,7 +176,7 @@ func staticFileHandler(root http.FileSystem) http.Handler {
 			return
 		}
 
-		if r.URL.Path == "/favicon.ico" || r.URL.Path == "/favicon.png" || r.URL.Path == "/robots.txt" {
+		if r.URL.Path == "/favicon.ico" || r.URL.Path == "/favicon.png" {
 			w.Header().Set("Cache-Control", "public, max-age=86400")
 		} else {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")

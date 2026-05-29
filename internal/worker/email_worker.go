@@ -1,8 +1,8 @@
 package worker
 
 import (
-	"cve-tracker/internal/security"
 	"context"
+	"cve-tracker/internal/security"
 	"encoding/json"
 	"errors"
 	"fmt"

@@ -163,8 +163,6 @@ func RollbackResend(ctx context.Context, email string, oldToken string, oldLastR
 	return err
 }
 
-
-
 func Login(ctx context.Context, email, password string) (*models.User, error) {
 	var user models.User
 	var targetHash string

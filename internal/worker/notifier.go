@@ -403,6 +403,14 @@ func (w *Worker) sendGenericWebhook(webhookURL string, cve *models.CVE, asset, e
 }
 
 func newSafeHTTPClient(timeout time.Duration) *http.Client {
+	allowedPorts := map[string]bool{"80": true, "443": true}
+	if extraPorts := os.Getenv("ALLOWED_WEB_PORTS"); extraPorts != "" {
+		for _, p := range strings.Split(extraPorts, ",") {
+			allowedPorts[strings.TrimSpace(p)] = true
+		}
+		slog.Warn("Worker: [SECURITY] Non-default webhook ports are enabled via ALLOWED_WEB_PORTS. Ensure internal services are not exposed.", "allowed_ports", extraPorts)
+	}
+
 	dialer := &net.Dialer{
 		Timeout:   timeout,
 		KeepAlive: 30 * time.Second,
@@ -417,7 +425,7 @@ func newSafeHTTPClient(timeout time.Duration) *http.Client {
 			}
 
 			// Port restriction: allow only standard web ports
-			if portStr != "80" && portStr != "443" && portStr != "8443" && portStr != "8080" {
+			if !allowedPorts[portStr] {
 				if os.Getenv("TEST_MODE") != "1" {
 					return nil, fmt.Errorf("blocked non-standard port: %s", portStr)
 				}

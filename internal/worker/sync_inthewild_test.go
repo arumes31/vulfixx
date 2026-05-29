@@ -128,11 +128,10 @@ func TestWorkerSync_InTheWild_Concurrent(t *testing.T) {
 	}
 
 	// We have 3 CVEs.
-	// The first one is requested almost immediately (after ticker.C wait in one of the workers).
-	// The next 2 will take at least 2 * 1.5s = 3s.
-	// However, because we use a ticker and multiple workers, the first request also waits for the first tick.
-	// So 3 * 1.5s = 4.5s is the expected minimum duration.
-	if duration < 4*time.Second {
+	// Using rate.Limiter, the first request proceeds immediately.
+	// The next 2 will take at least 2 * 1.5s = 3.0s.
+	// So 3.0s is the expected minimum duration. We use 2.8s to account for slight timing variances.
+	if duration < 2800*time.Millisecond {
 		t.Errorf("Rate limiting might not be working, duration too short: %v", duration)
 	}
 }

@@ -253,7 +253,6 @@ func TestWorkerSync_EPSS(t *testing.T) {
 	})
 }
 
-
 func TestWorkerSync_GitHub(t *testing.T) {
 	mock, err := db.SetupTestDB()
 	if err != nil {

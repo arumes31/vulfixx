@@ -101,14 +101,16 @@ CVELoop:
 		if resp == nil {
 			continue CVELoop
 		}
-		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
 			slog.Warn("Worker: [WARN] GitHub API returned non-OK status", "status", resp.StatusCode, "cve_id", cveID)
+			resp.Body.Close()
 			continue CVELoop
 		}
 
-		if err := json.NewDecoder(resp.Body).Decode(&ghResp); err != nil {
+		err = json.NewDecoder(resp.Body).Decode(&ghResp)
+		resp.Body.Close()
+		if err != nil {
 			slog.Error("Worker: [ERROR] Failed to decode GitHub response", "cve_id", cveID, "error", err)
 			continue CVELoop
 		}

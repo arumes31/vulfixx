@@ -52,15 +52,16 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 	}()
 
-	select {
-	case err := <-startupErrCh:
-		slog.Error("HTTP server failed to start", "error", err)
-		s.grpcServer.GracefulStop()
-		return err
-	case <-ctx.Done():
+	for {
+		select {
+		case err := <-startupErrCh:
+			slog.Error("HTTP server failed to start", "error", err)
+			s.grpcServer.GracefulStop()
+			return err
+		case <-ctx.Done():
+			return nil
+		}
 	}
-
-	return nil
 }
 
 // Shutdown gracefully stops both servers.

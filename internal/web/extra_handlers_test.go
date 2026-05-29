@@ -76,8 +76,6 @@ func TestCompleteOnboardingHandler(t *testing.T) {
 	}
 }
 
-
-
 func TestUpdateCVEStatusHandler(t *testing.T) {
 	tests := []struct {
 		name           string

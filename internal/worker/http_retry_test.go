@@ -100,7 +100,7 @@ func TestDoWithRetry_MaxRetries(t *testing.T) {
 	}
 
 	resp, err := DoWithRetry(context.Background(), client, RetryConfig{
-		MaxRetries:  3,
+		MaxRetries: 3,
 		ShouldRetry: func(resp *http.Response, err error, attempt int) (bool, time.Duration) {
 			return true, 1 * time.Millisecond
 		},

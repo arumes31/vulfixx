@@ -315,27 +315,27 @@ func mapNVDEntryToModel(entry NVDCVEEntry) (models.CVE, error) {
 			continue
 		}
 
-			// Check for exploit tags
-			if slices.ContainsFunc(ref.Tags, func(tag string) bool {
-				return strings.ToLower(tag) == "exploit"
-			}) {
-				exploitAvailable = true
-			}
+		// Check for exploit tags
+		if slices.ContainsFunc(ref.Tags, func(tag string) bool {
+			return strings.ToLower(tag) == "exploit"
+		}) {
+			exploitAvailable = true
+		}
 
-			// Also heuristic check on common exploit sites
-			urlLower := strings.ToLower(ref.URL)
-			if strings.Contains(urlLower, "exploit-db.com") ||
-				strings.Contains(urlLower, "packetstormsecurity.com") ||
-				strings.Contains(urlLower, "metasploit.com") ||
-				strings.Contains(urlLower, "rapid7.com/db/modules") ||
-				strings.Contains(urlLower, "github.com/") && (strings.Contains(urlLower, "/exploit") || strings.Contains(urlLower, "/poc")) {
-				exploitAvailable = true
-			}
+		// Also heuristic check on common exploit sites
+		urlLower := strings.ToLower(ref.URL)
+		if strings.Contains(urlLower, "exploit-db.com") ||
+			strings.Contains(urlLower, "packetstormsecurity.com") ||
+			strings.Contains(urlLower, "metasploit.com") ||
+			strings.Contains(urlLower, "rapid7.com/db/modules") ||
+			strings.Contains(urlLower, "github.com/") && (strings.Contains(urlLower, "/exploit") || strings.Contains(urlLower, "/poc")) {
+			exploitAvailable = true
+		}
 
-			// Normalize
-			u.Fragment = ""
-			u.User = nil
-			references = append(references, u.String())
+		// Normalize
+		u.Fragment = ""
+		u.User = nil
+		references = append(references, u.String())
 	}
 
 	pubDate, err := parseNVDDate(cve.Published)

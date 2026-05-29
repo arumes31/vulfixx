@@ -1,9 +1,9 @@
 package worker
 
 import (
-	"cve-tracker/internal/security"
 	"context"
 	"cve-tracker/internal/models"
+	"cve-tracker/internal/security"
 	"encoding/json"
 	"fmt"
 	"log/slog"

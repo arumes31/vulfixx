@@ -194,8 +194,9 @@ func TestLoadConfig(t *testing.T) {
 				val, ok := os.LookupEnv(k)
 				if ok {
 					_ = os.Unsetenv(k)
+					kk, vv := k, val
 					t.Cleanup(func() {
-						_ = os.Setenv(k, val)
+						_ = os.Setenv(kk, vv)
 					})
 				}
 			}

@@ -176,7 +176,6 @@ func TestLogActivity_Extended(t *testing.T) {
 	})
 }
 
-
 func TestSendResponse(t *testing.T) {
 	mock, _ := db.SetupTestDB()
 	defer mock.Close()

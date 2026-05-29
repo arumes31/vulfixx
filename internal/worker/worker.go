@@ -6,10 +6,10 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/time/rate"
 	"log/slog"
 	"sync"
 	"time"
-	"golang.org/x/time/rate"
 
 	"github.com/hibiken/asynq"
 )
