@@ -10,8 +10,6 @@ import (
 	"os"
 	"strconv"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 )
 
 var (
@@ -93,21 +91,6 @@ CVELoop:
 			if token := os.Getenv("GITHUB_TOKEN"); token != "" {
 				req.Header.Set("Authorization", "token "+token)
 			}
-		resp, err := DoWithRetry(ctx, w.HTTP, RetryConfig{
-			MaxRetries:  3,
-			MaxWait:     5 * time.Minute,
-			ShouldRetry: githubShouldRetry,
-			Label:       "GitHub Buzz Sync",
-		}, func() (*http.Request, error) {
-			req, err := http.NewRequestWithContext(ctx, "GET", githubURL, nil)
-			if err != nil {
-				return nil, err
-			}
-			req.Header.Set("Accept", "application/vnd.github.v3+json")
-			req.Header.Set("User-Agent", "Vulfixx-Threat-Intel")
-			if token := os.Getenv("GITHUB_TOKEN"); token != "" {
-				req.Header.Set("Authorization", "token "+token)
-			}
 			return req, nil
 		})
 
@@ -164,27 +147,10 @@ func (w *Worker) updateGitHubBatch(ctx context.Context, updates []githubUpdateIt
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	batch := &pgx.Batch{}
 	query := "UPDATE cves SET github_poc_count = $1 WHERE cve_id = $2"
 	for _, up := range updates {
-		batch.Queue(query, up.totalCount, up.cveID)
-	}
-
-	br := tx.SendBatch(ctx, batch)
-	if br != nil {
-		for i := 0; i < len(updates); i++ {
-			if _, err := br.Exec(); err != nil {
-				slog.Error("Worker: [ERROR] Failed to update GitHub buzz in batch", "cve_id", updates[i].cveID, "error", err)
-			}
-		}
-		_ = br.Close()
-	} else {
-		// Fallback for mocks
-		for _, up := range updates {
-			_, err := tx.Exec(ctx, query, up.totalCount, up.cveID)
-			if err != nil {
-				slog.Error("Worker: [ERROR] Failed to update GitHub buzz in fallback", "cve_id", up.cveID, "error", err)
-			}
+		if _, err := tx.Exec(ctx, query, up.totalCount, up.cveID); err != nil {
+			slog.Error("Worker: [ERROR] Failed to update GitHub buzz in DB", "cve_id", up.cveID, "error", err)
 		}
 	}
 
