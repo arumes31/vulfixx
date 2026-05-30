@@ -403,3 +403,48 @@ func TestRenderTemplate(t *testing.T) {
 		}
 	})
 }
+
+func TestSendResponseFunction(t *testing.T) {
+	t.Run("JSON response", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		data := map[string]string{"status": "ok"}
+		SendResponse(rr, http.StatusOK, data)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected status %d, got %d", http.StatusOK, rr.Code)
+		}
+
+		contentType := rr.Header().Get("Content-Type")
+		if contentType != "application/json" {
+			t.Errorf("expected Content-Type application/json, got %s", contentType)
+		}
+
+		var resp map[string]string
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v", err)
+		}
+
+		if resp["status"] != "ok" {
+			t.Errorf("expected status ok, got %s", resp["status"])
+		}
+	})
+
+	t.Run("JSON error response", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		data := map[string]string{"error": "not found"}
+		SendResponse(rr, http.StatusNotFound, data)
+
+		if rr.Code != http.StatusNotFound {
+			t.Errorf("expected status %d, got %d", http.StatusNotFound, rr.Code)
+		}
+
+		var resp map[string]string
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v", err)
+		}
+
+		if resp["error"] != "not found" {
+			t.Errorf("expected error not found, got %s", resp["error"])
+		}
+	})
+}

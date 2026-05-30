@@ -544,6 +544,12 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 		}
 	}
 }
+func SendResponse(w http.ResponseWriter, statusCode int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(data)
+}
+
 func (a *App) SendResponse(w http.ResponseWriter, r *http.Request, success bool, message string, redirect string, errMsg string) {
 	statusCode := http.StatusOK
 	if !success {
