@@ -140,6 +140,44 @@ func TestGetClientIP(t *testing.T) {
 			t.Errorf("expected invalid-addr, got %s", ip)
 		}
 	})
+	t.Run("FromXForwardedFor", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("X-Forwarded-For", "1.1.1.1, 2.2.2.2")
+		ip := app.GetClientIP(req)
+		if ip != "1.1.1.1" {
+			t.Errorf("expected 1.1.1.1, got %s", ip)
+		}
+	})
+
+	t.Run("FromXRealIP", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("X-Real-IP", "3.3.3.3")
+		ip := app.GetClientIP(req)
+		if ip != "3.3.3.3" {
+			t.Errorf("expected 3.3.3.3, got %s", ip)
+		}
+	})
+
+	t.Run("PriorityContextOverHeaders", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		ctx := context.WithValue(req.Context(), clientIPKey, "1.2.3.4")
+		req = req.WithContext(ctx)
+		req.Header.Set("X-Forwarded-For", "5.6.7.8")
+		ip := app.GetClientIP(req)
+		if ip != "1.2.3.4" {
+			t.Errorf("expected 1.2.3.4, got %s", ip)
+		}
+	})
+
+	t.Run("PriorityXFFOverXRealIP", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("X-Forwarded-For", "5.6.7.8")
+		req.Header.Set("X-Real-IP", "9.9.9.9")
+		ip := app.GetClientIP(req)
+		if ip != "5.6.7.8" {
+			t.Errorf("expected 5.6.7.8, got %s", ip)
+		}
+	})
 }
 
 func TestLogActivity_Extended(t *testing.T) {
