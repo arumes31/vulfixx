@@ -92,7 +92,7 @@ func TestLoginHandler(t *testing.T) {
 		req := httptest.NewRequest("GET", "/login", nil)
 		rr := httptest.NewRecorder()
 		expectBaseQueries(mock, 0)
-		app.LoginHandler(rr, req)
+		app.LoginRateLimitMiddleware(http.HandlerFunc(app.LoginHandler)).ServeHTTP(rr, req)
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr.Code)
 		}
@@ -115,7 +115,7 @@ func TestLoginHandler(t *testing.T) {
 		req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=wrong"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
-		app.LoginHandler(rr, req)
+		app.LoginRateLimitMiddleware(http.HandlerFunc(app.LoginHandler)).ServeHTTP(rr, req)
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr.Code)
 		}
@@ -144,7 +144,7 @@ func TestLoginHandler(t *testing.T) {
 		req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=password"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rr := httptest.NewRecorder()
-		app.LoginHandler(rr, req)
+		app.LoginRateLimitMiddleware(http.HandlerFunc(app.LoginHandler)).ServeHTTP(rr, req)
 		if rr.Code != http.StatusFound {
 			t.Errorf("expected 302 redirect, got %d", rr.Code)
 		}
@@ -249,7 +249,7 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 
 		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		expectBaseQueries(mock, 0)
-		app.LoginHandler(rr, req)
+		app.LoginRateLimitMiddleware(http.HandlerFunc(app.LoginHandler)).ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr.Code)
@@ -305,7 +305,7 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		rr := httptest.NewRecorder()
 		expectBaseQueries(mock, 0)
-		app.LoginHandler(rr, req)
+		app.LoginRateLimitMiddleware(http.HandlerFunc(app.LoginHandler)).ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusFound {
 			t.Errorf("expected 302 Found, got %d", rr.Code)
@@ -352,7 +352,7 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 
 		rr := httptest.NewRecorder()
 		expectBaseQueries(mock, 0)
-		app.LoginHandler(rr, req)
+		app.LoginRateLimitMiddleware(http.HandlerFunc(app.LoginHandler)).ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr.Code)
@@ -394,7 +394,7 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 		app.Redis.Set(req.Context(), "login_failures:"+app.GetClientIP(req), 5, 0)
 
 		rr := httptest.NewRecorder()
-		app.LoginHandler(rr, req)
+		app.LoginRateLimitMiddleware(http.HandlerFunc(app.LoginHandler)).ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr.Code)

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"log"
 	"net/http"
 	"time"
 
@@ -61,6 +62,22 @@ func (a *App) RateLimitMiddleware(next http.Handler) http.Handler {
 
 		if limitCtx.Reached {
 			http.Error(w, "Too many requests", http.StatusTooManyRequests)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// LoginRateLimitMiddleware implements a specific rate limit for login attempts.
+func (a *App) LoginRateLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		clientIP := a.GetClientIP(r)
+		rlKey := "login_failures:" + clientIP
+
+		if count, err := a.Redis.Get(r.Context(), rlKey).Int(); err == nil && count >= 5 {
+			log.Printf("Login rate limit hit for IP: %s", "REDACTED_IP")
+			a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Too many attempts"})
 			return
 		}
 
