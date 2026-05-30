@@ -113,13 +113,55 @@ func TestApp_SessionMethods(t *testing.T) {
 	})
 
 	t.Run("GetActiveTeamID_Success", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			val      any
+			expected int
+		}{
+			{"int", 456, 456},
+			{"int64", int64(456), 456},
+			{"float64", float64(456.0), 456},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				req, _ := http.NewRequest("GET", "/", nil)
+				session, _ := app.SessionStore.Get(req, "vulfixx-session")
+				session.Values["team_id"] = tt.val
+
+				id, ok := app.GetActiveTeamID(req)
+				if !ok || id != tt.expected {
+					t.Errorf("expected (%d, true), got (%d, %v)", tt.expected, id, ok)
+				}
+			})
+		}
+	})
+
+	t.Run("GetActiveTeamID_NilStore", func(t *testing.T) {
+		emptyApp := &App{}
+		req, _ := http.NewRequest("GET", "/", nil)
+		id, ok := emptyApp.GetActiveTeamID(req)
+		if ok || id != 0 {
+			t.Errorf("expected (0, false), got (%d, %v)", id, ok)
+		}
+	})
+
+	t.Run("GetActiveTeamID_MissingValue", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/", nil)
+		id, ok := app.GetActiveTeamID(req)
+		if ok || id != 0 {
+			t.Errorf("expected (0, false), got (%d, %v)", id, ok)
+		}
+	})
+
+	t.Run("GetActiveTeamID_WrongType", func(t *testing.T) {
 		req, _ := http.NewRequest("GET", "/", nil)
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
-		session.Values["team_id"] = 456
+		session.Values["team_id"] = "string"
 
 		id, ok := app.GetActiveTeamID(req)
-		if !ok || id != 456 {
-			t.Errorf("expected (456, true), got (%d, %v)", id, ok)
+		if ok || id != 0 {
+			t.Errorf("expected (0, false), got (%d, %v)", id, ok)
 		}
 	})
 
