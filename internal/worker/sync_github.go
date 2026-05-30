@@ -10,6 +10,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 var (
@@ -149,10 +151,31 @@ func (w *Worker) updateGitHubBatch(ctx context.Context, updates []githubUpdateIt
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	batch := &pgx.Batch{}
 	query := "UPDATE cves SET github_poc_count = $1 WHERE cve_id = $2"
 	for _, up := range updates {
-		if _, err := tx.Exec(ctx, query, up.totalCount, up.cveID); err != nil {
-			slog.Error("Worker: [ERROR] Failed to update GitHub buzz in DB", "cve_id", up.cveID, "error", err)
+		batch.Queue(query, up.totalCount, up.cveID)
+	}
+
+	br := tx.SendBatch(ctx, batch)
+	if br != nil {
+		for i := 0; i < len(updates); i++ {
+			if _, err := br.Exec(); err != nil {
+				_ = br.Close()
+				slog.Error("Worker: [ERROR] Failed to execute batch item, rolling back transaction", "error", err)
+				return
+			}
+		}
+		if err := br.Close(); err != nil {
+			slog.Error("Worker: [ERROR] Failed to close batch results", "error", err)
+			return
+		}
+	} else {
+		slog.Warn("Worker: SendBatch returned nil (likely mock database). Falling back to individual updates.")
+		for _, up := range updates {
+			if _, err := tx.Exec(ctx, query, up.totalCount, up.cveID); err != nil {
+				slog.Error("Worker: [ERROR] Failed to update GitHub buzz in DB", "cve_id", up.cveID, "error", err)
+			}
 		}
 	}
 
