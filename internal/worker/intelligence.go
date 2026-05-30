@@ -66,7 +66,7 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		cves = append(cves, c)
 	}
 
-	batch := &pgx.Batch{}
+	var pendingUpdates []models.CVE
 	for _, c := range cves {
 		// 1. Social Sentiment (Reddit & HN)
 		w.updateSocialSentiment(ctx, &c)
@@ -74,49 +74,68 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		// 2. Duplicate Detection (Simplified)
 		w.detectDuplicates(ctx, &c)
 
-		// Queue update
-		osintData, _ := json.Marshal(c.OSINTData)
-		batch.Queue("UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
+		pendingUpdates = append(pendingUpdates, c)
+		if len(pendingUpdates) >= 20 {
+			if err := w.executeIntelligenceBatch(ctx, pendingUpdates); err != nil {
+				slog.Error("Worker: Periodic batch failed in intelligence sync", "error", err)
+			}
+			pendingUpdates = nil
+		}
 
 		// Throttle to avoid rate limits
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	if batch.Len() > 0 {
-		tx, err := w.Pool.Begin(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to begin transaction for intelligence sync: %w", err)
-		}
-		defer func() { _ = tx.Rollback(ctx) }()
-
-		br := tx.SendBatch(ctx, batch)
-		if br != nil {
-			for i := 0; i < batch.Len(); i++ {
-				if _, err := br.Exec(); err != nil {
-					slog.Error("Worker: Batch item failed in intelligence sync", "error", err)
-				}
-			}
-			if err := br.Close(); err != nil {
-				slog.Error("Worker: Failed to close batch results in intelligence sync", "error", err)
-			}
-		} else {
-			// Fallback for mock drivers
-			for _, c := range cves {
-				osintData, _ := json.Marshal(c.OSINTData)
-				_, err = tx.Exec(ctx, "UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
-				if err != nil {
-					slog.Error("Worker: Fallback update failed in intelligence sync", "cve_id", c.CVEID, "error", err)
-				}
-			}
-		}
-
-		if err := tx.Commit(ctx); err != nil {
-			return fmt.Errorf("failed to commit intelligence sync batch: %w", err)
+	if len(pendingUpdates) > 0 {
+		if err := w.executeIntelligenceBatch(ctx, pendingUpdates); err != nil {
+			slog.Error("Worker: Final batch failed in intelligence sync", "error", err)
 		}
 	}
 
 	w.updateTaskStats(ctx, "intelligence_sync")
 	return nil
+}
+
+func (w *Worker) executeIntelligenceBatch(ctx context.Context, updates []models.CVE) error {
+	if len(updates) == 0 {
+		return nil
+	}
+
+	tx, err := w.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	batch := &pgx.Batch{}
+	query := "UPDATE cves SET osint_data = $1 WHERE id = $2"
+	for _, c := range updates {
+		osintData, _ := json.Marshal(c.OSINTData)
+		batch.Queue(query, osintData, c.ID)
+	}
+
+	br := tx.SendBatch(ctx, batch)
+	if br != nil {
+		for i := 0; i < len(updates); i++ {
+			if _, err := br.Exec(); err != nil {
+				slog.Error("Worker: Batch item failed in intelligence sync", "cve_id", updates[i].CVEID, "error", err)
+			}
+		}
+		if err := br.Close(); err != nil {
+			slog.Error("Worker: Failed to close batch results", "error", err)
+		}
+	} else {
+		// Fallback for mock drivers
+		for _, c := range updates {
+			osintData, _ := json.Marshal(c.OSINTData)
+			_, err = tx.Exec(ctx, query, osintData, c.ID)
+			if err != nil {
+				slog.Error("Worker: Fallback update failed in intelligence sync", "cve_id", c.CVEID, "error", err)
+			}
+		}
+	}
+
+	return tx.Commit(ctx)
 }
 
 func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
