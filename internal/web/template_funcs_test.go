@@ -3,6 +3,7 @@ package web
 import (
 	"html/template"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -216,6 +217,84 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 		os.Setenv("BASE_URL", "")
 		if f() != "http://localhost:8080" {
 			t.Errorf("expected http://localhost:8080, got %s", f())
+		}
+	})
+}
+
+func TestInitTemplatesWithFuncs(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a dummy templates directory
+	templatesDir := filepath.Join(tmpDir, "templates")
+	err := os.Mkdir(templatesDir, 0755)
+	if err != nil {
+		t.Fatalf("failed to create templates dir: %v", err)
+	}
+
+	// Create base.html
+	baseHTML := "<html><body>{{block \"content\" .}}{{end}}</body></html>"
+	err = os.WriteFile(filepath.Join(templatesDir, "base.html"), []byte(baseHTML), 0644)
+	if err != nil {
+		t.Fatalf("failed to create base.html: %v", err)
+	}
+
+	// Create a test template
+	testHTML := "{{define \"content\"}}Hello World{{end}}"
+	err = os.WriteFile(filepath.Join(templatesDir, "test.html"), []byte(testHTML), 0644)
+	if err != nil {
+		t.Fatalf("failed to create test.html: %v", err)
+	}
+
+	// Move to tmpDir so findTemplatesDir finds it
+	t.Chdir(tmpDir)
+
+	app := &App{}
+	err = app.InitTemplatesWithFuncs()
+	if err != nil {
+		t.Fatalf("InitTemplatesWithFuncs failed: %v", err)
+	}
+
+	app.TemplateMu.RLock()
+	tmpl, ok := app.TemplateMap["test.html"]
+	app.TemplateMu.RUnlock()
+
+	if !ok {
+		t.Fatal("test.html not found in TemplateMap")
+	}
+
+	if tmpl.Name() != "test.html" {
+		t.Errorf("expected template name test.html, got %s", tmpl.Name())
+	}
+
+	// Test with no templates dir
+	t.Run("NoTemplatesDir", func(t *testing.T) {
+		emptyDir := t.TempDir()
+		t.Chdir(emptyDir)
+		err := app.InitTemplatesWithFuncs()
+		if err == nil {
+			t.Error("expected error when no templates directory found")
+		}
+	})
+
+	// Test with broken template
+	t.Run("BrokenTemplate", func(t *testing.T) {
+		t.Chdir(tmpDir)
+		brokenHTML := "{{define \"content\"}}{{end" // missing closing brace
+		err = os.WriteFile(filepath.Join(templatesDir, "broken.html"), []byte(brokenHTML), 0644)
+		if err != nil {
+			t.Fatalf("failed to create broken.html: %v", err)
+		}
+
+		err := app.InitTemplatesWithFuncs()
+		if err != nil {
+			t.Fatalf("InitTemplatesWithFuncs should not return error on individual broken templates: %v", err)
+		}
+
+		app.TemplateMu.RLock()
+		_, ok := app.TemplateMap["broken.html"]
+		app.TemplateMu.RUnlock()
+		if ok {
+			t.Error("broken.html should not be in TemplateMap")
 		}
 	})
 }
