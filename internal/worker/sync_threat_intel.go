@@ -24,15 +24,15 @@ type ThreatIntelFeed struct {
 
 func (w *Worker) syncThreatIntelPeriodically(ctx context.Context) {
 	w.waitUntilNextRun(ctx, "threat_intel_sync", 24*time.Hour, 5*time.Minute)
-	w.syncThreatIntel(ctx)
-	ticker := time.NewTicker(24 * time.Hour)
+	w.runWithLock(ctx, "threat_intel_sync", 30*time.Minute, w.syncThreatIntel)
+	ticker := w.TickerFactory(24 * time.Hour)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			w.syncThreatIntel(ctx)
+		case <-ticker.Chan():
+			w.runWithLock(ctx, "threat_intel_sync", 30*time.Minute, w.syncThreatIntel)
 		}
 	}
 }

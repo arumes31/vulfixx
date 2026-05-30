@@ -192,7 +192,7 @@
         <form action="/logout" method="POST" class="w-full">
             {{.csrfField}}
             <button type="submit" class="w-full flex items-center justify-center gap-2 bg-[#93000a] text-[#ffdad6] py-3 rounded-md hover:bg-[#690005] transition-colors font-['Space_Grotesk'] tracking-widest text-sm font-bold uppercase">
-                <span class="material-symbols-outlined text-sm">logout</span> Logout
+                <span class="material-symbols-outlined text-sm" aria-hidden="true">logout</span> Logout
             </button>
         </form>
     </div>
@@ -207,7 +207,7 @@
     {{if .UserLoggedIn}}
     <header class="md:hidden flex items-center justify-between p-4 bg-[#10141a] border-b border-white/5">
         <div class="flex items-center gap-2">
-            <span class="material-symbols-outlined text-[#00daf3]">shield</span>
+            <span class="material-symbols-outlined text-[#00daf3]" aria-hidden="true">shield</span>
             <span class="font-black text-[#dfe2eb] font-['Space_Grotesk'] tracking-widest uppercase text-sm">CVE Tracker</span>
         </div>
         <div class="flex items-center gap-3">
@@ -224,26 +224,26 @@
     {{if .UserLoggedIn}}
     <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-[#10141a] border-t border-white/10 flex items-center justify-around py-3 px-2 z-[100] backdrop-blur-lg bg-opacity-90">
         <a href="/dashboard" class="flex flex-col items-center gap-1 text-gray-500 hover:text-[#00daf3] transition-colors">
-            <span class="material-symbols-outlined text-xl">dashboard</span>
+            <span class="material-symbols-outlined text-xl" aria-hidden="true">dashboard</span>
             <span class="text-[9px] font-black uppercase tracking-widest">Dash</span>
         </a>
         <a href="/subscriptions" class="flex flex-col items-center gap-1 text-gray-500 hover:text-[#00daf3] transition-colors">
-            <span class="material-symbols-outlined text-xl">star</span>
+            <span class="material-symbols-outlined text-xl" aria-hidden="true">star</span>
             <span class="text-[9px] font-black uppercase tracking-widest">Subs</span>
         </a>
         <a href="/assets" class="flex flex-col items-center gap-1 text-gray-500 hover:text-[#00daf3] transition-colors">
-            <span class="material-symbols-outlined text-xl">inventory_2</span>
+            <span class="material-symbols-outlined text-xl" aria-hidden="true">inventory_2</span>
             <span class="text-[9px] font-black uppercase tracking-widest">Assets</span>
         </a>
         <a href="/settings" class="flex flex-col items-center gap-1 text-gray-500 hover:text-[#00daf3] transition-colors">
-            <span class="material-symbols-outlined text-xl">settings</span>
+            <span class="material-symbols-outlined text-xl" aria-hidden="true">settings</span>
             <span class="text-[9px] font-black uppercase tracking-widest">Set</span>
         </a>
         <form action="/logout" method="POST" id="mobile-logout-form" class="hidden">
             {{.csrfField}}
         </form>
         <button id="mobile-logout-btn" class="flex flex-col items-center gap-1 text-gray-500 hover:text-red-400 transition-colors bg-transparent border-none p-0 cursor-pointer">
-            <span class="material-symbols-outlined text-xl">logout</span>
+            <span class="material-symbols-outlined text-xl" aria-hidden="true">logout</span>
             <span class="text-[9px] font-black uppercase tracking-widest">Exit</span>
         </button>
     </nav>

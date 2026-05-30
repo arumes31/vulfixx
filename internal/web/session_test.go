@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"cve-tracker/internal/db"
 	"net/http"
 	"net/http/httptest"
@@ -243,6 +244,82 @@ func TestApp_SessionMethods_Errors(t *testing.T) {
 		err := app.SetActiveTeamID(rr, req, 123)
 		if err == nil {
 			t.Error("expected error on SetActiveTeamID with bad session")
+		}
+	})
+}
+
+func TestApp_EnforceConcurrentSessions(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr: mr.Addr(),
+	})
+	defer rdb.Close()
+
+	app := &App{
+		Redis: rdb,
+	}
+
+	ctx := context.Background()
+	userID := 1001
+
+	// Seed session keys in Redis to simulate active gorilla sessions
+	_ = mr.Set("vulfixx_session:sess_1", "data1")
+	_ = mr.Set("vulfixx_session:sess_2", "data2")
+	_ = mr.Set("vulfixx_session:sess_3", "data3")
+	_ = mr.Set("vulfixx_session:sess_4", "data4")
+
+	t.Run("UnderLimitPreserved", func(t *testing.T) {
+		app.EnforceConcurrentSessions(ctx, userID, "sess_1")
+		app.EnforceConcurrentSessions(ctx, userID, "sess_2")
+		app.EnforceConcurrentSessions(ctx, userID, "sess_3")
+
+		// ZSet should contain exactly 3 members
+		count, err := rdb.ZCard(ctx, "user_sessions:1001").Result()
+		if err != nil || count != 3 {
+			t.Errorf("expected 3 sessions in ZSet, got %d, err=%v", count, err)
+		}
+
+		// TTL should be set (positive)
+		ttl, err := rdb.TTL(ctx, "user_sessions:1001").Result()
+		if err != nil || ttl <= 0 {
+			t.Errorf("expected TTL to be set, got %v, err=%v", ttl, err)
+		}
+
+		// Session keys must still exist
+		if !mr.Exists("vulfixx_session:sess_1") || !mr.Exists("vulfixx_session:sess_2") || !mr.Exists("vulfixx_session:sess_3") {
+			t.Error("expected all 3 session keys to exist in Redis")
+		}
+	})
+
+	t.Run("OverLimitEvictsOldest", func(t *testing.T) {
+		// Log in a 4th session - this should trigger eviction of sess_1 (the oldest member)
+		app.EnforceConcurrentSessions(ctx, userID, "sess_4")
+
+		// ZSet count should stay capped at 3
+		count, err := rdb.ZCard(ctx, "user_sessions:1001").Result()
+		if err != nil || count != 3 {
+			t.Errorf("expected ZSet size capped at 3, got %d", count)
+		}
+
+		// sess_1 should be removed from ZSet
+		score, err := rdb.ZScore(ctx, "user_sessions:1001", "sess_1").Result()
+		if err == nil {
+			t.Errorf("expected sess_1 to be removed from ZSet, but found with score %f", score)
+		}
+
+		// sess_1 key in Redis should be deleted
+		if mr.Exists("vulfixx_session:sess_1") {
+			t.Error("expected sess_1 key to be deleted from Redis, but it still exists")
+		}
+
+		// sess_2, sess_3, and sess_4 must be preserved
+		if !mr.Exists("vulfixx_session:sess_2") || !mr.Exists("vulfixx_session:sess_3") || !mr.Exists("vulfixx_session:sess_4") {
+			t.Error("expected sess_2, sess_3, and sess_4 to be preserved in Redis")
 		}
 	})
 }

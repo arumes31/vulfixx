@@ -27,17 +27,13 @@ func TestStartStatsTicker(t *testing.T) {
 
 		// Expectations for initial refresh
 		mock.ExpectQuery("(?i)SELECT.*COUNT\\(\\*\\).*COUNT\\(\\*\\) FILTER.*updated_date.*COUNT\\(\\*\\) FILTER.*cisa_kev.*COUNT\\(\\*\\) FILTER.*cvss_score").
-			WillReturnRows(pgxmock.NewRows([]string{"total", "new24h", "kev", "crit"}).AddRow(10, 2, 3, 1))
-		mock.ExpectQuery("SELECT.*COUNT\\(\\*\\) FILTER.*FROM cves").WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(1, 2, 3, 4))
+			WillReturnRows(pgxmock.NewRows([]string{"total", "new24h", "kev", "crit", "scrit", "shigh", "smed", "slow", "e1", "e2", "e3", "e4"}).AddRow(10, 2, 3, 1, 1, 2, 3, 4, 1, 1, 1, 1))
 		mock.ExpectQuery("SELECT cwe_id, COALESCE\\(MAX\\(cwe_name\\), 'Unknown'\\), COUNT\\(\\*\\) as cnt").WillReturnRows(pgxmock.NewRows([]string{"cwe_id", "cwe_name", "cnt"}).AddRow("CWE-79", "XSS", 5))
-		mock.ExpectQuery("SELECT.*COUNT\\(\\*\\) FILTER.*FROM cves").WillReturnRows(pgxmock.NewRows([]string{"e1", "e2", "e3", "e4"}).AddRow(1, 1, 1, 1))
 
 		// Expectations for second refresh (ticker)
 		mock.ExpectQuery("(?i)SELECT.*COUNT\\(\\*\\).*COUNT\\(\\*\\) FILTER.*updated_date.*COUNT\\(\\*\\) FILTER.*cisa_kev.*COUNT\\(\\*\\) FILTER.*cvss_score").
-			WillReturnRows(pgxmock.NewRows([]string{"total", "new24h", "kev", "crit"}).AddRow(11, 3, 4, 2))
-		mock.ExpectQuery("SELECT.*COUNT\\(\\*\\) FILTER.*FROM cves").WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(2, 3, 4, 2))
+			WillReturnRows(pgxmock.NewRows([]string{"total", "new24h", "kev", "crit", "scrit", "shigh", "smed", "slow", "e1", "e2", "e3", "e4"}).AddRow(11, 3, 4, 2, 2, 3, 4, 2, 2, 2, 2, 2))
 		mock.ExpectQuery("SELECT cwe_id, COALESCE\\(MAX\\(cwe_name\\), 'Unknown'\\), COUNT\\(\\*\\) as cnt").WillReturnRows(pgxmock.NewRows([]string{"cwe_id", "cwe_name", "cnt"}).AddRow("CWE-89", "SQLi", 6))
-		mock.ExpectQuery("SELECT.*COUNT\\(\\*\\) FILTER.*FROM cves").WillReturnRows(pgxmock.NewRows([]string{"e1", "e2", "e3", "e4"}).AddRow(2, 2, 2, 2))
 
 		go app.StartStatsTicker(ctx)
 

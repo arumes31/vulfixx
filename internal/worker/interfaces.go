@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 )
 
 // EmailSender defines the interface for sending emails.
@@ -14,6 +15,36 @@ type EmailSender interface {
 // HTTPClient defines the interface for making HTTP requests.
 type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
+}
+
+// Ticker defines a mockable interface for time.Ticker.
+type Ticker interface {
+	Chan() <-chan time.Time
+	Stop()
+}
+
+// realTicker wraps time.Ticker.
+type realTicker struct {
+	*time.Ticker
+}
+
+func (rt *realTicker) Chan() <-chan time.Time {
+	return rt.C
+}
+
+// Timer defines a mockable interface for time.Timer.
+type Timer interface {
+	Chan() <-chan time.Time
+	Stop() bool
+}
+
+// realTimer wraps time.Timer.
+type realTimer struct {
+	*time.Timer
+}
+
+func (rt *realTimer) Chan() <-chan time.Time {
+	return rt.C
 }
 
 // RealEmailSender is the default implementation for EmailSender

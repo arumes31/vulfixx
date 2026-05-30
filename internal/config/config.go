@@ -62,13 +62,12 @@ type Config struct {
 }
 
 var (
-	logFatalf = log.Fatalf
 	logPrintf = log.Printf
 )
 
 var AppConfig Config
 
-func LoadConfig() {
+func LoadConfig() error {
 	AppConfig = Config{
 		DBHost:          getEnv("DB_HOST", "db"),
 		DBPort:          getEnv("DB_PORT", "5432"),
@@ -129,7 +128,11 @@ func LoadConfig() {
 	if AppConfig.SessionKey == "" {
 		if appEnv == "development" {
 			logPrintf("Warning: SESSION_KEY is not set. Generating a random one for development.")
-			AppConfig.SessionKey = generateRandomKey(32)
+			k, err := generateRandomKey(32)
+			if err != nil {
+				return err
+			}
+			AppConfig.SessionKey = k
 		} else {
 			missingFields = append(missingFields, "SessionKey")
 		}
@@ -137,7 +140,11 @@ func LoadConfig() {
 	if AppConfig.CSRFKey == "" {
 		if appEnv == "development" {
 			logPrintf("Warning: CSRF_KEY is not set. Generating a random one for development.")
-			AppConfig.CSRFKey = generateRandomKey(32)
+			k, err := generateRandomKey(32)
+			if err != nil {
+				return err
+			}
+			AppConfig.CSRFKey = k
 		} else {
 			missingFields = append(missingFields, "CSRFKey")
 		}
@@ -157,27 +164,42 @@ func LoadConfig() {
 	if AppConfig.WebhookSecret == "" {
 		if appEnv == "development" || appEnv == "local" || appEnv == "test" {
 			logPrintf("Warning: WEBHOOK_SECRET is not set. Generating a random one for development.")
-			AppConfig.WebhookSecret = generateRandomKey(32)
+			k, err := generateRandomKey(32)
+			if err != nil {
+				return err
+			}
+			AppConfig.WebhookSecret = k
 		} else {
 			missingFields = append(missingFields, "WebhookSecret")
 		}
 	}
 	if len(missingFields) > 0 {
 		if appEnv != "development" {
-			logFatalf("Fatal: the following required fields are not set in production mode: %s", strings.Join(missingFields, ", "))
+			return fmt.Errorf("the following required fields are not set in production mode: %s", strings.Join(missingFields, ", "))
 		} else {
 			logPrintf("Warning: the following sensitive fields are empty in development mode: %s", strings.Join(missingFields, ", "))
 		}
 	}
 
 	// Validate and decode keys
-	AppConfig.CSRFKey = decodeKey("CSRFKey", AppConfig.CSRFKey, 32, appEnv)
-	AppConfig.SessionKey = decodeKey("SessionKey", AppConfig.SessionKey, 32, appEnv)
+	csrfKey, err := decodeKey("CSRFKey", AppConfig.CSRFKey, 32, appEnv)
+	if err != nil {
+		return err
+	}
+	AppConfig.CSRFKey = csrfKey
+
+	sessionKey, err := decodeKey("SessionKey", AppConfig.SessionKey, 32, appEnv)
+	if err != nil {
+		return err
+	}
+	AppConfig.SessionKey = sessionKey
+
+	return nil
 }
 
-func decodeKey(name, val string, expectedLen int, appEnv string) string {
+func decodeKey(name, val string, expectedLen int, appEnv string) (string, error) {
 	if val == "" {
-		return ""
+		return "", nil
 	}
 
 	var decoded []byte
@@ -187,14 +209,14 @@ func decodeKey(name, val string, expectedLen int, appEnv string) string {
 	if len(val) == expectedLen*2 {
 		decoded, err = hex.DecodeString(val)
 		if err == nil && len(decoded) == expectedLen {
-			return string(decoded)
+			return string(decoded), nil
 		}
 	}
 
 	// Try base64
 	decoded, err = base64.StdEncoding.DecodeString(val)
 	if err == nil && len(decoded) == expectedLen {
-		return string(decoded)
+		return string(decoded), nil
 	}
 
 	// Fallback to raw bytes
@@ -203,13 +225,13 @@ func decodeKey(name, val string, expectedLen int, appEnv string) string {
 	if len(decoded) != expectedLen {
 		msg := fmt.Sprintf("%s must be exactly %d bytes (got %d)", name, expectedLen, len(decoded))
 		if appEnv != "development" {
-			logFatalf("Fatal: %s", msg)
+			return "", fmt.Errorf("%s", msg)
 		} else {
 			logPrintf("Warning: %s", msg)
-			return ""
+			return "", nil
 		}
 	}
-	return string(decoded)
+	return string(decoded), nil
 }
 
 func getEnv(key, fallback string) string {
@@ -232,10 +254,10 @@ func getEnvInt(key string, fallback int) int {
 	return val
 }
 
-func generateRandomKey(n int) string {
+func generateRandomKey(n int) (string, error) {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
-		logFatalf("Fatal: failed to generate random key: %v", err)
+		return "", fmt.Errorf("failed to generate random key: %w", err)
 	}
-	return base64.StdEncoding.EncodeToString(b)
+	return base64.StdEncoding.EncodeToString(b), nil
 }

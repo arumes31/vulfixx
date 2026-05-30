@@ -85,17 +85,23 @@ func (w *Worker) syncAdvisoryRSSPeriodically(ctx context.Context) {
 	case <-ctx.Done():
 		return
 	default:
-		w.syncAdvisoryRSS(ctx)
+		w.runWithLock(ctx, "advisory_rss_sync", 30*time.Minute, w.syncAdvisoryRSS)
+	}
+	if w.OnAdvisoryRSSSyncDone != nil {
+		w.OnAdvisoryRSSSyncDone()
 	}
 
-	ticker := time.NewTicker(12 * time.Hour)
+	ticker := w.TickerFactory(12 * time.Hour)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			w.syncAdvisoryRSS(ctx)
+		case <-ticker.Chan():
+			w.runWithLock(ctx, "advisory_rss_sync", 30*time.Minute, w.syncAdvisoryRSS)
+			if w.OnAdvisoryRSSSyncDone != nil {
+				w.OnAdvisoryRSSSyncDone()
+			}
 		}
 	}
 }

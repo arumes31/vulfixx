@@ -36,3 +36,11 @@
 ## 2026-05-28 - Parallelizing InTheWild Sync with Worker Pool
 **Learning:** Sequential HTTP requests in synchronization loops cause significant latency, especially when throtlling is required for API compliance. Using a worker pool with a centralized ticker allows for controlled parallelism while strictly adhering to rate limits.
 **Action:** Identify sync loops with blocking I/O and refactor them to use `errgroup` and a shared `time.Ticker` for rate-limited concurrent processing.
+## 2026-05-30 - Optimized Dashboard and Ticker N+1 Queries
+**Performance Issue:** Execution of multiple aggregate `COUNT(*)` queries for different conditions on the same table.
+**Learning:** Running consecutive `SELECT COUNT(*) FILTER ...` queries sequentially on the same table causes multiple database roundtrips and increases latency.
+**Action:** Use PostgreSQL's `FILTER` clause (`COUNT(*) FILTER (WHERE condition)`) to combine multiple separate aggregate queries into a single `SELECT` statement, fetching all required counts in one database roundtrip.
+
+## 2026-05-30 - Optimized Database Updates in GitHub Buzz Sync
+**Learning:** Performing individual `tx.Exec` calls within a transaction loop in `updateGitHubBatch` for 50 items results in 50 separate database roundtrips, which degrades performance.
+**Action:** Implemented `pgx.Batch` within the transaction to send all update queries in a single database roundtrip, significantly reducing I/O latency, while maintaining a fallback loop for `pgxmock` test compatibility.

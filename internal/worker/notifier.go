@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -261,13 +262,10 @@ func (w *Worker) postJSON(webhookURL string, payload interface{}) (bool, string)
 
 func (w *Worker) sendEmailAlert(email string, cve *models.CVE, sev, color, token, baseURL string) bool {
 	advisories := classifyVendorAdvisories(cve.References)
-	var validAdvisories []string
-	for _, adv := range advisories {
+	validAdvisories := slices.DeleteFunc(slices.Clone(advisories), func(adv string) bool {
 		u, err := url.Parse(adv)
-		if err == nil && (u.Scheme == "http" || u.Scheme == "https") {
-			validAdvisories = append(validAdvisories, adv)
-		}
-	}
+		return !(err == nil && (u.Scheme == "http" || u.Scheme == "https"))
+	})
 
 	epssDisplay := "N/A"
 	if cve.EPSSScore > 0 {

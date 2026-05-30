@@ -17,17 +17,17 @@ import (
 func (w *Worker) syncInTheWildPeriodically(ctx context.Context) {
 	// Initial wait and first run
 	w.waitUntilNextRun(ctx, "inthewild_sync", 12*time.Hour, 4*time.Minute)
-	w.syncInTheWild(ctx)
+	w.runWithLock(ctx, "inthewild_sync", 30*time.Minute, w.syncInTheWild)
 
-	ticker := time.NewTicker(12 * time.Hour)
+	ticker := w.TickerFactory(12 * time.Hour)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			w.syncInTheWild(ctx)
+		case <-ticker.Chan():
+			w.runWithLock(ctx, "inthewild_sync", 30*time.Minute, w.syncInTheWild)
 		}
 	}
 }

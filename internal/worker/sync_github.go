@@ -10,6 +10,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 var (
@@ -18,16 +20,16 @@ var (
 
 func (w *Worker) syncGitHubBuzzPeriodically(ctx context.Context) {
 	w.waitUntilNextRun(ctx, "github_buzz_sync", 4*time.Hour, 1*time.Minute)
-	w.syncGitHubBuzz(ctx)
+	w.runWithLock(ctx, "github_buzz_sync", 2*time.Hour, w.syncGitHubBuzz)
 
-	ticker := time.NewTicker(4 * time.Hour)
+	ticker := w.TickerFactory(4 * time.Hour)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			w.syncGitHubBuzz(ctx)
+		case <-ticker.Chan():
+			w.runWithLock(ctx, "github_buzz_sync", 2*time.Hour, w.syncGitHubBuzz)
 		}
 	}
 }
@@ -150,9 +152,25 @@ func (w *Worker) updateGitHubBatch(ctx context.Context, updates []githubUpdateIt
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	query := "UPDATE cves SET github_poc_count = $1 WHERE cve_id = $2"
+	batch := &pgx.Batch{}
 	for _, up := range updates {
-		if _, err := tx.Exec(ctx, query, up.totalCount, up.cveID); err != nil {
-			slog.Error("Worker: [ERROR] Failed to update GitHub buzz in DB", "cve_id", up.cveID, "error", err)
+		batch.Queue(query, up.totalCount, up.cveID)
+	}
+
+	br := tx.SendBatch(ctx, batch)
+	if br != nil {
+		defer br.Close()
+		for _, up := range updates {
+			if _, err := br.Exec(); err != nil {
+				slog.Error("Worker: [ERROR] Failed to update GitHub buzz in DB via batch", "cve_id", up.cveID, "error", err)
+			}
+		}
+	} else {
+		// Fallback for pgxmock test compatibility
+		for _, up := range updates {
+			if _, err := tx.Exec(ctx, query, up.totalCount, up.cveID); err != nil {
+				slog.Error("Worker: [ERROR] Failed to update GitHub buzz in DB", "cve_id", up.cveID, "error", err)
+			}
 		}
 	}
 

@@ -173,6 +173,7 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
+		a.EnforceConcurrentSessions(r.Context(), preAuthUserID, newSession.ID)
 		a.LogActivity(r.Context(), preAuthUserID, "login", "Successful 2FA login", a.GetClientIP(r), r.UserAgent())
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
 		return
@@ -233,6 +234,7 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+	a.EnforceConcurrentSessions(r.Context(), user.ID, newSession.ID)
 	a.LogActivity(r.Context(), user.ID, "login", "Successful login", clientIP, r.UserAgent())
 
 	http.Redirect(w, r, "/dashboard", http.StatusFound)
@@ -515,6 +517,21 @@ func (a *App) ConfirmEmailChangeHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 func (a *App) CaptchaHandler(w http.ResponseWriter, r *http.Request) {
+	if a.Redis != nil {
+		clientIP := a.GetClientIP(r)
+		redisKey := fmt.Sprintf("captcha_limit:%s", clientIP)
+		count, err := a.Redis.Incr(r.Context(), redisKey).Result()
+		if err == nil {
+			if count == 1 {
+				_, _ = a.Redis.Expire(r.Context(), redisKey, 60*time.Second).Result()
+			}
+			if count > 10 {
+				http.Error(w, "Too many captcha requests. Please wait a minute.", http.StatusTooManyRequests)
+				return
+			}
+		}
+	}
+
 	n1, _ := rand.Int(rand.Reader, big.NewInt(9))
 	n2, _ := rand.Int(rand.Reader, big.NewInt(9))
 	v1 := int(n1.Int64()) + 1
@@ -620,6 +637,33 @@ func (a *App) ErrorReportHandler(w http.ResponseWriter, r *http.Request) {
 	msg := truncate(sanitizeForLog(req.Message), 1000)
 	errType := truncate(sanitizeForLog(req.Type), 100)
 	url := truncate(sanitizeForLog(req.URL), 500)
+
+	// Compute fingerprint SHA-256 of message + type + url to identify duplicates
+	hashInput := fmt.Sprintf("%s:%s:%s", errType, msg, url)
+	hasher := sha256.New()
+	hasher.Write([]byte(hashInput))
+	fingerprint := hex.EncodeToString(hasher.Sum(nil))
+
+	throttled := false
+	if a.Redis != nil {
+		clientIP := a.GetClientIP(r)
+		redisKey := fmt.Sprintf("err_limit:%s:%s", clientIP, fingerprint)
+		count, err := a.Redis.Incr(r.Context(), redisKey).Result()
+		if err == nil {
+			if count == 1 {
+				_, _ = a.Redis.Expire(r.Context(), redisKey, 60*time.Second).Result()
+			}
+			if count > 5 {
+				throttled = true
+			}
+		}
+	}
+
+	if throttled {
+		log.Printf("FRONTEND ERROR THROTTLED (IP rate-limit matched): [%s] at %s", errType, url)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 
 	log.Printf("FRONTEND ERROR: [%s] %s at %s", errType, msg, url)
 	sentry.CaptureMessage(fmt.Sprintf("Frontend Error: %s", msg))
