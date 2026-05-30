@@ -5,11 +5,8 @@ import (
 	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
 	"net/http"
-	"os"
 	"testing"
 
-	"github.com/alicebob/miniredis/v2"
-	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v3"
 )
@@ -112,78 +109,6 @@ func TestWorker_StartAndPeriodics(t *testing.T) {
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Fatalf("unmet expectations in PeriodicallyWrappers: %v", err)
 		}
-	})
-}
-
-func TestWorker_AsynqRedisOptionsAndLogger(t *testing.T) {
-	t.Run("GetAsynqRedisConnOpt_Sentinel", func(t *testing.T) {
-		_ = os.Setenv("REDIS_SENTINEL_MASTER", "mymaster")
-		_ = os.Setenv("REDIS_SENTINEL_ADDRS", "127.0.0.1:26379,127.0.0.1:26380")
-		_ = os.Setenv("REDIS_PASSWORD", "secret")
-		defer func() {
-			_ = os.Unsetenv("REDIS_SENTINEL_MASTER")
-			_ = os.Unsetenv("REDIS_SENTINEL_ADDRS")
-			_ = os.Unsetenv("REDIS_PASSWORD")
-		}()
-
-		opt := GetAsynqRedisConnOpt()
-		if _, ok := opt.(interface{}); !ok {
-			t.Fatal("expected Sentinel options")
-		}
-	})
-
-	t.Run("GetAsynqRedisConnOpt_Cluster", func(t *testing.T) {
-		_ = os.Setenv("REDIS_CLUSTER_ADDRS", "127.0.0.1:7000,127.0.0.1:7001")
-		defer func() {
-			_ = os.Unsetenv("REDIS_CLUSTER_ADDRS")
-		}()
-
-		opt := GetAsynqRedisConnOpt()
-		if _, ok := opt.(interface{}); !ok {
-			t.Fatal("expected Cluster options")
-		}
-	})
-
-	t.Run("GetAsynqRedisConnOpt_Standard", func(t *testing.T) {
-		_ = os.Setenv("REDIS_URL", "127.0.0.1:6379")
-		defer func() {
-			_ = os.Unsetenv("REDIS_URL")
-		}()
-
-		opt := GetAsynqRedisConnOpt()
-		if _, ok := opt.(interface{}); !ok {
-			t.Fatal("expected Client options")
-		}
-	})
-
-	t.Run("AsynqLogger", func(t *testing.T) {
-		logger := &asynqLogger{}
-		logger.Debug("debug msg")
-		logger.Info("info msg")
-		logger.Warn("warn msg")
-		logger.Error("error msg")
-	})
-
-	t.Run("StartAsynqServerCancelledCtx", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed: %v", err)
-		}
-		defer mock.Close()
-
-		mr, err := miniredis.Run()
-		if err != nil {
-			t.Fatalf("failed to start miniredis: %v", err)
-		}
-		defer mr.Close()
-
-		w := NewWorker(mock, db.RedisClient, &EmailSenderMock{}, http.DefaultClient)
-
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-
-		// Should start, register mux, see cancelled context, and shutdown gracefully
-		w.StartAsynqServer(ctx, asynq.RedisClientOpt{Addr: mr.Addr()})
 	})
 }
 

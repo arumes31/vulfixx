@@ -169,3 +169,183 @@ func TestAsynqLogger_Fatal(t *testing.T) {
 	}
 	t.Fatalf("process ran with err %v, want exit status 1", err)
 }
+
+func TestGetAsynqRedisConnOpt(t *testing.T) {
+	// Save current env to restore after test
+	envVars := []string{"REDIS_PASSWORD", "REDIS_SENTINEL_MASTER", "REDIS_SENTINEL_ADDRS", "REDIS_URL", "REDIS_CLUSTER_ADDRS"}
+
+	tests := []struct {
+		name     string
+		env      map[string]string
+		validate func(t *testing.T, opt asynq.RedisConnOpt)
+	}{
+		{
+			name: "Default configuration",
+			env:  map[string]string{},
+			validate: func(t *testing.T, opt asynq.RedisConnOpt) {
+				clientOpt, ok := opt.(asynq.RedisClientOpt)
+				if !ok {
+					t.Fatalf("expected asynq.RedisClientOpt, got %T", opt)
+				}
+				if clientOpt.Addr != defaultRedisAddr {
+					t.Errorf("expected addr %s, got %s", defaultRedisAddr, clientOpt.Addr)
+				}
+			},
+		},
+		{
+			name: "Standard configuration with URL and Password",
+			env: map[string]string{
+				"REDIS_URL":      "redis:6379",
+				"REDIS_PASSWORD": "password123",
+			},
+			validate: func(t *testing.T, opt asynq.RedisConnOpt) {
+				clientOpt, ok := opt.(asynq.RedisClientOpt)
+				if !ok {
+					t.Fatalf("expected asynq.RedisClientOpt, got %T", opt)
+				}
+				if clientOpt.Addr != "redis:6379" {
+					t.Errorf("expected addr redis:6379, got %s", clientOpt.Addr)
+				}
+				if clientOpt.Password != "password123" {
+					t.Errorf("expected password password123, got %s", clientOpt.Password)
+				}
+			},
+		},
+		{
+			name: "Sentinel configuration",
+			env: map[string]string{
+				"REDIS_SENTINEL_MASTER": "mymaster",
+				"REDIS_SENTINEL_ADDRS":  "sentinel1:26379, sentinel2:26379",
+				"REDIS_PASSWORD":        "secret",
+			},
+			validate: func(t *testing.T, opt asynq.RedisConnOpt) {
+				failoverOpt, ok := opt.(asynq.RedisFailoverClientOpt)
+				if !ok {
+					t.Fatalf("expected asynq.RedisFailoverClientOpt, got %T", opt)
+				}
+				if failoverOpt.MasterName != "mymaster" {
+					t.Errorf("expected master mymaster, got %s", failoverOpt.MasterName)
+				}
+				expectedAddrs := []string{"sentinel1:26379", "sentinel2:26379"}
+				if len(failoverOpt.SentinelAddrs) != 2 || failoverOpt.SentinelAddrs[0] != expectedAddrs[0] || failoverOpt.SentinelAddrs[1] != expectedAddrs[1] {
+					t.Errorf("expected addrs %v, got %v", expectedAddrs, failoverOpt.SentinelAddrs)
+				}
+				if failoverOpt.Password != "secret" {
+					t.Errorf("expected password secret, got %s", failoverOpt.Password)
+				}
+			},
+		},
+		{
+			name: "Sentinel configuration fallback to REDIS_URL",
+			env: map[string]string{
+				"REDIS_SENTINEL_MASTER": "mymaster",
+				"REDIS_URL":             "sentinel-fallback:26379",
+			},
+			validate: func(t *testing.T, opt asynq.RedisConnOpt) {
+				failoverOpt, ok := opt.(asynq.RedisFailoverClientOpt)
+				if !ok {
+					t.Fatalf("expected asynq.RedisFailoverClientOpt, got %T", opt)
+				}
+				if failoverOpt.SentinelAddrs[0] != "sentinel-fallback:26379" {
+					t.Errorf("expected addr sentinel-fallback:26379, got %s", failoverOpt.SentinelAddrs[0])
+				}
+			},
+		},
+		{
+			name: "Sentinel configuration fallback to default",
+			env: map[string]string{
+				"REDIS_SENTINEL_MASTER": "mymaster",
+			},
+			validate: func(t *testing.T, opt asynq.RedisConnOpt) {
+				failoverOpt, ok := opt.(asynq.RedisFailoverClientOpt)
+				if !ok {
+					t.Fatalf("expected asynq.RedisFailoverClientOpt, got %T", opt)
+				}
+				if failoverOpt.SentinelAddrs[0] != defaultRedisSentinelAddr {
+					t.Errorf("expected addr %s, got %s", defaultRedisSentinelAddr, failoverOpt.SentinelAddrs[0])
+				}
+			},
+		},
+		{
+			name: "Cluster configuration with REDIS_CLUSTER_ADDRS",
+			env: map[string]string{
+				"REDIS_CLUSTER_ADDRS": "node1:6379,node2:6379",
+				"REDIS_PASSWORD":      "clusterpass",
+			},
+			validate: func(t *testing.T, opt asynq.RedisConnOpt) {
+				clusterOpt, ok := opt.(asynq.RedisClusterClientOpt)
+				if !ok {
+					t.Fatalf("expected asynq.RedisClusterClientOpt, got %T", opt)
+				}
+				expectedAddrs := []string{"node1:6379", "node2:6379"}
+				if len(clusterOpt.Addrs) != 2 || clusterOpt.Addrs[0] != expectedAddrs[0] || clusterOpt.Addrs[1] != expectedAddrs[1] {
+					t.Errorf("expected addrs %v, got %v", expectedAddrs, clusterOpt.Addrs)
+				}
+				if clusterOpt.Password != "clusterpass" {
+					t.Errorf("expected password clusterpass, got %s", clusterOpt.Password)
+				}
+			},
+		},
+		{
+			name: "Cluster configuration using REDIS_URL with comma",
+			env: map[string]string{
+				"REDIS_URL": "node1:6379,node2:6379",
+			},
+			validate: func(t *testing.T, opt asynq.RedisConnOpt) {
+				clusterOpt, ok := opt.(asynq.RedisClusterClientOpt)
+				if !ok {
+					t.Fatalf("expected asynq.RedisClusterClientOpt, got %T", opt)
+				}
+				if len(clusterOpt.Addrs) != 2 {
+					t.Errorf("expected 2 addrs, got %d", len(clusterOpt.Addrs))
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clear relevant env vars
+			for _, v := range envVars {
+				t.Setenv(v, "")
+			}
+
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+
+			opt := GetAsynqRedisConnOpt()
+			tt.validate(t, opt)
+		})
+	}
+}
+
+func TestStartAsynqServer_CancelledContext(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed: %v", err)
+	}
+	defer mock.Close()
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// Should start, register mux, see cancelled context, and shutdown gracefully
+	w.StartAsynqServer(ctx, asynq.RedisClientOpt{Addr: mr.Addr()})
+}
+
+func TestAsynqLogger_LogMethods(t *testing.T) {
+	logger := &asynqLogger{}
+	logger.Debug("debug msg")
+	logger.Info("info msg")
+	logger.Warn("warn msg")
+	logger.Error("error msg")
+}
