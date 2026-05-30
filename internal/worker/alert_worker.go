@@ -330,9 +330,9 @@ func (w *Worker) notifyIfNewWithCache(ctx context.Context, userID int, cve *mode
 	// If the job unmarshaled from Redis has CVEID, we assume it's full.
 	if cve.CVEID == "" {
 		err := w.Pool.QueryRow(ctx, `
-			SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, github_poc_count, published_date, "references" 
+			SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, github_poc_count, published_date, "references", osint_data
 			FROM cves WHERE id = $1
-		`, cve.ID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.VectorString, &cve.CISAKEV, &cve.EPSSScore, &cve.CWEID, &cve.GitHubPoCCount, &cve.PublishedDate, &cve.References)
+		`, cve.ID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.VectorString, &cve.CISAKEV, &cve.EPSSScore, &cve.CWEID, &cve.GitHubPoCCount, &cve.PublishedDate, &cve.References, &cve.OSINTData)
 		if err != nil {
 			w.Redis.Decr(ctx, floodKey)
 			slog.Error("Failed to fetch full CVE details for alert", "id", cve.ID, "error", err)
@@ -340,7 +340,7 @@ func (w *Worker) notifyIfNewWithCache(ctx context.Context, userID int, cve *mode
 		}
 	}
 
-	cve.OSINTData = w.fetchOSINTLinks(ctx, cve.CVEID)
+	if len(cve.OSINTData) == 0 { cve.OSINTData = w.fetchOSINTLinks(ctx, cve.CVEID) }
 
 	if !w.bufferAlert(ctx, userID, cve, sub, email, assetName) {
 		w.Redis.Decr(ctx, floodKey)
