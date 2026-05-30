@@ -42,8 +42,6 @@ func TestStartStatsTicker(t *testing.T) {
 		go app.StartStatsTicker(ctx)
 
 		// Wait for initial refresh and exactly one ticker tick (hopefully)
-		// Using a slightly longer sleep to ensure the second tick is processed,
-		// but matching the expectations carefully.
 		time.Sleep(150 * time.Millisecond)
 		cancel()
 
@@ -82,4 +80,75 @@ func TestStartStatsTicker(t *testing.T) {
 			t.Errorf("expected total 500 from Redis, got %d", statsCache.total)
 		}
 	})
+
+	t.Run("RedisCacheSave", func(t *testing.T) {
+		app := setupTestApp(t, mock)
+		app.StatsInterval = 1 * time.Hour
+
+		// No expectations for Redis Get initially (cache miss)
+		// Expectations for DB query
+		mock.ExpectQuery("(?i)SELECT.*COUNT\\(\\*\\).*COUNT\\(\\*\\) FILTER.*updated_date.*COUNT\\(\\*\\) FILTER.*cisa_kev.*COUNT\\(\\*\\) FILTER.*cvss_score").
+			WillReturnRows(pgxmock.NewRows([]string{"total", "new24h", "kev", "crit"}).AddRow(200, 20, 30, 10))
+		mock.ExpectQuery("SELECT.*COUNT\\(\\*\\) FILTER.*FROM cves").WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(10, 20, 30, 40))
+		mock.ExpectQuery("SELECT cwe_id, COALESCE\\(MAX\\(cwe_name\\), 'Unknown'\\), COUNT\\(\\*\\) as cnt").WillReturnRows(pgxmock.NewRows([]string{"cwe_id", "cwe_name", "cnt"}).AddRow("CWE-79", "XSS", 50))
+		mock.ExpectQuery("SELECT.*COUNT\\(\\*\\) FILTER.*FROM cves").WillReturnRows(pgxmock.NewRows([]string{"e1", "e2", "e3", "e4"}).AddRow(10, 10, 10, 10))
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		go app.StartStatsTicker(ctx)
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+
+		// Verify it saved to Redis
+		val, err := app.Redis.Get(context.Background(), "vulfixx:dashboard_stats").Result()
+		if err != nil {
+			t.Errorf("failed to get stats from Redis: %v", err)
+		}
+		var stats GlobalCVEStatsJSON
+		if err := json.Unmarshal([]byte(val), &stats); err != nil {
+			t.Errorf("failed to unmarshal stats from Redis: %v", err)
+		}
+		if stats.Total != 200 {
+			t.Errorf("expected total 200 in Redis, got %d", stats.Total)
+		}
+	})
+}
+
+func TestStopStatsTicker(t *testing.T) {
+	statsMu.Lock()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancelStats = cancel
+	statsMu.Unlock()
+
+	StopStatsTicker()
+
+	statsMu.Lock()
+	defer statsMu.Unlock()
+	if cancelStats != nil {
+		t.Error("expected cancelStats to be nil after StopStatsTicker")
+	}
+	select {
+	case <-ctx.Done():
+		// Success
+	default:
+		t.Error("expected context to be cancelled after StopStatsTicker")
+	}
+}
+
+func TestInitTemplatesTickerLogic(t *testing.T) {
+	mock, _ := db.SetupTestDB()
+	defer mock.Close()
+	app := setupTestApp(t, mock)
+
+	// InitTemplates should NOT start the ticker when running tests
+	app.InitTemplates()
+
+	statsMu.Lock()
+	defer statsMu.Unlock()
+	if cancelStats != nil {
+		t.Error("InitTemplates started stats ticker during test")
+		cancelStats()
+		cancelStats = nil
+	}
 }
