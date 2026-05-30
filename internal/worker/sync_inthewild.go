@@ -7,9 +7,11 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 )
@@ -65,7 +67,14 @@ func (w *Worker) syncInTheWild(ctx context.Context) {
 		return
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
+	type itwUpdate struct {
+		cveID string
+		data  []byte
+	}
+	var updates []itwUpdate
+	var mu sync.Mutex
+
+	g, gCtx := errgroup.WithContext(ctx)
 	cveChan := make(chan string)
 	var processedCount int32
 
@@ -77,39 +86,28 @@ func (w *Worker) syncInTheWild(ctx context.Context) {
 	for i := 0; i < numWorkers; i++ {
 		g.Go(func() error {
 			for cveID := range cveChan {
-				if err := limiter.Wait(ctx); err != nil {
+				if err := limiter.Wait(gCtx); err != nil {
 					return err
 				}
 
-				data, err := w.fetchInTheWildData(ctx, cveID)
+				data, err := w.fetchInTheWildData(gCtx, cveID)
 				if err != nil {
 					// Skip and continue
 					continue
 				}
 
+				var dataJSON []byte
 				if data != nil {
-					dataJSON, err := json.Marshal(data)
+					dataJSON, err = json.Marshal(data)
 					if err != nil {
 						slog.Error("Worker: [ERROR] Failed to marshal InTheWild data", "cve_id", cveID, "error", err)
 						continue
 					}
-					_, err = w.Pool.Exec(ctx, `
-						UPDATE cves
-						SET inthewild_data = $1, inthewild_last_updated = NOW()
-						WHERE cve_id = $2
-					`, dataJSON, cveID)
-					if err != nil {
-						slog.Error("Worker: [ERROR] Failed to update InTheWild data", "cve_id", cveID, "error", err)
-					} else {
-						atomic.AddInt32(&processedCount, 1)
-					}
-				} else {
-					// Mark as checked even if no data found
-					_, err = w.Pool.Exec(ctx, "UPDATE cves SET inthewild_last_updated = NOW() WHERE cve_id = $1", cveID)
-					if err != nil {
-						slog.Error("Worker: [ERROR] Failed to update InTheWild last_updated timestamp", "cve_id", cveID, "error", err)
-					}
 				}
+
+				mu.Lock()
+				updates = append(updates, itwUpdate{cveID: cveID, data: dataJSON})
+				mu.Unlock()
 			}
 			return nil
 		})
@@ -120,15 +118,73 @@ func (w *Worker) syncInTheWild(ctx context.Context) {
 		defer close(cveChan)
 		for _, id := range cveIDs {
 			select {
-			case <-ctx.Done():
+			case <-gCtx.Done():
 				return
 			case cveChan <- id:
 			}
 		}
 	}()
 
-	if err := g.Wait(); err != nil && err != context.Canceled {
+	if err := g.Wait(); err != nil && err != context.Canceled && ctx.Err() == nil {
 		slog.Error("Worker: [ERROR] InTheWild sync worker group error", "error", err)
+	}
+
+	if len(updates) == 0 {
+		w.updateTaskStats(ctx, "inthewild_sync")
+		return
+	}
+
+	tx, err := w.Pool.Begin(ctx)
+	if err != nil {
+		slog.Error("Worker: [ERROR] Failed to begin transaction for InTheWild updates", "error", err)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	batch := &pgx.Batch{}
+	for _, up := range updates {
+		if up.data != nil {
+			batch.Queue(`
+				UPDATE cves
+				SET inthewild_data = $1, inthewild_last_updated = NOW()
+				WHERE cve_id = $2
+			`, up.data, up.cveID)
+		} else {
+			batch.Queue("UPDATE cves SET inthewild_last_updated = NOW() WHERE cve_id = $1", up.cveID)
+		}
+	}
+
+	br := tx.SendBatch(ctx, batch)
+	if br != nil {
+		for _, up := range updates {
+			if _, err := br.Exec(); err == nil {
+				if up.data != nil {
+					atomic.AddInt32(&processedCount, 1)
+				}
+			}
+		}
+		_ = br.Close()
+	} else {
+		// Fallback for mocks/drivers that don't support batching
+		for _, up := range updates {
+			var err error
+			if up.data != nil {
+				_, err = tx.Exec(ctx, `
+					UPDATE cves
+					SET inthewild_data = $1, inthewild_last_updated = NOW()
+					WHERE cve_id = $2
+				`, up.data, up.cveID)
+			} else {
+				_, err = tx.Exec(ctx, "UPDATE cves SET inthewild_last_updated = NOW() WHERE cve_id = $1", up.cveID)
+			}
+			if err == nil && up.data != nil {
+				atomic.AddInt32(&processedCount, 1)
+			}
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		slog.Error("Worker: [ERROR] Failed to commit InTheWild updates", "error", err)
 	}
 
 	w.updateTaskStats(ctx, "inthewild_sync")
@@ -141,15 +197,26 @@ func (w *Worker) fetchInTheWildData(ctx context.Context, cveID string) (map[stri
 		baseURL = envURL
 	}
 	url := fmt.Sprintf("%s/%s", baseURL, cveID)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil) // #nosec G704
+
+	resp, err := DoWithRetry(ctx, w.HTTP, RetryConfig{
+		MaxRetries:  3,
+		MaxWait:     2 * time.Minute,
+		ShouldRetry: DefaultShouldRetry,
+		Label:       "InTheWild API",
+	}, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("User-Agent", "Vulfixx-Threat-Intel/2.0")
+		return req, nil
+	})
+
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Vulfixx-Threat-Intel/2.0")
-
-	resp, err := w.HTTP.Do(req)
-	if err != nil {
-		return nil, err
+	if resp == nil {
+		return nil, fmt.Errorf("InTheWild API returned nil response")
 	}
 	defer resp.Body.Close()
 
@@ -166,7 +233,5 @@ func (w *Worker) fetchInTheWildData(ctx context.Context, cveID string) (map[stri
 		return nil, err
 	}
 
-	// Ensure we only return data if it actually contains exploitation info
-	// InTheWild sometimes returns an empty-ish response for non-exploited vulns
 	return result, nil
 }
