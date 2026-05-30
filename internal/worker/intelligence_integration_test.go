@@ -18,7 +18,7 @@ func TestWorker_ExploitDetection(t *testing.T) {
 	}
 	defer mock.Close()
 
-	w := &Worker{Pool: mock}
+	w := &Worker{Pool: mock, enrichmentQueue: make(chan int, 100)}
 
 	entries := []NVDCVEEntry{
 		{
