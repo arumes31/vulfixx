@@ -13,7 +13,7 @@ import (
 	"github.com/pashagolub/pgxmock/v3"
 )
 
-func TestAssetsHandler(t *testing.T) {
+func TestListAssetsHandler(t *testing.T) {
 	t.Run("GET_Unauthenticated", func(t *testing.T) {
 		mock, _ := db.SetupTestDB()
 		defer mock.Close()
@@ -21,7 +21,7 @@ func TestAssetsHandler(t *testing.T) {
 
 		req := httptest.NewRequest("GET", "/assets", nil)
 		rr := httptest.NewRecorder()
-		app.AssetsHandler(rr, req)
+		app.ListAssetsHandler(rr, req)
 		if rr.Code != http.StatusFound {
 			t.Errorf("expected 302, got %d", rr.Code)
 		}
@@ -60,7 +60,7 @@ func TestAssetsHandler(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(1, "Test Team"))
 
 		rr2 := httptest.NewRecorder()
-		app.AssetsHandler(rr2, req)
+		app.ListAssetsHandler(rr2, req)
 		if rr2.Code != http.StatusOK {
 			t.Errorf("expected 200, got %d", rr2.Code)
 		}
@@ -68,7 +68,9 @@ func TestAssetsHandler(t *testing.T) {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
+}
 
+func TestCreateAssetHandler(t *testing.T) {
 	t.Run("POST", func(t *testing.T) {
 		tests := []struct {
 			name           string
@@ -153,7 +155,7 @@ func TestAssetsHandler(t *testing.T) {
 				tt.mockExpect(mock)
 
 				rr := httptest.NewRecorder()
-				app.AssetsHandler(rr, req)
+				app.CreateAssetHandler(rr, req)
 
 				if rr.Code != tt.expectedStatus {
 					t.Errorf("expected %d, got %d, body: %s", tt.expectedStatus, rr.Code, rr.Body.String())
