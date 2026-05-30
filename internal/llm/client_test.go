@@ -621,3 +621,52 @@ func TestExtractVendorProduct(t *testing.T) {
 		}
 	})
 }
+
+func TestSetCooldownAndIsCooledDown(t *testing.T) {
+	tests := []struct {
+		name         string
+		provider     string
+		duration     time.Duration
+		sleep        time.Duration
+		expectedCool bool
+	}{
+		{
+			name:         "Provider in cooldown",
+			provider:     "test_provider_1",
+			duration:     10 * time.Minute,
+			sleep:        0,
+			expectedCool: true,
+		},
+		{
+			name:         "Provider not in cooldown (unknown)",
+			provider:     "unknown_provider",
+			duration:     0,
+			sleep:        0,
+			expectedCool: false,
+		},
+		{
+			name:         "Provider cooldown expired",
+			provider:     "test_provider_2",
+			duration:     1 * time.Millisecond,
+			sleep:        50 * time.Millisecond,
+			expectedCool: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.duration > 0 {
+				setCooldown(tc.provider, tc.duration)
+			}
+
+			if tc.sleep > 0 {
+				time.Sleep(tc.sleep)
+			}
+
+			isCool := isCooledDown(tc.provider)
+			if isCool != tc.expectedCool {
+				t.Errorf("Expected isCooledDown to be %v for provider %s, got %v", tc.expectedCool, tc.provider, isCool)
+			}
+		})
+	}
+}
