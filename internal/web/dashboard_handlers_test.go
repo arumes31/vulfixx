@@ -461,20 +461,15 @@ func TestPublicDashboardHandler_WithFilters(t *testing.T) {
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "cisa_ransomware"}).AddRow(101, false))
 
-	// 4. Severity Distribution
-	mock.ExpectQuery("SELECT.*COUNT.*FILTER.*cvss_score").
+	// 4. Combined Stats Distribution
+	mock.ExpectQuery("SELECT.*COUNT.*FILTER.*cvss_score.*COUNT.*FILTER.*epss_score").
 		WithArgs(args...).
-		WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low"}).AddRow(0, 1, 0, 0))
+		WillReturnRows(pgxmock.NewRows([]string{"crit", "high", "med", "low", "e1", "e2", "e3", "e4"}).AddRow(0, 1, 0, 0, 1, 0, 0, 0))
 
 	// 5. CWE distribution
 	mock.ExpectQuery("SELECT cwe_id, COALESCE.*MAX.*cwe_name.*COUNT").
 		WithArgs(args...).
 		WillReturnRows(pgxmock.NewRows([]string{"cwe_id", "max_cwe_name", "cnt"}).AddRow("CWE-79", "XSS", 1))
-
-	// 6. EPSS distribution
-	mock.ExpectQuery("SELECT.*COUNT.*FILTER.*epss_score").
-		WithArgs(args...).
-		WillReturnRows(pgxmock.NewRows([]string{"e1", "e2", "e3", "e4"}).AddRow(1, 0, 0, 0))
 
 	// 7. Trending CVEs
 	mock.ExpectQuery("SELECT c.id, c.cve_id.*FROM cves c").

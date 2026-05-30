@@ -450,24 +450,25 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 
 		// Cache miss - query DB
 		var total, new24h, kevCount, critCount int
+		var sevCounts SeverityCounts
+		epssDist := make([]int, 4)
+
 		_ = a.Pool.QueryRow(refreshCtx, `
 			SELECT
 				COUNT(*),
 				COUNT(*) FILTER (WHERE updated_date >= NOW() - INTERVAL '24 hours'),
 				COUNT(*) FILTER (WHERE cisa_kev = TRUE),
-				COUNT(*) FILTER (WHERE cvss_score >= 9.0)
-			FROM cves
-		`).Scan(&total, &new24h, &kevCount, &critCount)
-
-		var sevCounts SeverityCounts
-		_ = a.Pool.QueryRow(refreshCtx, `
-			SELECT 
+				COUNT(*) FILTER (WHERE cvss_score >= 9.0),
 				COUNT(*) FILTER (WHERE cvss_score >= 9.0),
 				COUNT(*) FILTER (WHERE cvss_score >= 7.0 AND cvss_score < 9.0),
 				COUNT(*) FILTER (WHERE cvss_score >= 4.0 AND cvss_score < 7.0),
-				COUNT(*) FILTER (WHERE cvss_score < 4.0)
+				COUNT(*) FILTER (WHERE cvss_score < 4.0),
+				COUNT(*) FILTER (WHERE epss_score < 0.01),
+				COUNT(*) FILTER (WHERE epss_score >= 0.01 AND epss_score < 0.1),
+				COUNT(*) FILTER (WHERE epss_score >= 0.1 AND epss_score < 0.5),
+				COUNT(*) FILTER (WHERE epss_score >= 0.5)
 			FROM cves
-		`).Scan(&sevCounts.Critical, &sevCounts.High, &sevCounts.Medium, &sevCounts.Low)
+		`).Scan(&total, &new24h, &kevCount, &critCount, &sevCounts.Critical, &sevCounts.High, &sevCounts.Medium, &sevCounts.Low, &epssDist[0], &epssDist[1], &epssDist[2], &epssDist[3])
 
 		var topCWEs []CWEStat
 		rowsCwe, _ := a.Pool.Query(refreshCtx, `
@@ -488,16 +489,6 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 			}
 			rowsCwe.Close()
 		}
-
-		epssDist := make([]int, 4)
-		_ = a.Pool.QueryRow(refreshCtx, `
-			SELECT 
-				COUNT(*) FILTER (WHERE epss_score < 0.01),
-				COUNT(*) FILTER (WHERE epss_score >= 0.01 AND epss_score < 0.1),
-				COUNT(*) FILTER (WHERE epss_score >= 0.1 AND epss_score < 0.5),
-				COUNT(*) FILTER (WHERE epss_score >= 0.5)
-			FROM cves
-		`).Scan(&epssDist[0], &epssDist[1], &epssDist[2], &epssDist[3])
 
 		now := time.Now()
 		statsCache.Lock()
