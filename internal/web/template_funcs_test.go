@@ -71,6 +71,10 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 		if f("//evil.com") != "#invalid-url" {
 			t.Errorf("expected #invalid-url for protocol-relative, got %v", f("//evil.com"))
 		}
+		// Trigger url.Parse error with control character
+		if f("https://example.com/path with space\x7f") != "#invalid-url" {
+			t.Errorf("expected #invalid-url for invalid characters, got %v", f("https://example.com/path with space\x7f"))
+		}
 	})
 
 	t.Run("severity", func(t *testing.T) {
@@ -197,11 +201,19 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 		if funcs["round"].(func(float64) int)(3.6) != 4 {
 			t.Error("round failed")
 		}
+		// Test both branches of min
 		if funcs["min"].(func(float64, float64) float64)(10, 20) != 10 {
-			t.Error("min failed")
+			t.Error("min(10, 20) failed")
 		}
+		if funcs["min"].(func(float64, float64) float64)(20, 10) != 10 {
+			t.Error("min(20, 10) failed")
+		}
+		// Test both branches of max
 		if funcs["max"].(func(float64, float64) float64)(10, 20) != 20 {
-			t.Error("max failed")
+			t.Error("max(10, 20) failed")
+		}
+		if funcs["max"].(func(float64, float64) float64)(20, 10) != 20 {
+			t.Error("max(20, 10) failed")
 		}
 	})
 
