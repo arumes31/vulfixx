@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"golang.org/x/sync/errgroup"
 )
 
 func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
@@ -66,20 +67,41 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		cves = append(cves, c)
 	}
 
-	batch := &pgx.Batch{}
+	if len(cves) == 0 {
+		return nil
+	}
+
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(10)
+
+	var mu sync.Mutex
+	updatedCVEs := make([]models.CVE, 0, len(cves))
+
 	for _, c := range cves {
-		// 1. Social Sentiment (Reddit & HN)
-		w.updateSocialSentiment(ctx, &c)
+		c := c
+		g.Go(func() error {
+			// 1. Social Sentiment (Reddit & HN)
+			w.updateSocialSentiment(gCtx, &c)
 
-		// 2. Duplicate Detection (Simplified)
-		w.detectDuplicates(ctx, &c)
+			// 2. Duplicate Detection (Simplified)
+			w.detectDuplicates(gCtx, &c)
 
+			mu.Lock()
+			updatedCVEs = append(updatedCVEs, c)
+			mu.Unlock()
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return err
+	}
+
+	batch := &pgx.Batch{}
+	for _, c := range updatedCVEs {
 		// Queue update
 		osintData, _ := json.Marshal(c.OSINTData)
 		batch.Queue("UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
-
-		// Throttle to avoid rate limits
-		time.Sleep(500 * time.Millisecond)
 	}
 
 	if batch.Len() > 0 {
@@ -101,7 +123,7 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 			}
 		} else {
 			// Fallback for mock drivers
-			for _, c := range cves {
+			for _, c := range updatedCVEs {
 				osintData, _ := json.Marshal(c.OSINTData)
 				_, err = tx.Exec(ctx, "UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
 				if err != nil {

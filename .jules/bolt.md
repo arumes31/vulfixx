@@ -36,3 +36,9 @@
 ## 2026-05-28 - Parallelizing InTheWild Sync with Worker Pool
 **Learning:** Sequential HTTP requests in synchronization loops cause significant latency, especially when throtlling is required for API compliance. Using a worker pool with a centralized ticker allows for controlled parallelism while strictly adhering to rate limits.
 **Action:** Identify sync loops with blocking I/O and refactor them to use `errgroup` and a shared `time.Ticker` for rate-limited concurrent processing.
+
+## 2026-05-28 - Optimized Intelligence Sync with Concurrent errgroup
+**Performance Issue:** Manual 500ms sleep in a sequential loop for 100 CVEs caused a minimum 50-second execution time.
+**Learning:** Sequential processing of I/O-bound tasks (social sentiment fetching from multiple sources) with artificial delays is highly inefficient. The system already had rate limiters that handle compliance at the client level.
+**Optimization:** Removed the manual `time.Sleep` and refactored the loop to use `errgroup` with a concurrency limit of 10.
+**Impact:** Reduced execution time for intelligence sync from ~50 seconds to the time taken by the slowest batch of 10 requests (approx. 5-10 seconds depending on rate limits), while still respecting external API constraints.
