@@ -5,8 +5,6 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"net/http"
-	"os"
-	"os/exec"
 	"testing"
 	"time"
 
@@ -154,18 +152,8 @@ func TestAsynqWorker_Flow(t *testing.T) {
 }
 
 func TestAsynqLogger_Fatal(t *testing.T) {
-	if os.Getenv("CRASH_LOGGER") == "1" {
-		logger := &asynqLogger{}
-		logger.Fatal("this is a fatal message")
-		return
-	}
-
-	cmd := exec.Command(os.Args[0], "-test.run=TestAsynqLogger_Fatal")
-	cmd.Env = append(os.Environ(), "CRASH_LOGGER=1")
-	err := cmd.Run()
-
-	if e, ok := err.(*exec.ExitError); ok && !e.Success() {
-		return
-	}
-	t.Fatalf("process ran with err %v, want exit status 1", err)
+	// We removed os.Exit(1) from asynqLogger.Fatal
+	logger := &asynqLogger{}
+	// This should not panic or exit the test process
+	logger.Fatal("this is a fatal message")
 }

@@ -3,7 +3,6 @@ package config
 import (
 	"cve-tracker/internal/security"
 	"encoding/base64"
-	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -11,10 +10,8 @@ import (
 
 func TestLoadConfig(t *testing.T) {
 	// Backup original log functions
-	origFatalf := logFatalf
 	origPrintf := logPrintf
 	defer func() {
-		logFatalf = origFatalf
 		logPrintf = origPrintf
 	}()
 
@@ -168,13 +165,6 @@ func TestLoadConfig(t *testing.T) {
 			// Reset AppConfig
 			AppConfig = Config{}
 
-			// Mock logging — logFatalf panics so LoadConfig truly stops
-			fatalCalled := false
-			logFatalf = func(format string, v ...interface{}) {
-				fatalCalled = true
-				t.Logf("FATAL CALLED: "+format, v...)
-				panic(fmt.Sprintf(format, v...))
-			}
 			warningCalled := false
 			logPrintf = func(format string, v ...interface{}) {
 				if strings.Contains(format, "Warning") {
@@ -206,19 +196,11 @@ func TestLoadConfig(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			// Wrap LoadConfig in a recover so panics from logFatalf are caught
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						// panic was intentionally triggered by logFatalf mock; fatalCalled flag is already set
-						_ = r
-					}
-				}()
-				LoadConfig()
-			}()
+			err := LoadConfig()
+			fatalCalled := err != nil
 
 			if fatalCalled != tt.wantFatal {
-				t.Errorf("fatalCalled = %v, want %v", fatalCalled, tt.wantFatal)
+				t.Errorf("fatalCalled = %v (err: %v), want %v", fatalCalled, err, tt.wantFatal)
 			}
 
 			if tt.wantWarning && !warningCalled {
@@ -285,7 +267,10 @@ func TestLoadConfigDecryption(t *testing.T) {
 	t.Setenv("APP_ENV", "development")
 	t.Setenv("SENTRY_DSN", "cve-gcm:"+cipherDSN)
 	// Run LoadConfig
-	LoadConfig()
+	err = LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
 
 	if AppConfig.SentryDSN != plainDSN {
 		t.Errorf("expected decrypted SentryDSN %q, got %q", plainDSN, AppConfig.SentryDSN)
@@ -340,16 +325,17 @@ func TestDecryptIfEncrypted_Error(t *testing.T) {
 }
 
 func TestDecodeKey_Detailed(t *testing.T) {
-	origFatalf := logFatalf
 	origPrintf := logPrintf
 	defer func() {
-		logFatalf = origFatalf
 		logPrintf = origPrintf
 	}()
 
 	t.Run("HexDecode", func(t *testing.T) {
 		hexKey := strings.Repeat("a", 64) // 64 chars = 32 bytes hex
-		decoded := decodeKey("Key", hexKey, 32, "production")
+		decoded, err := decodeKey("Key", hexKey, 32, "production")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if len(decoded) != 32 {
 			t.Errorf("expected 32 bytes, got %d", len(decoded))
 		}
@@ -357,20 +343,19 @@ func TestDecodeKey_Detailed(t *testing.T) {
 
 	t.Run("Base64Decode", func(t *testing.T) {
 		base64Key := base64.StdEncoding.EncodeToString(make([]byte, 32))
-		decoded := decodeKey("Key", base64Key, 32, "production")
+		decoded, err := decodeKey("Key", base64Key, 32, "production")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if len(decoded) != 32 {
 			t.Errorf("expected 32 bytes, got %d", len(decoded))
 		}
 	})
 
 	t.Run("InvalidLen_Production", func(t *testing.T) {
-		fatalCalled := false
-		logFatalf = func(format string, v ...interface{}) {
-			fatalCalled = true
-		}
-		decodeKey("Key", "short", 32, "production")
-		if !fatalCalled {
-			t.Error("expected logFatalf to be called in production")
+		_, err := decodeKey("Key", "short", 32, "production")
+		if err == nil {
+			t.Error("expected error to be returned in production for short key")
 		}
 	})
 
@@ -379,7 +364,10 @@ func TestDecodeKey_Detailed(t *testing.T) {
 		logPrintf = func(format string, v ...interface{}) {
 			warningCalled = true
 		}
-		decodeKey("Key", "short", 32, "development")
+		_, err := decodeKey("Key", "short", 32, "development")
+		if err != nil {
+			t.Errorf("unexpected error in development: %v", err)
+		}
 		if !warningCalled {
 			t.Error("expected logPrintf warning to be called in development")
 		}
