@@ -9,7 +9,7 @@
         <div class="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
             <div class="space-y-4 max-w-2xl text-center md:text-left">
                 <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/20 border border-primary/30 text-primary text-[10px] font-black uppercase tracking-widest animate-pulse">
-                    <span class="material-symbols-outlined text-[14px]">rocket_launch</span>
+                    <span class="material-symbols-outlined text-[14px]" aria-hidden="true">rocket_launch</span>
                     Getting Started
                 </div>
                 <h2 class="text-3xl font-black text-white tracking-tighter">Your Intelligence Feed is Empty</h2>
@@ -28,7 +28,7 @@
             <div class="hidden lg:block w-48 h-48 relative">
                 <div class="absolute inset-0 bg-primary/20 rounded-full animate-ping opacity-20"></div>
                 <div class="absolute inset-4 bg-primary/10 rounded-full flex items-center justify-center border border-primary/30">
-                    <span class="material-symbols-outlined text-6xl text-primary animate-bounce" style="animation-duration: 3s;">notifications_active</span>
+                    <span class="material-symbols-outlined text-6xl text-primary animate-bounce" style="animation-duration: 3s;" aria-hidden="true">notifications_active</span>
                 </div>
             </div>
         </div>
@@ -49,7 +49,7 @@
         <div class="flex items-center gap-3">
             <form id="team-switch-form" action="/teams/switch" method="POST" class="flex items-center gap-2 bg-white/5 border border-white/10 p-1 rounded-2xl">
                 {{.CSRFField}}
-                <span class="material-symbols-outlined text-gray-500 ml-2 text-sm">hub</span>
+                <span class="material-symbols-outlined text-gray-500 ml-2 text-sm" aria-hidden="true">hub</span>
                 <select name="team_id" id="team-selector" class="bg-transparent text-xs font-bold text-primary focus:outline-none pr-4 py-1 cursor-pointer">
                     <option value="0" {{if eq .ActiveTeamID 0}}selected{{end}}>Private Workspace</option>
                     {{range .UserTeams}}
@@ -58,7 +58,7 @@
                 </select>
             </form>
             <a href="/export" class="flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/20 text-primary rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-primary/20 transition-colors">
-                <span class="material-symbols-outlined text-sm">download</span>
+                <span class="material-symbols-outlined text-sm" aria-hidden="true">download</span>
                 Export
             </a>
 
@@ -71,7 +71,7 @@
             <div class="absolute -right-4 -top-4 w-20 h-20 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-all"></div>
             <div class="flex justify-between items-start mb-4">
                 <span class="text-[10px] font-black tracking-widest uppercase text-gray-500">Active Threats</span>
-                <span class="material-symbols-outlined text-primary">security</span>
+                <span class="material-symbols-outlined text-primary" aria-hidden="true">security</span>
             </div>
             <h2 class="text-4xl font-black text-white tracking-tighter">{{.Total}}</h2>
         </div>
@@ -80,7 +80,7 @@
             <div class="absolute -right-4 -top-4 w-20 h-20 bg-orange-500/5 rounded-full blur-2xl group-hover:bg-orange-500/10 transition-all"></div>
             <div class="flex justify-between items-start mb-4">
                 <span class="text-[10px] font-black tracking-widest uppercase text-gray-500">CISA KEV</span>
-                <span class="material-symbols-outlined text-orange-400">warning</span>
+                <span class="material-symbols-outlined text-orange-400" aria-hidden="true">warning</span>
             </div>
             <h2 class="text-4xl font-black text-white tracking-tighter">{{.KevCount}}</h2>
         </div>
@@ -89,7 +89,7 @@
             <div class="absolute -right-4 -top-4 w-20 h-20 bg-red-500/5 rounded-full blur-2xl group-hover:bg-red-500/10 transition-all"></div>
             <div class="flex justify-between items-start mb-4">
                 <span class="text-[10px] font-black tracking-widest uppercase text-gray-500">Critical (9.0+)</span>
-                <span class="material-symbols-outlined text-red-500">dangerous</span>
+                <span class="material-symbols-outlined text-red-500" aria-hidden="true">dangerous</span>
             </div>
             <h2 class="text-4xl font-black text-red-500 tracking-tighter">{{.CritCount}}</h2>
         </div>
@@ -98,7 +98,7 @@
             <div class="absolute -right-4 -top-4 w-20 h-20 bg-blue-500/5 rounded-full blur-2xl group-hover:bg-blue-500/10 transition-all"></div>
             <div class="flex justify-between items-start mb-4">
                 <span class="text-[10px] font-black tracking-widest uppercase text-gray-500">Remediating</span>
-                <span class="material-symbols-outlined text-blue-400">engineering</span>
+                <span class="material-symbols-outlined text-blue-400" aria-hidden="true">engineering</span>
             </div>
             <h2 class="text-4xl font-black text-white tracking-tighter">{{.ProgressCount}}</h2>
         </div>
@@ -203,13 +203,13 @@
                         </td>
                         <td class="px-6 py-6">
                             {{if eq .Status "resolved"}}
-                            <span class="text-[10px] text-primary font-black uppercase tracking-widest flex items-center gap-1.5 bg-primary/10 px-3 py-1.5 rounded-full w-fit"><span class="material-symbols-outlined text-[14px]">check_circle</span> Resolved</span>
+                            <span class="text-[10px] text-primary font-black uppercase tracking-widest flex items-center gap-1.5 bg-primary/10 px-3 py-1.5 rounded-full w-fit"><span class="material-symbols-outlined text-[14px]" aria-hidden="true">check_circle</span> Resolved</span>
                             {{else if eq .Status "ignored"}}
-                            <span class="text-[10px] text-gray-500 font-black uppercase tracking-widest flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-full w-fit opacity-60"><span class="material-symbols-outlined text-[14px]">visibility_off</span> Ignored</span>
+                            <span class="text-[10px] text-gray-500 font-black uppercase tracking-widest flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-full w-fit opacity-60"><span class="material-symbols-outlined text-[14px]" aria-hidden="true">visibility_off</span> Ignored</span>
                             {{else if eq .Status "in_progress"}}
-                            <span class="text-[10px] text-blue-400 font-black uppercase tracking-widest flex items-center gap-1.5 bg-blue-400/10 px-3 py-1.5 rounded-full w-fit"><span class="material-symbols-outlined text-[14px] animate-spin" style="animation-duration: 3s;">settings</span> In Progress</span>
+                            <span class="text-[10px] text-blue-400 font-black uppercase tracking-widest flex items-center gap-1.5 bg-blue-400/10 px-3 py-1.5 rounded-full w-fit"><span class="material-symbols-outlined text-[14px] animate-spin" style="animation-duration: 3s;" aria-hidden="true">settings</span> In Progress</span>
                             {{else}}
-                            <span class="text-[10px] text-red-400 font-black uppercase tracking-widest flex items-center gap-1.5 bg-red-400/10 px-3 py-1.5 rounded-full w-fit"><span class="material-symbols-outlined text-[14px]">warning</span> Active</span>
+                            <span class="text-[10px] text-red-400 font-black uppercase tracking-widest flex items-center gap-1.5 bg-red-400/10 px-3 py-1.5 rounded-full w-fit"><span class="material-symbols-outlined text-[14px]" aria-hidden="true">warning</span> Active</span>
                             {{end}}
                         </td>
                         <td class="px-6 py-6 text-right">

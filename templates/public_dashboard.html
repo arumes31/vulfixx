@@ -48,7 +48,7 @@
             <div class="absolute -right-4 -top-4 w-16 h-16 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-all"></div>
             <div class="flex justify-between items-start mb-2">
                 <span data-summary-label class="text-[9px] font-black tracking-widest uppercase text-gray-500">Global CVE Vault</span>
-                <span class="material-symbols-outlined text-primary text-lg">database</span>
+                <span class="material-symbols-outlined text-primary text-lg" aria-hidden="true">database</span>
             </div>
             <h2 data-summary-total class="text-2xl font-black text-white tracking-tighter">{{.Total}}</h2>
         </div>
@@ -56,7 +56,7 @@
             <div class="absolute -right-4 -top-4 w-16 h-16 bg-orange-500/5 rounded-full blur-2xl group-hover:bg-orange-500/10 transition-all"></div>
             <div class="flex justify-between items-start mb-2">
                 <span class="text-[9px] font-black tracking-widest uppercase text-gray-500">Exploited</span>
-                <span class="material-symbols-outlined text-orange-400 text-lg">warning</span>
+                <span class="material-symbols-outlined text-orange-400 text-lg" aria-hidden="true">warning</span>
             </div>
             <h2 data-summary-kev class="text-2xl font-black text-white tracking-tighter">{{.KevCount}}</h2>
         </div>
@@ -64,7 +64,7 @@
             <div class="absolute -right-4 -top-4 w-16 h-16 bg-red-500/5 rounded-full blur-2xl group-hover:bg-red-500/10 transition-all"></div>
             <div class="flex justify-between items-start mb-2">
                 <span class="text-[9px] font-black tracking-widest uppercase text-gray-500">Critical</span>
-                <span class="material-symbols-outlined text-red-500 text-lg">dangerous</span>
+                <span class="material-symbols-outlined text-red-500 text-lg" aria-hidden="true">dangerous</span>
             </div>
             <h2 data-summary-crit class="text-2xl font-black text-red-500 tracking-tighter">{{.CritCount}}</h2>
         </div>
@@ -79,7 +79,7 @@
             <div class="flex flex-col justify-end xl:col-span-4">
                 <label for="filter-q" class="hud-label ml-1">Search Keywords</label>
                 <div class="tactical-input-container group">
-                    <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg group-focus-within:text-primary transition-colors">search</span>
+                    <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg group-focus-within:text-primary transition-colors" aria-hidden="true">search</span>
                     <input type="text" id="filter-q" name="q" value="{{.Query}}" placeholder="Search in description..." class="w-full bg-transparent border-none pl-12 pr-4 py-3.5 text-sm text-white focus:outline-none transition-all placeholder:text-gray-700">
                 </div>
             </div>
@@ -169,7 +169,7 @@
                     <span class="w-2 h-2 rounded-full bg-primary shadow-[0_0_10px_rgba(0,218,243,0.8)]"></span>
                     <h3 class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 group-hover:text-white transition-colors">Severity Distribution</h3>
                 </div>
-                <span class="material-symbols-outlined text-gray-600 text-sm">pie_chart</span>
+                <span class="material-symbols-outlined text-gray-600 text-sm" aria-hidden="true">pie_chart</span>
             </div>
             <div class="h-56 relative flex items-center justify-center">
                 <canvas id="severityChart"></canvas>
@@ -196,7 +196,7 @@
                     <span class="w-2 h-2 rounded-full bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.8)]"></span>
                     <h3 class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 group-hover:text-white transition-colors">Top Vulnerability Types</h3>
                 </div>
-                <span class="material-symbols-outlined text-gray-600 text-sm">bar_chart</span>
+                <span class="material-symbols-outlined text-gray-600 text-sm" aria-hidden="true">bar_chart</span>
             </div>
             <div class="h-64 relative">
                 <canvas id="cweChart"></canvas>
@@ -209,7 +209,7 @@
                     <span class="w-2 h-2 rounded-full bg-primary shadow-[0_0_10px_rgba(0,218,243,0.8)]"></span>
                     <h3 class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 group-hover:text-white transition-colors">EPSS Probability</h3>
                 </div>
-                <span class="material-symbols-outlined text-gray-600 text-sm">analytics</span>
+                <span class="material-symbols-outlined text-gray-600 text-sm" aria-hidden="true">analytics</span>
             </div>
             <div class="h-64 relative">
                 <canvas id="epssChart"></canvas>
@@ -287,7 +287,7 @@
             <div class="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4">
                 <a href="/register" class="inline-flex items-center gap-3 px-8 py-4 bg-primary text-on-primary rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 transition-all group shadow-lg shadow-primary/20">
                     Get Started Free
-                    <span class="material-symbols-outlined group-hover:translate-x-1 transition-transform">rocket_launch</span>
+                    <span class="material-symbols-outlined group-hover:translate-x-1 transition-transform" aria-hidden="true">rocket_launch</span>
                 </a>
                 <a href="/login" class="inline-flex items-center gap-3 px-8 py-4 bg-white/5 border border-white/10 rounded-2xl font-black text-gray-300 hover:text-white hover:bg-white/10 transition-all text-xs uppercase tracking-widest">
                     Member Login
@@ -477,7 +477,7 @@ input[type=number] {
             isLoading = true;
             currentPage = 1;
 
-            tbody.innerHTML = '<tr><td colspan="5" class="p-12 text-center text-gray-500"><span class="material-symbols-outlined animate-spin text-4xl text-primary">autorenew</span></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="p-12 text-center text-gray-500"><span class="material-symbols-outlined animate-spin text-4xl text-primary" aria-hidden="true">autorenew</span></td></tr>';
             
             fetch(url)
                 .then(response => {
