@@ -83,3 +83,35 @@ func TestStartStatsTicker(t *testing.T) {
 		}
 	})
 }
+
+func TestStopStatsTicker(t *testing.T) {
+	// 1. Test calling when cancelStats is nil
+	statsMu.Lock()
+	cancelStats = nil
+	statsMu.Unlock()
+
+	// Should not panic
+	StopStatsTicker()
+
+	// 2. Test calling when cancelStats is set
+	cancelled := false
+	cancelFunc := func() {
+		cancelled = true
+	}
+
+	statsMu.Lock()
+	cancelStats = cancelFunc
+	statsMu.Unlock()
+
+	StopStatsTicker()
+
+	if !cancelled {
+		t.Error("expected cancelStats() to be called")
+	}
+
+	statsMu.Lock()
+	if cancelStats != nil {
+		t.Error("expected cancelStats to be nil after StopStatsTicker")
+	}
+	statsMu.Unlock()
+}
