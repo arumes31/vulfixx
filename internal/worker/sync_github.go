@@ -18,7 +18,7 @@ var (
 
 func (w *Worker) syncGitHubBuzzPeriodically(ctx context.Context) {
 	w.waitUntilNextRun(ctx, "github_buzz_sync", 4*time.Hour, 1*time.Minute)
-	w.runWithLock(ctx, "github_buzz_sync", 30*time.Minute, w.syncGitHubBuzz)
+	w.runWithLock(ctx, "github_buzz_sync", 2*time.Hour, w.syncGitHubBuzz)
 
 	ticker := w.TickerFactory(4 * time.Hour)
 	defer ticker.Stop()
@@ -27,7 +27,7 @@ func (w *Worker) syncGitHubBuzzPeriodically(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.Chan():
-			w.runWithLock(ctx, "github_buzz_sync", 30*time.Minute, w.syncGitHubBuzz)
+			w.runWithLock(ctx, "github_buzz_sync", 2*time.Hour, w.syncGitHubBuzz)
 		}
 	}
 }

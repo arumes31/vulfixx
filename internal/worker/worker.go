@@ -2,8 +2,10 @@ package worker
 
 import (
 	"context"
+	"crypto/rand"
 	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"golang.org/x/time/rate"
@@ -31,6 +33,9 @@ type Worker struct {
 	HNClient           HNClient
 	TickerFactory      func(time.Duration) Ticker
 	TimerFactory       func(time.Duration) Timer
+	OnHealthCheckDone      func()
+	OnIntelligenceSyncDone func()
+	OnAdvisoryRSSSyncDone  func()
 }
 
 func (w *Worker) initLimiters() {
@@ -162,35 +167,94 @@ func (w *Worker) enqueueAlertsForCVE(ctx context.Context, cve models.CVE) error 
 }
 
 // acquireLock attempts to acquire a Redis-based distributed lock for a task.
-// If Redis is not configured, it falls back to local execution (returns true).
-func (w *Worker) acquireLock(ctx context.Context, taskName string, ttl time.Duration) bool {
+// If Redis is not configured, it falls back to local execution with a dummy token (returns true).
+func (w *Worker) acquireLock(ctx context.Context, taskName string, ttl time.Duration) (string, bool) {
 	if w.Redis == nil {
-		return true
+		return "no-redis-token", true
 	}
+	tokenBytes := make([]byte, 16)
+	_, _ = rand.Read(tokenBytes)
+	token := hex.EncodeToString(tokenBytes)
+
 	key := "lock:task:" + taskName
-	ok, err := w.Redis.SetNX(ctx, key, "locked", ttl).Result()
+	ok, err := w.Redis.SetNX(ctx, key, token, ttl).Result()
 	if err != nil {
 		slog.Error("Worker: Failed to acquire Redis lock", "task", taskName, "error", err)
-		return true // Fallback to let it run in case of Redis errors
+		return "", false
 	}
-	return ok
+	if !ok {
+		return "", false
+	}
+	return token, true
 }
 
-// releaseLock deletes the Redis key for a task lock.
-func (w *Worker) releaseLock(ctx context.Context, taskName string) {
-	if w.Redis == nil {
+// releaseLock deletes the Redis key for a task lock atomically using a Lua script to ensure only the owner can release.
+func (w *Worker) releaseLock(ctx context.Context, taskName string, token string) {
+	if w.Redis == nil || token == "no-redis-token" {
 		return
 	}
 	key := "lock:task:" + taskName
-	_, _ = w.Redis.Del(ctx, key).Result()
+	script := `
+		if redis.call("GET", KEYS[1]) == ARGV[1] then
+			return redis.call("DEL", KEYS[1])
+		else
+			return 0
+		end
+	`
+	res, err := w.Redis.Eval(ctx, script, []string{key}, token).Result()
+	if err != nil {
+		slog.Error("Worker: Failed to release Redis lock via Lua script", "task", taskName, "error", err)
+		return
+	}
+	if val, ok := res.(int64); ok && val == 0 {
+		slog.Warn("Worker: Failed to release Redis lock, token mismatch or expired", "task", taskName)
+	}
 }
 
-// runWithLock executes the given sync task within a Redis distributed lock, preventing concurrent executions in replicas.
+// runWithLock executes the given sync task within a Redis distributed lock, extending the lock TTL periodically while taskFn runs.
 func (w *Worker) runWithLock(ctx context.Context, taskName string, ttl time.Duration, taskFn func(context.Context)) {
-	if !w.acquireLock(ctx, taskName, ttl) {
+	token, acquired := w.acquireLock(ctx, taskName, ttl)
+	if !acquired {
 		slog.Info("Worker: Task already running or locked in another instance", "task", taskName)
 		return
 	}
-	defer w.releaseLock(context.Background(), taskName)
+
+	heartbeatCtx, heartbeatCancel := context.WithCancel(ctx)
+	defer heartbeatCancel()
+
+	go func() {
+		ticker := time.NewTicker(ttl / 3)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-heartbeatCtx.Done():
+				return
+			case <-ticker.C:
+				if w.Redis == nil || token == "no-redis-token" {
+					return
+				}
+				key := "lock:task:" + taskName
+				script := `
+					if redis.call("GET", KEYS[1]) == ARGV[1] then
+						return redis.call("EXPIRE", KEYS[1], ARGV[2])
+					else
+						return 0
+					end
+				`
+				res, err := w.Redis.Eval(heartbeatCtx, script, []string{key}, token, int(ttl.Seconds())).Result()
+				if err != nil {
+					slog.Error("Worker: Failed to extend Redis lock TTL", "task", taskName, "error", err)
+					return
+				}
+				if val, ok := res.(int64); ok && val == 0 {
+					slog.Warn("Worker: Failed to extend Redis lock, lock lost or token mismatch", "task", taskName)
+					return
+				}
+				slog.Debug("Worker: Successfully extended Redis lock TTL", "task", taskName)
+			}
+		}
+	}()
+
+	defer w.releaseLock(context.Background(), taskName, token)
 	taskFn(ctx)
 }

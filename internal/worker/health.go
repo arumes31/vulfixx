@@ -23,6 +23,9 @@ func (w *Worker) startHealthCheckPeriodically(ctx context.Context) {
 			return
 		case <-ticker.Chan():
 			w.runWithLock(ctx, "health_check", 5*time.Minute, w.checkWorkerHealth)
+			if w.OnHealthCheckDone != nil {
+				w.OnHealthCheckDone()
+			}
 		}
 	}
 }

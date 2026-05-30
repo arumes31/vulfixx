@@ -25,6 +25,9 @@ func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
 			slog.Error("Worker: Initial intelligence sync error", "error", err)
 		}
 	})
+	if w.OnIntelligenceSyncDone != nil {
+		w.OnIntelligenceSyncDone()
+	}
 
 	ticker := w.TickerFactory(2 * time.Hour)
 	defer ticker.Stop()
@@ -40,6 +43,9 @@ func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
 					slog.Error("Worker: Intelligence sync error", "error", err)
 				}
 			})
+			if w.OnIntelligenceSyncDone != nil {
+				w.OnIntelligenceSyncDone()
+			}
 		}
 	}
 }
