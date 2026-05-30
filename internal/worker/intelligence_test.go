@@ -151,10 +151,16 @@ func TestWorker_Intelligence(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "osint_data", "github_poc_count", "cwe_id", "published_date"}).
 				AddRow(1, "CVE-2024-0001", "Description 1", 7.5, []byte(`{}`), 0, "CWE-79", time.Now()))
 
+		// Duplicate detection batch
+		mock.ExpectBegin()
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT cve_id FROM cves WHERE cwe_id = $1 AND id != $2 AND ABS(cvss_score - $3) <= 0.5 AND published_date > $4 ORDER BY ABS(cvss_score - $3) ASC LIMIT 5")).
+			WithArgs("CWE-79", 1, 7.5, pgxmock.AnyArg()).
+			WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-2024-0002"))
+		mock.ExpectCommit()
+
 		// Mock the transaction and batch update
 		mock.ExpectBegin()
 		// Since pgxmock might not perfectly support SendBatch, we handle both SendBatch and the fallback tx.Exec
-		// If SendBatch is called and returns nil (typical for mock), it falls back to tx.Exec
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE cves SET osint_data = $1 WHERE id = $2")).
 			WithArgs(pgxmock.AnyArg(), 1).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
@@ -181,10 +187,22 @@ func TestWorker_Intelligence(t *testing.T) {
 		w.updateSocialSentiment(context.Background(), &cve)
 	})
 
-	t.Run("detectDuplicates", func(t *testing.T) {
-		cve := models.CVE{CVEID: "CVE-DUP-1", Description: "This is a duplicate of CVE-2023-0001", OSINTData: make(models.JSONBMap)}
-		// Should just run without panicking
-		w.detectDuplicates(context.Background(), &cve)
+	t.Run("detectDuplicatesBatch", func(t *testing.T) {
+		cves := []models.CVE{
+			{ID: 1, CVEID: "CVE-DUP-1", CWEID: "CWE-79", CVSSScore: 7.5, PublishedDate: time.Now(), OSINTData: make(models.JSONBMap)},
+		}
+
+		mock.ExpectBegin()
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT cve_id FROM cves WHERE cwe_id = $1 AND id != $2 AND ABS(cvss_score - $3) <= 0.5 AND published_date > $4 ORDER BY ABS(cvss_score - $3) ASC LIMIT 5")).
+			WithArgs("CWE-79", 1, 7.5, pgxmock.AnyArg()).
+			WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-2024-0002"))
+		mock.ExpectCommit()
+
+		w.detectDuplicatesBatch(context.Background(), cves)
+
+		if _, ok := cves[0].OSINTData["similar_threats"]; !ok {
+			t.Errorf("expected similar_threats to be populated")
+		}
 	})
 }
 

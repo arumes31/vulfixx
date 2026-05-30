@@ -36,3 +36,9 @@
 ## 2026-05-28 - Parallelizing InTheWild Sync with Worker Pool
 **Learning:** Sequential HTTP requests in synchronization loops cause significant latency, especially when throtlling is required for API compliance. Using a worker pool with a centralized ticker allows for controlled parallelism while strictly adhering to rate limits.
 **Action:** Identify sync loops with blocking I/O and refactor them to use `errgroup` and a shared `time.Ticker` for rate-limited concurrent processing.
+
+## 2026-05-28 - Optimized Intelligence Sync Duplicate Detection N+1 Query
+**Performance Issue:** N+1 Query in intelligence synchronization duplicate detection.
+**Learning:** Executing a query for each CVE in a loop (top 100) causes 100 individual database roundtrips.
+**Optimization:** Implemented `detectDuplicatesBatch` which uses `pgx.Batch` to group all duplicate detection queries into a single database roundtrip.
+**Impact:** Reduced database queries from 100 to 1 per intelligence sync run.

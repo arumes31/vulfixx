@@ -66,13 +66,13 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		cves = append(cves, c)
 	}
 
+	// 1. Duplicate Detection (Batched)
+	w.detectDuplicatesBatch(ctx, cves)
+
 	batch := &pgx.Batch{}
 	for _, c := range cves {
-		// 1. Social Sentiment (Reddit & HN)
+		// 2. Social Sentiment (Reddit & HN)
 		w.updateSocialSentiment(ctx, &c)
-
-		// 2. Duplicate Detection (Simplified)
-		w.detectDuplicates(ctx, &c)
 
 		// Queue update
 		osintData, _ := json.Marshal(c.OSINTData)
@@ -156,35 +156,90 @@ func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
 	c.OSINTData["heat_score"] = heatScore
 }
 
-func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
-	// Simple duplicate detection: Look for CVEs with similar descriptions published around the same time
-	// or mentions of the same base vulnerability ID in description.
-
-	if c.CWEID == "" || c.CWEID == "NVD-CWE-noinfo" {
+func (w *Worker) detectDuplicatesBatch(ctx context.Context, cves []models.CVE) {
+	if len(cves) == 0 {
 		return
 	}
 
-	var duplicateIDs []string
-	// Match CVSS within 0.5 tolerance and prefer closer scores
-	rows, err := w.Pool.Query(ctx, `
-		SELECT cve_id FROM cves 
-		WHERE cwe_id = $1 AND id != $2 AND ABS(cvss_score - $3) <= 0.5 AND published_date > $4
-		ORDER BY ABS(cvss_score - $3) ASC
-		LIMIT 5
-	`, c.CWEID, c.ID, c.CVSSScore, c.PublishedDate.AddDate(0, 0, -7))
+	batch := &pgx.Batch{}
+	var validIndices []int
 
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var dupID string
-			if err := rows.Scan(&dupID); err == nil {
-				duplicateIDs = append(duplicateIDs, dupID)
+	for i, c := range cves {
+		if c.CWEID == "" || c.CWEID == "NVD-CWE-noinfo" {
+			continue
+		}
+		validIndices = append(validIndices, i)
+		batch.Queue(`
+			SELECT cve_id FROM cves
+			WHERE cwe_id = $1 AND id != $2 AND ABS(cvss_score - $3) <= 0.5 AND published_date > $4
+			ORDER BY ABS(cvss_score - $3) ASC
+			LIMIT 5
+		`, c.CWEID, c.ID, c.CVSSScore, c.PublishedDate.AddDate(0, 0, -7))
+	}
+
+	if batch.Len() == 0 {
+		return
+	}
+
+	tx, err := w.Pool.Begin(ctx)
+	if err != nil {
+		slog.Error("Worker: Failed to begin transaction for duplicate detection batch", "error", err)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	br := tx.SendBatch(ctx, batch)
+	if br != nil {
+		for _, idx := range validIndices {
+			rows, err := br.Query()
+			if err != nil {
+				slog.Error("Worker: Batch query failed in duplicate detection", "error", err)
+				continue
+			}
+			var duplicateIDs []string
+			for rows.Next() {
+				var dupID string
+				if err := rows.Scan(&dupID); err == nil {
+					duplicateIDs = append(duplicateIDs, dupID)
+				}
+			}
+			rows.Close()
+			if len(duplicateIDs) > 0 {
+				cves[idx].OSINTData["similar_threats"] = duplicateIDs
+			}
+		}
+		if err := br.Close(); err != nil {
+			slog.Error("Worker: Failed to close batch results in duplicate detection", "error", err)
+		}
+	} else {
+		// Fallback for mock drivers
+		for _, idx := range validIndices {
+			c := &cves[idx]
+			rows, err := tx.Query(ctx, `
+				SELECT cve_id FROM cves
+				WHERE cwe_id = $1 AND id != $2 AND ABS(cvss_score - $3) <= 0.5 AND published_date > $4
+				ORDER BY ABS(cvss_score - $3) ASC
+				LIMIT 5
+			`, c.CWEID, c.ID, c.CVSSScore, c.PublishedDate.AddDate(0, 0, -7))
+			if err != nil {
+				continue
+			}
+			var duplicateIDs []string
+			for rows.Next() {
+				var dupID string
+				if err := rows.Scan(&dupID); err == nil {
+					duplicateIDs = append(duplicateIDs, dupID)
+				}
+			}
+			rows.Close()
+			if len(duplicateIDs) > 0 {
+				cves[idx].OSINTData["similar_threats"] = duplicateIDs
 			}
 		}
 	}
 
-	if len(duplicateIDs) > 0 {
-		c.OSINTData["similar_threats"] = duplicateIDs
+	if err := tx.Commit(ctx); err != nil {
+		slog.Error("Worker: Failed to commit duplicate detection batch", "error", err)
 	}
 }
 
