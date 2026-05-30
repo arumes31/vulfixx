@@ -458,6 +458,34 @@ func TestAdminMiddleware(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
+	t.Run("Unauthenticated", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/admin", nil)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401 Unauthorized for unauthenticated user, got %d", rr.Code)
+		}
+	})
+
+	t.Run("DatabaseError", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/admin", nil)
+		setSessionUser(t, app, req, 1, false)
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_admin FROM users WHERE id = $1")).
+			WithArgs(1).
+			WillReturnError(fmt.Errorf("db error"))
+
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500 Internal Server Error, got %d", rr.Code)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
 	t.Run("NonAdmin", func(t *testing.T) {
 		req, _ := http.NewRequest("GET", "/admin", nil)
 		setSessionUser(t, app, req, 1, false)
@@ -476,7 +504,7 @@ func TestAdminMiddleware(t *testing.T) {
 		}
 	})
 
-	t.Run("Admin", func(t *testing.T) {
+	t.Run("Admin_Success", func(t *testing.T) {
 		req, _ := http.NewRequest("GET", "/admin", nil)
 		setSessionUser(t, app, req, 1, true)
 
@@ -494,6 +522,7 @@ func TestAdminMiddleware(t *testing.T) {
 		}
 	})
 }
+
 
 func TestDashboardNoErrorLeakOnMalformedQuery(t *testing.T) {
 	mock, err := db.SetupTestDB()
