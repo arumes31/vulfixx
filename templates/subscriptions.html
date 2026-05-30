@@ -38,7 +38,7 @@
                         
                         <label class="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/10 transition-all">
                             <div class="flex items-center gap-3">
-                                <span class="material-symbols-outlined text-gray-400">mail</span>
+                                <span class="material-symbols-outlined text-gray-400" aria-hidden="true">mail</span>
                                 <span class="text-xs font-bold text-gray-300">Email</span>
                             </div>
                             <input type="checkbox" name="enable_email" value="true" checked class="sr-only peer">
@@ -47,7 +47,7 @@
 
                         <label class="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/10 transition-all">
                             <div class="flex items-center gap-3">
-                                <span class="material-symbols-outlined text-gray-400">webhook</span>
+                                <span class="material-symbols-outlined text-gray-400" aria-hidden="true">webhook</span>
                                 <span class="text-xs font-bold text-gray-300">Webhook</span>
                             </div>
                             <input type="checkbox" name="enable_webhook" value="true" class="sr-only peer">
@@ -56,7 +56,7 @@
 
                         <label class="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/10 transition-all">
                             <div class="flex items-center gap-3">
-                                <span class="material-symbols-outlined text-gray-400">tag</span>
+                                <span class="material-symbols-outlined text-gray-400" aria-hidden="true">tag</span>
                                 <span class="text-xs font-bold text-gray-300">Slack</span>
                             </div>
                             <input type="checkbox" name="enable_slack" value="true" class="sr-only peer">
@@ -65,7 +65,7 @@
 
                         <label class="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/10 transition-all">
                             <div class="flex items-center gap-3">
-                                <span class="material-symbols-outlined text-gray-400">group_work</span>
+                                <span class="material-symbols-outlined text-gray-400" aria-hidden="true">group_work</span>
                                 <span class="text-xs font-bold text-gray-300">Teams</span>
                             </div>
                             <input type="checkbox" name="enable_teams" value="true" class="sr-only peer">
@@ -74,7 +74,7 @@
 
                         <label class="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/10 transition-all">
                             <div class="flex items-center gap-3">
-                                <span class="material-symbols-outlined text-gray-400">notifications_active</span>
+                                <span class="material-symbols-outlined text-gray-400" aria-hidden="true">notifications_active</span>
                                 <span class="text-xs font-bold text-gray-300">Browser Push</span>
                             </div>
                             <input type="checkbox" name="enable_browser_push" value="true" class="sr-only peer">
@@ -133,13 +133,13 @@
                                 <button type="button" aria-label="Edit monitor" title="Edit monitor"
                                     class="edit-sub-btn w-8 h-8 rounded-full flex items-center justify-center text-primary/50 hover:bg-primary/10 hover:text-primary transition-all"
                                     data-sub='{"id":{{.ID}},"keyword":"{{.Keyword}}","min_severity":{{.MinSeverity}},"enable_email":{{.EnableEmail}},"enable_webhook":{{.EnableWebhook}},"enable_slack":{{.EnableSlack}},"enable_teams":{{.EnableTeams}},"enable_browser_push":{{.EnableBrowserPush}},"aggregation_mode":"{{.AggregationMode}}"}'>
-                                    <span class="material-symbols-outlined text-xl">edit</span>
+                                    <span class="material-symbols-outlined text-xl" aria-hidden="true">edit</span>
                                 </button>
                                 <form action="/subscriptions/delete" method="POST" class="inline delete-sub-form">
                                     {{$.CSRFField}}
                                     <input type="hidden" name="id" value="{{.ID}}">
                                     <button type="submit" aria-label="Delete monitor" title="Delete monitor" class="w-8 h-8 rounded-full flex items-center justify-center text-red-400/50 hover:bg-red-400/10 hover:text-red-400 transition-all">
-                                        <span class="material-symbols-outlined text-xl">delete</span>
+                                        <span class="material-symbols-outlined text-xl" aria-hidden="true">delete</span>
                                     </button>
                                 </form>
                             </div>
@@ -147,31 +147,31 @@
 
                         <div class="flex items-center gap-2 flex-wrap mb-3">
                             <span class="flex items-center gap-1 text-[10px] font-bold {{if .EnableEmail}}text-primary{{else}}text-gray-700{{end}} uppercase px-2 py-1 rounded-lg {{if .EnableEmail}}bg-primary/10{{else}}bg-white/5{{end}}">
-                                <span class="material-symbols-outlined text-[13px]">mail</span> Email
+                                <span class="material-symbols-outlined text-[13px]" aria-hidden="true">mail</span> Email
                             </span>
                             <span class="flex items-center gap-1 text-[10px] font-bold {{if .EnableWebhook}}text-blue-400{{else}}text-gray-700{{end}} uppercase px-2 py-1 rounded-lg {{if .EnableWebhook}}bg-blue-400/10{{else}}bg-white/5{{end}}">
-                                <span class="material-symbols-outlined text-[13px]">webhook</span> Webhook
+                                <span class="material-symbols-outlined text-[13px]" aria-hidden="true">webhook</span> Webhook
                             </span>
                             <span class="flex items-center gap-1 text-[10px] font-bold {{if .EnableSlack}}text-green-400{{else}}text-gray-700{{end}} uppercase px-2 py-1 rounded-lg {{if .EnableSlack}}bg-green-400/10{{else}}bg-white/5{{end}}">
-                                <span class="material-symbols-outlined text-[13px]">tag</span> Slack
+                                <span class="material-symbols-outlined text-[13px]" aria-hidden="true">tag</span> Slack
                             </span>
                             <span class="flex items-center gap-1 text-[10px] font-bold {{if .EnableTeams}}text-purple-400{{else}}text-gray-700{{end}} uppercase px-2 py-1 rounded-lg {{if .EnableTeams}}bg-purple-400/10{{else}}bg-white/5{{end}}">
-                                <span class="material-symbols-outlined text-[13px]">group_work</span> Teams
+                                <span class="material-symbols-outlined text-[13px]" aria-hidden="true">group_work</span> Teams
                             </span>
                             <span class="flex items-center gap-1 text-[10px] font-bold {{if .EnableBrowserPush}}text-orange-400{{else}}text-gray-700{{end}} uppercase px-2 py-1 rounded-lg {{if .EnableBrowserPush}}bg-orange-400/10{{else}}bg-white/5{{end}}">
-                                <span class="material-symbols-outlined text-[13px]">notifications_active</span> Push
+                                <span class="material-symbols-outlined text-[13px]" aria-hidden="true">notifications_active</span> Push
                             </span>
                         </div>
 
                         <div class="flex items-center gap-2 text-[10px] text-gray-600">
-                            <span class="material-symbols-outlined text-[13px]">schedule</span>
+                            <span class="material-symbols-outlined text-[13px]" aria-hidden="true">schedule</span>
                             <span class="uppercase font-bold tracking-widest">{{if eq .AggregationMode "hourly"}}Hourly Digest{{else if eq .AggregationMode "daily"}}Daily Summary{{else}}Instant{{end}}</span>
                         </div>
                     </div>
                     {{end}}
                 {{else}}
                 <div class="col-span-full py-24 text-center glass border border-white/10 rounded-[3rem]">
-                    <span class="material-symbols-outlined text-6xl text-gray-700 mb-4">notifications_off</span>
+                    <span class="material-symbols-outlined text-6xl text-gray-700 mb-4" aria-hidden="true">notifications_off</span>
                     <h2 class="text-2xl font-bold text-white mb-2">No Active Monitors</h2>
                     <p class="text-gray-500 max-w-sm mx-auto">Deploy your first telemetry monitor to start receiving intelligence updates.</p>
                 </div>
@@ -326,7 +326,7 @@
         return `
             <label class="flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/5 cursor-pointer hover:bg-white/10 transition-all">
                 <div class="flex items-center gap-3">
-                    <span class="material-symbols-outlined text-gray-400">${icon}</span>
+                    <span class="material-symbols-outlined text-gray-400" aria-hidden="true">${icon}</span>
                     <span class="text-xs font-bold text-gray-300">${label}</span>
                 </div>
                 <input type="checkbox" name="${name}" value="true" ${checked ? 'checked' : ''} class="sr-only peer">

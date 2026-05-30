@@ -50,7 +50,7 @@
                                 {{$.csrfField}}
                                 <input type="hidden" name="id" value="{{.ID}}">
                                 <button type="submit" class="p-2 text-error hover:bg-error-container/30 rounded transition-colors" title="Purge Operator" aria-label="Purge Operator" data-email="{{.Email}}">
-                                    <span class="material-symbols-outlined text-[18px]">person_remove</span>
+                                    <span class="material-symbols-outlined text-[18px]" aria-hidden="true">person_remove</span>
                                 </button>
                             </form>
                             {{else}}
@@ -62,7 +62,7 @@
                     <tr>
                         <td colspan="5">
                             <div class="p-12 text-center flex flex-col items-center">
-                                <span class="material-symbols-outlined text-6xl text-outline-variant/50 mb-4" style="font-variation-settings: 'wght' 200;">groups</span>
+                                <span class="material-symbols-outlined text-6xl text-outline-variant/50 mb-4" style="font-variation-settings: 'wght' 200;" aria-hidden="true">groups</span>
                                 <p class="text-on-surface-variant font-label tracking-widest uppercase text-sm">No operators found in registry</p>
                             </div>
                         </td>

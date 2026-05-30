@@ -10,7 +10,7 @@
     <!-- Add Asset Form -->
     <div class="glass border border-white/10 p-6 rounded-3xl mb-8 shadow-xl">
         <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2 font-display">
-            <span class="material-symbols-outlined text-primary">add_circle</span>
+            <span class="material-symbols-outlined text-primary" aria-hidden="true">add_circle</span>
             New Infrastructure Asset
         </h2>
         <form action="/assets" method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
@@ -93,7 +93,7 @@
                         {{$.csrfField}}
                         <input type="hidden" name="id" value="{{.ID}}">
                         <button type="submit" class="p-2 text-red-400/50 hover:text-red-400 hover:bg-red-400/10 rounded-full transition-all" aria-label="Delete asset {{.Name}}" title="Delete asset {{.Name}}">
-                            <span class="material-symbols-outlined text-[20px]">delete</span>
+                            <span class="material-symbols-outlined text-[20px]" aria-hidden="true">delete</span>
                         </button>
                     </form>
                 </div>
@@ -107,7 +107,7 @@
             {{end}}
         {{else}}
         <div class="col-span-full py-20 text-center flex flex-col items-center glass border border-white/10 rounded-2xl">
-            <span class="material-symbols-outlined text-6xl text-gray-700 mb-4">inventory</span>
+            <span class="material-symbols-outlined text-6xl text-gray-700 mb-4" aria-hidden="true">inventory</span>
             <p class="text-gray-500 font-bold tracking-widest uppercase text-sm">No assets registered for monitoring</p>
         </div>
         {{end}}
