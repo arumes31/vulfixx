@@ -1234,13 +1234,19 @@ func (a *App) fetchPublicDashboardStats(ctx context.Context, whereClause string,
 		return stats, nil
 	}
 
-	severityQuery := "SELECT " +
+	combinedQuery := "SELECT " +
 		"COUNT(*) FILTER (WHERE cvss_score >= 9.0), " +
 		"COUNT(*) FILTER (WHERE cvss_score >= 7.0 AND cvss_score < 9.0), " +
 		"COUNT(*) FILTER (WHERE cvss_score >= 4.0 AND cvss_score < 7.0), " +
-		"COUNT(*) FILTER (WHERE cvss_score < 4.0) " +
+		"COUNT(*) FILTER (WHERE cvss_score < 4.0), " +
+		"COUNT(*) FILTER (WHERE epss_score < 0.01), " +
+		"COUNT(*) FILTER (WHERE epss_score >= 0.01 AND epss_score < 0.1), " +
+		"COUNT(*) FILTER (WHERE epss_score >= 0.1 AND epss_score < 0.5), " +
+		"COUNT(*) FILTER (WHERE epss_score >= 0.5) " +
 		"FROM cves c " + whereClause
-	_ = a.Pool.QueryRow(ctx, severityQuery, args...).Scan(&stats.severityCounts.Critical, &stats.severityCounts.High, &stats.severityCounts.Medium, &stats.severityCounts.Low)
+	var e1, e2, e3, e4 int
+	_ = a.Pool.QueryRow(ctx, combinedQuery, args...).Scan(&stats.severityCounts.Critical, &stats.severityCounts.High, &stats.severityCounts.Medium, &stats.severityCounts.Low, &e1, &e2, &e3, &e4)
+	stats.epssDist = []int{e1, e2, e3, e4}
 
 	cweQueryRows, _ := a.Pool.Query(ctx, "SELECT cwe_id, COALESCE(MAX(cwe_name), 'Unknown'), COUNT(*) as cnt FROM cves c "+whereClause+" AND cwe_id IS NOT NULL AND cwe_id != '' GROUP BY cwe_id ORDER BY cnt DESC LIMIT 15", args...)
 	if cweQueryRows != nil {
@@ -1253,16 +1259,6 @@ func (a *App) fetchPublicDashboardStats(ctx context.Context, whereClause string,
 		}
 		cweQueryRows.Close()
 	}
-
-	epssQuery := "SELECT " +
-		"COUNT(*) FILTER (WHERE epss_score < 0.01), " +
-		"COUNT(*) FILTER (WHERE epss_score >= 0.01 AND epss_score < 0.1), " +
-		"COUNT(*) FILTER (WHERE epss_score >= 0.1 AND epss_score < 0.5), " +
-		"COUNT(*) FILTER (WHERE epss_score >= 0.5) " +
-		"FROM cves c " + whereClause
-	var e1, e2, e3, e4 int
-	_ = a.Pool.QueryRow(ctx, epssQuery, args...).Scan(&e1, &e2, &e3, &e4)
-	stats.epssDist = []int{e1, e2, e3, e4}
 
 	return stats, nil
 }
