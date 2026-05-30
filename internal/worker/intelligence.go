@@ -5,11 +5,7 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
-	"net/url"
-	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -120,36 +116,37 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 }
 
 func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
-	var wg sync.WaitGroup
-	var mu sync.Mutex
+	osint := w.fetchOSINTLinks(ctx, c.CVEID)
 
-	wg.Add(2)
+	// Merge counts into OSINTData
+	if c.OSINTData == nil {
+		c.OSINTData = make(models.JSONBMap)
+	}
 
-	// Hacker News Mentions
-	go func() {
-		defer wg.Done()
-		if count, _, err := w.fetchHNMentions(ctx, c.CVEID); err == nil {
-			mu.Lock()
-			c.OSINTData["hn_mentions"] = count
-			mu.Unlock()
-		}
-	}()
-
-	// Reddit Mentions
-	go func() {
-		defer wg.Done()
-		if count, _, err := w.fetchRedditMentions(ctx, c.CVEID); err == nil {
-			mu.Lock()
-			c.OSINTData["reddit_mentions"] = count
-			mu.Unlock()
-		}
-	}()
-
-	wg.Wait()
+	if hn, ok := osint["hn"]; ok {
+		c.OSINTData["hn"] = hn
+	}
+	if hnMentions, ok := osint["hn_mentions"]; ok {
+		c.OSINTData["hn_mentions"] = hnMentions
+	}
+	if reddit, ok := osint["reddit"]; ok {
+		c.OSINTData["reddit"] = reddit
+	}
+	if redditMentions, ok := osint["reddit_mentions"]; ok {
+		c.OSINTData["reddit_mentions"] = redditMentions
+	}
 
 	// Sentiment Score Calculation (Simplified Heat Score)
 	hnCount, _ := c.OSINTData["hn_mentions"].(int)
+	if hnc, ok := c.OSINTData["hn_mentions"].(float64); ok {
+		hnCount = int(hnc)
+	}
+
 	redditCount, _ := c.OSINTData["reddit_mentions"].(int)
+	if rc, ok := c.OSINTData["reddit_mentions"].(float64); ok {
+		redditCount = int(rc)
+	}
+
 	githubCount := c.GitHubPoCCount
 
 	heatScore := (float64(hnCount) * 2.0) + (float64(redditCount) * 1.5) + (float64(githubCount) * 5.0)
@@ -186,80 +183,4 @@ func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
 	if len(duplicateIDs) > 0 {
 		c.OSINTData["similar_threats"] = duplicateIDs
 	}
-}
-
-func (w *Worker) fetchHNMentions(ctx context.Context, cveID string) (int, []map[string]string, error) {
-	if w.HNClient == nil {
-		return 0, nil, fmt.Errorf("HNClient not initialized")
-	}
-	w.initLimiters()
-	if err := w.HNLimiter.Wait(ctx); err != nil {
-		return 0, nil, err
-	}
-	return w.HNClient.FetchMentions(ctx, cveID)
-}
-
-func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []map[string]string, error) {
-	if !isValidCVEID(cveID) {
-		return 0, nil, fmt.Errorf("invalid CVE ID: %s", cveID)
-	}
-
-	w.initLimiters()
-	if err := w.RedditLimiter.Wait(ctx); err != nil {
-		return 0, nil, err
-	}
-	encodedID := url.QueryEscape(cveID)
-	redditURL := fmt.Sprintf("https://www.reddit.com/search.json?q=%s&sort=new&limit=10", encodedID)
-
-	resp, err := DoWithRetry(ctx, w.HTTP, RetryConfig{
-		MaxRetries:  3,
-		ShouldRetry: DefaultShouldRetry,
-		Label:       "Reddit Mention Fetch",
-	}, func() (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, "GET", redditURL, nil)
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("User-Agent", "Vulfixx/2.0 (Threat Intelligence Bot)")
-		return req, nil
-	})
-	if err != nil {
-		return 0, nil, err
-	}
-
-	if resp == nil {
-		return 0, nil, fmt.Errorf("Reddit API returned nil response")
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return 0, nil, fmt.Errorf("Reddit API returned status %d", resp.StatusCode)
-	}
-
-	var rResp struct {
-		Data struct {
-			Children []struct {
-				Data struct {
-					Title     string `json:"title"`
-					Permalink string `json:"permalink"`
-				} `json:"data"`
-			} `json:"children"`
-		} `json:"data"`
-	}
-
-	// Limit response size to 1MB to prevent DoS
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1024*1024)).Decode(&rResp); err != nil {
-		return 0, nil, err
-	}
-
-	links := []map[string]string{}
-	for _, child := range rResp.Data.Children {
-		if !isValidRedditPermalink(child.Data.Permalink) {
-			continue
-		}
-		redditLink := fmt.Sprintf("https://www.reddit.com%s", child.Data.Permalink)
-		links = append(links, map[string]string{"title": child.Data.Title, "url": redditLink})
-	}
-
-	return len(links), links, nil
 }
