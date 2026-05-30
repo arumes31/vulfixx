@@ -2,6 +2,7 @@ package web
 
 import (
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gorilla/sessions"
@@ -38,6 +39,9 @@ func TestNewApp(t *testing.T) {
 	if app.Pool != mockPool {
 		t.Errorf("expected Pool to be %v, got %v", mockPool, app.Pool)
 	}
+	if app.AssetRepo == nil {
+		t.Error("expected AssetRepo to be initialized, got nil")
+	}
 	if app.Redis != redisClient {
 		t.Errorf("expected Redis to be %v, got %v", redisClient, app.Redis)
 	}
@@ -52,5 +56,14 @@ func TestNewApp(t *testing.T) {
 	}
 	if app.Now == nil {
 		t.Error("expected Now to be initialized, got nil")
+	} else {
+		// Check that Now() works
+		now := app.Now()
+		if time.Since(now) > time.Second {
+			t.Errorf("expected Now() to return current time, got %v", now)
+		}
+	}
+	if app.StatsInterval != 5*time.Minute {
+		t.Errorf("expected StatsInterval to be 5 minutes, got %v", app.StatsInterval)
 	}
 }
