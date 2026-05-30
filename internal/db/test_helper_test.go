@@ -69,28 +69,49 @@ func TestSetupHelpers(t *testing.T) {
 	})
 
 	t.Run("SetupTestDB Error", func(t *testing.T) {
+		oldPool := Pool
+		oldReplicaPool := ReplicaPool
+		t.Cleanup(func() {
+			Pool = oldPool
+			ReplicaPool = oldReplicaPool
+		})
+
 		oldFuncDB := newPoolCall
 		newPoolCall = func() (pgxmock.PgxPoolIface, error) {
 			return nil, fmt.Errorf("forced error")
 		}
-		defer func() { newPoolCall = oldFuncDB }()
+		t.Cleanup(func() { newPoolCall = oldFuncDB })
 
 		_, err := SetupTestDB()
 		if err == nil {
 			t.Error("expected error but got nil")
 		}
+
+		if Pool != oldPool {
+			t.Error("SetupTestDB modified Pool on error")
+		}
+		if ReplicaPool != oldReplicaPool {
+			t.Error("SetupTestDB modified ReplicaPool on error")
+		}
 	})
 
 	t.Run("SetupTestRedis Error", func(t *testing.T) {
+		oldRedisClient := RedisClient
+		t.Cleanup(func() { RedisClient = oldRedisClient })
+
 		oldFuncRedis := miniredisRunCall
 		miniredisRunCall = func() (*miniredis.Miniredis, error) {
 			return nil, fmt.Errorf("forced error")
 		}
-		defer func() { miniredisRunCall = oldFuncRedis }()
+		t.Cleanup(func() { miniredisRunCall = oldFuncRedis })
 
 		_, err := SetupTestRedis()
 		if err == nil {
 			t.Error("expected error but got nil")
+		}
+
+		if RedisClient != oldRedisClient {
+			t.Error("SetupTestRedis modified RedisClient on error")
 		}
 	})
 }
