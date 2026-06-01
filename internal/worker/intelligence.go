@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
 )
 
 func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
@@ -76,20 +78,44 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		cves = append(cves, c)
 	}
 
-	batch := &pgx.Batch{}
+	limiter := rate.NewLimiter(rate.Every(500*time.Millisecond), 1)
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(10)
+
+	var mu sync.Mutex
+	processedCVEs := make([]models.CVE, 0, len(cves))
+
 	for _, c := range cves {
-		// 1. Social Sentiment (Reddit & HN)
-		w.updateSocialSentiment(ctx, &c)
+		c := c
+		g.Go(func() error {
+			if err := limiter.Wait(gCtx); err != nil {
+				return err
+			}
 
-		// 2. Duplicate Detection (Simplified)
-		w.detectDuplicates(ctx, &c)
+			// 1. Social Sentiment (Reddit & HN)
+			w.updateSocialSentiment(gCtx, &c)
 
+			// 2. Duplicate Detection (Simplified)
+			w.detectDuplicates(gCtx, &c)
+
+			mu.Lock()
+			processedCVEs = append(processedCVEs, c)
+			mu.Unlock()
+
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		slog.Error("Worker: Intelligence sync errgroup failed", "error", err)
+		return fmt.Errorf("intelligence sync failed: %w", err)
+	}
+
+	batch := &pgx.Batch{}
+	for _, c := range processedCVEs {
 		// Queue update
 		osintData, _ := json.Marshal(c.OSINTData)
 		batch.Queue("UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
-
-		// Throttle to avoid rate limits
-		time.Sleep(500 * time.Millisecond)
 	}
 
 	if batch.Len() > 0 {
