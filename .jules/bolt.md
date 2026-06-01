@@ -44,3 +44,8 @@
 ## 2026-05-30 - Optimized Database Updates in GitHub Buzz Sync
 **Learning:** Performing individual `tx.Exec` calls within a transaction loop in `updateGitHubBatch` for 50 items results in 50 separate database roundtrips, which degrades performance.
 **Action:** Implemented `pgx.Batch` within the transaction to send all update queries in a single database roundtrip, significantly reducing I/O latency, while maintaining a fallback loop for `pgxmock` test compatibility.
+
+## 2026-06-03 - Optimized Intelligence Sync with Concurrent Worker Pool
+**Performance Issue:** The `processIntelligence` task fetched 100 CVEs and processed them sequentially with a blocking 500ms sleep between each iteration to avoid rate limits, meaning the loop took a minimum of 50 seconds to complete (excluding network/DB latency).
+**Learning:** Sequential processing involving explicit blocking `time.Sleep` and HTTP/DB I/O severely limits throughput. A worker pool using `errgroup.WithContext` allows multiple items to be processed concurrently (e.g., fetching HN/Reddit mentions and querying duplicate database records simultaneously), maintaining individual rate limits while drastically reducing total execution time.
+**Action:** Use a concurrent worker pool pattern (`errgroup`) with a shared mutex to collect processed results safely before batch-updating the database when loops have independent blocking I/O and sleep calls.

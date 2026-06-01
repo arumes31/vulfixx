@@ -12,6 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
+
 	"github.com/jackc/pgx/v5"
 )
 
@@ -76,20 +79,42 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		cves = append(cves, c)
 	}
 
-	batch := &pgx.Batch{}
+	var processedCVEs []models.CVE
+	var mu sync.Mutex
+
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(5)
+
+	// Global rate limiter to ensure we don't exceed API rate limits (1 request per 500ms -> ~2 RPM per API call context)
+	limiter := rate.NewLimiter(rate.Every(500*time.Millisecond), 1)
+
 	for _, c := range cves {
-		// 1. Social Sentiment (Reddit & HN)
-		w.updateSocialSentiment(ctx, &c)
+		c := c // capture loop variable
+		g.Go(func() error {
+			if err := limiter.Wait(gCtx); err != nil {
+				return err
+			}
 
-		// 2. Duplicate Detection (Simplified)
-		w.detectDuplicates(ctx, &c)
+			// 1. Social Sentiment (Reddit & HN)
+			w.updateSocialSentiment(gCtx, &c)
 
-		// Queue update
+			// 2. Duplicate Detection (Simplified)
+			w.detectDuplicates(gCtx, &c)
+
+			mu.Lock()
+			processedCVEs = append(processedCVEs, c)
+			mu.Unlock()
+
+			return nil
+		})
+	}
+
+	_ = g.Wait()
+
+	batch := &pgx.Batch{}
+	for _, c := range processedCVEs {
 		osintData, _ := json.Marshal(c.OSINTData)
 		batch.Queue("UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
-
-		// Throttle to avoid rate limits
-		time.Sleep(500 * time.Millisecond)
 	}
 
 	if batch.Len() > 0 {
