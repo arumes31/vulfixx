@@ -145,7 +145,7 @@ jobs:
             type=sha
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
@@ -189,7 +189,7 @@ jobs:
             type=sha
 
       - name: Build and push Ollama Init image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./addons/ollama-init
           push: ${{ github.event_name != 'pull_request' }}
