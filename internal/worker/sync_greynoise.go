@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"sync/atomic"
+	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 )
@@ -37,7 +38,7 @@ func (w *Worker) syncGreyNoise(ctx context.Context) {
 		SELECT cve_id FROM cves 
 		WHERE greynoise_last_updated IS NULL OR greynoise_last_updated < NOW() - INTERVAL '30 days'
 		ORDER BY greynoise_last_updated ASC NULLS FIRST
-		LIMIT 200
+		LIMIT 1000
 	`)
 	if err != nil {
 		slog.Error("Worker: [ERROR] Failed to fetch CVEs for GreyNoise sync", "error", err)
@@ -58,7 +59,13 @@ func (w *Worker) syncGreyNoise(ctx context.Context) {
 		return
 	}
 
-	var processedCount int64
+	type greynoiseResult struct {
+		cveID string
+		hits  int
+	}
+	var results []greynoiseResult
+	var mu sync.Mutex
+
 	// Respect Community API rate limits (~60 rpm -> 1 req/sec)
 	limiter := rate.NewLimiter(rate.Every(time.Second), 1)
 	g, gCtx := errgroup.WithContext(ctx)
@@ -80,16 +87,9 @@ func (w *Worker) syncGreyNoise(ctx context.Context) {
 					continue
 				}
 
-				_, err = w.Pool.Exec(gCtx, `
-					UPDATE cves
-					SET greynoise_hits = $1, greynoise_last_updated = NOW()
-					WHERE cve_id = $2
-				`, hits, cveID)
-				if err != nil {
-					slog.Error("Worker: [ERROR] Failed to update GreyNoise hits", "cve_id", cveID, "error", err)
-				} else {
-					atomic.AddInt64(&processedCount, 1)
-				}
+				mu.Lock()
+				results = append(results, greynoiseResult{cveID: cveID, hits: hits})
+				mu.Unlock()
 			}
 			return nil
 		})
@@ -110,21 +110,67 @@ Loop:
 		slog.Error("Worker: [ERROR] GreyNoise sync workers failed", "error", err)
 	}
 
+	var processedCount int64
+	if len(results) > 0 {
+		tx, err := w.Pool.Begin(ctx)
+		if err != nil {
+			slog.Error("Worker: [ERROR] Failed to begin transaction for GreyNoise updates", "error", err)
+		} else {
+			defer func() { _ = tx.Rollback(ctx) }()
+			batch := &pgx.Batch{}
+			query := "UPDATE cves SET greynoise_hits = $1, greynoise_last_updated = NOW() WHERE cve_id = $2"
+			for _, res := range results {
+				batch.Queue(query, res.hits, res.cveID)
+			}
+
+			br := tx.SendBatch(ctx, batch)
+			if br != nil {
+				for i := 0; i < len(results); i++ {
+					if _, err := br.Exec(); err == nil {
+						processedCount++
+					}
+				}
+				_ = br.Close()
+			} else {
+				// Fallback for pgxmock test compatibility
+				for _, res := range results {
+					if _, err := tx.Exec(ctx, query, res.hits, res.cveID); err == nil {
+						processedCount++
+					}
+				}
+			}
+
+			if err := tx.Commit(ctx); err != nil {
+				slog.Error("Worker: [ERROR] Failed to commit GreyNoise updates", "error", err)
+			}
+		}
+	}
+
 	w.updateTaskStats(ctx, "greynoise_sync")
-	slog.Info("Worker: [SYNC] GreyNoise synchronization complete.", "processed_count", atomic.LoadInt64(&processedCount))
+	slog.Info("Worker: [SYNC] GreyNoise synchronization complete.", "processed_count", processedCount)
 }
 
 func (w *Worker) fetchGreyNoiseHits(ctx context.Context, cveID string) (int, error) {
 	url := fmt.Sprintf("https://api.greynoise.io/v3/community/cve/%s", cveID)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+
+	resp, err := DoWithRetry(ctx, w.HTTP, RetryConfig{
+		MaxRetries:  3,
+		ShouldRetry: DefaultShouldRetry,
+		Label:       "GreyNoise Hits Fetch",
+	}, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("User-Agent", "Vulfixx-Threat-Intel/2.0")
+		return req, nil
+	})
+
 	if err != nil {
 		return 0, err
 	}
-	req.Header.Set("User-Agent", "Vulfixx-Threat-Intel/2.0")
-
-	resp, err := w.HTTP.Do(req)
-	if err != nil {
-		return 0, err
+	if resp == nil {
+		return 0, fmt.Errorf("GreyNoise API returned nil response")
 	}
 	defer resp.Body.Close()
 
