@@ -2,6 +2,7 @@ package web
 
 import (
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gorilla/sessions"
@@ -52,5 +53,17 @@ func TestNewApp(t *testing.T) {
 	}
 	if app.Now == nil {
 		t.Error("expected Now to be initialized, got nil")
+	}
+	if app.AssetRepo == nil {
+		t.Error("expected AssetRepo to be initialized, got nil")
+	}
+	if app.StatsInterval != 5*time.Minute {
+		t.Errorf("expected StatsInterval to be 5m, got %v", app.StatsInterval)
+	}
+	if app.AsynqClient != nil {
+		t.Errorf("expected AsynqClient to be nil, got %v", app.AsynqClient)
+	}
+	if app.rateLimiter != nil {
+		t.Errorf("expected rateLimiter to be nil, got %v", app.rateLimiter)
 	}
 }
