@@ -113,6 +113,15 @@ func TestApp_SessionMethods(t *testing.T) {
 		}
 	})
 
+	t.Run("GetActiveTeamID_NilStore", func(t *testing.T) {
+		emptyApp := &App{}
+		req, _ := http.NewRequest("GET", "/", nil)
+		id, ok := emptyApp.GetActiveTeamID(req)
+		if ok || id != 0 {
+			t.Errorf("expected (0, false), got (%d, %v)", id, ok)
+		}
+	})
+
 	t.Run("GetActiveTeamID_Success", func(t *testing.T) {
 		req, _ := http.NewRequest("GET", "/", nil)
 		session, _ := app.SessionStore.Get(req, "vulfixx-session")
@@ -121,6 +130,16 @@ func TestApp_SessionMethods(t *testing.T) {
 		id, ok := app.GetActiveTeamID(req)
 		if !ok || id != 456 {
 			t.Errorf("expected (456, true), got (%d, %v)", id, ok)
+		}
+	})
+
+	t.Run("SetActiveTeamID_NilStore", func(t *testing.T) {
+		emptyApp := &App{}
+		req, _ := http.NewRequest("GET", "/", nil)
+		rr := httptest.NewRecorder()
+		err := emptyApp.SetActiveTeamID(rr, req, 123)
+		if err == nil {
+			t.Error("expected error for nil session store")
 		}
 	})
 
@@ -137,6 +156,14 @@ func TestApp_SessionMethods(t *testing.T) {
 		id, ok := app.GetActiveTeamID(req)
 		if !ok || id != 789 {
 			t.Errorf("expected (789, true), got (%d, %v)", id, ok)
+		}
+	})
+
+	t.Run("IsAdmin_NilStore", func(t *testing.T) {
+		emptyApp := &App{}
+		req, _ := http.NewRequest("GET", "/", nil)
+		if emptyApp.IsAdmin(req) {
+			t.Error("expected IsAdmin to return false for nil session store")
 		}
 	})
 
