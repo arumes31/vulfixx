@@ -185,35 +185,4 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 			t.Errorf("expected 403 Forbidden, got %d", rr2.Code)
 		}
 	})
-
-	t.Run("AdminMiddleware_NonAdmin", func(t *testing.T) {
-		mock, _ := pgxmock.NewPool()
-		defer mock.Close()
-		app := setupTestApp(t, mock)
-		nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		})
-
-		req := httptest.NewRequest("GET", "/admin", nil)
-		session, _ := app.SessionStore.Get(req, "vulfixx-session")
-		session.Values["user_id"] = 1
-		rr := httptest.NewRecorder()
-		_ = session.Save(req, rr)
-
-		req = httptest.NewRequest("GET", "/admin", nil)
-		for _, c := range rr.Result().Cookies() {
-			req.AddCookie(c)
-		}
-
-		mock.ExpectQuery("SELECT is_admin").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"is_admin"}).AddRow(false))
-
-		rr2 := httptest.NewRecorder()
-		app.AdminMiddleware(nextHandler).ServeHTTP(rr2, req)
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unmet expectations: %v", err)
-		}
-		if rr2.Code != http.StatusForbidden {
-			t.Errorf("expected 403 Forbidden, got %d", rr2.Code)
-		}
-	})
 }

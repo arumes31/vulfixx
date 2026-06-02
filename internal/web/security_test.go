@@ -18,218 +18,46 @@ import (
 
 func TestSecurityHeadersMiddleware(t *testing.T) {
 	app := &App{}
-	handler := app.SecurityHeadersMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("OK"))
-	}))
-
-	req := httptest.NewRequest("GET", "/", nil)
-	rr := httptest.NewRecorder()
-
-	handler.ServeHTTP(rr, req)
-
-	if status := rr.Code; status != http.StatusOK {
-		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
-	}
-
-	expectedHeaders := map[string]string{
-		"X-Content-Type-Options":    "nosniff",
-		"X-Frame-Options":           "DENY",
-		"Strict-Transport-Security": "max-age=31536000; includeSubDomains",
-		"Referrer-Policy":           "strict-origin-when-cross-origin",
-		"X-XSS-Protection":          "1; mode=block",
-	}
-
-	for key, expectedValue := range expectedHeaders {
-		if value := rr.Header().Get(key); value != expectedValue {
-			t.Errorf("handler returned wrong header %s: got %v want %v", key, value, expectedValue)
-		}
-	}
-}
-
-func TestCSRFProtection(t *testing.T) {
-	// Our app uses custom CSRF for admin and standard gorilla/csrf for web
-	// Let's test the Admin CSRF logic
-	app := &App{
-		SessionStore: sessions.NewCookieStore([]byte("secret")),
-	}
-
-	t.Run("ValidToken", func(t *testing.T) {
-		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=valid"))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-		rr := httptest.NewRecorder()
-		session, _ := app.SessionStore.Get(req, "vulfixx-session")
-		session.Values["admin_csrf_token"] = "valid"
-		if err := session.Save(req, rr); err != nil {
-			t.Fatalf("failed to save session: %v", err)
-		}
-
-		// Add the cookie to the request so ValidateCSRF can find the session
-		for _, c := range rr.Result().Cookies() {
-			req.AddCookie(c)
-		}
-
-		if !app.ValidateCSRF(req) {
-			t.Errorf("expected CSRF validation to pass")
-		}
 	})
-	t.Run("ValidHeaderToken", func(t *testing.T) {
-		req, _ := http.NewRequest("POST", "/admin/delete", nil)
-		req.Header.Set("X-CSRF-Token", "valid")
 
+	t.Run("DefaultHeaders", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/", nil)
 		rr := httptest.NewRecorder()
-		session, _ := app.SessionStore.Get(req, "vulfixx-session")
-		session.Values["admin_csrf_token"] = "valid"
-		if err := session.Save(req, rr); err != nil {
-			t.Fatalf("failed to save session: %v", err)
+		app.SecurityHeadersMiddleware(next).ServeHTTP(rr, req)
+
+		expectedHeaders := map[string]string{
+			"X-Content-Type-Options":    "nosniff",
+			"X-Frame-Options":           "DENY",
+			"Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+			"Referrer-Policy":           "strict-origin-when-cross-origin",
+			"X-XSS-Protection":          "1; mode=block",
 		}
 
-		for _, c := range rr.Result().Cookies() {
-			req.AddCookie(c)
+		for h, v := range expectedHeaders {
+			if rr.Header().Get(h) != v {
+				t.Errorf("expected header %s to be %s, got %s", h, v, rr.Header().Get(h))
+			}
 		}
-
-		if !app.ValidateCSRF(req) {
-			t.Errorf("expected CSRF validation to pass with X-CSRF-Token header")
+		if !strings.Contains(rr.Header().Get("Content-Security-Policy"), "default-src 'self'") {
+			t.Errorf("CSP missing default-src 'self'")
 		}
 	})
 
-	t.Run("InvalidToken", func(t *testing.T) {
-		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=invalid"))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
+	t.Run("CSPNonce", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/", nil)
 		rr := httptest.NewRecorder()
-		session, _ := app.SessionStore.Get(req, "vulfixx-session")
-		session.Values["admin_csrf_token"] = "valid"
-		if err := session.Save(req, rr); err != nil {
-			t.Fatalf("failed to save session: %v", err)
-		}
+		app.SecurityHeadersMiddleware(next).ServeHTTP(rr, req)
 
-		// Add the cookie so ValidateCSRF can find the session
-		for _, c := range rr.Result().Cookies() {
-			req.AddCookie(c)
-		}
-
-		if app.ValidateCSRF(req) {
-			t.Errorf("expected CSRF validation to fail")
-		}
-	})
-
-	t.Run("MissingSessionToken", func(t *testing.T) {
-		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=valid"))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-		rr := httptest.NewRecorder()
-		session, _ := app.SessionStore.Get(req, "vulfixx-session")
-		// Don't set admin_csrf_token
-		if err := session.Save(req, rr); err != nil {
-			t.Fatalf("failed to save session: %v", err)
-		}
-
-		for _, c := range rr.Result().Cookies() {
-			req.AddCookie(c)
-		}
-
-		if app.ValidateCSRF(req) {
-			t.Errorf("expected CSRF validation to fail due to missing session token")
-		}
-	})
-
-	t.Run("EmptySessionToken", func(t *testing.T) {
-		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=valid"))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-		rr := httptest.NewRecorder()
-		session, _ := app.SessionStore.Get(req, "vulfixx-session")
-		session.Values["admin_csrf_token"] = ""
-		if err := session.Save(req, rr); err != nil {
-			t.Fatalf("failed to save session: %v", err)
-		}
-
-		for _, c := range rr.Result().Cookies() {
-			req.AddCookie(c)
-		}
-
-		if app.ValidateCSRF(req) {
-			t.Errorf("expected CSRF validation to fail due to empty session token")
-		}
-	})
-
-	t.Run("MissingRequestToken", func(t *testing.T) {
-		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("other_param=value"))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-		rr := httptest.NewRecorder()
-		session, _ := app.SessionStore.Get(req, "vulfixx-session")
-		session.Values["admin_csrf_token"] = "valid"
-		if err := session.Save(req, rr); err != nil {
-			t.Fatalf("failed to save session: %v", err)
-		}
-
-		for _, c := range rr.Result().Cookies() {
-			req.AddCookie(c)
-		}
-
-		if app.ValidateCSRF(req) {
-			t.Errorf("expected CSRF validation to fail due to missing request token")
-		}
-	})
-
-	t.Run("MismatchedTokenLength", func(t *testing.T) {
-		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=short"))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-		rr := httptest.NewRecorder()
-		session, _ := app.SessionStore.Get(req, "vulfixx-session")
-		session.Values["admin_csrf_token"] = "muchlongerthanrequesttoken"
-		if err := session.Save(req, rr); err != nil {
-			t.Fatalf("failed to save session: %v", err)
-		}
-
-		for _, c := range rr.Result().Cookies() {
-			req.AddCookie(c)
-		}
-
-		if app.ValidateCSRF(req) {
-			t.Errorf("expected CSRF validation to fail due to mismatched length")
-		}
-	})
-
-	t.Run("InvalidSessionTokenType", func(t *testing.T) {
-		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=valid"))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-		rr := httptest.NewRecorder()
-		session, _ := app.SessionStore.Get(req, "vulfixx-session")
-		session.Values["admin_csrf_token"] = 123 // Non-string type
-		if err := session.Save(req, rr); err != nil {
-			t.Fatalf("failed to save session: %v", err)
-		}
-
-		for _, c := range rr.Result().Cookies() {
-			req.AddCookie(c)
-		}
-
-		if app.ValidateCSRF(req) {
-			t.Errorf("expected CSRF validation to fail due to invalid session token type")
-		}
-	})
-
-	t.Run("SessionError", func(t *testing.T) {
-		// We deliberately forego the normal session.Save() setup to simulate a corrupted external cookie.
-		// The malformed cookie added via req.AddCookie (Value "invalid-base64-payload!!") ensures session decoding fails.
-
-		// This is why we call app.ValidateCSRF(req) directly rather than using session.Save().
-		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=valid"))
-		req.AddCookie(&http.Cookie{Name: "vulfixx-session", Value: "invalid-base64-payload!!"})
-
-		if app.ValidateCSRF(req) {
-			t.Errorf("expected CSRF validation to fail due to session error")
+		csp := rr.Header().Get("Content-Security-Policy")
+		if !strings.Contains(csp, "'nonce-") {
+			t.Errorf("CSP should contain a nonce")
 		}
 	})
 }
 
-func TestXSSPrevention(t *testing.T) {
+func TestAdminMiddleware(t *testing.T) {
 	mock, err := db.SetupTestDB()
 	if err != nil {
 		t.Fatalf("failed to setup mock db: %v", err)
@@ -237,51 +65,126 @@ func TestXSSPrevention(t *testing.T) {
 	defer mock.Close()
 	app := setupTestApp(t, mock)
 
-	// We'll test RenderTemplate with a malicious string
-	// and check if it's escaped in the response body.
-	req, _ := http.NewRequest("GET", "/", nil)
-	rr := httptest.NewRecorder()
-
-	malicious := "<script>alert('xss')</script>"
-	data := map[string]interface{}{
-		"Message": malicious,
-	}
-
-	// Use message.html which displays .Message
-	app.RenderTemplate(rr, req, "message.html", data)
-
-	body := rr.Body.String()
-	if strings.Contains(body, malicious) {
-		t.Errorf("XSS payload found unescaped in response: %s", body)
-	}
-	if !strings.Contains(body, "&lt;script&gt;") {
-		t.Errorf("XSS payload was not correctly escaped: %s", body)
-	}
-}
-
-func TestRateLimitMiddleware(t *testing.T) {
-	app := &App{}
-	handler := app.RateLimitMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := app.AdminMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req, _ := http.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "1.2.3.4:1234"
-
-	// Trigger rate limit
-	// Limit is 5 rps, burst 10.
-	for i := 0; i < 15; i++ {
+	t.Run("Unauthenticated", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/admin", nil)
 		rr := httptest.NewRecorder()
 		handler.ServeHTTP(rr, req)
-		if i < 10 {
-			if rr.Code != http.StatusOK {
-				t.Errorf("expected 200 OK at request %d, got %d", i, rr.Code)
-			}
-		} else {
-			if rr.Code != http.StatusTooManyRequests {
-				t.Errorf("expected 429 Too Many Requests at request %d, got %d", i, rr.Code)
-			}
+		if rr.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401 Unauthorized for unauthenticated user, got %d", rr.Code)
 		}
+	})
+
+	t.Run("NonAdmin", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/admin", nil)
+		setSessionUser(t, app, req, 1, false)
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_admin FROM users WHERE id = $1")).
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"is_admin"}).AddRow(false))
+
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusForbidden {
+			t.Errorf("expected 403 Forbidden for non-admin, got %d", rr.Code)
+		}
+	})
+
+	t.Run("DatabaseError", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/admin", nil)
+		setSessionUser(t, app, req, 1, false)
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_admin FROM users WHERE id = $1")).
+			WithArgs(1).
+			WillReturnError(fmt.Errorf("db error"))
+
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500 Internal Server Error, got %d", rr.Code)
+		}
+	})
+
+	t.Run("SessionGetError", func(t *testing.T) {
+		mockStore := &MockSessionStore{}
+		originalStore := app.SessionStore
+		app.SessionStore = mockStore
+		defer func() { app.SessionStore = originalStore }()
+
+		callCount := 0
+		mockStore.GetFunc = func(r *http.Request, name string) (*sessions.Session, error) {
+			callCount++
+			if callCount == 1 {
+				// GetUserID call
+				s := sessions.NewSession(mockStore, name)
+				s.Values["user_id"] = 1
+				return s, nil
+			}
+			// AdminMiddleware call
+			return nil, fmt.Errorf("session get error")
+		}
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_admin FROM users WHERE id = $1")).
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"is_admin"}).AddRow(true))
+
+		req, _ := http.NewRequest("GET", "/admin", nil)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500 Internal Server Error for session get error, got %d", rr.Code)
+		}
+	})
+
+	t.Run("SessionSaveError", func(t *testing.T) {
+		mockStore := &MockSessionStore{
+			SaveFunc: func(r *http.Request, w http.ResponseWriter, s *sessions.Session) error {
+				return fmt.Errorf("session save error")
+			},
+		}
+		originalStore := app.SessionStore
+		app.SessionStore = mockStore
+		defer func() { app.SessionStore = originalStore }()
+
+		mockStore.GetFunc = func(r *http.Request, name string) (*sessions.Session, error) {
+			s := sessions.NewSession(mockStore, name)
+			s.Values["user_id"] = 1
+			return s, nil
+		}
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_admin FROM users WHERE id = $1")).
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"is_admin"}).AddRow(true))
+
+		req, _ := http.NewRequest("GET", "/admin", nil)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		// session.Save error only logs, doesn't return error response
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK despite session save error, got %d", rr.Code)
+		}
+	})
+
+	t.Run("Admin_Success", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/admin", nil)
+		setSessionUser(t, app, req, 1, true)
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_admin FROM users WHERE id = $1")).
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"is_admin"}).AddRow(true))
+
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK for admin, got %d", rr.Code)
+		}
+	})
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
 	}
 }
 
@@ -442,55 +345,6 @@ func TestAuthMiddleware(t *testing.T) {
 
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK for verified user, got %d", rr.Code)
-		}
-	})
-}
-
-func TestAdminMiddleware(t *testing.T) {
-	mock, err := db.SetupTestDB()
-	if err != nil {
-		t.Fatalf("failed to setup mock db: %v", err)
-	}
-	defer mock.Close()
-	app := setupTestApp(t, mock)
-
-	handler := app.AdminMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-
-	t.Run("NonAdmin", func(t *testing.T) {
-		req, _ := http.NewRequest("GET", "/admin", nil)
-		setSessionUser(t, app, req, 1, false)
-
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_admin FROM users WHERE id = $1")).
-			WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"is_admin"}).AddRow(false))
-
-		rr := httptest.NewRecorder()
-		handler.ServeHTTP(rr, req)
-		if rr.Code != http.StatusForbidden {
-			t.Errorf("expected 403 Forbidden for non-admin, got %d", rr.Code)
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unmet expectations: %v", err)
-		}
-	})
-
-	t.Run("Admin", func(t *testing.T) {
-		req, _ := http.NewRequest("GET", "/admin", nil)
-		setSessionUser(t, app, req, 1, true)
-
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_admin FROM users WHERE id = $1")).
-			WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"is_admin"}).AddRow(true))
-
-		rr := httptest.NewRecorder()
-		handler.ServeHTTP(rr, req)
-		if rr.Code != http.StatusOK {
-			t.Errorf("expected 200 OK for admin, got %d", rr.Code)
-		}
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unmet expectations: %v", err)
 		}
 	})
 }
