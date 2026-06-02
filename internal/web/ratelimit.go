@@ -67,3 +67,22 @@ func (a *App) RateLimitMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+func (a *App) LoginRateLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if a.Redis == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		clientIP := a.GetClientIP(r)
+		rlKey := "login_failures:" + clientIP
+
+		if count, err := a.Redis.Get(r.Context(), rlKey).Int(); err == nil && count >= 5 {
+			a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Too many attempts"})
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}

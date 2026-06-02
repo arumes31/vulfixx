@@ -394,7 +394,9 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 		app.Redis.Set(req.Context(), "login_failures:"+app.GetClientIP(req), 5, 0)
 
 		rr := httptest.NewRecorder()
-		app.LoginHandler(rr, req)
+		handler := app.LoginRateLimitMiddleware(http.HandlerFunc(app.LoginHandler))
+		expectBaseQueries(mock, 0)
+		handler.ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr.Code)

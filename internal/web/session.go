@@ -183,3 +183,65 @@ func (a *App) EnforceConcurrentSessions(ctx context.Context, userID int, session
 		}
 	}
 }
+
+func (a *App) establishUserSession(w http.ResponseWriter, r *http.Request, userID int, isAdmin bool, totpVerified bool) error {
+	session, err := a.SessionStore.Get(r, "vulfixx-session")
+	if err != nil {
+		return err
+	}
+
+	// Regenerate session to prevent session fixation
+	session.Options.MaxAge = -1
+	if err := session.Save(r, w); err != nil {
+		log.Printf("Error invalidating session: %v", err)
+	}
+
+	newSession, err := a.SessionStore.Get(r, "vulfixx-session")
+	if err != nil {
+		return err
+	}
+	newSession.Values["user_id"] = userID
+	newSession.Values["is_admin"] = isAdmin
+	if totpVerified {
+		newSession.Values["totp_verified"] = true
+	}
+
+	if err := newSession.Save(r, w); err != nil {
+		return err
+	}
+
+	a.EnforceConcurrentSessions(r.Context(), userID, newSession.ID)
+	return nil
+}
+
+func (a *App) establishPreAuthSession(w http.ResponseWriter, r *http.Request, userID int) error {
+	session, err := a.SessionStore.Get(r, "vulfixx-session")
+	if err != nil {
+		return err
+	}
+	session.Values["pre_auth_user_id"] = userID
+	session.Values["pre_auth_ts"] = time.Now().Unix()
+	session.Values["pre_auth_attempts"] = 0
+	return session.Save(r, w)
+}
+
+func (a *App) clearLoginMetadata(ctx context.Context, clientIP string) {
+	if a.Redis == nil {
+		return
+	}
+	rlKey := "login_failures:" + clientIP
+	a.Redis.Del(ctx, rlKey)
+}
+
+func (a *App) incrementLoginFailures(ctx context.Context, clientIP string) {
+	if a.Redis == nil {
+		return
+	}
+	rlKey := "login_failures:" + clientIP
+	pipe := a.Redis.Pipeline()
+	pipe.Incr(ctx, rlKey)
+	pipe.Expire(ctx, rlKey, 15*time.Minute)
+	if _, err := pipe.Exec(ctx); err != nil {
+		log.Printf("Redis pipeline error for %s: %v", rlKey, err)
+	}
+}

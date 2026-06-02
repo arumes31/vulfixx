@@ -1,8 +1,10 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/pashagolub/pgxmock/v3"
@@ -214,6 +216,46 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 		}
 		if rr2.Code != http.StatusForbidden {
 			t.Errorf("expected 403 Forbidden, got %d", rr2.Code)
+		}
+	})
+}
+
+func TestLoginRateLimitMiddleware(t *testing.T) {
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+	app := setupTestApp(t, mock)
+
+	handler := app.LoginRateLimitMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	t.Run("Allowed", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/login", nil)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", rr.Code)
+		}
+	})
+
+	t.Run("Blocked", func(t *testing.T) {
+		clientIP := "127.0.0.1"
+		rlKey := "login_failures:" + clientIP
+		app.Redis.Set(context.Background(), rlKey, 5, 0)
+		defer app.Redis.Del(context.Background(), rlKey)
+
+		req := httptest.NewRequest("GET", "/login", nil)
+		req.RemoteAddr = clientIP + ":1234"
+		rr := httptest.NewRecorder()
+
+		expectBaseQueries(mock, 0)
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 (template render), got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "Too many attempts") {
+			t.Errorf("expected error message in body")
 		}
 	})
 }
