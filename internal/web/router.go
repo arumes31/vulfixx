@@ -104,12 +104,6 @@ func (app *App) Routes(cfg *config.Config) (http.Handler, error) {
 
 	csrfMiddleware := csrf.Protect(
 		[]byte(csrfKey),
-		csrf.Secure(cfg.SecureCookie),
-		csrf.HttpOnly(true),
-		csrf.SameSite(csrf.SameSiteLaxMode),
-		csrf.Path("/"),
-		csrf.FieldName("gorilla.csrf.Token"),
-		csrf.RequestHeader("X-CSRF-Token"),
 	)
 
 	// Bypass CSRF checks for browser CSP report endpoint

@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"filippo.io/csrf/gorilla"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -110,7 +109,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"SeverityCounts": SeverityCounts{Critical: metrics.SevCrit, High: metrics.SevHigh, Medium: metrics.SevMed, Low: metrics.SevLow},
 		"StatusCounts":   StatusCounts{Active: metrics.StatActive, InProgress: metrics.StatProg, Resolved: metrics.StatRes, Ignored: metrics.StatIgn},
 		"TopCWEs":        topCWEs,
-		"csrfToken":      csrf.Token(r),
+		"csrfToken":      "",
 	})
 }
 func (a *App) UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
@@ -1301,7 +1300,7 @@ func (a *App) tryServePublicDashboardFromCache(w http.ResponseWriter, r *http.Re
 					"Trending":       cachedData.Trending,
 					"ActiveTab":      "cves",
 					"CanScroll":      cachedData.Total > cachedData.Page*20,
-					"csrfField":      csrf.TemplateField(r),
+					"csrfField":      "",
 				}
 				if isAJAX {
 					a.renderAJAX(w, renderData)
@@ -1358,7 +1357,7 @@ func (a *App) preparePublicDashboardRenderData(r *http.Request, filters publicDa
 		"MetaTitle":       "Vulfixx - CVE Tracker",
 		"MetaDescription": "Monitor real-time vulnerability data, CISA KEV listings, and critical security advisories. The ultimate tracker for security professionals.",
 		"Trending":        a.getTrendingCVEs(r),
-		"csrfField":       csrf.TemplateField(r),
+		"csrfField":       "",
 	}
 }
 

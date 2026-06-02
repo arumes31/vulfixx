@@ -18,7 +18,6 @@ import (
 	"sync"
 	"time"
 
-	"filippo.io/csrf/gorilla"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -379,7 +378,7 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 
 	renderData["SentryDSN"] = config.AppConfig.SentryDSN
 
-	renderData["csrfField"] = csrf.TemplateField(r)
+	renderData["csrfField"] = ""
 	renderData["CSRFField"] = renderData["csrfField"]
 	if nonce, ok := r.Context().Value(NonceKey).(string); ok {
 		renderData["Nonce"] = nonce

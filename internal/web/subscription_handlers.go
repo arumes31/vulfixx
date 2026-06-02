@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"filippo.io/csrf/gorilla"
 )
 
 // escapeLikePattern escapes backslash, percent, and underscore so the value can
@@ -71,7 +70,7 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		a.RenderTemplate(w, r, "subscriptions.html", map[string]interface{}{
 			"Subscriptions": subs,
-			"csrfToken":     csrf.Token(r),
+			"csrfToken":     "",
 		})
 		return
 	}
