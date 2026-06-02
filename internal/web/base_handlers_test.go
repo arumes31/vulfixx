@@ -140,6 +140,24 @@ func TestGetClientIP(t *testing.T) {
 			t.Errorf("expected invalid-addr, got %s", ip)
 		}
 	})
+
+	t.Run("FromXForwardedFor", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("X-Forwarded-For", "10.0.0.1, 10.0.0.2")
+		ip := app.GetClientIP(req)
+		if ip != "10.0.0.1" {
+			t.Errorf("expected 10.0.0.1, got %s", ip)
+		}
+	})
+
+	t.Run("FromXRealIP", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("X-Real-IP", "10.0.0.3")
+		ip := app.GetClientIP(req)
+		if ip != "10.0.0.3" {
+			t.Errorf("expected 10.0.0.3, got %s", ip)
+		}
+	})
 }
 
 func TestLogActivity_Extended(t *testing.T) {
