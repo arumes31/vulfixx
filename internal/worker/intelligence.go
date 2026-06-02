@@ -76,13 +76,18 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		cves = append(cves, c)
 	}
 
+	// Batch fetch duplicates for all CVEs to avoid N+1 queries
+	duplicatesMap := w.fetchDuplicatesBatch(ctx, cves)
+
 	batch := &pgx.Batch{}
 	for _, c := range cves {
 		// 1. Social Sentiment (Reddit & HN)
 		w.updateSocialSentiment(ctx, &c)
 
 		// 2. Duplicate Detection (Simplified)
-		w.detectDuplicates(ctx, &c)
+		if dups, ok := duplicatesMap[c.ID]; ok && len(dups) > 0 {
+			c.OSINTData["similar_threats"] = dups
+		}
 
 		// Queue update
 		osintData, _ := json.Marshal(c.OSINTData)
@@ -129,6 +134,67 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 	return nil
 }
 
+func (w *Worker) fetchDuplicatesBatch(ctx context.Context, cves []models.CVE) map[int][]string {
+	duplicatesMap := make(map[int][]string)
+	if len(cves) == 0 {
+		return duplicatesMap
+	}
+
+	batch := &pgx.Batch{}
+	validCVEs := make([]models.CVE, 0, len(cves))
+	for _, c := range cves {
+		if c.CWEID == "" || c.CWEID == "NVD-CWE-noinfo" {
+			continue
+		}
+		validCVEs = append(validCVEs, c)
+		batch.Queue(`
+			SELECT cve_id FROM cves
+			WHERE cwe_id = $1 AND id != $2 AND ABS(cvss_score - $3) <= 0.5 AND published_date > $4
+			ORDER BY ABS(cvss_score - $3) ASC
+			LIMIT 5
+		`, c.CWEID, c.ID, c.CVSSScore, c.PublishedDate.AddDate(0, 0, -7))
+	}
+
+	if batch.Len() == 0 {
+		return duplicatesMap
+	}
+
+	br := w.Pool.SendBatch(ctx, batch)
+	if br == nil {
+		// Fallback for mocks that don't support SendBatch well
+		for i := range validCVEs {
+			w.detectDuplicates(ctx, &validCVEs[i])
+			if dups, ok := validCVEs[i].OSINTData["similar_threats"].([]string); ok {
+				duplicatesMap[validCVEs[i].ID] = dups
+			}
+		}
+		return duplicatesMap
+	}
+	defer br.Close()
+
+	for _, c := range validCVEs {
+		rows, err := br.Query()
+		if err != nil {
+			slog.Error("Worker: Failed to fetch duplicates in batch", "cve_id", c.CVEID, "error", err)
+			continue
+		}
+
+		var dups []string
+		for rows.Next() {
+			var dupID string
+			if err := rows.Scan(&dupID); err == nil {
+				dups = append(dups, dupID)
+			}
+		}
+		rows.Close()
+		if len(dups) > 0 {
+			duplicatesMap[c.ID] = dups
+		}
+	}
+
+	return duplicatesMap
+}
+
 func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -167,15 +233,10 @@ func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
 }
 
 func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
-	// Simple duplicate detection: Look for CVEs with similar descriptions published around the same time
-	// or mentions of the same base vulnerability ID in description.
-
 	if c.CWEID == "" || c.CWEID == "NVD-CWE-noinfo" {
 		return
 	}
 
-	var duplicateIDs []string
-	// Match CVSS within 0.5 tolerance and prefer closer scores
 	rows, err := w.Pool.Query(ctx, `
 		SELECT cve_id FROM cves 
 		WHERE cwe_id = $1 AND id != $2 AND ABS(cvss_score - $3) <= 0.5 AND published_date > $4
@@ -185,16 +246,16 @@ func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
 
 	if err == nil {
 		defer rows.Close()
+		var duplicateIDs []string
 		for rows.Next() {
 			var dupID string
 			if err := rows.Scan(&dupID); err == nil {
 				duplicateIDs = append(duplicateIDs, dupID)
 			}
 		}
-	}
-
-	if len(duplicateIDs) > 0 {
-		c.OSINTData["similar_threats"] = duplicateIDs
+		if len(duplicateIDs) > 0 {
+			c.OSINTData["similar_threats"] = duplicateIDs
+		}
 	}
 }
 

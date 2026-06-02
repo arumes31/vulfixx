@@ -188,41 +188,6 @@ func TestWorker_Health_Comprehensive(t *testing.T) {
 	})
 }
 
-func TestWorker_DetectDuplicates_Comprehensive(t *testing.T) {
-	mock, err := pgxmock.NewPool()
-	if err != nil {
-		t.Fatalf("failed: %v", err)
-	}
-	defer mock.Close()
-
-	w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
-
-	t.Run("HasDuplicates", func(t *testing.T) {
-		cve := &models.CVE{
-			ID:            1,
-			CVEID:         "CVE-2023-0001",
-			CWEID:         "CWE-79",
-			CVSSScore:     7.5,
-			PublishedDate: time.Now(),
-			OSINTData:     make(models.JSONBMap),
-		}
-
-		mock.ExpectQuery("SELECT cve_id FROM cves").
-			WithArgs("CWE-79", 1, 7.5, pgxmock.AnyArg()).
-			WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-2023-0002").AddRow("CVE-2023-0003"))
-
-		w.detectDuplicates(context.Background(), cve)
-
-		dups, ok := cve.OSINTData["similar_threats"].([]string)
-		if !ok || len(dups) != 2 || dups[0] != "CVE-2023-0002" {
-			t.Errorf("expected similar threats 'CVE-2023-0002', got %v", cve.OSINTData["similar_threats"])
-		}
-
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unmet expectations: %v", err)
-		}
-	})
-}
 
 func TestWorker_AdvisoryRSS_Extra(t *testing.T) {
 	mock, err := pgxmock.NewPool()

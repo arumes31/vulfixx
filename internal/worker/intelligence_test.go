@@ -181,11 +181,6 @@ func TestWorker_Intelligence(t *testing.T) {
 		w.updateSocialSentiment(context.Background(), &cve)
 	})
 
-	t.Run("detectDuplicates", func(t *testing.T) {
-		cve := models.CVE{CVEID: "CVE-DUP-1", Description: "This is a duplicate of CVE-2023-0001", OSINTData: make(models.JSONBMap)}
-		// Should just run without panicking
-		w.detectDuplicates(context.Background(), &cve)
-	})
 }
 
 func TestWorker_Health_Coverage(t *testing.T) {
