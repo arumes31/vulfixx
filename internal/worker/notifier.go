@@ -246,7 +246,7 @@ func (w *Worker) postJSON(webhookURL string, payload interface{}) (bool, string)
 		return false, fmt.Sprintf("failed to create request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Host = parsedURL.Host
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return false, err.Error()
@@ -374,7 +374,7 @@ func (w *Worker) sendGenericWebhook(webhookURL string, cve *models.CVE, asset, e
 
 	req, _ := http.NewRequestWithContext(httpCtx, "POST", webhookURL, strings.NewReader(string(payload)))
 	req.Header.Set("Content-Type", "application/json")
-	req.Host = parsedURL.Host
+
 
 	// Webhook Signing (Item 10)
 	secret := w.WebhookSecret
@@ -456,5 +456,20 @@ func newSafeHTTPClient(timeout time.Duration) *http.Client {
 	return &http.Client{
 		Transport: transport,
 		Timeout:   timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("too many redirects")
+			}
+			if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
+				return fmt.Errorf("invalid redirect scheme: %s", req.URL.Scheme)
+			}
+
+			// Strip sensitive headers on cross-host redirects
+			if via[0].Host != req.URL.Host {
+				req.Header.Del("X-Vulfixx-Signature")
+				req.Header.Del("X-Vulfixx-Timestamp")
+			}
+			return nil
+		},
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -47,10 +48,6 @@ func TestWebhookSSRF_Vulnerabilities(t *testing.T) {
 }
 
 func TestWebhookSSRF_AllowedPorts(t *testing.T) {
-	// We allow 80, 443, 8080, 8443
-	// We can't easily test "Success" because it will still block 127.0.0.1 if TEST_MODE=0.
-	// So we use TEST_MODE=1 to check if the port restriction is NOT triggered for these ports.
-
 	os.Setenv("TEST_MODE", "1")
 	os.Setenv("WEBHOOK_SECRET", "test_secret")
 	defer func() {
@@ -63,7 +60,7 @@ func TestWebhookSSRF_AllowedPorts(t *testing.T) {
 
 	allowedPorts := []string{"80", "443", "8080", "8443"}
 	for _, port := range allowedPorts {
-		// We don't care if it actually connects, just that it doesn't return "blocked non-standard port"
+		// We dont care if it actually connects, just that it doesnt return "blocked non-standard port"
 		success, err := w.sendGenericWebhook("http://1.1.1.1:"+port, cve, "Asset", "test@example.com")
 		_ = success
 		if err != "" && (err == "blocked non-standard port: "+port || (len(err) > 26 && err[:26] == "blocked non-standard port:")) {
@@ -103,6 +100,62 @@ func TestWebhookSSRF_Redirects(t *testing.T) {
 	if !targetCalled {
 		t.Errorf("Redirect succeeded but target was never reached")
 	}
+
+	t.Run("HopLimit", func(t *testing.T) {
+		var hopCount int
+		var hopServer *httptest.Server
+		hopServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hopCount++
+			http.Redirect(w, r, hopServer.URL, http.StatusFound)
+		}))
+		defer hopServer.Close()
+
+		success, err := w.sendGenericWebhook(hopServer.URL, cve, "Asset", "test@example.com")
+		if success {
+			t.Errorf("Expected infinite redirect to fail")
+		}
+		if !strings.Contains(err, "too many redirects") {
+			t.Errorf("Expected too many redirects error, got: %s", err)
+		}
+	})
+
+	t.Run("CrossHostHeaderStripping", func(t *testing.T) {
+		var signatureHeader, timestampHeader string
+		targetServer2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			signatureHeader = r.Header.Get("X-Vulfixx-Signature")
+			timestampHeader = r.Header.Get("X-Vulfixx-Timestamp")
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer targetServer2.Close()
+
+		redirectServer2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, targetServer2.URL, http.StatusFound)
+		}))
+		defer redirectServer2.Close()
+
+		success, err := w.sendGenericWebhook(redirectServer2.URL, cve, "Asset", "test@example.com")
+		if !success {
+			t.Errorf("Redirect failed: %s", err)
+		}
+		if signatureHeader != "" || timestampHeader != "" {
+			t.Errorf("Expected sensitive headers to be stripped on cross-host redirect, but got Signature: %s, Timestamp: %s", signatureHeader, timestampHeader)
+		}
+	})
+
+	t.Run("InvalidSchemeRedirect", func(t *testing.T) {
+		redirectServer3 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "ftp://example.com", http.StatusFound)
+		}))
+		defer redirectServer3.Close()
+
+		success, err := w.sendGenericWebhook(redirectServer3.URL, cve, "Asset", "test@example.com")
+		if success {
+			t.Errorf("Expected redirect to invalid scheme to fail")
+		}
+		if !strings.Contains(err, "invalid redirect scheme") {
+			t.Errorf("Expected invalid redirect scheme error, got: %s", err)
+		}
+	})
 }
 
 func TestIsSafeIP_Internal(t *testing.T) {
