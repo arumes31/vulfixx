@@ -1,8 +1,10 @@
 package web
 
 import (
+	"bytes"
 	"html/template"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -70,6 +72,10 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 		}
 		if f("//evil.com") != "#invalid-url" {
 			t.Errorf("expected #invalid-url for protocol-relative, got %v", f("//evil.com"))
+		}
+		// Test invalid URL parsing
+		if f("%%") != "#invalid-url" {
+			t.Errorf("expected #invalid-url for invalid percent encoding, got %v", f("%%"))
 		}
 	})
 
@@ -200,7 +206,13 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 		if funcs["min"].(func(float64, float64) float64)(10, 20) != 10 {
 			t.Error("min failed")
 		}
+		if funcs["min"].(func(float64, float64) float64)(20, 10) != 10 {
+			t.Error("min failed")
+		}
 		if funcs["max"].(func(float64, float64) float64)(10, 20) != 20 {
+			t.Error("max failed")
+		}
+		if funcs["max"].(func(float64, float64) float64)(20, 10) != 20 {
 			t.Error("max failed")
 		}
 	})
@@ -218,4 +230,85 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 			t.Errorf("expected http://localhost:8080, got %s", f())
 		}
 	})
+}
+
+func TestInitTemplatesWithFuncs(t *testing.T) {
+	tmpDir := t.TempDir()
+	templatesDir := filepath.Join(tmpDir, "templates")
+	err := os.Mkdir(templatesDir, 0755)
+	if err != nil {
+		t.Fatalf("failed to create templates dir: %v", err)
+	}
+
+	baseContent := "{{define \"base\"}}<html><body>{{template \"content\" .}}</body></html>{{end}}"
+	err = os.WriteFile(filepath.Join(templatesDir, "base.html"), []byte(baseContent), 0644)
+	if err != nil {
+		t.Fatalf("failed to create base.html: %v", err)
+	}
+
+	indexContent := "{{define \"content\"}}<h1>Index</h1>{{end}}"
+	err = os.WriteFile(filepath.Join(templatesDir, "index.html"), []byte(indexContent), 0644)
+	if err != nil {
+		t.Fatalf("failed to create index.html: %v", err)
+	}
+
+	oldWd, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(oldWd)
+
+	app := &App{}
+	err = app.InitTemplatesWithFuncs()
+	if err != nil {
+		t.Errorf("InitTemplatesWithFuncs failed: %v", err)
+	}
+
+	if _, ok := app.TemplateMap["index.html"]; !ok {
+		t.Error("index.html not found in TemplateMap")
+	}
+
+	var buf bytes.Buffer
+	err = app.TemplateMap["index.html"].ExecuteTemplate(&buf, "base", nil)
+	if err != nil {
+		t.Errorf("template execution failed: %v", err)
+	}
+	if !strings.Contains(buf.String(), "<h1>Index</h1>") {
+		t.Errorf("expected <h1>Index</h1> in output, got %s", buf.String())
+	}
+}
+
+func TestFindTemplatesDir(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	nested := filepath.Join(tmpDir, "a", "b", "c", "d", "e")
+	err := os.MkdirAll(nested, 0755)
+	if err != nil {
+		t.Fatalf("failed to create nested dir: %v", err)
+	}
+
+	templatesDir := filepath.Join(tmpDir, "a", "templates")
+	err = os.Mkdir(templatesDir, 0755)
+	if err != nil {
+		t.Fatalf("failed to create templates dir: %v", err)
+	}
+	err = os.WriteFile(filepath.Join(templatesDir, "test.html"), []byte("test"), 0644)
+	if err != nil {
+		t.Fatalf("failed to create test.html: %v", err)
+	}
+
+	oldWd, _ := os.Getwd()
+	os.Chdir(nested)
+	defer os.Chdir(oldWd)
+
+	found := findTemplatesDir()
+	if !strings.Contains(found, filepath.Join("a", "templates")) {
+		t.Errorf("expected to find templates dir in a/, got %s", found)
+	}
+
+	emptyDir := t.TempDir()
+	os.Chdir(emptyDir)
+	found = findTemplatesDir()
+	// It should NOT find the a/templates since it is not a parent of emptyDir
+	if found != "" && strings.Contains(found, filepath.Join("a", "templates")) {
+		t.Errorf("should NOT have found templates dir, got %s", found)
+	}
 }
