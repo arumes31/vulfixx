@@ -554,3 +554,125 @@ func TestDashboardNoErrorLeakOnMalformedQuery(t *testing.T) {
 		t.Errorf("unmet expectations: %v", err)
 	}
 }
+
+func TestValidateCSRF(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+	app := setupTestApp(t, mock)
+
+	token := "test-csrf-token-32-bytes-long-!!!!"
+
+	t.Run("ValidTokenInHeader", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/", nil)
+		req.Header.Set("X-CSRF-Token", token)
+
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["admin_csrf_token"] = token
+		rr := httptest.NewRecorder()
+		_ = session.Save(req, rr)
+
+		// Apply session cookie to request
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		if !app.ValidateCSRF(req) {
+			t.Error("expected CSRF validation to pass with valid header token")
+		}
+	})
+
+	t.Run("ValidTokenInForm", func(t *testing.T) {
+		form := url.Values{}
+		form.Set("csrf_token", token)
+		req, _ := http.NewRequest("POST", "/", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["admin_csrf_token"] = token
+		rr := httptest.NewRecorder()
+		_ = session.Save(req, rr)
+
+		// Apply session cookie to request
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		if !app.ValidateCSRF(req) {
+			t.Error("expected CSRF validation to pass with valid form token")
+		}
+	})
+
+	t.Run("InvalidTokenMismatch", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/", nil)
+		req.Header.Set("X-CSRF-Token", "wrong-token-same-length-!!!!!!!!")
+
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["admin_csrf_token"] = token
+		rr := httptest.NewRecorder()
+		_ = session.Save(req, rr)
+
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		if app.ValidateCSRF(req) {
+			t.Error("expected CSRF validation to fail with mismatched token")
+		}
+	})
+
+	t.Run("MissingTokenInRequest", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/", nil)
+
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["admin_csrf_token"] = token
+		rr := httptest.NewRecorder()
+		_ = session.Save(req, rr)
+
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		if app.ValidateCSRF(req) {
+			t.Error("expected CSRF validation to fail with missing request token")
+		}
+	})
+
+	t.Run("MissingTokenInSession", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/", nil)
+		req.Header.Set("X-CSRF-Token", token)
+
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		// No admin_csrf_token set
+		rr := httptest.NewRecorder()
+		_ = session.Save(req, rr)
+
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		if app.ValidateCSRF(req) {
+			t.Error("expected CSRF validation to fail with missing session token")
+		}
+	})
+
+	t.Run("TokenLengthMismatch", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/", nil)
+		req.Header.Set("X-CSRF-Token", "short")
+
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["admin_csrf_token"] = token
+		rr := httptest.NewRecorder()
+		_ = session.Save(req, rr)
+
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		if app.ValidateCSRF(req) {
+			t.Error("expected CSRF validation to fail with token length mismatch")
+		}
+	})
+}
