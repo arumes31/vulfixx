@@ -116,13 +116,11 @@ Loop:
 
 func (w *Worker) fetchGreyNoiseHits(ctx context.Context, cveID string) (int, error) {
 	url := fmt.Sprintf("https://api.greynoise.io/v3/community/cve/%s", cveID)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return 0, err
-	}
-	req.Header.Set("User-Agent", "Vulfixx-Threat-Intel/2.0")
-
-	resp, err := w.HTTP.Do(req)
+	resp, err := w.doRequest(ctx, RetryConfig{
+		MaxRetries:  3,
+		ShouldRetry: DefaultShouldRetry,
+		Label:       "GreyNoise Fetch",
+	}, "GET", url, nil)
 	if err != nil {
 		return 0, err
 	}

@@ -141,13 +141,11 @@ func (w *Worker) fetchInTheWildData(ctx context.Context, cveID string) (map[stri
 		baseURL = envURL
 	}
 	url := fmt.Sprintf("%s/%s", baseURL, cveID)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil) // #nosec G704
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", "Vulfixx-Threat-Intel/2.0")
-
-	resp, err := w.HTTP.Do(req)
+	resp, err := w.doRequest(ctx, RetryConfig{
+		MaxRetries:  3,
+		ShouldRetry: DefaultShouldRetry,
+		Label:       "InTheWild Fetch",
+	}, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}

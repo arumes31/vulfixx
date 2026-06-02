@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"cve-tracker/internal/db"
@@ -8,13 +9,17 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"golang.org/x/time/rate"
-	"log/slog"
+	"io"
+	"net/http"
 	"sync"
 	"time"
 
 	"github.com/hibiken/asynq"
+	"golang.org/x/time/rate"
+	"log/slog"
 )
+
+const DefaultUserAgent = "Vulfixx-Threat-Intel/2.0"
 
 type Worker struct {
 	Pool               db.DBPool
@@ -36,6 +41,22 @@ type Worker struct {
 	OnHealthCheckDone      func()
 	OnIntelligenceSyncDone func()
 	OnAdvisoryRSSSyncDone  func()
+}
+
+// doRequest is a helper method that wraps DoWithRetry and sets the default User-Agent.
+func (w *Worker) doRequest(ctx context.Context, config RetryConfig, method, url string, body []byte) (*http.Response, error) {
+	return DoWithRetry(ctx, w.HTTP, config, func() (*http.Request, error) {
+		var bodyReader io.Reader
+		if body != nil {
+			bodyReader = bytes.NewReader(body)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("User-Agent", DefaultUserAgent)
+		return req, nil
+	})
 }
 
 func (w *Worker) initLimiters() {
