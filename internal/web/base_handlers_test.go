@@ -162,6 +162,21 @@ func TestLogActivity_Extended(t *testing.T) {
 		}
 	})
 
+	t.Run("SuccessWithPort", func(t *testing.T) {
+		ipWithPort := "1.2.3.4:5678"
+		expectedIP := "1.2.3.4"
+
+		mock.ExpectExec("INSERT INTO user_activity_logs").
+			WithArgs(1, "test", "desc", expectedIP, "agent", pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		app.LogActivity(context.Background(), 1, "test", "desc", ipWithPort, "agent")
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
 	t.Run("DBError", func(t *testing.T) {
 		mock.ExpectExec("INSERT INTO user_activity_logs").
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
