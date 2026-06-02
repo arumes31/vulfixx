@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+
+	"github.com/microcosm-cc/bluemonday"
 )
 
 // HNClient defines the interface for fetching Hacker News mentions.
@@ -74,12 +76,16 @@ func (c *algoliaHNClient) FetchMentions(ctx context.Context, query string) (int,
 	}
 
 	links := []map[string]string{}
+	p := bluemonday.StrictPolicy()
 	for _, hit := range hnResp.Hits {
 		if !isNumeric(hit.ObjectID) {
 			continue
 		}
 		hnLink := fmt.Sprintf("https://news.ycombinator.com/item?id=%s", hit.ObjectID)
-		links = append(links, map[string]string{"title": hit.Title, "url": hnLink})
+		links = append(links, map[string]string{
+			"title": p.Sanitize(hit.Title),
+			"url":   hnLink,
+		})
 	}
 
 	return hnResp.NbHits, links, nil

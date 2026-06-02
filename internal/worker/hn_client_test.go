@@ -64,3 +64,32 @@ func TestAlgoliaHNClient_FetchMentions(t *testing.T) {
 		}
 	})
 }
+
+func TestAlgoliaHNClient_FetchMentions_Sanitization(t *testing.T) {
+	httpClient := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"nbHits": 1, "hits": [{"title": "<script>alert(1)</script>Safe Title", "objectID": "1"}]}`)),
+			}, nil
+		},
+	}
+
+	client := NewHNClient(httpClient)
+	_, links, err := client.FetchMentions(context.Background(), "CVE-2024-1234")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(links) != 1 {
+		t.Fatalf("expected 1 link, got %d", len(links))
+	}
+
+	title := links[0]["title"]
+	if strings.Contains(title, "<script>") {
+		t.Errorf("title not sanitized: %s", title)
+	}
+	if title != "Safe Title" {
+		t.Errorf("unexpected sanitized title: %s", title)
+	}
+}

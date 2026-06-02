@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/microcosm-cc/bluemonday"
 )
 
 func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
@@ -263,12 +264,16 @@ func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []
 	}
 
 	links := []map[string]string{}
+	p := bluemonday.StrictPolicy()
 	for _, child := range rResp.Data.Children {
 		if !isValidRedditPermalink(child.Data.Permalink) {
 			continue
 		}
 		redditLink := fmt.Sprintf("https://www.reddit.com%s", child.Data.Permalink)
-		links = append(links, map[string]string{"title": child.Data.Title, "url": redditLink})
+		links = append(links, map[string]string{
+			"title": p.Sanitize(child.Data.Title),
+			"url":   redditLink,
+		})
 	}
 
 	return len(links), links, nil

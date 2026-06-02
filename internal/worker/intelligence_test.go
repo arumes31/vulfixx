@@ -229,3 +229,39 @@ func TestWorker_Health_Coverage(t *testing.T) {
 		w.waitUntilNextRun(ctx, "wait_task", 1*time.Hour, 0)
 	})
 }
+
+func TestWorker_FetchRedditMentions_Sanitization(t *testing.T) {
+	mock, _ := db.SetupTestDB()
+	defer mock.Close()
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	httpClient := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"data":{"children":[{"data":{"title":"<img src=x onerror=alert(1)>Malicious Title","permalink":"/r/sec/1"}}]}}`)),
+			}, nil
+		},
+	}
+
+	w := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
+	_, links, err := w.fetchRedditMentions(context.Background(), "CVE-2024-1234")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(links) != 1 {
+		t.Fatalf("expected 1 link, got %d", len(links))
+	}
+
+	title := links[0]["title"]
+	if strings.Contains(title, "<img") || strings.Contains(title, "onerror") {
+		t.Errorf("title not sanitized: %s", title)
+	}
+	if title != "Malicious Title" {
+		t.Errorf("unexpected sanitized title: %s", title)
+	}
+}
