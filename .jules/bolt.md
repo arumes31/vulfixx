@@ -27,15 +27,10 @@
 **Learning:** Sequential HTTP requests in a loop cause significant latency and underutilize resources. Using a concurrent worker pool (e.g., errgroup or sync.WaitGroup with channels) allows for parallel processing of I/O-bound tasks while maintaining a controllable level of concurrency.
 **Action:** Implement a worker pool pattern for loops containing synchronous HTTP requests to improve performance and throughput.
 
-## 2026-05-28 - Refactored Overly Complex AssetsHandler to Repository Pattern
-**Performance Issue:** Bloated handler logic combining request parsing, validation, database transactions, and UI rendering.
-**Learning:** Consolidating complex database operations (transactions, quota checks, keyword mapping) into a dedicated Repository layer simplifies handler logic and improves testability by decoupling HTTP concerns from data persistence.
-**Optimization:** Created `AssetRepository` to encapsulate SQL logic and transaction management. Split `AssetsHandler` into specialized internal methods for GET and POST.
-**Impact:** Improved code readability, reduced cyclomatic complexity of the handler, and centralized asset-related database logic for reuse.
-
 ## 2026-05-28 - Parallelizing InTheWild Sync with Worker Pool
 **Learning:** Sequential HTTP requests in synchronization loops cause significant latency, especially when throtlling is required for API compliance. Using a worker pool with a centralized ticker allows for controlled parallelism while strictly adhering to rate limits.
 **Action:** Identify sync loops with blocking I/O and refactor them to use `errgroup` and a shared `time.Ticker` for rate-limited concurrent processing.
+
 ## 2026-05-30 - Optimized Dashboard and Ticker N+1 Queries
 **Performance Issue:** Execution of multiple aggregate `COUNT(*)` queries for different conditions on the same table.
 **Learning:** Running consecutive `SELECT COUNT(*) FILTER ...` queries sequentially on the same table causes multiple database roundtrips and increases latency.
@@ -44,3 +39,9 @@
 ## 2026-05-30 - Optimized Database Updates in GitHub Buzz Sync
 **Learning:** Performing individual `tx.Exec` calls within a transaction loop in `updateGitHubBatch` for 50 items results in 50 separate database roundtrips, which degrades performance.
 **Action:** Implemented `pgx.Batch` within the transaction to send all update queries in a single database roundtrip, significantly reducing I/O latency, while maintaining a fallback loop for `pgxmock` test compatibility.
+
+## 2026-05-31 - Refactored Overly Complex AssetsHandler into Specialized Handlers
+**Performance Issue:** Bloated handler logic combining request parsing, validation, and redundant authentication checks.
+**Learning:** Fully decoupling HTTP method dispatching to the router and offloading authentication to middleware further reduces handler complexity and improves maintainability.
+**Optimization:** Split the unified `AssetsHandler` into specialized exported handlers `ListAssetsHandler` and `CreateAssetHandler`. Extracted asset input validation into a dedicated helper method.
+**Impact:** Significantly reduced cyclomatic complexity of the web layer, improved code readability, and aligned with standard chi router patterns.
