@@ -295,29 +295,46 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 		renderData["UserID"] = userID
 		renderData["IsAdmin"] = a.IsAdmin(r)
 
-		// Onboarding status
+		activeTeamID, _ := a.GetActiveTeamID(r)
+
+		// Fetch onboarding status, subscription count and active team name in one go
 		var onboardingCompleted bool
-		err := a.Pool.QueryRow(r.Context(), "SELECT onboarding_completed FROM users WHERE id = $1", userID).Scan(&onboardingCompleted)
+		var subCount int
+		var activeTeamName *string
+		err := a.Pool.QueryRow(r.Context(), `
+				SELECT
+					u.onboarding_completed,
+					(SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1),
+					(SELECT name FROM teams WHERE id = $2)
+				FROM users u
+				WHERE u.id = $1
+			`, userID, activeTeamID).Scan(&onboardingCompleted, &subCount, &activeTeamName)
+
 		if err != nil {
-			slog.Error("RenderTemplate onboarding query failed", "user_id", userID, "error", err)
+			slog.Error("RenderTemplate base queries failed", "user_id", userID, "error", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
-		renderData["OnboardingCompleted"] = onboardingCompleted
 
-		// Fetch user's subscription count
-		var subCount int
-		_ = a.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1", userID).Scan(&subCount)
+		renderData["OnboardingCompleted"] = onboardingCompleted
 		renderData["SubCount"] = subCount
+
+		if activeTeamID != 0 && activeTeamName != nil {
+			renderData["ActiveTeamID"] = activeTeamID
+			renderData["ActiveTeamName"] = *activeTeamName
+		} else {
+			renderData["ActiveTeamID"] = 0
+			renderData["ActiveTeamName"] = "Private Workspace"
+		}
 
 		// Fetch user's teams
 		var userTeams []map[string]interface{}
 		teamRows, err := a.Pool.Query(r.Context(), `
-			SELECT t.id, t.name 
-			FROM teams t
-			JOIN team_members tm ON t.id = tm.team_id
-			WHERE tm.user_id = $1
-		`, userID)
+				SELECT t.id, t.name
+				FROM teams t
+				JOIN team_members tm ON t.id = tm.team_id
+				WHERE tm.user_id = $1
+			`, userID)
 		if err != nil {
 			slog.Error("RenderTemplate teams query failed", "user_id", userID, "error", err)
 		} else {
@@ -334,41 +351,6 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 			}
 			renderData["UserTeams"] = userTeams
 		}
-
-		activeTeamID, ok := a.GetActiveTeamID(r)
-		if ok && activeTeamID != 0 {
-			var teamName string
-			var found bool
-
-			// Attempt to find the active team name in the already fetched user teams
-			for _, team := range userTeams {
-				if team["ID"] == activeTeamID {
-					if name, ok := team["Name"].(string); ok {
-						teamName = name
-						found = true
-						break
-					}
-				}
-			}
-
-			// Fallback to database query if not found in pre-fetched teams
-			if !found {
-				err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
-				if err != nil {
-					slog.Error("Error fetching active team name", "error", err)
-				} else {
-					renderData["ActiveTeamName"] = teamName
-				}
-			} else {
-				renderData["ActiveTeamName"] = teamName
-			}
-
-			renderData["ActiveTeamID"] = activeTeamID
-		} else {
-			renderData["ActiveTeamID"] = 0
-			renderData["ActiveTeamName"] = "Private Workspace"
-		}
-
 	}
 
 	// Fetch global CVE stats from cache for all views

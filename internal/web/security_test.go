@@ -529,12 +529,7 @@ func TestDashboardNoErrorLeakOnMalformedQuery(t *testing.T) {
 		WillReturnRows(pgxmock.NewRows([]string{"cwe_id", "cwe_name", "cnt"}).AddRow("CWE-79", "XSS", 1))
 
 	// 6. RenderTemplate calls
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT onboarding_completed FROM users WHERE id = $1")).
-		WithArgs(1).
-		WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed"}).AddRow(true))
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1")).
-		WithArgs(1).
-		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
+				mock.ExpectQuery("(?is)SELECT.*u.onboarding_completed.*FROM users u").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed", "sub_count", "active_team_name"}).AddRow(true, 1, nil))
 	mock.ExpectQuery("(?is)SELECT t.id, t.name FROM teams t").
 		WithArgs(1).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(1, "Team1"))

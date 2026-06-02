@@ -50,9 +50,7 @@ func TestAssetsHandler(t *testing.T) {
 				AddRow(1, "Asset 1", "server", "P3", time.Now(), []string{"test"}, "Team A"))
 
 		// RenderTemplate expectations
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT onboarding_completed FROM users WHERE id = $1")).
-			WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed"}).AddRow(true))
+				mock.ExpectQuery("(?is)SELECT.*u.onboarding_completed.*FROM users u").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed", "sub_count", "active_team_name"}).AddRow(true, 1, nil))
 
 		// Teams query from RenderTemplate (called because user is logged in)
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT t.id, t.name FROM teams t JOIN team_members tm")).

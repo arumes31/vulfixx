@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"regexp"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -75,15 +74,10 @@ func expectBaseQueries(mock pgxmock.PgxPoolIface, userID int) {
 	if userID <= 0 {
 		return
 	}
-	// 1. Onboarding status query in RenderTemplate
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT onboarding_completed FROM users WHERE id = $1")).
-		WithArgs(userID).
-		WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed"}).AddRow(true))
-
-	// 2. Sub count query in RenderTemplate
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1")).
-		WithArgs(userID).
-		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
+	// 1. Combined base queries (onboarding, sub count, active team) in RenderTemplate
+	mock.ExpectQuery("(?is)SELECT.*u.onboarding_completed.*FROM users u").
+		WithArgs(userID, 0).
+		WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed", "sub_count", "active_team_name"}).AddRow(true, 1, nil))
 
 	// 3. Team list query in RenderTemplate
 	mock.ExpectQuery("(?is)SELECT t.id, t.name FROM teams t").
