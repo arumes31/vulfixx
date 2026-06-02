@@ -44,3 +44,9 @@
 ## 2026-05-30 - Optimized Database Updates in GitHub Buzz Sync
 **Learning:** Performing individual `tx.Exec` calls within a transaction loop in `updateGitHubBatch` for 50 items results in 50 separate database roundtrips, which degrades performance.
 **Action:** Implemented `pgx.Batch` within the transaction to send all update queries in a single database roundtrip, significantly reducing I/O latency, while maintaining a fallback loop for `pgxmock` test compatibility.
+
+## 2026-06-02 - Optimized OSV Sync with standard concurrency patterns
+**Performance Issue:** Sequential HTTP requests (even with basic goroutines) and manual sleep in the OSV sync loop.
+**Learning:** Using `errgroup` and `rate.Limiter` provides a more robust and idiomatic way to handle concurrent I/O with rate limiting in Go. It ensures better context handling and error propagation.
+**Optimization:** Refactored `syncOSV` to use `errgroup` and `rate.Limiter`. Integrated `DoWithRetry` for resilient HTTP requests.
+**Impact:** Improved throughput and resilience of the OSV synchronization task while maintaining project-standard coding patterns.

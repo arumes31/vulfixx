@@ -13,6 +13,8 @@ import (
 	"cve-tracker/internal/models"
 
 	"github.com/jackc/pgx/v5"
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
 )
 
 const osvConcurrency = 10
@@ -88,23 +90,23 @@ func (w *Worker) syncOSV(ctx context.Context) {
 
 	var updates []updateItem
 	var mu sync.Mutex
-	var wg sync.WaitGroup
+	g, gCtx := errgroup.WithContext(ctx)
 	cveChan := make(chan models.CVE, len(cves))
+
+	// Respect API limits - OSV is quite generous but we'll use a steady rate
+	limiter := rate.NewLimiter(rate.Every(50*time.Millisecond), 1)
 
 	// Start workers
 	for i := 0; i < osvConcurrency; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		g.Go(func() error {
 			for cve := range cveChan {
-				select {
-				case <-ctx.Done():
-					return
-				default:
+				if err := limiter.Wait(gCtx); err != nil {
+					return err
 				}
 
-				osvData, err := w.fetchOSVData(ctx, cve.CVEID)
+				osvData, err := w.fetchOSVData(gCtx, cve.CVEID)
 				if err != nil {
+					slog.Warn("Worker: [WARN] Failed to fetch OSV data", "cve_id", cve.CVEID, "error", err)
 					continue
 				}
 
@@ -165,18 +167,25 @@ func (w *Worker) syncOSV(ctx context.Context) {
 				mu.Lock()
 				updates = append(updates, item)
 				mu.Unlock()
-				// Reduced sleep since we are concurrent but still want to be polite
-				time.Sleep(50 * time.Millisecond)
 			}
-		}()
+			return nil
+		})
 	}
 
 	// Feed workers
+Loop:
 	for _, cve := range cves {
-		cveChan <- cve
+		select {
+		case cveChan <- cve:
+		case <-gCtx.Done():
+			break Loop
+		}
 	}
 	close(cveChan)
-	wg.Wait()
+
+	if err := g.Wait(); err != nil && err != context.Canceled {
+		slog.Error("Worker: [ERROR] OSV sync worker group error", "error", err)
+	}
 
 	if len(updates) == 0 {
 		w.updateTaskStats(ctx, "osv_sync")
@@ -231,6 +240,8 @@ func (w *Worker) syncOSV(ctx context.Context) {
 			}
 			if err == nil {
 				count++
+			} else {
+				slog.Error("Worker: [ERROR] Failed to execute update in fallback", "error", err)
 			}
 		}
 	}
@@ -245,15 +256,25 @@ func (w *Worker) syncOSV(ctx context.Context) {
 
 func (w *Worker) fetchOSVData(ctx context.Context, cveID string) (*osvResponse, error) {
 	url := fmt.Sprintf("https://api.osv.dev/v1/vulns/%s", cveID)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+
+	resp, err := DoWithRetry(ctx, w.HTTP, RetryConfig{
+		MaxRetries: 3,
+		Label:      "OSV Data Fetch",
+		ShouldRetry: DefaultShouldRetry,
+	}, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("User-Agent", "Vulfixx-Threat-Intel/2.0")
+		return req, nil
+	})
+
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Vulfixx-Threat-Intel/2.0")
-
-	resp, err := w.HTTP.Do(req)
-	if err != nil {
-		return nil, err
+	if resp == nil {
+		return nil, nil
 	}
 	defer resp.Body.Close()
 
