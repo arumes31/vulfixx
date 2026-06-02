@@ -2,7 +2,17 @@ package web
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"errors"
+	"math/big"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"cve-tracker/internal/worker/proto"
 
@@ -86,6 +96,39 @@ func TestGRPC_GetCVE_NotFound(t *testing.T) {
 	}
 }
 
+func TestGRPC_GetCVE_DatabaseError(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create pgxmock pool: %v", err)
+	}
+	defer mock.Close()
+
+	server := &CVEServiceServerImpl{Pool: mock}
+
+	cveID := "CVE-DATABASE-ERROR"
+	mock.ExpectQuery(`SELECT id, cve_id, description, COALESCE\(cvss_score, 0\), published_date FROM cves WHERE cve_id = \$1`).
+		WithArgs(cveID).
+		WillReturnError(errors.New("db error"))
+
+	_, err = server.GetCVE(context.Background(), &proto.CVERequest{CveId: cveID})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got: %v", err)
+	}
+
+	if st.Code() != codes.Internal {
+		t.Errorf("expected status code Internal, got %s", st.Code())
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unfulfilled expectations: %v", err)
+	}
+}
+
 func TestGRPC_GetCVE_EmptyInput(t *testing.T) {
 	server := &CVEServiceServerImpl{Pool: nil}
 	_, err := server.GetCVE(context.Background(), &proto.CVERequest{CveId: ""})
@@ -125,4 +168,87 @@ func TestGRPC_StartServer(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error starting secure gRPC server with missing cert files")
 	}
+}
+
+func TestGRPC_StartServer_ListenFailure(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create pgxmock pool: %v", err)
+	}
+	defer mock.Close()
+
+	// Use an invalid port to trigger net.Listen failure
+	_, err = StartGRPCServer(mock, "999999", "", "")
+	if err == nil {
+		t.Fatal("expected error with invalid port, got nil")
+	}
+}
+
+func TestGRPC_StartServer_TLS_Success(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create pgxmock pool: %v", err)
+	}
+	defer mock.Close()
+
+	tmpDir := t.TempDir()
+	certFile := filepath.Join(tmpDir, "cert.pem")
+	keyFile := filepath.Join(tmpDir, "key.pem")
+
+	if err := generateSelfSignedCert(certFile, keyFile); err != nil {
+		t.Fatalf("failed to generate certs: %v", err)
+	}
+
+	srv, err := StartGRPCServer(mock, "0", certFile, keyFile)
+	if err != nil {
+		t.Fatalf("failed to start secure gRPC server: %v", err)
+	}
+	if srv == nil {
+		t.Fatal("expected non-nil gRPC server")
+	}
+	srv.GracefulStop()
+}
+
+func generateSelfSignedCert(certFile, keyFile string) error {
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return err
+	}
+
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			Organization: []string{"Test Co"},
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	if err != nil {
+		return err
+	}
+
+	certOut, err := os.Create(certFile)
+	if err != nil {
+		return err
+	}
+	defer certOut.Close()
+	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
+		return err
+	}
+
+	keyOut, err := os.OpenFile(keyFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	defer keyOut.Close()
+	if err := pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)}); err != nil {
+		return err
+	}
+
+	return nil
 }
