@@ -329,18 +329,39 @@ func (w *Worker) notifyIfNewWithCache(ctx context.Context, userID int, cve *mode
 	// Ensure we have full details if the job only provided minimal data
 	// If the job unmarshaled from Redis has CVEID, we assume it's full.
 	if cve.CVEID == "" {
+		var osintJSON []byte
 		err := w.Pool.QueryRow(ctx, `
-			SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, github_poc_count, published_date, "references" 
+			SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, github_poc_count, published_date, "references", osint_data
 			FROM cves WHERE id = $1
-		`, cve.ID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.VectorString, &cve.CISAKEV, &cve.EPSSScore, &cve.CWEID, &cve.GitHubPoCCount, &cve.PublishedDate, &cve.References)
+		`, cve.ID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.VectorString, &cve.CISAKEV, &cve.EPSSScore, &cve.CWEID, &cve.GitHubPoCCount, &cve.PublishedDate, &cve.References, &osintJSON)
 		if err != nil {
 			w.Redis.Decr(ctx, floodKey)
 			slog.Error("Failed to fetch full CVE details for alert", "id", cve.ID, "error", err)
 			return false
 		}
+		if len(osintJSON) > 0 {
+			_ = json.Unmarshal(osintJSON, &cve.OSINTData)
+		}
 	}
 
-	cve.OSINTData = w.fetchOSINTLinks(ctx, cve.CVEID)
+	// Cache OSINT links in-memory to avoid redundant calls (even to Redis cache) for multiple subscriptions of the same CVE.
+	if cve.OSINTData == nil || (cve.OSINTData["hn"] == nil && cve.OSINTData["reddit"] == nil) {
+		links := w.fetchOSINTLinks(ctx, cve.CVEID)
+		if cve.OSINTData == nil {
+			cve.OSINTData = links
+		} else {
+			for k, v := range links {
+				cve.OSINTData[k] = v
+			}
+		}
+		// Ensure keys are present to avoid re-fetching in the same alert batch.
+		if cve.OSINTData["hn"] == nil {
+			cve.OSINTData["hn"] = []interface{}{}
+		}
+		if cve.OSINTData["reddit"] == nil {
+			cve.OSINTData["reddit"] = []interface{}{}
+		}
+	}
 
 	if !w.bufferAlert(ctx, userID, cve, sub, email, assetName) {
 		w.Redis.Decr(ctx, floodKey)
