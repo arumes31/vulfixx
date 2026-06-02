@@ -34,9 +34,10 @@ func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) models.JSONB
 
 	// Hacker News
 	g.Go(func() error {
-		if _, links, err := w.fetchHNMentions(gctx, cveID); err == nil {
+		if count, links, err := w.fetchHNMentions(gctx, cveID); err == nil {
 			mu.Lock()
 			data["hn"] = links
+			data["hn_mentions"] = count
 			mu.Unlock()
 		} else {
 			slog.Error("Worker: Failed to fetch HN results", "cve_id", cveID, "error", err)
@@ -46,9 +47,10 @@ func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) models.JSONB
 
 	// Reddit
 	g.Go(func() error {
-		if _, links, err := w.fetchRedditMentions(gctx, cveID); err == nil {
+		if count, links, err := w.fetchRedditMentions(gctx, cveID); err == nil {
 			mu.Lock()
 			data["reddit"] = links
+			data["reddit_mentions"] = count
 			mu.Unlock()
 		} else {
 			slog.Error("Worker: Failed to fetch Reddit results", "cve_id", cveID, "error", err)

@@ -44,3 +44,9 @@
 ## 2026-05-30 - Optimized Database Updates in GitHub Buzz Sync
 **Learning:** Performing individual `tx.Exec` calls within a transaction loop in `updateGitHubBatch` for 50 items results in 50 separate database roundtrips, which degrades performance.
 **Action:** Implemented `pgx.Batch` within the transaction to send all update queries in a single database roundtrip, significantly reducing I/O latency, while maintaining a fallback loop for `pgxmock` test compatibility.
+
+## 2026-06-02 - Fixed Social Sentiment Logic and OSINT Caching
+**Performance Issue:** Duplicated social sentiment fetching logic and lack of caching in intelligence sync.
+**Learning:** Re-implementing social sentiment fetching in multiple places (intelligence sync vs alert worker) leads to inconsistent data and redundant API calls. The `fetchOSINTLinks` method had a Redis cache but was not used by the periodic intelligence sync. Additionally, direct type assertions to `int` on JSON-unmarshaled maps fail because Go unmarshals numbers into `float64`.
+**Optimization:** Centralized all social sentiment fetching into `fetchOSINTLinks`, which uses Redis caching. Refactored `updateSocialSentiment` to use this centralized helper. Added `getIntFromOSINT` to safely handle both `int` and `float64` numeric types.
+**Impact:** Reduced redundant API calls to HN/Reddit during intelligence sync via Redis caching. Improved system reliability by handling dynamic numeric types in OSINT metadata.

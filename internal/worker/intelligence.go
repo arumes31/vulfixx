@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -130,36 +129,17 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 }
 
 func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-
-	wg.Add(2)
-
-	// Hacker News Mentions
-	go func() {
-		defer wg.Done()
-		if count, _, err := w.fetchHNMentions(ctx, c.CVEID); err == nil {
-			mu.Lock()
-			c.OSINTData["hn_mentions"] = count
-			mu.Unlock()
-		}
-	}()
-
-	// Reddit Mentions
-	go func() {
-		defer wg.Done()
-		if count, _, err := w.fetchRedditMentions(ctx, c.CVEID); err == nil {
-			mu.Lock()
-			c.OSINTData["reddit_mentions"] = count
-			mu.Unlock()
-		}
-	}()
-
-	wg.Wait()
+	osintData := w.fetchOSINTLinks(ctx, c.CVEID)
+	if c.OSINTData == nil {
+		c.OSINTData = make(models.JSONBMap)
+	}
+	for k, v := range osintData {
+		c.OSINTData[k] = v
+	}
 
 	// Sentiment Score Calculation (Simplified Heat Score)
-	hnCount, _ := c.OSINTData["hn_mentions"].(int)
-	redditCount, _ := c.OSINTData["reddit_mentions"].(int)
+	hnCount := getIntFromOSINT(c.OSINTData, "hn_mentions")
+	redditCount := getIntFromOSINT(c.OSINTData, "reddit_mentions")
 	githubCount := c.GitHubPoCCount
 
 	heatScore := (float64(hnCount) * 2.0) + (float64(redditCount) * 1.5) + (float64(githubCount) * 5.0)
@@ -272,4 +252,21 @@ func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []
 	}
 
 	return len(links), links, nil
+}
+
+func getIntFromOSINT(data models.JSONBMap, key string) int {
+	val, ok := data[key]
+	if !ok {
+		return 0
+	}
+	switch v := val.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	default:
+		return 0
+	}
 }
