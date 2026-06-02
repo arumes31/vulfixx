@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"cve-tracker/internal/db"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -110,6 +111,33 @@ func TestApp_SessionMethods(t *testing.T) {
 		id, ok := emptyApp.GetActiveUserID(req)
 		if ok || id != 0 {
 			t.Errorf("expected (0, false), got (%d, %v)", id, ok)
+		}
+	})
+
+	t.Run("GetActiveTeamID_NilStore", func(t *testing.T) {
+		emptyApp := &App{}
+		req, _ := http.NewRequest("GET", "/", nil)
+		id, ok := emptyApp.GetActiveTeamID(req)
+		if ok || id != 0 {
+			t.Errorf("expected (0, false), got (%d, %v)", id, ok)
+		}
+	})
+
+	t.Run("IsAdmin_NilStore", func(t *testing.T) {
+		emptyApp := &App{}
+		req, _ := http.NewRequest("GET", "/", nil)
+		if emptyApp.IsAdmin(req) {
+			t.Error("expected IsAdmin to return false")
+		}
+	})
+
+	t.Run("SetActiveTeamID_NilStore", func(t *testing.T) {
+		emptyApp := &App{}
+		req, _ := http.NewRequest("GET", "/", nil)
+		rr := httptest.NewRecorder()
+		err := emptyApp.SetActiveTeamID(rr, req, 123)
+		if err == nil {
+			t.Error("expected error")
 		}
 	})
 
@@ -246,6 +274,30 @@ func TestApp_SessionMethods_Errors(t *testing.T) {
 			t.Error("expected error on SetActiveTeamID with bad session")
 		}
 	})
+
+	t.Run("SetActiveTeamID_SaveError", func(t *testing.T) {
+		mockStore := &mockErrorStore{}
+		appWithMock := &App{SessionStore: mockStore}
+		req, _ := http.NewRequest("GET", "/", nil)
+		rr := httptest.NewRecorder()
+
+		err := appWithMock.SetActiveTeamID(rr, req, 123)
+		if err == nil {
+			t.Error("expected error on SetActiveTeamID when save fails")
+		}
+	})
+}
+
+type mockErrorStore struct {
+	sessions.Store
+}
+
+func (m *mockErrorStore) Get(r *http.Request, name string) (*sessions.Session, error) {
+	return sessions.NewSession(m, name), nil
+}
+
+func (m *mockErrorStore) Save(r *http.Request, w http.ResponseWriter, s *sessions.Session) error {
+	return errors.New("mock save error")
 }
 
 func TestApp_EnforceConcurrentSessions(t *testing.T) {
@@ -321,5 +373,14 @@ func TestApp_EnforceConcurrentSessions(t *testing.T) {
 		if !mr.Exists("vulfixx_session:sess_2") || !mr.Exists("vulfixx_session:sess_3") || !mr.Exists("vulfixx_session:sess_4") {
 			t.Error("expected sess_2, sess_3, and sess_4 to be preserved in Redis")
 		}
+	})
+
+	t.Run("ZCardError", func(t *testing.T) {
+		mrErr, _ := miniredis.Run()
+		rdbErr := redis.NewClient(&redis.Options{Addr: mrErr.Addr()})
+		appErr := &App{Redis: rdbErr}
+		rdbErr.Close()
+		appErr.EnforceConcurrentSessions(ctx, userID, "sess_5")
+		// Should return gracefully
 	})
 }
