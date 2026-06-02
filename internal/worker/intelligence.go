@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"golang.org/x/sync/errgroup"
 )
 
 func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
@@ -76,20 +77,41 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		cves = append(cves, c)
 	}
 
-	batch := &pgx.Batch{}
+	if len(cves) == 0 {
+		w.updateTaskStats(ctx, "intelligence_sync")
+		return nil
+	}
+
+	var mu sync.Mutex
+	var processedCVEs []models.CVE
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(10) // Process up to 10 CVEs concurrently
+
 	for _, c := range cves {
-		// 1. Social Sentiment (Reddit & HN)
-		w.updateSocialSentiment(ctx, &c)
+		cve := c // capture loop variable
+		g.Go(func() error {
+			// 1. Social Sentiment (Reddit & HN)
+			w.updateSocialSentiment(gCtx, &cve)
 
-		// 2. Duplicate Detection (Simplified)
-		w.detectDuplicates(ctx, &c)
+			// 2. Duplicate Detection (Simplified)
+			w.detectDuplicates(gCtx, &cve)
 
+			mu.Lock()
+			processedCVEs = append(processedCVEs, cve)
+			mu.Unlock()
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("intelligence sync workers failed: %w", err)
+	}
+
+	batch := &pgx.Batch{}
+	for _, c := range processedCVEs {
 		// Queue update
 		osintData, _ := json.Marshal(c.OSINTData)
 		batch.Queue("UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
-
-		// Throttle to avoid rate limits
-		time.Sleep(500 * time.Millisecond)
 	}
 
 	if batch.Len() > 0 {
@@ -111,7 +133,7 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 			}
 		} else {
 			// Fallback for mock drivers
-			for _, c := range cves {
+			for _, c := range processedCVEs {
 				osintData, _ := json.Marshal(c.OSINTData)
 				_, err = tx.Exec(ctx, "UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
 				if err != nil {
@@ -200,7 +222,7 @@ func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
 
 func (w *Worker) fetchHNMentions(ctx context.Context, cveID string) (int, []map[string]string, error) {
 	if w.HNClient == nil {
-		return 0, nil, fmt.Errorf("HNClient not initialized")
+		return 0, nil, fmt.Errorf("hnClient not initialized")
 	}
 	w.initLimiters()
 	if err := w.HNLimiter.Wait(ctx); err != nil {
@@ -238,12 +260,12 @@ func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []
 	}
 
 	if resp == nil {
-		return 0, nil, fmt.Errorf("Reddit API returned nil response")
+		return 0, nil, fmt.Errorf("reddit API returned nil response")
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return 0, nil, fmt.Errorf("Reddit API returned status %d", resp.StatusCode)
+		return 0, nil, fmt.Errorf("reddit API returned status %d", resp.StatusCode)
 	}
 
 	var rResp struct {
