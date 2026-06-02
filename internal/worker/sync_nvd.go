@@ -482,11 +482,7 @@ func (w *Worker) executeCVEBatchUpsert(ctx context.Context, modelsToUpsert []mod
 	return successfulCVEs, nil
 }
 
-func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfill bool) error {
-	if len(entries) == 0 {
-		return nil
-	}
-
+func (w *Worker) prepareCVEModels(ctx context.Context, entries []NVDCVEEntry, isBackfill bool) ([]models.CVE, error) {
 	var modelsToUpsert []models.CVE
 	consecutiveLLMFailures := 0
 	skipLLMForBatch := false
@@ -498,7 +494,7 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 		select {
 		case <-ctx.Done():
 			slog.Info("Worker: Context cancelled, aborting NVD batch preparation.")
-			return ctx.Err()
+			return nil, ctx.Err()
 		default:
 		}
 
@@ -525,11 +521,10 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 		modelsToUpsert = append(modelsToUpsert, model)
 	}
 
-	successfulCVEs, err := w.executeCVEBatchUpsert(ctx, modelsToUpsert)
-	if err != nil {
-		return err
-	}
+	return modelsToUpsert, nil
+}
 
+func (w *Worker) handlePostUpsertActions(ctx context.Context, successfulCVEs []models.CVE, isBackfill bool) {
 	slog.Info("Worker: [DATABASE CONFIRMED] Batch added successfully to DB", "batch_size", len(successfulCVEs))
 
 	for _, model := range successfulCVEs {
@@ -544,6 +539,24 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			}
 		}
 	}
+}
+
+func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfill bool) error {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	modelsToUpsert, err := w.prepareCVEModels(ctx, entries, isBackfill)
+	if err != nil {
+		return err
+	}
+
+	successfulCVEs, err := w.executeCVEBatchUpsert(ctx, modelsToUpsert)
+	if err != nil {
+		return err
+	}
+
+	w.handlePostUpsertActions(ctx, successfulCVEs, isBackfill)
 	return nil
 }
 
