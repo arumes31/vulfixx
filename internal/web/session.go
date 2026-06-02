@@ -2,10 +2,12 @@ package web
 
 import (
 	"context"
+	"cve-tracker/internal/config"
 	"cve-tracker/internal/db"
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -54,6 +56,16 @@ func InitRedisSession(client db.RedisProvider, key []byte, secure bool) (session
 
 	store = rs
 	return rs, nil
+}
+
+// SetupSessionStore encapsulates the logic for choosing between Redis and Cookie stores.
+func SetupSessionStore(cfg *config.Config, redisClient db.RedisProvider) sessions.Store {
+	if _, err := InitRedisSession(redisClient, []byte(cfg.SessionKey), cfg.SecureCookie); err != nil {
+		slog.Warn("Failed to initialize Redis-backed session store, falling back to CookieStore", "error", err)
+		return InitSession([]byte(cfg.SessionKey), cfg.SecureCookie)
+	}
+	slog.Info("Redis-backed session store initialized successfully.")
+	return GetSessionStore()
 }
 
 func GetSessionStore() sessions.Store {
