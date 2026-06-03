@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/csrf"
+	"filippo.io/csrf/gorilla"
 )
 
 // escapeLikePattern escapes backslash, percent, and underscore so the value can

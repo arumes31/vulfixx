@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/csrf"
+	"filippo.io/csrf/gorilla"
 	"github.com/jackc/pgx/v5"
 )
 
