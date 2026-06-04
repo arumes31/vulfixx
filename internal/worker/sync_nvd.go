@@ -294,21 +294,19 @@ func getCWEID(weaknesses []struct {
 	return ""
 }
 
-func mapNVDEntryToModel(entry NVDCVEEntry) (models.CVE, error) {
-	cve := entry.CVE
-
-	description := ""
+func extractDescription(cve NVDCVE) string {
 	for _, d := range cve.Descriptions {
 		if d.Lang == "en" {
-			description = d.Value
-			break
+			return d.Value
 		}
 	}
-	score, vector := getCVSSMetric(cve)
-	cweID := getCWEID(cve.Weaknesses)
+	return ""
+}
 
+func extractReferences(cve NVDCVE) ([]string, bool) {
 	var references []string
 	exploitAvailable := false
+
 	for _, ref := range cve.References {
 		u, err := url.Parse(ref.URL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
@@ -337,6 +335,17 @@ func mapNVDEntryToModel(entry NVDCVEEntry) (models.CVE, error) {
 		u.User = nil
 		references = append(references, u.String())
 	}
+
+	return references, exploitAvailable
+}
+
+func mapNVDEntryToModel(entry NVDCVEEntry) (models.CVE, error) {
+	cve := entry.CVE
+
+	description := extractDescription(cve)
+	score, vector := getCVSSMetric(cve)
+	cweID := getCWEID(cve.Weaknesses)
+	references, exploitAvailable := extractReferences(cve)
 
 	pubDate, err := parseNVDDate(cve.Published)
 	if err != nil {
