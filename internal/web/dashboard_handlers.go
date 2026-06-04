@@ -17,8 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"filippo.io/csrf/gorilla"
 	"github.com/go-chi/chi/v5"
-	"github.com/gorilla/csrf"
 	"github.com/jackc/pgx/v5"
 )
 
