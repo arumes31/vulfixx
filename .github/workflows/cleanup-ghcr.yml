@@ -74,7 +74,7 @@ jobs:
         run: |
           echo "--- Processing Workflow Runs ---"
           # Fetch up to 500 runs
-          RUNS_JSON=$(gh run list --limit 500 --json databaseId,createdAt,status,conclusion)
+          RUNS_JSON=$(gh run list --repo $GITHUB_REPOSITORY --limit 500 --json databaseId,createdAt,status,conclusion)
           
           # Filter and select IDs to delete:
           # 1. Filter only "completed" runs
@@ -94,7 +94,7 @@ jobs:
               echo "Targeting workflow run ID: $RUN_ID"
               if [ "$DRY_RUN" == "false" ]; then
                 echo "Deleting workflow run $RUN_ID..."
-                gh run delete "$RUN_ID"
+                gh run delete --repo $GITHUB_REPOSITORY "$RUN_ID"
               else
                 echo "[DRY RUN] Would delete workflow run $RUN_ID"
               fi
