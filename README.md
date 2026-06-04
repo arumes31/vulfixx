@@ -190,6 +190,7 @@ Vulfixx is hardened with enterprise-grade system improvements designed for high-
 | `LLM_TIMEOUT` | Intelligence extraction timeout (seconds) | `600` |
 | `GEMINI_API_KEY`| API Key for Google Gemini provider | `(empty)` |
 | `GEMINI_MODEL` | Gemini model version | `gemini-1.5-flash` |
+| `GEMINI_API_VERSION`| API version for Google Gemini provider | `v1` |
 | `ARLIAI_API_KEY`| API Key for ArliAI (Qwen/Llama provider) | `(empty)` |
 | `ARLIAI_MODEL` | ArliAI model (e.g. `Qwen2.5-72B-Instruct`) | `Qwen2.5-72B-Instruct` |
 | `ARLIAI_ENDPOINT`| ArliAI API base URL | `https://api.arliai.com/v1` |
