@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/microcosm-cc/bluemonday"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -268,7 +269,7 @@ func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []
 			continue
 		}
 		redditLink := fmt.Sprintf("https://www.reddit.com%s", child.Data.Permalink)
-		links = append(links, map[string]string{"title": child.Data.Title, "url": redditLink})
+		links = append(links, map[string]string{"title": bluemonday.StrictPolicy().Sanitize(child.Data.Title), "url": redditLink})
 	}
 
 	return len(links), links, nil

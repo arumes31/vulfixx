@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"github.com/microcosm-cc/bluemonday"
 	"net/url"
 )
 
@@ -79,7 +80,7 @@ func (c *algoliaHNClient) FetchMentions(ctx context.Context, query string) (int,
 			continue
 		}
 		hnLink := fmt.Sprintf("https://news.ycombinator.com/item?id=%s", hit.ObjectID)
-		links = append(links, map[string]string{"title": hit.Title, "url": hnLink})
+		links = append(links, map[string]string{"title": bluemonday.StrictPolicy().Sanitize(hit.Title), "url": hnLink})
 	}
 
 	return hnResp.NbHits, links, nil
