@@ -227,6 +227,49 @@ func TestCSRFProtection(t *testing.T) {
 			t.Errorf("expected CSRF validation to fail due to session error")
 		}
 	})
+
+	t.Run("ConstantTimeCompareBranch", func(t *testing.T) {
+		// Test tokens with same length but different content to hit ConstantTimeCompare branch
+		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=tokenA"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rr := httptest.NewRecorder()
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["admin_csrf_token"] = "tokenB"
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("failed to save session: %v", err)
+		}
+
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		if app.ValidateCSRF(req) {
+			t.Errorf("expected CSRF validation to fail for tokens of same length but different content")
+		}
+	})
+
+	t.Run("HeaderPrecedence", func(t *testing.T) {
+		// If header is present, it should be used even if form token is also present (and potentially valid)
+		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token=valid"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-CSRF-Token", "invalid")
+
+		rr := httptest.NewRecorder()
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["admin_csrf_token"] = "valid"
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("failed to save session: %v", err)
+		}
+
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		if app.ValidateCSRF(req) {
+			t.Errorf("expected CSRF validation to fail because invalid header should take precedence over valid form")
+		}
+	})
 }
 
 func TestXSSPrevention(t *testing.T) {
