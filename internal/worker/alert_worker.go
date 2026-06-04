@@ -276,8 +276,8 @@ func ValidateComplexFilter(logic string) error {
 
 // evalFilterTokens evaluates the token stream as an OR of AND-groups.
 func evalFilterTokens(tokens []string, cve *models.CVE) (bool, bool) {
-	var orResult bool   // accumulated value across completed AND-groups
-	andResult := true   // accumulated value within the current AND-group
+	var orResult bool // accumulated value across completed AND-groups
+	andResult := true // accumulated value within the current AND-group
 	haveTermInAnd := false
 	haveOrResult := false
 
@@ -339,9 +339,22 @@ func parseFilterTerm(tokens []string, i int, cve *models.CVE) (value bool, consu
 		if tok == "regex:" {
 			pattern = strings.Join(tokens[i+1:], " ")
 		} else {
-			pattern = strings.TrimPrefix(tok, "regex:")
+			prefix := strings.TrimPrefix(tok, "regex:")
 			if i+1 < len(tokens) {
-				pattern += " " + strings.Join(tokens[i+1:], " ")
+				var sb strings.Builder
+				l := len(prefix)
+				for j := i + 1; j < len(tokens); j++ {
+					l += 1 + len(tokens[j])
+				}
+				sb.Grow(l)
+				sb.WriteString(prefix)
+				for j := i + 1; j < len(tokens); j++ {
+					sb.WriteByte(' ')
+					sb.WriteString(tokens[j])
+				}
+				pattern = sb.String()
+			} else {
+				pattern = prefix
 			}
 		}
 		if pattern == "" {
