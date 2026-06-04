@@ -7,15 +7,13 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"github.com/microcosm-cc/bluemonday"
 )
 
 type LayoutData struct {
 	Title   string
 	LogoURL string
 	Year    int
-	Body    template.HTML
+	Data    interface{}
 }
 
 const baseLayoutTemplate = `
@@ -133,7 +131,7 @@ const baseLayoutTemplate = `
             <tr>
                 <td class="content">
                     <h1 align="center">{{.Title}}</h1>
-                    {{.Body}}
+                    {{template "body" .Data}}
                 </td>
             </tr>
         </table>
@@ -148,41 +146,34 @@ const baseLayoutTemplate = `
 
 // RenderEmailTemplate securely renders an inner template, then wraps it in the modern layout.
 func RenderEmailTemplate(title, bodyTmpl string, data interface{}) (string, error) {
-	// Parse and execute the inner body template
-	tmpl, err := template.New("body").Parse(bodyTmpl)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse inner email template: %w", err)
-	}
-
-	var bodyBuf bytes.Buffer
-	if err := tmpl.Execute(&bodyBuf, data); err != nil {
-		return "", fmt.Errorf("failed to execute inner email template: %w", err)
-	}
-
 	baseURL := os.Getenv("BASE_URL")
 	if baseURL == "" {
 		baseURL = "http://localhost:8080"
 	}
 	baseURL = strings.TrimSuffix(baseURL, "/")
 
-	sanitizedBody := bluemonday.UGCPolicy().Sanitize(bodyBuf.String())
-
 	layoutData := LayoutData{
 		Title:   title,
 		LogoURL: baseURL + "/static/img/logo.png",
 		Year:    time.Now().Year(),
-		Body:    template.HTML(sanitizedBody), // #nosec G203
+		Data:    data,
 	}
 
-	// Parse and execute the layout template
+	// Parse the layout template first
 	layoutTmpl, err := template.New("layout").Parse(baseLayoutTemplate)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse base email layout: %w", err)
 	}
 
+	// Parse the inner body template and associate it with the layout
+	_, err = layoutTmpl.New("body").Parse(bodyTmpl)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse inner email template: %w", err)
+	}
+
 	var layoutBuf bytes.Buffer
 	if err := layoutTmpl.Execute(&layoutBuf, layoutData); err != nil {
-		return "", fmt.Errorf("failed to execute base email layout: %w", err)
+		return "", fmt.Errorf("failed to execute email template: %w", err)
 	}
 
 	return layoutBuf.String(), nil
