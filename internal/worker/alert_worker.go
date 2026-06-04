@@ -2,26 +2,27 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/models"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp/syntax"
 	"log/slog"
 	"regexp"
-	"regexp/syntax"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"cve-tracker/internal/models"
+
 	"github.com/redis/go-redis/v9"
+	"slices"
 )
 
 var regexCache sync.Map
 
 func getKeywordRegex(keyword string) *regexp.Regexp {
-	pattern := `(?i)\b` + regexp.QuoteMeta(keyword) + `\b`
+	pattern := "(?i)" + regexp.QuoteMeta(keyword)
 	if val, ok := regexCache.Load(pattern); ok {
 		return val.(*regexp.Regexp)
 	}
@@ -30,13 +31,7 @@ func getKeywordRegex(keyword string) *regexp.Regexp {
 	return re
 }
 
-const maxPatternLen = 2000
-
 func getPatternRegex(pattern string) (*regexp.Regexp, error) {
-	if len(pattern) > maxPatternLen {
-		return nil, fmt.Errorf("regex pattern too long (%d chars, max %d)", len(pattern), maxPatternLen)
-	}
-	// Validate the syntax tree to reject patterns with excessive nesting/quantifiers (ReDoS)
 	sre, err := syntax.Parse(pattern, syntax.Perl)
 	if err != nil {
 		return nil, fmt.Errorf("invalid regex pattern: %w", err)
@@ -329,18 +324,22 @@ func (w *Worker) notifyIfNewWithCache(ctx context.Context, userID int, cve *mode
 	// Ensure we have full details if the job only provided minimal data
 	// If the job unmarshaled from Redis has CVEID, we assume it's full.
 	if cve.CVEID == "" {
+		var osintJSON []byte
 		err := w.Pool.QueryRow(ctx, `
-			SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, github_poc_count, published_date, "references" 
+			SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, github_poc_count, published_date, "references", osint_data
 			FROM cves WHERE id = $1
-		`, cve.ID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.VectorString, &cve.CISAKEV, &cve.EPSSScore, &cve.CWEID, &cve.GitHubPoCCount, &cve.PublishedDate, &cve.References)
+		`, cve.ID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.VectorString, &cve.CISAKEV, &cve.EPSSScore, &cve.CWEID, &cve.GitHubPoCCount, &cve.PublishedDate, &cve.References, &osintJSON)
 		if err != nil {
 			w.Redis.Decr(ctx, floodKey)
 			slog.Error("Failed to fetch full CVE details for alert", "id", cve.ID, "error", err)
 			return false
 		}
+		_ = json.Unmarshal(osintJSON, &cve.OSINTData)
 	}
 
-	cve.OSINTData = w.fetchOSINTLinks(ctx, cve.CVEID)
+	if cve.OSINTData == nil || (cve.OSINTData["hn"] == nil && cve.OSINTData["reddit"] == nil) {
+		cve.OSINTData = w.fetchOSINTLinks(ctx, cve.CVEID)
+	}
 
 	if !w.bufferAlert(ctx, userID, cve, sub, email, assetName) {
 		w.Redis.Decr(ctx, floodKey)
