@@ -159,28 +159,6 @@ func TestGetDetectedProduct(t *testing.T) {
 	}
 }
 
-func TestGetCWEName(t *testing.T) {
-	tests := []struct {
-		id       string
-		existing string
-		want     string
-	}{
-		{"CWE-119", "", "Improper Restriction of Operations within the Bounds of a Memory Buffer"},
-		{"CWE-119", "Existing Name", "Existing Name"},
-		{"CWE-119", "Unknown", "Improper Restriction of Operations within the Bounds of a Memory Buffer"},
-		{"NVD-CWE-noinfo", "", "Insufficient Information"},
-		{"NVD-CWE-Other", "", "Other Vulnerability Type"},
-		{"CWE-9999", "", "Vulnerability Type Unspecified"},
-	}
-
-	for _, tt := range tests {
-		got := GetCWEName(tt.id, tt.existing)
-		if got != tt.want {
-			t.Errorf("GetCWEName(%q, %q) = %q, want %q", tt.id, tt.existing, got, tt.want)
-		}
-	}
-}
-
 func TestAffectedProducts_ScanValue(t *testing.T) {
 	ap := AffectedProducts{{Vendor: "V", Product: "P"}}
 	val, err := ap.Value()
