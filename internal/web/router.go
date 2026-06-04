@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
+	csrf "filippo.io/csrf/gorilla"
 	sentryhttp "github.com/getsentry/sentry-go/http"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	csrf "github.com/gorilla/csrf"
 	"github.com/rs/cors"
 )
 

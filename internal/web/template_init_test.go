@@ -41,10 +41,16 @@ func TestInitTemplatesWithFuncs(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		templatesDir := filepath.Join(tmpDir, "templates")
-		os.MkdirAll(templatesDir, 0755)
+		if err := os.MkdirAll(templatesDir, 0755); err != nil {
+			t.Fatalf("failed to create templates dir: %v", err)
+		}
 
-		os.WriteFile(filepath.Join(templatesDir, "base.html"), []byte("{{define \"base\"}}BASE{{template \"content\" .}}END{{end}}"), 0644)
-		os.WriteFile(filepath.Join(templatesDir, "page.html"), []byte("{{define \"content\"}}PAGE{{end}}"), 0644)
+		if err := os.WriteFile(filepath.Join(templatesDir, "base.html"), []byte("{{define \"base\"}}BASE{{template \"content\" .}}END{{end}}"), 0644); err != nil {
+			t.Fatalf("failed to write base.html: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(templatesDir, "page.html"), []byte("{{define \"content\"}}PAGE{{end}}"), 0644); err != nil {
+			t.Fatalf("failed to write page.html: %v", err)
+		}
 
 		t.Chdir(tmpDir)
 
@@ -76,11 +82,19 @@ func TestInitTemplatesWithFuncs(t *testing.T) {
 	t.Run("InvalidTemplate", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		templatesDir := filepath.Join(tmpDir, "templates")
-		os.MkdirAll(templatesDir, 0755)
+		if err := os.MkdirAll(templatesDir, 0755); err != nil {
+			t.Fatalf("failed to create templates dir: %v", err)
+		}
 
-		os.WriteFile(filepath.Join(templatesDir, "base.html"), []byte("{{define \"base\"}}BASE{{template \"content\" .}}END{{end}}"), 0644)
-		os.WriteFile(filepath.Join(templatesDir, "invalid.html"), []byte("{{define \"content\"}}{{end"), 0644)
-		os.WriteFile(filepath.Join(templatesDir, "valid.html"), []byte("{{define \"content\"}}VALID{{end}}"), 0644)
+		if err := os.WriteFile(filepath.Join(templatesDir, "base.html"), []byte("{{define \"base\"}}BASE{{template \"content\" .}}END{{end}}"), 0644); err != nil {
+			t.Fatalf("failed to write base.html: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(templatesDir, "invalid.html"), []byte("{{define \"content\"}}{{end"), 0644); err != nil {
+			t.Fatalf("failed to write invalid.html: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(templatesDir, "valid.html"), []byte("{{define \"content\"}}VALID{{end}}"), 0644); err != nil {
+			t.Fatalf("failed to write valid.html: %v", err)
+		}
 
 		t.Chdir(tmpDir)
 
