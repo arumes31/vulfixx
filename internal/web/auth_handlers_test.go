@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"errors"
 	"regexp"
 	"strings"
 	"testing"
@@ -404,6 +405,146 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+}
+
+func TestCompleteOnboardingHandler(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	app := setupTestApp(t, mock)
+
+	oldPool := db.Pool
+	db.Pool = mock
+	defer func() { db.Pool = oldPool }()
+
+	userID := 123
+
+	t.Run("Unauthorized", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/complete-onboarding", nil)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		rr := httptest.NewRecorder()
+		app.CompleteOnboardingHandler(rr, req)
+
+		if rr.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "Unauthorized") {
+			t.Errorf("expected Unauthorized, got %s", rr.Body.String())
+		}
+	})
+
+	t.Run("Method Not Allowed", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/complete-onboarding", nil)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		setSessionUser(t, app, req, userID, false)
+
+		rr := httptest.NewRecorder()
+		app.CompleteOnboardingHandler(rr, req)
+
+		if rr.Code != http.StatusMethodNotAllowed {
+			t.Errorf("expected 405, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "Method not allowed") {
+			t.Errorf("expected Method not allowed, got %s", rr.Body.String())
+		}
+	})
+
+	t.Run("DB Query Error", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/complete-onboarding", nil)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		setSessionUser(t, app, req, userID, false)
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_totp_enabled FROM users WHERE id = $1")).
+			WithArgs(userID).
+			WillReturnError(errors.New("db error"))
+
+		rr := httptest.NewRecorder()
+		app.CompleteOnboardingHandler(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "Internal server error") {
+			t.Errorf("expected Internal server error, got %s", rr.Body.String())
+		}
+	})
+
+	t.Run("TOTP Not Enabled", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/complete-onboarding", nil)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		setSessionUser(t, app, req, userID, false)
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_totp_enabled FROM users WHERE id = $1")).
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"is_totp_enabled"}).AddRow(false))
+
+		rr := httptest.NewRecorder()
+		app.CompleteOnboardingHandler(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "You must enable Multi-Factor Authentication (TOTP) to complete onboarding.") {
+			t.Errorf("expected TOTP requirement, got %s", rr.Body.String())
+		}
+	})
+
+	t.Run("DB Update Error", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/complete-onboarding", nil)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		setSessionUser(t, app, req, userID, false)
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_totp_enabled FROM users WHERE id = $1")).
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"is_totp_enabled"}).AddRow(true))
+
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE users SET onboarding_completed = TRUE WHERE id = $1")).
+			WithArgs(userID).
+			WillReturnError(errors.New("db update error"))
+
+		rr := httptest.NewRecorder()
+		app.CompleteOnboardingHandler(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "Internal server error") {
+			t.Errorf("expected Internal server error, got %s", rr.Body.String())
+		}
+	})
+
+	t.Run("Success", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/complete-onboarding", nil)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		setSessionUser(t, app, req, userID, false)
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT is_totp_enabled FROM users WHERE id = $1")).
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"is_totp_enabled"}).AddRow(true))
+
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE users SET onboarding_completed = TRUE WHERE id = $1")).
+			WithArgs(userID).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+		rr := httptest.NewRecorder()
+		app.CompleteOnboardingHandler(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "Welcome to Vulfixx!") {
+			t.Errorf("expected Welcome message, got %s", rr.Body.String())
 		}
 	})
 }

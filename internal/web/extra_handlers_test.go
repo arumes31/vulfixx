@@ -43,39 +43,6 @@ func TestAlertHistoryHandler(t *testing.T) {
 	}
 }
 
-func TestCompleteOnboardingHandler(t *testing.T) {
-	mock, err := db.SetupTestDB()
-	if err != nil {
-		t.Fatalf("SetupTestDB failed: %v", err)
-	}
-	defer mock.Close()
-	mock.MatchExpectationsInOrder(false)
-
-	app := setupTestApp(t, mock)
-	req := httptest.NewRequest("POST", "/complete-onboarding", nil)
-	setSessionUser(t, app, req, 1, false)
-
-	mock.ExpectQuery("(?i)SELECT is_totp_enabled FROM users WHERE id = \\$1").
-		WithArgs(1).
-		WillReturnRows(pgxmock.NewRows([]string{"is_totp_enabled"}).AddRow(true))
-
-	mock.ExpectExec("(?i)UPDATE users SET onboarding_completed = TRUE WHERE id = \\$1").
-		WithArgs(1).
-		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-
-	rr := httptest.NewRecorder()
-	app.CompleteOnboardingHandler(rr, req)
-
-	// SendResponse with redirect sends 302
-	if rr.Code != http.StatusFound {
-		t.Errorf("expected 302 Found, got %d", rr.Code)
-	}
-
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Errorf("unmet expectations: %v", err)
-	}
-}
-
 func TestUpdateCVEStatusHandler(t *testing.T) {
 	tests := []struct {
 		name           string
