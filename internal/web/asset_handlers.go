@@ -8,24 +8,14 @@ import (
 	"strings"
 )
 
-func (a *App) AssetsHandler(w http.ResponseWriter, r *http.Request) {
+// ListAssetsHandler renders the assets management page.
+func (a *App) ListAssetsHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := a.GetUserID(r)
 	if !ok {
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
 
-	switch r.Method {
-	case "GET":
-		a.listAssets(w, r, userID)
-	case "POST":
-		a.createAsset(w, r, userID)
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-	}
-}
-
-func (a *App) listAssets(w http.ResponseWriter, r *http.Request, userID int) {
 	assets, err := a.AssetRepo.ListAssets(r.Context(), userID)
 	if err != nil {
 		log.Printf("Error fetching assets: %v", err)
@@ -36,7 +26,14 @@ func (a *App) listAssets(w http.ResponseWriter, r *http.Request, userID int) {
 	a.RenderTemplate(w, r, "assets.html", map[string]interface{}{"Assets": assets})
 }
 
-func (a *App) createAsset(w http.ResponseWriter, r *http.Request, userID int) {
+// CreateAssetHandler handles the registration of new assets.
+func (a *App) CreateAssetHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := a.GetUserID(r)
+	if !ok {
+		a.SendResponse(w, r, false, "", "", "Unauthorized")
+		return
+	}
+
 	if err := r.ParseForm(); err != nil {
 		a.SendResponse(w, r, false, "", "", "Error parsing form")
 		return
@@ -61,47 +58,10 @@ func (a *App) createAsset(w http.ResponseWriter, r *http.Request, userID int) {
 		teamID = &tid
 	}
 
-	// Basic validation
-	if len(name) < 1 || len(name) > 255 {
-		a.SendResponse(w, r, false, "", "", "Asset name must be between 1 and 255 characters")
+	kwList, errMsg := a.validateAssetInput(name, assetType, priority, keywords)
+	if errMsg != "" {
+		a.SendResponse(w, r, false, "", "", errMsg)
 		return
-	}
-
-	allowedTypes := map[string]bool{
-		"Server":   true,
-		"Software": true,
-		"Network":  true,
-		"Cloud":    true,
-		"IoT":      true,
-	}
-	if !allowedTypes[assetType] {
-		a.SendResponse(w, r, false, "", "", "Invalid asset category")
-		return
-	}
-
-	allowedPriorities := map[string]bool{"P0": true, "P1": true, "P2": true, "P3": true}
-	if !allowedPriorities[priority] {
-		a.SendResponse(w, r, false, "", "", "Invalid priority level")
-		return
-	}
-
-	var kwList []string
-	if keywords != "" {
-		rawKws := strings.Split(keywords, ",")
-		for _, kw := range rawKws {
-			kw = strings.TrimSpace(kw)
-			if kw != "" {
-				if len(kw) > 50 {
-					a.SendResponse(w, r, false, "", "", "Keyword too long (maximum 50 characters)")
-					return
-				}
-				kwList = append(kwList, kw)
-			}
-		}
-		if len(kwList) > 10 {
-			a.SendResponse(w, r, false, "", "", "Too many keywords (maximum 10)")
-			return
-		}
 	}
 
 	_, err := a.AssetRepo.CreateAsset(r.Context(), userID, teamID, name, assetType, priority, kwList)
@@ -122,6 +82,7 @@ func (a *App) createAsset(w http.ResponseWriter, r *http.Request, userID int) {
 	a.SendResponse(w, r, true, "Asset registered successfully", "/assets", "")
 }
 
+// DeleteAssetHandler handles the removal of an existing asset.
 func (a *App) DeleteAssetHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		a.SendResponse(w, r, false, "", "", "Method not allowed")
@@ -155,4 +116,45 @@ func (a *App) DeleteAssetHandler(w http.ResponseWriter, r *http.Request) {
 
 	a.LogActivity(r.Context(), userID, "asset_deleted", fmt.Sprintf("Deleted asset ID %d", assetID), a.GetClientIP(r), r.UserAgent())
 	a.SendResponse(w, r, true, "Asset removed successfully", "/assets", "")
+}
+
+func (a *App) validateAssetInput(name, assetType, priority, keywords string) ([]string, string) {
+	if len(name) < 1 || len(name) > 255 {
+		return nil, "Asset name must be between 1 and 255 characters"
+	}
+
+	allowedTypes := map[string]bool{
+		"Server":   true,
+		"Software": true,
+		"Network":  true,
+		"Cloud":    true,
+		"IoT":      true,
+	}
+	if !allowedTypes[assetType] {
+		return nil, "Invalid asset category"
+	}
+
+	allowedPriorities := map[string]bool{"P0": true, "P1": true, "P2": true, "P3": true}
+	if !allowedPriorities[priority] {
+		return nil, "Invalid priority level"
+	}
+
+	var kwList []string
+	if keywords != "" {
+		rawKws := strings.Split(keywords, ",")
+		for _, kw := range rawKws {
+			kw = strings.TrimSpace(kw)
+			if kw != "" {
+				if len(kw) > 50 {
+					return nil, "Keyword too long (maximum 50 characters)"
+				}
+				kwList = append(kwList, kw)
+			}
+		}
+		if len(kwList) > 10 {
+			return nil, "Too many keywords (maximum 10)"
+		}
+	}
+
+	return kwList, ""
 }
