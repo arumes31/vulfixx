@@ -105,10 +105,13 @@ func (w *Worker) startIntelligenceEnrichmentTask(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			w.enrichMissingIntelligence(ctx)
+			processedCount := w.enrichMissingIntelligence(ctx)
 
-			// Re-evaluate interval based on remaining backlog
-			_ = w.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = ''").Scan(&missingCount)
+			// Re-evaluate interval based on remaining backlog (avoiding costly COUNT query)
+			missingCount -= processedCount
+			if missingCount < 0 {
+				missingCount = 0
+			}
 			newInterval := 24 * time.Hour
 			if missingCount > 5000 {
 				newInterval = 4 * time.Hour
@@ -127,13 +130,13 @@ func (w *Worker) enrichSingleCVE(ctx context.Context, id int) {
 	w.processEnrichmentRows(ctx, []models.CVE{c}, 1)
 }
 
-func (w *Worker) enrichMissingIntelligence(ctx context.Context) {
+func (w *Worker) enrichMissingIntelligence(ctx context.Context) int {
 	slog.Info("Worker: [CRON] Starting intelligence enrichment for missing vendor data...")
 	// Suggestion 3: Priority-based selection (highest CVSS first)
 	rows, err := w.Pool.Query(ctx, "SELECT id, cve_id, description, configurations, references FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' ORDER BY cvss_score DESC, cisa_kev DESC LIMIT 1000")
 	if err != nil {
 		slog.Error("Worker: [CRON] Error querying CVEs for enrichment", "error", err)
-		return
+		return 0
 	}
 	defer rows.Close()
 
@@ -154,10 +157,10 @@ func (w *Worker) enrichMissingIntelligence(ctx context.Context) {
 		total = 1
 	}
 
-	w.processEnrichmentRows(ctx, cves, total)
+	return w.processEnrichmentRows(ctx, cves, total)
 }
 
-func (w *Worker) processEnrichmentRows(ctx context.Context, cves []models.CVE, total int) {
+func (w *Worker) processEnrichmentRows(ctx context.Context, cves []models.CVE, total int) int {
 	start := time.Now()
 	var count int
 	var llmCount int
@@ -174,7 +177,7 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, cves []models.CVE, t
 				consecutiveFailures = 0 // reset after sleep
 			case <-ctx.Done():
 				backoffTimer.Stop()
-				return
+				return count
 			}
 		}
 
@@ -249,6 +252,7 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, cves []models.CVE, t
 	if count > 0 {
 		slog.Info("Worker: [CRON] Intelligence enrichment complete", "count", count, "llm_count", llmCount, "heuristic_count", heuristicCount, "duration", time.Since(start))
 	}
+	return count
 }
 
 func (w *Worker) startWeeklySummaryTask(ctx context.Context) {
