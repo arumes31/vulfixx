@@ -10,11 +10,13 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"cve-tracker/internal/config"
+	"cve-tracker/internal/db"
 	"google.golang.org/genai"
 )
 
@@ -29,6 +31,93 @@ type ExtractionResponse struct {
 }
 
 var ErrRateLimit = errors.New("llm rate limit exceeded")
+
+// defaultGeminiRPM is the free-tier requests-per-minute target used to pace
+// Gemini calls. 15 RPM matches the default model's free-tier limit
+// (gemini-3.1-flash-lite = 15 RPM / 500 RPD). Override via the GEMINI_RPM
+// environment variable when using a model/tier with a different limit.
+const defaultGeminiRPM = 15
+
+// geminiPauseInterval returns how long to wait after a successful Gemini call so
+// the steady-state request rate stays within the (free-tier) RPM limit.
+func geminiPauseInterval() time.Duration {
+	rpm := defaultGeminiRPM
+	if v := strings.TrimSpace(os.Getenv("GEMINI_RPM")); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			rpm = parsed
+		}
+	}
+	return time.Duration(int64(time.Minute) / int64(rpm))
+}
+
+// defaultGeminiRPD is the free-tier requests-per-day limit for the default model
+// (gemini-3.1-flash-lite = 500 RPD). Override via the GEMINI_RPD environment
+// variable; set it to 0 to disable daily quota tracking entirely.
+const defaultGeminiRPD = 500
+
+// geminiDailyLimit returns the configured Gemini requests-per-day ceiling. A
+// value <= 0 disables tracking.
+func geminiDailyLimit() int {
+	limit := defaultGeminiRPD
+	if v := strings.TrimSpace(os.Getenv("GEMINI_RPD")); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			limit = parsed
+		}
+	}
+	return limit
+}
+
+// geminiRPDIncr atomically increments today's (UTC) Gemini request counter in
+// Redis and returns the new total. The first increment of the day sets a TTL
+// that comfortably outlives the UTC day so the counter self-resets. It is a
+// package var so tests can substitute a fake. Shared across app instances via
+// the common Redis key, so the ceiling is global, not per-process.
+var geminiRPDIncr = func(ctx context.Context) (int64, error) {
+	if db.RedisClient == nil {
+		return 0, errors.New("redis client not initialized")
+	}
+	key := "gemini:rpd:" + time.Now().UTC().Format("2006-01-02")
+	n, err := db.RedisClient.Incr(ctx, key).Result()
+	if err != nil {
+		return 0, err
+	}
+	if n == 1 {
+		// First call of the day: expire well after midnight UTC so the key
+		// disappears on its own without an explicit reset.
+		_ = db.RedisClient.Expire(ctx, key, 48*time.Hour).Err()
+	}
+	return n, nil
+}
+
+// geminiDailyQuotaExceeded increments and checks the day's Gemini request
+// counter against GEMINI_RPD. It fails open (returns false) on any Redis error
+// so a cache outage never halts enrichment — at worst a few extra calls risk a
+// 429, which the existing cooldown logic already absorbs.
+func geminiDailyQuotaExceeded(ctx context.Context) bool {
+	limit := geminiDailyLimit()
+	if limit <= 0 {
+		return false
+	}
+	count, err := geminiRPDIncr(ctx)
+	if err != nil {
+		slog.Warn("LLM: could not check Gemini daily quota, allowing call", "error", err)
+		return false
+	}
+	if count > int64(limit) {
+		slog.Warn("LLM: Gemini daily request quota reached", "count", count, "limit", limit)
+		return true
+	}
+	return false
+}
+
+// durationUntilUTCMidnight returns the time remaining until the next UTC day
+// boundary, used to cool Gemini down for the rest of the day once its daily
+// quota is hit.
+func durationUntilUTCMidnight() time.Duration {
+	now := time.Now().UTC()
+	next := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).Add(24 * time.Hour)
+	return time.Until(next)
+}
 
 // Global semaphore to limit LLM concurrency to 1.
 // This ensures that only one LLM request is processed at a time across the entire application.
@@ -86,6 +175,15 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 			continue
 		}
 
+		// Enforce the Gemini free-tier daily request ceiling (RPD). Once hit,
+		// cool Gemini down until the UTC day rolls over so the rest of this run
+		// falls through to other providers instead of racking up 429s.
+		if p == "gemini" && geminiDailyQuotaExceeded(ctx) {
+			setCooldown(p, durationUntilUTCMidnight())
+			lastErr = fmt.Errorf("%w: gemini daily request quota reached", ErrRateLimit)
+			continue
+		}
+
 		var results []ProductResult
 		var err error
 
@@ -102,10 +200,17 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 		}
 
 		if err == nil {
-			// Proactive rate limiting for Gemini free tier (15 RPM limit)
+			// Proactive rate limiting for the Gemini free tier. The semaphore is
+			// still held here, so pausing also paces concurrent callers. The pause
+			// is derived from the configured RPM (default 15, matching
+			// gemini-3.1-flash-lite's free-tier limit).
 			if p == "gemini" {
-				slog.Debug("LLM: successful Gemini call, pausing 4s to respect free tier RPM limit")
-				time.Sleep(4 * time.Second)
+				pause := geminiPauseInterval()
+				slog.Debug("LLM: successful Gemini call, pacing to respect free tier RPM", "pause", pause)
+				select {
+				case <-time.After(pause):
+				case <-ctx.Done():
+				}
 			}
 			return results, nil
 		}
