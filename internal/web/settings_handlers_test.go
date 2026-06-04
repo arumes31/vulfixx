@@ -18,13 +18,7 @@ import (
 
 func TestChangePasswordHandler(t *testing.T) {
 	t.Run("Unauthenticated", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-
-		app := setupTestApp(t, mock)
+		app, _ := setupMockDBApp(t)
 
 		req := httptest.NewRequest("POST", "/settings/password", nil)
 		rr := httptest.NewRecorder()
@@ -36,13 +30,7 @@ func TestChangePasswordHandler(t *testing.T) {
 	})
 
 	t.Run("UserNotFound", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-
-		app := setupTestApp(t, mock)
+		app, mock := setupMockDBApp(t)
 		userID := 999
 		req := httptest.NewRequest("POST", "/settings/password", nil)
 		setSessionUser(t, app, req, userID, false)
@@ -60,17 +48,7 @@ func TestChangePasswordHandler(t *testing.T) {
 	})
 
 	t.Run("Success", func(t *testing.T) {
-		mock, err := db.SetupTestDB()
-		if err != nil {
-			t.Fatalf("failed to setup mock db: %v", err)
-		}
-		defer mock.Close()
-
-		oldPool := db.Pool
-		db.Pool = mock
-		defer func() { db.Pool = oldPool }()
-
-		app := setupTestApp(t, mock)
+		app, mock := setupMockDBApp(t)
 
 		hash, err := auth.HashPassword("current")
 		if err != nil {
@@ -119,17 +97,7 @@ func TestChangePasswordHandler(t *testing.T) {
 	})
 
 	t.Run("Mismatch", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-
-		oldPool := db.Pool
-		db.Pool = mock
-		defer func() { db.Pool = oldPool }()
-
-		app := setupTestApp(t, mock)
+		app, mock := setupMockDBApp(t)
 
 		userID := 1
 		form := url.Values{
@@ -162,13 +130,7 @@ func TestChangePasswordHandler(t *testing.T) {
 	})
 
 	t.Run("ValidationFailure", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-
-		app := setupTestApp(t, mock)
+		app, mock := setupMockDBApp(t)
 		userID := 1
 		form := url.Values{
 			"current_password": {"oldpass123"},
@@ -197,17 +159,7 @@ func TestChangePasswordHandler(t *testing.T) {
 	})
 
 	t.Run("IncorrectCurrentPassword", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-
-		oldPool := db.Pool
-		db.Pool = mock
-		defer func() { db.Pool = oldPool }()
-
-		app := setupTestApp(t, mock)
+		app, mock := setupMockDBApp(t)
 		userID := 1
 		form := url.Values{
 			"current_password": {"wrongpass"},
@@ -242,17 +194,7 @@ func TestChangePasswordHandler(t *testing.T) {
 	})
 
 	t.Run("InvalidTOTP", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-
-		oldPool := db.Pool
-		db.Pool = mock
-		defer func() { db.Pool = oldPool }()
-
-		app := setupTestApp(t, mock)
+		app, mock := setupMockDBApp(t)
 		userID := 1
 		form := url.Values{
 			"current_password": {"oldpass123"},
@@ -290,17 +232,7 @@ func TestChangePasswordHandler(t *testing.T) {
 	})
 
 	t.Run("UnexpectedAuthError", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-
-		oldPool := db.Pool
-		db.Pool = mock
-		defer func() { db.Pool = oldPool }()
-
-		app := setupTestApp(t, mock)
+		app, mock := setupMockDBApp(t)
 		userID := 1
 		form := url.Values{
 			"current_password": {"oldpass123"},
@@ -346,17 +278,7 @@ func TestChangePasswordHandler(t *testing.T) {
 
 func TestSettingsHandlers_Detailed(t *testing.T) {
 	t.Run("DeleteAccount_DBError", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-
-		oldPool := db.Pool
-		db.Pool = mock
-		defer func() { db.Pool = oldPool }()
-
-		app := setupTestApp(t, mock)
+		app, mock := setupMockDBApp(t)
 
 		userID := 1
 		form := url.Values{"password": {"password"}}
@@ -416,13 +338,7 @@ func TestChangeEmailHandler(t *testing.T) {
 	})
 
 	t.Run("UserNotFound", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-
-		app := setupTestApp(t, mock)
+		app, mock := setupMockDBApp(t)
 		userID := 1
 		req := httptest.NewRequest("POST", "/settings/email", nil)
 		setSessionUser(t, app, req, userID, false)
@@ -440,13 +356,7 @@ func TestChangeEmailHandler(t *testing.T) {
 	})
 
 	t.Run("ValidationError", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-
-		app := setupTestApp(t, mock)
+		app, mock := setupMockDBApp(t)
 		userID := 1
 		form := url.Values{
 			"new_email": {"invalid-email"},
@@ -475,17 +385,7 @@ func TestChangeEmailHandler(t *testing.T) {
 	})
 
 	t.Run("InvalidPassword", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-
-		oldPool := db.Pool
-		db.Pool = mock
-		defer func() { db.Pool = oldPool }()
-
-		app := setupTestApp(t, mock)
+		app, mock := setupMockDBApp(t)
 		userID := 1
 		form := url.Values{
 			"new_email": {"new@example.com"},
@@ -675,17 +575,7 @@ func TestChangeEmailHandler(t *testing.T) {
 	})
 
 	t.Run("RequestEmailChangeError", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-
-		oldPool := db.Pool
-		db.Pool = mock
-		defer func() { db.Pool = oldPool }()
-
-		app := setupTestApp(t, mock)
+		app, mock := setupMockDBApp(t)
 		userID := 1
 		form := url.Values{
 			"new_email": {"new@example.com"},

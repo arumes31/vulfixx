@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/sessions"
 	"github.com/pashagolub/pgxmock/v3"
 	"github.com/redis/go-redis/v9"
+	"cve-tracker/internal/db"
 )
 
 type MockMailer struct {
@@ -121,4 +122,24 @@ func setupTestServerFull(t *testing.T, mock pgxmock.PgxPoolIface) (*httptest.Ser
 
 func setupTestServer(t *testing.T, mock pgxmock.PgxPoolIface) (*httptest.Server, *App, *http.Client) {
 	return setupTestServerFull(t, mock)
+}
+
+func setupMockDBApp(t *testing.T) (*App, pgxmock.PgxPoolIface) {
+	t.Helper()
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create mock pool: %v", err)
+	}
+
+	oldPool := db.Pool
+	db.Pool = mock
+
+	app := setupTestApp(t, mock)
+
+	t.Cleanup(func() {
+		db.Pool = oldPool
+		mock.Close()
+	})
+
+	return app, mock
 }
