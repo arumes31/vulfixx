@@ -403,3 +403,44 @@ func TestRenderTemplate(t *testing.T) {
 		}
 	})
 }
+
+func TestLogActivity_Coverage(t *testing.T) {
+	mock, _ := db.SetupTestDB()
+	defer mock.Close()
+	app := setupTestApp(t, mock)
+
+	t.Run("SuccessWithPort", func(t *testing.T) {
+		ipWithPort := "1.2.3.4:5678"
+		expectedIP := "1.2.3.4"
+
+		mock.ExpectExec("INSERT INTO user_activity_logs").
+			WithArgs(1, "test", "desc", expectedIP, "agent", pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		app.LogActivity(context.Background(), 1, "test", "desc", ipWithPort, "agent")
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("Sanitization", func(t *testing.T) {
+		dirtyType := "test\nline"
+		dirtyDesc := "desc\rreturn"
+		dirtyAgent := "agent\x00null"
+
+		expectedType := "testline"
+		expectedDesc := "descreturn"
+		expectedAgent := "agentnull"
+
+		mock.ExpectExec("INSERT INTO user_activity_logs").
+			WithArgs(1, expectedType, expectedDesc, "1.2.3.4", expectedAgent, pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		app.LogActivity(context.Background(), 1, dirtyType, dirtyDesc, "1.2.3.4", dirtyAgent)
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+}
