@@ -17,7 +17,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// CVEServiceServerImpl implements proto.CVEServiceServer
+// CVEServiceServerImpl implements proto.CVEServiceServer and handles gRPC requests.
 type CVEServiceServerImpl struct {
 	proto.UnimplementedCVEServiceServer
 	Pool db.DBPool
@@ -59,6 +59,7 @@ func (s *CVEServiceServerImpl) GetCVE(ctx context.Context, req *proto.CVERequest
 }
 
 // StartGRPCServer initializes and runs a secure or plaintext gRPC server.
+// It returns the grpc.Server instance to allow for graceful shutdown in tests or during application exit.
 func StartGRPCServer(pool db.DBPool, port string, certFile, keyFile string) (*grpc.Server, error) {
 	lis, err := net.Listen("tcp", ":"+port)
 	if err != nil {
