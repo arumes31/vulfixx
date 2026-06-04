@@ -47,293 +47,243 @@ func (s *failingSessionStore) Save(r *http.Request, w http.ResponseWriter, sessi
 }
 
 func TestDeleteAccountHandler(t *testing.T) {
-	t.Run("Unauthenticated", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-		app := setupTestApp(t, mock)
+	tests := []struct {
+		name                 string
+		method               string
+		isAuthenticated      bool
+		userID               int
+		formPassword         string
+		injectFailingSession bool
+		mockSetup            func(mock pgxmock.PgxPoolIface)
+		expectedStatus       int
+		expectedLocation     string
+		expectedBodyContains string
+		expectSessionCleared bool
+	}{
+		{
+			name:             "Unauthenticated",
+			method:           "POST",
+			isAuthenticated:  false,
+			expectedStatus:   http.StatusFound,
+			expectedLocation: "/login",
+		},
+		{
+			name:             "InvalidMethod",
+			method:           "GET",
+			isAuthenticated:  true,
+			userID:           1,
+			expectedStatus:   http.StatusFound,
+			expectedLocation: "/settings",
+		},
+		{
+			name:            "UserNotFound",
+			method:          "POST",
+			isAuthenticated: true,
+			userID:          1,
+			mockSetup: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery("SELECT email FROM users WHERE id = \\$1").
+					WithArgs(1).
+					WillReturnError(fmt.Errorf("not found"))
+			},
+			expectedStatus:   http.StatusFound,
+			expectedLocation: "/login",
+		},
+		{
+			name:            "InvalidPassword",
+			method:          "POST",
+			isAuthenticated: true,
+			userID:          1,
+			formPassword:    "wrong",
+			mockSetup: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery("SELECT email FROM users WHERE id = \\$1").
+					WithArgs(1).
+					WillReturnRows(pgxmock.NewRows([]string{"email"}).AddRow("user@example.com"))
 
-		req := httptest.NewRequest("POST", "/settings/delete", nil)
-		rr := httptest.NewRecorder()
-		app.DeleteAccountHandler(rr, req)
+				hashedPassword, _ := auth.HashPassword("correct")
+				mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE email = \\$1").
+					WithArgs("user@example.com").
+					WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
+						AddRow(1, "user@example.com", string(hashedPassword), true, false, "", false))
 
-		if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/login" {
-			t.Errorf("expected redirect to /login, got %d and location %s", rr.Code, rr.Header().Get("Location"))
-		}
-	})
+				expectBaseQueries(mock, 1)
+			},
+			expectedStatus:       http.StatusOK,
+			expectedBodyContains: "Invalid password",
+		},
+		{
+			name:            "DeleteDBError",
+			method:          "POST",
+			isAuthenticated: true,
+			userID:          1,
+			formPassword:    "password",
+			mockSetup: func(mock pgxmock.PgxPoolIface) {
+				hashedPassword, _ := auth.HashPassword("password")
 
-	t.Run("InvalidMethod", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-		app := setupTestApp(t, mock)
+				mock.ExpectQuery("SELECT email FROM users WHERE id = \\$1").
+					WithArgs(1).
+					WillReturnRows(pgxmock.NewRows([]string{"email"}).AddRow("user@example.com"))
 
-		req := httptest.NewRequest("GET", "/settings/delete", nil)
-		setSessionUser(t, app, req, 1, false)
-		rr := httptest.NewRecorder()
-		app.DeleteAccountHandler(rr, req)
+				mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE email = \\$1").
+					WithArgs("user@example.com").
+					WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
+						AddRow(1, "user@example.com", string(hashedPassword), true, false, "", false))
 
-		if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/settings" {
-			t.Errorf("expected redirect to /settings, got %d and location %s", rr.Code, rr.Header().Get("Location"))
-		}
-	})
+				mock.ExpectExec("DELETE FROM users WHERE id = \\$1").
+					WithArgs(1).
+					WillReturnError(fmt.Errorf("db error"))
+			},
+			expectedStatus: http.StatusInternalServerError,
+		},
+		{
+			name:            "Success",
+			method:          "POST",
+			isAuthenticated: true,
+			userID:          1,
+			formPassword:    "correct_password",
+			mockSetup: func(mock pgxmock.PgxPoolIface) {
+				hashedPassword, _ := auth.HashPassword("correct_password")
 
-	t.Run("UserNotFound", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-		app := setupTestApp(t, mock)
+				mock.ExpectQuery("SELECT email FROM users WHERE id = \\$1").
+					WithArgs(1).
+					WillReturnRows(pgxmock.NewRows([]string{"email"}).AddRow("user@example.com"))
 
-		userID := 1
-		req := httptest.NewRequest("POST", "/settings/delete", nil)
-		setSessionUser(t, app, req, userID, false)
+				mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE email = \\$1").
+					WithArgs("user@example.com").
+					WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
+						AddRow(1, "user@example.com", string(hashedPassword), true, false, "", false))
 
-		mock.ExpectQuery("SELECT email FROM users WHERE id = \\$1").
-			WithArgs(userID).
-			WillReturnError(fmt.Errorf("not found"))
+				mock.ExpectExec("DELETE FROM users WHERE id = \\$1").
+					WithArgs(1).
+					WillReturnResult(pgxmock.NewResult("DELETE", 1))
+			},
+			expectedStatus:       http.StatusFound,
+			expectedLocation:     "/register",
+			expectSessionCleared: true,
+		},
+		{
+			name:                 "SessionSaveError",
+			method:               "POST",
+			isAuthenticated:      true,
+			userID:               1,
+			formPassword:         "correct_password",
+			injectFailingSession: true,
+			mockSetup: func(mock pgxmock.PgxPoolIface) {
+				hashedPassword, _ := auth.HashPassword("correct_password")
 
-		rr := httptest.NewRecorder()
-		app.DeleteAccountHandler(rr, req)
+				mock.ExpectQuery("SELECT email FROM users WHERE id = \\$1").
+					WithArgs(1).
+					WillReturnRows(pgxmock.NewRows([]string{"email"}).AddRow("user@example.com"))
 
-		if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/login" {
-			t.Errorf("expected redirect to /login, got %d and location %s", rr.Code, rr.Header().Get("Location"))
-		}
-	})
+				mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE email = \\$1").
+					WithArgs("user@example.com").
+					WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
+						AddRow(1, "user@example.com", string(hashedPassword), true, false, "", false))
 
-	t.Run("InvalidPassword", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
+				mock.ExpectExec("DELETE FROM users WHERE id = \\$1").
+					WithArgs(1).
+					WillReturnResult(pgxmock.NewResult("DELETE", 1))
+			},
+			expectedStatus:   http.StatusFound,
+			expectedLocation: "/register",
+		},
+		{
+			name:            "EmptyPassword",
+			method:          "POST",
+			isAuthenticated: true,
+			userID:          1,
+			formPassword:    "",
+			mockSetup: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery("SELECT email FROM users WHERE id = \\$1").
+					WithArgs(1).
+					WillReturnRows(pgxmock.NewRows([]string{"email"}).AddRow("user@example.com"))
 
-		oldPool := db.Pool
-		db.Pool = mock
-		defer func() { db.Pool = oldPool }()
+				// auth.Login will fail because password is empty
+				mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE email = \\$1").
+					WithArgs("user@example.com").
+					WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
+						AddRow(1, "user@example.com", "somehash", true, false, "", false))
 
-		app := setupTestApp(t, mock)
+				expectBaseQueries(mock, 1)
+			},
+			expectedStatus:       http.StatusOK,
+			expectedBodyContains: "Invalid password",
+		},
+	}
 
-		userID := 1
-		form := url.Values{"password": {"wrong"}}
-		req := httptest.NewRequest("POST", "/settings/delete", strings.NewReader(form.Encode()))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		setSessionUser(t, app, req, userID, false)
-
-		mock.ExpectQuery("SELECT email FROM users WHERE id = \\$1").
-			WithArgs(userID).
-			WillReturnRows(pgxmock.NewRows([]string{"email"}).AddRow("user@example.com"))
-
-		hashedPassword, _ := auth.HashPassword("correct")
-		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE email = \\$1").
-			WithArgs("user@example.com").
-			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
-				AddRow(userID, "user@example.com", string(hashedPassword), true, false, "", false))
-
-		expectBaseQueries(mock, userID)
-
-		rr := httptest.NewRecorder()
-		app.DeleteAccountHandler(rr, req)
-
-		if rr.Code != http.StatusOK {
-			t.Errorf("expected 200 OK, got %d", rr.Code)
-		}
-		if !strings.Contains(rr.Body.String(), "Invalid password") {
-			t.Errorf("expected 'Invalid password' error in body")
-		}
-	})
-
-	t.Run("DeleteDBError", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-
-		oldPool := db.Pool
-		db.Pool = mock
-		defer func() { db.Pool = oldPool }()
-
-		app := setupTestApp(t, mock)
-
-		userID := 1
-		form := url.Values{"password": {"password"}}
-		req := httptest.NewRequest("POST", "/settings/delete", strings.NewReader(form.Encode()))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		setSessionUser(t, app, req, userID, false)
-
-		hashedPassword, _ := auth.HashPassword("password")
-
-		mock.ExpectQuery("SELECT email FROM users WHERE id = \\$1").
-			WithArgs(userID).
-			WillReturnRows(pgxmock.NewRows([]string{"email"}).AddRow("user@example.com"))
-
-		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE email = \\$1").
-			WithArgs("user@example.com").
-			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
-				AddRow(userID, "user@example.com", string(hashedPassword), true, false, "", false))
-
-		mock.ExpectExec("DELETE FROM users WHERE id = \\$1").
-			WithArgs(userID).
-			WillReturnError(fmt.Errorf("db error"))
-
-		rr := httptest.NewRecorder()
-		app.DeleteAccountHandler(rr, req)
-
-		if rr.Code != http.StatusInternalServerError {
-			t.Errorf("expected 500, got %d", rr.Code)
-		}
-	})
-
-	t.Run("Success", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-
-		oldPool := db.Pool
-		db.Pool = mock
-		defer func() { db.Pool = oldPool }()
-
-		app := setupTestApp(t, mock)
-
-		userID := 1
-		password := "correct_password"
-		form := url.Values{"password": {password}}
-		req := httptest.NewRequest("POST", "/settings/delete", strings.NewReader(form.Encode()))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		setSessionUser(t, app, req, userID, false)
-
-		hashedPassword, _ := auth.HashPassword(password)
-
-		mock.ExpectQuery("SELECT email FROM users WHERE id = \\$1").
-			WithArgs(userID).
-			WillReturnRows(pgxmock.NewRows([]string{"email"}).AddRow("user@example.com"))
-
-		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE email = \\$1").
-			WithArgs("user@example.com").
-			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
-				AddRow(userID, "user@example.com", string(hashedPassword), true, false, "", false))
-
-		mock.ExpectExec("DELETE FROM users WHERE id = \\$1").
-			WithArgs(userID).
-			WillReturnResult(pgxmock.NewResult("DELETE", 1))
-
-		rr := httptest.NewRecorder()
-		app.DeleteAccountHandler(rr, req)
-
-		if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/register" {
-			t.Errorf("expected redirect to /register, got %d and location %s", rr.Code, rr.Header().Get("Location"))
-		}
-
-		found := false
-		for _, cookie := range rr.Result().Cookies() {
-			if cookie.Name == "vulfixx-session" && cookie.MaxAge < 0 {
-				found = true
-				break
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock, err := pgxmock.NewPool()
+			if err != nil {
+				t.Fatalf("failed to create mock pool: %v", err)
 			}
-		}
-		if !found {
-			t.Errorf("expected session cookie to be cleared (MaxAge < 0)")
-		}
+			defer mock.Close()
 
-		if err := mock.ExpectationsWereMet(); err != nil {
-			t.Errorf("unmet expectations: %v", err)
-		}
-	})
+			oldPool := db.Pool
+			db.Pool = mock
+			defer func() { db.Pool = oldPool }()
 
-	t.Run("SessionSaveError", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
+			app := setupTestApp(t, mock)
 
-		oldPool := db.Pool
-		db.Pool = mock
-		defer func() { db.Pool = oldPool }()
+			if tt.mockSetup != nil {
+				tt.mockSetup(mock)
+			}
 
-		app := setupTestApp(t, mock)
+			var req *http.Request
+			if tt.formPassword != "" || tt.method == "POST" {
+				form := url.Values{}
+				if tt.formPassword != "" || tt.name == "EmptyPassword" {
+					form.Set("password", tt.formPassword)
+				}
+				req = httptest.NewRequest(tt.method, "/settings/delete", strings.NewReader(form.Encode()))
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			} else {
+				req = httptest.NewRequest(tt.method, "/settings/delete", nil)
+			}
 
-		userID := 1
-		password := "correct_password"
-		form := url.Values{"password": {password}}
-		req := httptest.NewRequest("POST", "/settings/delete", strings.NewReader(form.Encode()))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		setSessionUser(t, app, req, userID, false)
+			if tt.isAuthenticated {
+				setSessionUser(t, app, req, tt.userID, false)
+			}
 
-		// Inject failing session store after session is set
-		app.SessionStore = &failingSessionStore{app.SessionStore}
+			if tt.injectFailingSession {
+				app.SessionStore = &failingSessionStore{app.SessionStore}
+			}
 
-		hashedPassword, _ := auth.HashPassword(password)
+			rr := httptest.NewRecorder()
+			app.DeleteAccountHandler(rr, req)
 
-		mock.ExpectQuery("SELECT email FROM users WHERE id = \\$1").
-			WithArgs(userID).
-			WillReturnRows(pgxmock.NewRows([]string{"email"}).AddRow("user@example.com"))
+			if rr.Code != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr.Code)
+			}
 
-		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE email = \\$1").
-			WithArgs("user@example.com").
-			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
-				AddRow(userID, "user@example.com", string(hashedPassword), true, false, "", false))
+			if tt.expectedLocation != "" {
+				loc := rr.Header().Get("Location")
+				if loc != tt.expectedLocation {
+					t.Errorf("expected redirect to %s, got %s", tt.expectedLocation, loc)
+				}
+			}
 
-		mock.ExpectExec("DELETE FROM users WHERE id = \\$1").
-			WithArgs(userID).
-			WillReturnResult(pgxmock.NewResult("DELETE", 1))
+			if tt.expectedBodyContains != "" {
+				if !strings.Contains(rr.Body.String(), tt.expectedBodyContains) {
+					t.Errorf("expected body to contain %q, but it didn't", tt.expectedBodyContains)
+				}
+			}
 
-		rr := httptest.NewRecorder()
-		app.DeleteAccountHandler(rr, req)
+			if tt.expectSessionCleared {
+				found := false
+				for _, cookie := range rr.Result().Cookies() {
+					if cookie.Name == "vulfixx-session" && cookie.MaxAge < 0 {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected session cookie to be cleared (MaxAge < 0)")
+				}
+			}
 
-		// Handler still redirects even if session save fails (it only logs)
-		if rr.Code != http.StatusFound || rr.Header().Get("Location") != "/register" {
-			t.Errorf("expected redirect to /register, got %d and location %s", rr.Code, rr.Header().Get("Location"))
-		}
-	})
-
-	t.Run("EmptyPassword", func(t *testing.T) {
-		mock, err := pgxmock.NewPool()
-		if err != nil {
-			t.Fatalf("failed to create mock pool: %v", err)
-		}
-		defer mock.Close()
-
-		oldPool := db.Pool
-		db.Pool = mock
-		defer func() { db.Pool = oldPool }()
-
-		app := setupTestApp(t, mock)
-
-		userID := 1
-		form := url.Values{"password": {""}}
-		req := httptest.NewRequest("POST", "/settings/delete", strings.NewReader(form.Encode()))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		setSessionUser(t, app, req, userID, false)
-
-		mock.ExpectQuery("SELECT email FROM users WHERE id = \\$1").
-			WithArgs(userID).
-			WillReturnRows(pgxmock.NewRows([]string{"email"}).AddRow("user@example.com"))
-
-		// auth.Login will fail because password is empty
-		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE email = \\$1").
-			WithArgs("user@example.com").
-			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
-				AddRow(userID, "user@example.com", "somehash", true, false, "", false))
-
-		expectBaseQueries(mock, userID)
-
-		rr := httptest.NewRecorder()
-		app.DeleteAccountHandler(rr, req)
-
-		if rr.Code != http.StatusOK {
-			t.Errorf("expected 200 OK, got %d", rr.Code)
-		}
-		if !strings.Contains(rr.Body.String(), "Invalid password") {
-			t.Errorf("expected 'Invalid password' error in body")
-		}
-	})
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("unmet expectations: %v", err)
+			}
+		})
+	}
 }
