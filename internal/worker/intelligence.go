@@ -161,7 +161,7 @@ func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
 
 	wg.Add(2)
 
-	// Hacker News Mentions
+	// HN Mentions
 	go func() {
 		defer wg.Done()
 		if count, _, err := w.fetchHNMentions(ctx, c.CVEID); err == nil {
