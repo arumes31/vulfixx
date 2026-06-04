@@ -5,6 +5,9 @@ services:
     build: .
     ports:
       - "8080:8080"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - DB_HOST=db
       - DB_USER=cveuser

@@ -412,126 +412,126 @@ type GlobalCVEStatsJSON struct {
 	LastUpdated    time.Time      `json:"last_updated"`
 }
 
+func (a *App) getOrRefreshGlobalStats(ctx context.Context) (GlobalCVEStatsJSON, error) {
+	var statsJSON GlobalCVEStatsJSON
+
+	// Attempt to get from Redis first (Cache-Aside pattern)
+	if a.Redis != nil {
+		val, err := a.Redis.Get(ctx, "vulfixx:dashboard_stats").Result()
+		if err == nil && val != "" {
+			if err := json.Unmarshal([]byte(val), &statsJSON); err == nil {
+				statsCache.Lock()
+				statsCache.total = statsJSON.Total
+				statsCache.newLast24h = statsJSON.NewLast24h
+				statsCache.kevCount = statsJSON.KevCount
+				statsCache.critCount = statsJSON.CritCount
+				statsCache.severityCounts = statsJSON.SeverityCounts
+				statsCache.topCWEs = statsJSON.TopCWEs
+				statsCache.epssDist = statsJSON.EpssDist
+				statsCache.lastUpdated = statsJSON.LastUpdated
+				statsCache.Unlock()
+				return statsJSON, nil
+			}
+		}
+	}
+
+	// Cache miss - query DB
+	var total, new24h, kevCount, critCount int
+	var sevCounts SeverityCounts
+	epssDist := make([]int, 4)
+
+	err := a.Pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*),
+			COUNT(*) FILTER (WHERE updated_date >= NOW() - INTERVAL '24 hours'),
+			COUNT(*) FILTER (WHERE cisa_kev = TRUE),
+			COUNT(*) FILTER (WHERE cvss_score >= 9.0),
+			COUNT(*) FILTER (WHERE cvss_score >= 9.0),
+			COUNT(*) FILTER (WHERE cvss_score >= 7.0 AND cvss_score < 9.0),
+			COUNT(*) FILTER (WHERE cvss_score >= 4.0 AND cvss_score < 7.0),
+			COUNT(*) FILTER (WHERE cvss_score < 4.0),
+			COUNT(*) FILTER (WHERE epss_score < 0.01),
+			COUNT(*) FILTER (WHERE epss_score >= 0.01 AND epss_score < 0.1),
+			COUNT(*) FILTER (WHERE epss_score >= 0.1 AND epss_score < 0.5),
+			COUNT(*) FILTER (WHERE epss_score >= 0.5)
+		FROM cves
+	`).Scan(&total, &new24h, &kevCount, &critCount, &sevCounts.Critical, &sevCounts.High, &sevCounts.Medium, &sevCounts.Low, &epssDist[0], &epssDist[1], &epssDist[2], &epssDist[3])
+	if err != nil {
+		return statsJSON, err
+	}
+
+	var topCWEs []CWEStat
+	rowsCwe, _ := a.Pool.Query(ctx, `
+		SELECT cwe_id, COALESCE(MAX(cwe_name), 'Unknown'), COUNT(*) as cnt 
+		FROM cves 
+		WHERE cwe_id IS NOT NULL AND cwe_id != '' 
+		GROUP BY cwe_id 
+		ORDER BY cnt DESC 
+		LIMIT 15
+	`)
+	if rowsCwe != nil {
+		for rowsCwe.Next() {
+			var s CWEStat
+			if err := rowsCwe.Scan(&s.ID, &s.Name, &s.Count); err == nil {
+				s.Name = models.GetCWEName(s.ID, s.Name)
+				topCWEs = append(topCWEs, s)
+			}
+		}
+		rowsCwe.Close()
+	}
+
+	now := time.Now()
+	statsJSON = GlobalCVEStatsJSON{
+		Total:          total,
+		NewLast24h:     new24h,
+		KevCount:       kevCount,
+		CritCount:      critCount,
+		SeverityCounts: sevCounts,
+		TopCWEs:        topCWEs,
+		EpssDist:       epssDist,
+		LastUpdated:    now,
+	}
+
+	statsCache.Lock()
+	statsCache.total = total
+	statsCache.newLast24h = new24h
+	statsCache.kevCount = kevCount
+	statsCache.critCount = critCount
+	statsCache.severityCounts = sevCounts
+	statsCache.topCWEs = topCWEs
+	statsCache.epssDist = epssDist
+	statsCache.lastUpdated = now
+	statsCache.Unlock()
+
+	// Save to Redis (Expiration = 5 minutes)
+	if a.Redis != nil {
+		data, err := json.Marshal(statsJSON)
+		if err == nil {
+			_ = a.Redis.Set(ctx, "vulfixx:dashboard_stats", string(data), 5*time.Minute).Err()
+		}
+	}
+
+	slog.Info("Global stats cache refreshed", "total", total, "new_24h", new24h, "kev", kevCount, "crit", critCount)
+	return statsJSON, nil
+}
+
 func (a *App) StartStatsTicker(ctx context.Context) {
 	ticker := time.NewTicker(a.StatsInterval)
 	defer ticker.Stop()
 
-	refresh := func() {
-		refreshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-
-		// Attempt to get from Redis first (Cache-Aside pattern)
-		var statsJSON GlobalCVEStatsJSON
-		cacheFound := false
-
-		if a.Redis != nil {
-			val, err := a.Redis.Get(refreshCtx, "vulfixx:dashboard_stats").Result()
-			if err == nil && val != "" {
-				if err := json.Unmarshal([]byte(val), &statsJSON); err == nil {
-					cacheFound = true
-				}
-			}
-		}
-
-		if cacheFound {
-			statsCache.Lock()
-			statsCache.total = statsJSON.Total
-			statsCache.newLast24h = statsJSON.NewLast24h
-			statsCache.kevCount = statsJSON.KevCount
-			statsCache.critCount = statsJSON.CritCount
-			statsCache.severityCounts = statsJSON.SeverityCounts
-			statsCache.topCWEs = statsJSON.TopCWEs
-			statsCache.epssDist = statsJSON.EpssDist
-			statsCache.lastUpdated = statsJSON.LastUpdated
-			statsCache.Unlock()
-			slog.Info("Global stats cache loaded from Redis", "total", statsJSON.Total, "new_24h", statsJSON.NewLast24h, "kev", statsJSON.KevCount, "crit", statsJSON.CritCount)
-			return
-		}
-
-		// Cache miss - query DB
-		var total, new24h, kevCount, critCount int
-		var sevCounts SeverityCounts
-		epssDist := make([]int, 4)
-
-		_ = a.Pool.QueryRow(refreshCtx, `
-			SELECT
-				COUNT(*),
-				COUNT(*) FILTER (WHERE updated_date >= NOW() - INTERVAL '24 hours'),
-				COUNT(*) FILTER (WHERE cisa_kev = TRUE),
-				COUNT(*) FILTER (WHERE cvss_score >= 9.0),
-				COUNT(*) FILTER (WHERE cvss_score >= 9.0),
-				COUNT(*) FILTER (WHERE cvss_score >= 7.0 AND cvss_score < 9.0),
-				COUNT(*) FILTER (WHERE cvss_score >= 4.0 AND cvss_score < 7.0),
-				COUNT(*) FILTER (WHERE cvss_score < 4.0),
-				COUNT(*) FILTER (WHERE epss_score < 0.01),
-				COUNT(*) FILTER (WHERE epss_score >= 0.01 AND epss_score < 0.1),
-				COUNT(*) FILTER (WHERE epss_score >= 0.1 AND epss_score < 0.5),
-				COUNT(*) FILTER (WHERE epss_score >= 0.5)
-			FROM cves
-		`).Scan(&total, &new24h, &kevCount, &critCount, &sevCounts.Critical, &sevCounts.High, &sevCounts.Medium, &sevCounts.Low, &epssDist[0], &epssDist[1], &epssDist[2], &epssDist[3])
-
-		var topCWEs []CWEStat
-		rowsCwe, _ := a.Pool.Query(refreshCtx, `
-			SELECT cwe_id, COALESCE(MAX(cwe_name), 'Unknown'), COUNT(*) as cnt 
-			FROM cves 
-			WHERE cwe_id IS NOT NULL AND cwe_id != '' 
-			GROUP BY cwe_id 
-			ORDER BY cnt DESC 
-			LIMIT 15
-		`)
-		if rowsCwe != nil {
-			for rowsCwe.Next() {
-				var s CWEStat
-				if err := rowsCwe.Scan(&s.ID, &s.Name, &s.Count); err == nil {
-					s.Name = models.GetCWEName(s.ID, s.Name)
-					topCWEs = append(topCWEs, s)
-				}
-			}
-			rowsCwe.Close()
-		}
-
-		now := time.Now()
-		statsCache.Lock()
-		statsCache.total = total
-		statsCache.newLast24h = new24h
-		statsCache.kevCount = kevCount
-		statsCache.critCount = critCount
-		statsCache.severityCounts = sevCounts
-		statsCache.topCWEs = topCWEs
-		statsCache.epssDist = epssDist
-		statsCache.lastUpdated = now
-		statsCache.Unlock()
-
-		// Save to Redis (Expiration = 5 minutes)
-		if a.Redis != nil {
-			statsJSON = GlobalCVEStatsJSON{
-				Total:          total,
-				NewLast24h:     new24h,
-				KevCount:       kevCount,
-				CritCount:      critCount,
-				SeverityCounts: sevCounts,
-				TopCWEs:        topCWEs,
-				EpssDist:       epssDist,
-				LastUpdated:    now,
-			}
-			data, err := json.Marshal(statsJSON)
-			if err == nil {
-				_ = a.Redis.Set(refreshCtx, "vulfixx:dashboard_stats", string(data), 5*time.Minute).Err()
-			}
-		}
-
-		slog.Info("Global stats cache refreshed", "total", total, "new_24h", new24h, "kev", kevCount, "crit", critCount)
-	}
-
 	// Initial refresh
-	refresh()
+	refreshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	_, _ = a.getOrRefreshGlobalStats(refreshCtx)
+	cancel()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			refresh()
+			refreshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			_, _ = a.getOrRefreshGlobalStats(refreshCtx)
+			cancel()
 		}
 	}
 }

@@ -532,6 +532,11 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			savedModel := successfulCVEs[0]
 			slog.Info("Worker: [DATABASE CONFIRMED] CVE added successfully to DB", "cve_id", savedModel.CVEID)
 
+			// Invalidate Redis dashboard and stats cache keys
+			if w.Redis != nil {
+				_ = w.Redis.Del(ctx, "public_dashboard_default_v2", "vulfixx:dashboard_stats").Err()
+			}
+
 			select {
 			case w.enrichmentQueue <- savedModel.ID:
 			default:

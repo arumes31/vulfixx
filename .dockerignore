@@ -1,0 +1,14 @@
+.git
+node_modules
+coverage
+data
+cve-tracker
+cve-tracker.exe
+*.out
+.Jules
+.qodo
+.swarm
+scratch
+logs
+*.diff
+*.log
