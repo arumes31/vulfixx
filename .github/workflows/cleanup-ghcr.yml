@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       packages: write
+      actions: write
 
     steps:
       - name: Delete old GHCR images
@@ -65,3 +66,37 @@ jobs:
               fi
             done
           done
+
+      - name: Delete old workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          echo "--- Processing Workflow Runs ---"
+          # Fetch up to 500 runs
+          RUNS_JSON=$(gh run list --limit 500 --json databaseId,createdAt,status,conclusion)
+          
+          # Filter and select IDs to delete:
+          # 1. Filter only "completed" runs
+          # 2. Sort by createdAt descending (most recent first)
+          # 3. Keep the 30 most recent completed runs
+          # 4. Extract IDs of the older ones
+          IDS_TO_DELETE=$(echo "$RUNS_JSON" | jq -r '
+            map(select(.status == "completed")) |
+            sort_by(.createdAt) | reverse |
+            .[30:] | .[].databaseId
+          ')
+          
+          if [ -z "$IDS_TO_DELETE" ] || [ "$IDS_TO_DELETE" == "null" ]; then
+            echo "No old workflow runs to delete (kept 30 most recent completed runs)."
+          else
+            for RUN_ID in $IDS_TO_DELETE; do
+              echo "Targeting workflow run ID: $RUN_ID"
+              if [ "$DRY_RUN" == "false" ]; then
+                echo "Deleting workflow run $RUN_ID..."
+                gh run delete "$RUN_ID"
+              else
+                echo "[DRY RUN] Would delete workflow run $RUN_ID"
+              fi
+            done
+          fi
