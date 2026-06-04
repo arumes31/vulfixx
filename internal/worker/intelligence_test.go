@@ -151,10 +151,15 @@ func TestWorker_Intelligence(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "osint_data", "github_poc_count", "cwe_id", "published_date"}).
 				AddRow(1, "CVE-2024-0001", "Description 1", 7.5, []byte(`{}`), 0, "CWE-79", time.Now()))
 
-		// Mock the transaction and batch update
+		// Mock the duplicate detection batch (fetchDuplicatesBatch)
 		mock.ExpectBegin()
-		// Since pgxmock might not perfectly support SendBatch, we handle both SendBatch and the fallback tx.Exec
-		// If SendBatch is called and returns nil (typical for mock), it falls back to tx.Exec
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT cve_id FROM cves WHERE cwe_id = $1 AND id != $2")).
+			WithArgs("CWE-79", 1, 7.5, pgxmock.AnyArg()).
+			WillReturnRows(pgxmock.NewRows([]string{"cve_id"}))
+		mock.ExpectCommit()
+
+		// Mock the final transaction and batch update
+		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE cves SET osint_data = $1 WHERE id = $2")).
 			WithArgs(pgxmock.AnyArg(), 1).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))

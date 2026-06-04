@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"golang.org/x/sync/errgroup"
 )
 
 func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
@@ -76,20 +77,33 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		cves = append(cves, c)
 	}
 
+	if len(cves) == 0 {
+		return nil
+	}
+
+	// 1. Batch Duplicate Detection
+	w.fetchDuplicatesBatch(ctx, cves)
+
+	// 2. Concurrent Social Sentiment (Reddit & HN)
+	g, gCtx := errgroup.WithContext(ctx)
+	// Process concurrently, internal limiters handle rate limiting.
+	for i := range cves {
+		c := &cves[i]
+		g.Go(func() error {
+			w.updateSocialSentiment(gCtx, c)
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("social sentiment update failed: %w", err)
+	}
+
+	// 3. Batch Update DB
 	batch := &pgx.Batch{}
 	for _, c := range cves {
-		// 1. Social Sentiment (Reddit & HN)
-		w.updateSocialSentiment(ctx, &c)
-
-		// 2. Duplicate Detection (Simplified)
-		w.detectDuplicates(ctx, &c)
-
-		// Queue update
 		osintData, _ := json.Marshal(c.OSINTData)
 		batch.Queue("UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
-
-		// Throttle to avoid rate limits
-		time.Sleep(500 * time.Millisecond)
 	}
 
 	if batch.Len() > 0 {
@@ -140,6 +154,9 @@ func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
 		defer wg.Done()
 		if count, _, err := w.fetchHNMentions(ctx, c.CVEID); err == nil {
 			mu.Lock()
+			if c.OSINTData == nil {
+				c.OSINTData = make(map[string]interface{})
+			}
 			c.OSINTData["hn_mentions"] = count
 			mu.Unlock()
 		}
@@ -150,6 +167,9 @@ func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
 		defer wg.Done()
 		if count, _, err := w.fetchRedditMentions(ctx, c.CVEID); err == nil {
 			mu.Lock()
+			if c.OSINTData == nil {
+				c.OSINTData = make(map[string]interface{})
+			}
 			c.OSINTData["reddit_mentions"] = count
 			mu.Unlock()
 		}
@@ -194,6 +214,9 @@ func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
 	}
 
 	if len(duplicateIDs) > 0 {
+		if c.OSINTData == nil {
+			c.OSINTData = make(map[string]interface{})
+		}
 		c.OSINTData["similar_threats"] = duplicateIDs
 	}
 }
@@ -272,4 +295,93 @@ func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []
 	}
 
 	return len(links), links, nil
+}
+
+func (w *Worker) fetchDuplicatesBatch(ctx context.Context, cves []models.CVE) {
+	batch := &pgx.Batch{}
+	queriedIndices := make([]int, 0, len(cves))
+
+	for i, c := range cves {
+		if c.CWEID == "" || c.CWEID == "NVD-CWE-noinfo" {
+			continue
+		}
+		queriedIndices = append(queriedIndices, i)
+		batch.Queue(`
+			SELECT cve_id FROM cves
+			WHERE cwe_id = $1 AND id != $2 AND ABS(cvss_score - $3) <= 0.5 AND published_date > $4
+			ORDER BY ABS(cvss_score - $3) ASC
+			LIMIT 5
+		`, c.CWEID, c.ID, c.CVSSScore, c.PublishedDate.AddDate(0, 0, -7))
+	}
+
+	if batch.Len() == 0 {
+		return
+	}
+
+	tx, err := w.Pool.Begin(ctx)
+	if err != nil {
+		slog.Error("Worker: Failed to begin transaction for duplicate detection batch", "error", err)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	br := tx.SendBatch(ctx, batch)
+	if br != nil {
+		defer br.Close()
+		for _, idx := range queriedIndices {
+			rows, err := br.Query()
+			if err != nil {
+				slog.Error("Worker: Failed to get batch results for duplicate detection", "cve_id", cves[idx].CVEID, "error", err)
+				continue
+			}
+
+			var duplicateIDs []string
+			for rows.Next() {
+				var dupID string
+				if err := rows.Scan(&dupID); err == nil {
+					duplicateIDs = append(duplicateIDs, dupID)
+				}
+			}
+			rows.Close()
+
+			if len(duplicateIDs) > 0 {
+				if cves[idx].OSINTData == nil {
+					cves[idx].OSINTData = make(map[string]interface{})
+				}
+				cves[idx].OSINTData["similar_threats"] = duplicateIDs
+			}
+		}
+	} else {
+		// Fallback for mock drivers
+		for _, idx := range queriedIndices {
+			c := cves[idx]
+			rows, err := tx.Query(ctx, `
+				SELECT cve_id FROM cves
+				WHERE cwe_id = $1 AND id != $2 AND ABS(cvss_score - $3) <= 0.5 AND published_date > $4
+				ORDER BY ABS(cvss_score - $3) ASC
+				LIMIT 5
+			`, c.CWEID, c.ID, c.CVSSScore, c.PublishedDate.AddDate(0, 0, -7))
+			if err != nil {
+				continue
+			}
+			var duplicateIDs []string
+			for rows.Next() {
+				var dupID string
+				if err := rows.Scan(&dupID); err == nil {
+					duplicateIDs = append(duplicateIDs, dupID)
+				}
+			}
+			rows.Close()
+			if len(duplicateIDs) > 0 {
+				if cves[idx].OSINTData == nil {
+					cves[idx].OSINTData = make(map[string]interface{})
+				}
+				cves[idx].OSINTData["similar_threats"] = duplicateIDs
+			}
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		slog.Error("Worker: Failed to commit duplicate detection batch transaction", "error", err)
+	}
 }

@@ -44,3 +44,12 @@
 ## 2026-05-30 - Optimized Database Updates in GitHub Buzz Sync
 **Learning:** Performing individual `tx.Exec` calls within a transaction loop in `updateGitHubBatch` for 50 items results in 50 separate database roundtrips, which degrades performance.
 **Action:** Implemented `pgx.Batch` within the transaction to send all update queries in a single database roundtrip, significantly reducing I/O latency, while maintaining a fallback loop for `pgxmock` test compatibility.
+
+## 2026-06-04 - Optimized Intelligence Sync with Batch Updates and Concurrency
+**Performance Issue:** N+1 UPDATEs and SELECTs in `processIntelligence`.
+**Learning:** Performing individual `UPDATE` and `SELECT` queries for each CVE in a loop (100 items) results in excessive database roundtrips. Sequential processing of I/O-bound tasks (social sentiment fetching) further increases latency.
+**Optimization:**
+1. Implemented `fetchDuplicatesBatch` to perform duplicate detection for all CVEs in a single database roundtrip using `pgx.Batch`.
+2. Refactored `processIntelligence` to use `errgroup` for concurrent social sentiment updates, utilizing internal rate limiters for throttling.
+3. Implemented a final `pgx.Batch` to perform all database updates in a single roundtrip within a transaction.
+**Impact:** Reduced database roundtrips from ~200 to 3 per sync run and significantly improved processing speed through concurrency.
