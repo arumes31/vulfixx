@@ -93,4 +93,43 @@ func TestSetupHelpers(t *testing.T) {
 			t.Error("expected error but got nil")
 		}
 	})
+
+	t.Run("SetupTestRedis Multiple Calls", func(t *testing.T) {
+		oldRedisClient := RedisClient
+		t.Cleanup(func() { RedisClient = oldRedisClient })
+
+		mr1, err := SetupTestRedis()
+		if err != nil {
+			t.Fatalf("first SetupTestRedis failed: %v", err)
+		}
+		addr1 := mr1.Addr()
+		client1 := RedisClient
+
+		mr2, err := SetupTestRedis()
+		if err != nil {
+			t.Fatalf("second SetupTestRedis failed: %v", err)
+		}
+		defer mr1.Close()
+		defer mr2.Close()
+		addr2 := mr2.Addr()
+		client2 := RedisClient
+
+		if addr1 == addr2 {
+			t.Error("expected different addresses for different miniredis instances")
+		}
+		if client1 == client2 {
+			t.Error("expected RedisClient to be updated to a new instance")
+		}
+
+		if c, ok := RedisClient.(*redis.Client); ok {
+			if c.Options().Addr != addr2 {
+				t.Errorf("expected RedisClient to point to %s, got %s", addr2, c.Options().Addr)
+			}
+		} else {
+			t.Error("RedisClient is not *redis.Client")
+		}
+
+		// Verify interface compliance
+		var _ RedisProvider = RedisClient
+	})
 }
