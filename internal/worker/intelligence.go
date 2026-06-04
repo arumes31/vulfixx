@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"golang.org/x/sync/errgroup"
 )
 
 func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
@@ -76,20 +77,30 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		cves = append(cves, c)
 	}
 
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.SetLimit(10)
+
+	for i := range cves {
+		idx := i
+		eg.Go(func() error {
+			// 1. Social Sentiment (Reddit & HN)
+			w.updateSocialSentiment(egCtx, &cves[idx])
+
+			// 2. Duplicate Detection (Simplified)
+			w.detectDuplicates(egCtx, &cves[idx])
+
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		slog.Error("Worker: Intelligence sync wait error", "error", err)
+	}
+
 	batch := &pgx.Batch{}
 	for _, c := range cves {
-		// 1. Social Sentiment (Reddit & HN)
-		w.updateSocialSentiment(ctx, &c)
-
-		// 2. Duplicate Detection (Simplified)
-		w.detectDuplicates(ctx, &c)
-
-		// Queue update
 		osintData, _ := json.Marshal(c.OSINTData)
 		batch.Queue("UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
-
-		// Throttle to avoid rate limits
-		time.Sleep(500 * time.Millisecond)
 	}
 
 	if batch.Len() > 0 {

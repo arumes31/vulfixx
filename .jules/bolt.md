@@ -44,3 +44,7 @@
 ## 2026-05-30 - Optimized Database Updates in GitHub Buzz Sync
 **Learning:** Performing individual `tx.Exec` calls within a transaction loop in `updateGitHubBatch` for 50 items results in 50 separate database roundtrips, which degrades performance.
 **Action:** Implemented `pgx.Batch` within the transaction to send all update queries in a single database roundtrip, significantly reducing I/O latency, while maintaining a fallback loop for `pgxmock` test compatibility.
+
+## 2026-06-04 - Concurrency with Dedicated Rate Limiters in Worker Loops
+**Learning:** Adding a manual `time.Sleep` within a loop designed to query external APIs forces the loop to run sequentially, causing significant performance degradation (e.g., 50 seconds to process 100 items). If the underlying API fetchers (`fetchHNMentions`, `fetchRedditMentions`) already employ their own dedicated `rate.Limiter` implementations internally, the manual sleep at the loop level is redundant and strictly harmful to throughput.
+**Action:** When implementing external API fetching in a loop, verify if the internal fetching functions already have a `rate.Limiter.Wait()`. If so, remove manual sleeps in the loop, wrap the loop in a bounded `errgroup.Group` worker pool, and allow the internal rate limiters to elegantly throttle the concurrent requests without artificially blocking the main loop execution.
