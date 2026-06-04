@@ -2,6 +2,7 @@ package web
 
 import (
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gorilla/sessions"
@@ -52,5 +53,11 @@ func TestNewApp(t *testing.T) {
 	}
 	if app.Now == nil {
 		t.Error("expected Now to be initialized, got nil")
+	}
+	if app.AssetRepo == nil {
+		t.Error("expected AssetRepo to be initialized, got nil")
+	}
+	if app.StatsInterval != 5*time.Minute {
+		t.Errorf("expected StatsInterval to be 5m, got %v", app.StatsInterval)
 	}
 }
