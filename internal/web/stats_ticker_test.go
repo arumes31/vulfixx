@@ -79,3 +79,58 @@ func TestStartStatsTicker(t *testing.T) {
 		}
 	})
 }
+
+func TestStopStatsTicker(t *testing.T) {
+	// Backup original cancelStats
+	statsMu.Lock()
+	origCancel := cancelStats
+	statsMu.Unlock()
+
+	t.Cleanup(func() {
+		statsMu.Lock()
+		cancelStats = origCancel
+		statsMu.Unlock()
+	})
+
+	t.Run("stops ticker when active", func(t *testing.T) {
+		called := false
+		cancel := func() {
+			called = true
+		}
+
+		statsMu.Lock()
+		cancelStats = cancel
+		statsMu.Unlock()
+
+		StopStatsTicker()
+
+		if !called {
+			t.Error("expected cancel function to be called")
+		}
+
+		statsMu.Lock()
+		isNil := cancelStats == nil
+		statsMu.Unlock()
+
+		if !isNil {
+			t.Error("expected cancelStats to be nil after StopStatsTicker")
+		}
+	})
+
+	t.Run("handles nil cancelStats", func(t *testing.T) {
+		statsMu.Lock()
+		cancelStats = nil
+		statsMu.Unlock()
+
+		// Should not panic
+		StopStatsTicker()
+
+		statsMu.Lock()
+		isNil := cancelStats == nil
+		statsMu.Unlock()
+
+		if !isNil {
+			t.Error("expected cancelStats to remain nil")
+		}
+	})
+}
