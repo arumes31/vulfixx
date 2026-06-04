@@ -659,7 +659,16 @@
                     }, 200);
                 } catch (e) {
                     console.error('Navigation error:', e);
-                    window.location.href = url;
+                    try {
+                        const parsed = new URL(url, window.location.origin);
+                        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+                            window.location.href = parsed.href;
+                        } else {
+                            window.location.href = '/';
+                        }
+                    } catch (err) {
+                        window.location.href = '/';
+                    }
                 }
             }
         };

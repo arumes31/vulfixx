@@ -1,0 +1,36 @@
+name: Deadcode Check
+
+on:
+  push:
+    branches: [ "main", "v2_test" ]
+  pull_request:
+    branches: [ "main", "v2_test" ]
+
+permissions:
+  contents: read
+
+jobs:
+  deadcode:
+    name: Check Dead Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Install deadcode tool
+        run: go install golang.org/x/tools/cmd/deadcode@latest
+
+      - name: Run deadcode scan
+        run: |
+          OUTPUT=$($(go env GOPATH)/bin/deadcode -test ./...)
+          if [ -n "$OUTPUT" ]; then
+            echo "Dead code detected in the repository:"
+            echo "$OUTPUT"
+            exit 1
+          fi
+          echo "No dead code found."
