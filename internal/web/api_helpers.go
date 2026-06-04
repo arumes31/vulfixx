@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-playground/validator/v10"
@@ -25,14 +26,19 @@ func SendJSONResponse(w http.ResponseWriter, statusCode int, success bool, data 
 	}
 	body, err := json.Marshal(resp)
 	if err != nil {
+		slog.Error("SendJSONResponse: failed to marshal response", "error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`{"success":false,"error":"Internal server error"}`))
+		if _, writeErr := w.Write([]byte(`{"success":false,"error":"Internal server error"}`)); writeErr != nil {
+			slog.Error("SendJSONResponse: failed to write error response", "error", writeErr)
+		}
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	_, _ = w.Write(body)
+	if _, err := w.Write(body); err != nil {
+		slog.Error("SendJSONResponse: failed to write response", "error", err)
+	}
 }
 
 // Validate is the global validator instance.
