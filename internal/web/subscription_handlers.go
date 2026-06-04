@@ -3,6 +3,7 @@ package web
 import (
 	"cve-tracker/internal/models"
 	"cve-tracker/internal/security"
+	"cve-tracker/internal/worker"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -42,6 +43,7 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 			       COALESCE(us.enable_teams, false) as enable_teams,
 			       COALESCE(us.enable_browser_push, false) as enable_browser_push,
 			       COALESCE(us.aggregation_mode, 'instant') as aggregation_mode,
+			       COALESCE(us.filter_logic, '') as filter_logic,
 			       us.team_id
 			FROM user_subscriptions us
 			WHERE us.user_id = $1 OR us.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
@@ -60,7 +62,7 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 				&s.SlackWebhookURL, &s.TeamsWebhookURL,
 				&s.EnableEmail, &s.EnableWebhook,
 				&s.EnableSlack, &s.EnableTeams, &s.EnableBrowserPush,
-				&s.AggregationMode, &s.TeamID); err != nil {
+				&s.AggregationMode, &s.FilterLogic, &s.TeamID); err != nil {
 				log.Printf("Error scanning subscription: %v", err)
 				continue
 			}
@@ -88,6 +90,7 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 			EnableTeams       bool    `json:"enable_teams"`
 			EnableBrowserPush bool    `json:"enable_browser_push"`
 			AggregationMode   string  `json:"aggregation_mode"`
+			FilterLogic       string  `json:"filter_logic"`
 		}
 
 		if strings.Contains(r.Header.Get("Content-Type"), "application/json") {
@@ -111,6 +114,7 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 			jsonData.EnableTeams = r.FormValue("enable_teams") == "on" || r.FormValue("enable_teams") == "true"
 			jsonData.EnableBrowserPush = r.FormValue("enable_browser_push") == "on" || r.FormValue("enable_browser_push") == "true"
 			jsonData.AggregationMode = strings.TrimSpace(r.FormValue("aggregation_mode"))
+			jsonData.FilterLogic = strings.TrimSpace(r.FormValue("filter_logic"))
 		}
 
 		if jsonData.Keyword == "" {
@@ -169,6 +173,25 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if err := worker.ValidateComplexFilter(jsonData.FilterLogic); err != nil {
+			a.SendResponse(w, r, false, "", "", "Invalid filter logic: "+err.Error())
+			return
+		}
+
+		// Encrypt Slack/Teams webhook URLs at rest; the worker decrypts them on read.
+		encSlackURL, err := models.EncryptWebhook(jsonData.SlackWebhookURL)
+		if err != nil {
+			log.Printf("Error encrypting Slack webhook URL: %v", err)
+			a.SendResponse(w, r, false, "", "", "Internal server error")
+			return
+		}
+		encTeamsURL, err := models.EncryptWebhook(jsonData.TeamsWebhookURL)
+		if err != nil {
+			log.Printf("Error encrypting Teams webhook URL: %v", err)
+			a.SendResponse(w, r, false, "", "", "Internal server error")
+			return
+		}
+
 		ctx := r.Context()
 		tx, err := a.Pool.Begin(ctx)
 		if err != nil {
@@ -203,13 +226,13 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 
 		_, err = tx.Exec(ctx, `
 			INSERT INTO user_subscriptions (user_id, keyword, min_severity, webhook_url, slack_webhook_url, teams_webhook_url,
-			    enable_email, enable_webhook, enable_slack, enable_teams, enable_browser_push, aggregation_mode)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			    enable_email, enable_webhook, enable_slack, enable_teams, enable_browser_push, aggregation_mode, filter_logic)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		`, userID, jsonData.Keyword, jsonData.MinSeverity, jsonData.WebhookURL,
-			jsonData.SlackWebhookURL, jsonData.TeamsWebhookURL,
+			encSlackURL, encTeamsURL,
 			jsonData.EnableEmail, jsonData.EnableWebhook,
 			jsonData.EnableSlack, jsonData.EnableTeams, jsonData.EnableBrowserPush,
-			jsonData.AggregationMode)
+			jsonData.AggregationMode, jsonData.FilterLogic)
 		if err != nil {
 			log.Printf("Error saving subscription: %v", err)
 			a.SendResponse(w, r, false, "", "", "Error saving subscription")
@@ -276,6 +299,7 @@ func (a *App) UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) 
 		EnableTeams       bool    `json:"enable_teams"`
 		EnableBrowserPush bool    `json:"enable_browser_push"`
 		AggregationMode   string  `json:"aggregation_mode"`
+		FilterLogic       string  `json:"filter_logic"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&jsonData); err != nil {
@@ -307,6 +331,11 @@ func (a *App) UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if err := worker.ValidateComplexFilter(jsonData.FilterLogic); err != nil {
+		a.SendResponse(w, r, false, "", "", "Invalid filter logic: "+err.Error())
+		return
+	}
+
 	// Verify ownership
 	var ownerID int
 	err := a.Pool.QueryRow(r.Context(), "SELECT user_id FROM user_subscriptions WHERE id = $1", jsonData.ID).Scan(&ownerID)
@@ -319,17 +348,31 @@ func (a *App) UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Encrypt Slack/Teams webhook URLs at rest; the worker decrypts them on read.
+	encSlackURL, err := models.EncryptWebhook(jsonData.SlackWebhookURL)
+	if err != nil {
+		log.Printf("Error encrypting Slack webhook URL: %v", err)
+		a.SendResponse(w, r, false, "", "", "Internal server error")
+		return
+	}
+	encTeamsURL, err := models.EncryptWebhook(jsonData.TeamsWebhookURL)
+	if err != nil {
+		log.Printf("Error encrypting Teams webhook URL: %v", err)
+		a.SendResponse(w, r, false, "", "", "Internal server error")
+		return
+	}
+
 	_, err = a.Pool.Exec(r.Context(), `
 		UPDATE user_subscriptions
 		SET keyword = $1, min_severity = $2, webhook_url = $3, slack_webhook_url = $4, teams_webhook_url = $5,
 		    enable_email = $6, enable_webhook = $7, enable_slack = $8, enable_teams = $9,
-		    enable_browser_push = $10, aggregation_mode = $11
-		WHERE id = $12 AND user_id = $13
+		    enable_browser_push = $10, aggregation_mode = $11, filter_logic = $12
+		WHERE id = $13 AND user_id = $14
 	`, jsonData.Keyword, jsonData.MinSeverity, jsonData.WebhookURL,
-		jsonData.SlackWebhookURL, jsonData.TeamsWebhookURL,
+		encSlackURL, encTeamsURL,
 		jsonData.EnableEmail, jsonData.EnableWebhook,
 		jsonData.EnableSlack, jsonData.EnableTeams, jsonData.EnableBrowserPush,
-		jsonData.AggregationMode, jsonData.ID, userID)
+		jsonData.AggregationMode, jsonData.FilterLogic, jsonData.ID, userID)
 	if err != nil {
 		log.Printf("Error updating subscription: %v", err)
 		a.SendResponse(w, r, false, "", "", "Error updating subscription")

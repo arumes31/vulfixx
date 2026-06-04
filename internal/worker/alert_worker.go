@@ -210,80 +210,215 @@ func matchCVE(cve *models.CVE, sub models.UserSubscription) bool {
 	return true
 }
 
+// evaluateComplexFilter evaluates a boolean filter expression against a CVE.
+//
+// Supported variables: epss, buzz (github_poc_count), severity / cvss, cisa, and
+// a trailing "regex: <pattern>" term matched against the description. Comparisons
+// support >, >=, <, <=, ==, = and != operators. Terms can be combined with the
+// logical operators && (AND) and || (OR); AND binds tighter than OR, e.g.
+// "cisa = true && epss > 0.1 || severity >= 9" is read as
+// "(cisa = true && epss > 0.1) || (severity >= 9)".
+//
+// The evaluator fails closed: any malformed term, unknown variable/operator, or
+// invalid regex causes the whole filter to reject the CVE.
 func evaluateComplexFilter(logic string, cve *models.CVE) bool {
 	logic = strings.TrimSpace(strings.ToLower(logic))
 	if logic == "" {
 		return true
 	}
-
-	// Simple whitespace-based tokenizer
 	tokens := strings.Fields(logic)
-	for i := 0; i < len(tokens); i++ {
+	result, ok := evalFilterTokens(tokens, cve)
+	if !ok {
+		return false // fail closed on any parse error
+	}
+	return result
+}
+
+// ValidateComplexFilter checks that a filter expression is well-formed so the web
+// layer can reject malformed input at write time. It returns nil for an empty
+// filter. A non-nil error describes the first structural problem found.
+func ValidateComplexFilter(logic string) error {
+	logic = strings.TrimSpace(strings.ToLower(logic))
+	if logic == "" {
+		return nil
+	}
+	if len(logic) > maxPatternLen {
+		return fmt.Errorf("filter expression too long (%d chars, max %d)", len(logic), maxPatternLen)
+	}
+	tokens := strings.Fields(logic)
+	dummy := &models.CVE{}
+	expectTerm := true
+	for i := 0; i < len(tokens); {
 		switch tokens[i] {
-		case "epss":
-			if i+2 < len(tokens) {
-				val, err := strconv.ParseFloat(tokens[i+2], 64)
-				if err != nil {
-					return false
-				}
-				if tokens[i+1] == ">" && cve.EPSSScore <= val {
-					return false
-				}
-				if tokens[i+1] == ">=" && cve.EPSSScore < val {
-					return false
-				}
-				i += 2
+		case "&&", "||":
+			if expectTerm {
+				return fmt.Errorf("unexpected operator %q", tokens[i])
 			}
-		case "cisa":
-			if i+2 < len(tokens) && (tokens[i+1] == "==" || tokens[i+1] == "=") {
-				if tokens[i+2] == "true" && !cve.CISAKEV {
-					return false
-				}
-				i += 2
-			}
-		case "buzz":
-			if i+2 < len(tokens) {
-				val, err := strconv.Atoi(tokens[i+2])
-				if err != nil {
-					return false
-				}
-				if tokens[i+1] == ">" && cve.GitHubPoCCount <= val {
-					return false
-				}
-				if tokens[i+1] == ">=" && cve.GitHubPoCCount < val {
-					return false
-				}
-				i += 2
-			}
-		default:
-			if strings.HasPrefix(tokens[i], "regex:") {
-				var pattern string
-				if tokens[i] == "regex:" {
-					if i+1 < len(tokens) {
-						pattern = strings.Join(tokens[i+1:], " ")
-					}
-				} else {
-					pattern = strings.TrimPrefix(tokens[i], "regex:")
-					if i+1 < len(tokens) {
-						pattern += " " + strings.Join(tokens[i+1:], " ")
-					}
-				}
-				if pattern != "" {
-					re, err := getPatternRegex(pattern)
-					if err != nil {
-						slog.Error("Complex filter regex error", "pattern", pattern, "error", err)
-						return false // Fail closed
-					}
-					if !re.MatchString(cve.Description) {
-						return false
-					}
-					i = len(tokens) - 1
-				}
-			}
+			expectTerm = true
+			i++
+			continue
 		}
+		if !expectTerm {
+			return fmt.Errorf("expected && or || before %q", tokens[i])
+		}
+		_, consumed, ok := parseFilterTerm(tokens, i, dummy)
+		if !ok {
+			return fmt.Errorf("invalid filter term near %q", tokens[i])
+		}
+		expectTerm = false
+		i += consumed
+	}
+	if expectTerm {
+		return fmt.Errorf("filter expression ends with a dangling operator")
+	}
+	return nil
+}
+
+// evalFilterTokens evaluates the token stream as an OR of AND-groups.
+func evalFilterTokens(tokens []string, cve *models.CVE) (bool, bool) {
+	var orResult bool   // accumulated value across completed AND-groups
+	andResult := true   // accumulated value within the current AND-group
+	haveTermInAnd := false
+	haveOrResult := false
+
+	closeAndGroup := func() {
+		if !haveTermInAnd {
+			return
+		}
+		if haveOrResult {
+			orResult = orResult || andResult
+		} else {
+			orResult = andResult
+			haveOrResult = true
+		}
+		andResult = true
+		haveTermInAnd = false
 	}
 
-	return true
+	for i := 0; i < len(tokens); {
+		switch tokens[i] {
+		case "&&":
+			i++
+			continue
+		case "||":
+			closeAndGroup()
+			i++
+			continue
+		}
+		val, consumed, ok := parseFilterTerm(tokens, i, cve)
+		if !ok {
+			return false, false
+		}
+		if haveTermInAnd {
+			andResult = andResult && val
+		} else {
+			andResult = val
+			haveTermInAnd = true
+		}
+		i += consumed
+	}
+	closeAndGroup()
+
+	if !haveOrResult {
+		// No evaluable terms at all: impose no constraint.
+		return true, true
+	}
+	return orResult, true
+}
+
+// parseFilterTerm parses a single term starting at index i and returns its
+// boolean value, the number of tokens consumed, and whether parsing succeeded.
+func parseFilterTerm(tokens []string, i int, cve *models.CVE) (value bool, consumed int, ok bool) {
+	tok := tokens[i]
+
+	// A "regex:" term greedily consumes the remainder of the expression as the
+	// pattern (patterns may contain spaces), so it must be the final term.
+	if strings.HasPrefix(tok, "regex:") {
+		consumed = len(tokens) - i
+		var pattern string
+		if tok == "regex:" {
+			pattern = strings.Join(tokens[i+1:], " ")
+		} else {
+			pattern = strings.TrimPrefix(tok, "regex:")
+			if i+1 < len(tokens) {
+				pattern += " " + strings.Join(tokens[i+1:], " ")
+			}
+		}
+		if pattern == "" {
+			return true, consumed, true // empty pattern imposes no constraint
+		}
+		re, err := getPatternRegex(pattern)
+		if err != nil {
+			slog.Error("Complex filter regex error", "pattern", pattern, "error", err)
+			return false, consumed, false // fail closed
+		}
+		return re.MatchString(cve.Description), consumed, true
+	}
+
+	// All other terms are "<variable> <operator> <value>".
+	if i+2 >= len(tokens) {
+		return false, len(tokens) - i, false // malformed / truncated term
+	}
+	op := tokens[i+1]
+	valTok := tokens[i+2]
+	consumed = 3
+
+	switch tok {
+	case "epss":
+		v, err := strconv.ParseFloat(valTok, 64)
+		if err != nil {
+			return false, consumed, false
+		}
+		res, ok := compareFloat(cve.EPSSScore, op, v)
+		return res, consumed, ok
+	case "severity", "cvss":
+		v, err := strconv.ParseFloat(valTok, 64)
+		if err != nil {
+			return false, consumed, false
+		}
+		res, ok := compareFloat(cve.CVSSScore, op, v)
+		return res, consumed, ok
+	case "buzz":
+		v, err := strconv.Atoi(valTok)
+		if err != nil {
+			return false, consumed, false
+		}
+		res, ok := compareFloat(float64(cve.GitHubPoCCount), op, float64(v))
+		return res, consumed, ok
+	case "cisa":
+		want := valTok == "true"
+		switch op {
+		case "==", "=":
+			return cve.CISAKEV == want, consumed, true
+		case "!=":
+			return cve.CISAKEV != want, consumed, true
+		default:
+			return false, consumed, false
+		}
+	default:
+		return false, consumed, false // unknown variable: fail closed
+	}
+}
+
+// compareFloat applies a comparison operator. The second return value is false
+// for unrecognized operators so the caller can fail closed.
+func compareFloat(actual float64, op string, want float64) (bool, bool) {
+	switch op {
+	case ">":
+		return actual > want, true
+	case ">=":
+		return actual >= want, true
+	case "<":
+		return actual < want, true
+	case "<=":
+		return actual <= want, true
+	case "==", "=":
+		return actual == want, true
+	case "!=":
+		return actual != want, true
+	default:
+		return false, false
+	}
 }
 
 // notifyIfNew checks if the user has already been notified about this CVE.

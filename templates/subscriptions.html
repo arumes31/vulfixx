@@ -106,6 +106,12 @@
                         </select>
                     </div>
 
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Advanced Filter (optional)</label>
+                        <input type="text" name="filter_logic" placeholder="e.g. cisa = true &amp;&amp; epss > 0.1 || severity >= 9" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
+                        <p class="text-[10px] text-gray-500 leading-relaxed">Variables: <code>epss</code>, <code>severity</code>, <code>buzz</code>, <code>cisa</code>, and <code>regex: pattern</code>. Operators: <code>&gt; &gt;= &lt; &lt;= == !=</code> combined with <code>&amp;&amp;</code> / <code>||</code>.</p>
+                    </div>
+
                     <button type="submit" class="w-full bg-primary text-on-primary font-black uppercase tracking-widest text-xs py-4 rounded-2xl shadow-lg shadow-primary/20 hover:bg-primary/80 transition-all active:scale-95">
                         Initialize Monitor
                     </button>
