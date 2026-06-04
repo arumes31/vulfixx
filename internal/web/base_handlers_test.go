@@ -403,3 +403,56 @@ func TestRenderTemplate(t *testing.T) {
 		}
 	})
 }
+
+func TestRenderTemplate_NPlusOne(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+	app := setupTestApp(t, mock)
+
+	t.Run("ActiveTeamNotInUserTeams", func(t *testing.T) {
+		userID := 1
+		activeTeamID := 99
+		req := httptest.NewRequest("GET", "/", nil)
+		setSessionUser(t, app, req, userID, false)
+
+		// Set active team ID in session
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["team_id"] = activeTeamID
+		rr_sess := httptest.NewRecorder()
+		session.Save(req, rr_sess)
+		for _, cookie := range rr_sess.Result().Cookies() {
+			req.AddCookie(cookie)
+		}
+
+		// 1. Onboarding status query
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT onboarding_completed FROM users WHERE id = $1")).
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed"}).AddRow(true))
+
+		// 2. Sub count query
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1")).
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
+
+		// 3. Combined Team list and active team query
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT t.id, t.name, (tm.user_id IS NOT NULL) AS is_member FROM teams t LEFT JOIN team_members tm ON t.id = tm.team_id AND tm.user_id = $1 WHERE tm.user_id = $1 OR t.id = $2")).
+			WithArgs(userID, activeTeamID).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "name", "is_member"}).
+				AddRow(1, "Team1", true).
+				AddRow(99, "OtherTeam", false))
+
+		rr := httptest.NewRecorder()
+		app.RenderTemplate(rr, req, "dashboard.html", nil)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+}

@@ -85,10 +85,10 @@ func expectBaseQueries(mock pgxmock.PgxPoolIface, userID int) {
 		WithArgs(userID).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
 
-	// 3. Team list query in RenderTemplate
-	mock.ExpectQuery("(?is)SELECT t.id, t.name FROM teams t").
-		WithArgs(userID).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(1, "Team1"))
+	// 3. Team list query in RenderTemplate (now with activeTeamID=0)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT t.id, t.name, (tm.user_id IS NOT NULL) AS is_member FROM teams t LEFT JOIN team_members tm ON t.id = tm.team_id AND tm.user_id = $1 WHERE tm.user_id = $1 OR t.id = $2")).
+		WithArgs(userID, 0).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "name", "is_member"}).AddRow(1, "Team1", true))
 }
 
 func setupTestServerFull(t *testing.T, mock pgxmock.PgxPoolIface) (*httptest.Server, *App, *http.Client) {
