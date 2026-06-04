@@ -4,6 +4,8 @@ import (
 	"cve-tracker/internal/auth"
 	"cve-tracker/internal/db"
 	"database/sql"
+	"fmt"
+	"github.com/gorilla/sessions"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -154,31 +156,117 @@ func TestLoginHandler(t *testing.T) {
 	})
 }
 
+type logoutErrorSessionStore struct {
+	sessions.Store
+	FailGet  bool
+	FailSave bool
+}
+
+func (s *logoutErrorSessionStore) Get(r *http.Request, name string) (*sessions.Session, error) {
+	if s.FailGet {
+		return nil, fmt.Errorf("mock get error")
+	}
+	session, err := s.Store.Get(r, name)
+	if session != nil {
+		newSession := sessions.NewSession(s, name)
+		newSession.Values = session.Values
+		newSession.Options = session.Options
+		newSession.IsNew = session.IsNew
+		return newSession, err
+	}
+	return session, err
+}
+
+func (s *logoutErrorSessionStore) New(r *http.Request, name string) (*sessions.Session, error) {
+	session, err := s.Store.New(r, name)
+	if session != nil {
+		newSession := sessions.NewSession(s, name)
+		newSession.Values = session.Values
+		newSession.Options = session.Options
+		newSession.IsNew = session.IsNew
+		return newSession, err
+	}
+	return session, err
+}
+
+func (s *logoutErrorSessionStore) Save(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
+	if s.FailSave {
+		return fmt.Errorf("mock save error")
+	}
+	return s.Store.Save(r, w, session)
+}
+
 func TestLogoutHandler(t *testing.T) {
 	StopStatsTicker()
-	mock, err := db.SetupTestDB()
-	if err != nil {
-		t.Fatalf("failed to setup mock db: %v", err)
+
+	tests := []struct {
+		name           string
+		method         string
+		failGet        bool
+		failSave       bool
+		expectedStatus int
+	}{
+		{
+			name:           "Method Not Allowed (GET)",
+			method:         "GET",
+			expectedStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:           "Error Getting Session",
+			method:         "POST",
+			failGet:        true,
+			expectedStatus: http.StatusInternalServerError,
+		},
+		{
+			name:           "Error Saving Session",
+			method:         "POST",
+			failSave:       true,
+			expectedStatus: http.StatusInternalServerError,
+		},
+		{
+			name:           "Happy Path",
+			method:         "POST",
+			expectedStatus: http.StatusFound,
+		},
 	}
-	defer mock.Close()
 
-	app := setupTestApp(t, mock)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock, err := db.SetupTestDB()
+			if err != nil {
+				t.Fatalf("failed to setup mock db: %v", err)
+			}
+			defer mock.Close()
 
-	req, err := http.NewRequest("POST", "/logout", nil)
-	if err != nil {
-		t.Fatalf("failed to create request: %v", err)
-	}
-	setSessionUser(t, app, req, 1, false)
+			app := setupTestApp(t, mock)
 
-	rr := httptest.NewRecorder()
-	app.LogoutHandler(rr, req)
+			req, err := http.NewRequest(tt.method, "/logout", nil)
+			if err != nil {
+				t.Fatalf("failed to create request: %v", err)
+			}
 
-	if rr.Code != http.StatusFound {
-		t.Errorf("expected redirect, got %d", rr.Code)
-	}
+			// Setup session with the real store first so it succeeds
+			setSessionUser(t, app, req, 1, false)
 
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Errorf("unmet expectations: %v", err)
+			// Then inject our mock session store
+			errStore := &logoutErrorSessionStore{
+				Store:    app.SessionStore,
+				FailGet:  tt.failGet,
+				FailSave: tt.failSave,
+			}
+			app.SessionStore = errStore
+
+			rr := httptest.NewRecorder()
+			app.LogoutHandler(rr, req)
+
+			if rr.Code != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr.Code)
+			}
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("unmet expectations: %v", err)
+			}
+		})
 	}
 }
 
