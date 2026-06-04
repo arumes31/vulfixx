@@ -48,7 +48,7 @@ func TestSecurityHeadersMiddleware(t *testing.T) {
 }
 
 func TestCSRFProtection(t *testing.T) {
-	// Our app uses custom CSRF for admin and standard gorilla/csrf for web
+	// Our app uses custom CSRF for admin and filippo.io/csrf (gorilla drop-in) for web
 	// Let's test the Admin CSRF logic
 	app := &App{
 		SessionStore: sessions.NewCookieStore([]byte("secret")),

@@ -11,7 +11,7 @@ import (
 	sentryhttp "github.com/getsentry/sentry-go/http"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	csrf "github.com/gorilla/csrf"
+	csrf "filippo.io/csrf/gorilla"
 	"github.com/rs/cors"
 )
 
