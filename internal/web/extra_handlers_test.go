@@ -8,38 +8,105 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pashagolub/pgxmock/v3"
 )
 
 func TestAlertHistoryHandler(t *testing.T) {
-	mock, err := db.SetupTestDB()
-	if err != nil {
-		t.Fatalf("SetupTestDB failed: %v", err)
+	tests := []struct {
+		name           string
+		userID         int // 0 means unauthenticated
+		mockExpect     func(mock pgxmock.PgxPoolIface)
+		expectedStatus int
+	}{
+		{
+			name:           "Unauthenticated",
+			userID:         0,
+			mockExpect:     func(mock pgxmock.PgxPoolIface) {},
+			expectedStatus: http.StatusFound, // Redirect to login
+		},
+		{
+			name:   "QueryError",
+			userID: 1,
+			mockExpect: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectQuery("(?i)SELECT ah\\.sent_at, c\\.cve_id, c\\.description, c\\.cvss_score FROM alert_history ah JOIN cves c ON ah\\.cve_id = c\\.id WHERE ah\\.user_id = \\$1 ORDER BY ah\\.sent_at DESC LIMIT 100").
+					WithArgs(1).
+					WillReturnError(errors.New("db error"))
+			},
+			expectedStatus: http.StatusInternalServerError,
+		},
+		{
+			name:   "ScanError",
+			userID: 1,
+			mockExpect: func(mock pgxmock.PgxPoolIface) {
+				// Provide rows with incompatible types to trigger a scan error
+				rows := pgxmock.NewRows([]string{"sent_at", "cve_id", "description", "cvss_score"}).
+					AddRow("not-a-time", "CVE-2023-1234", "Desc", 9.8) // Invalid time format
+				mock.ExpectQuery("(?i)SELECT ah\\.sent_at, c\\.cve_id, c\\.description, c\\.cvss_score FROM alert_history ah JOIN cves c ON ah\\.cve_id = c\\.id WHERE ah\\.user_id = \\$1 ORDER BY ah\\.sent_at DESC LIMIT 100").
+					WithArgs(1).
+					WillReturnRows(rows)
+				expectBaseQueries(mock, 1)
+			},
+			expectedStatus: http.StatusOK, // Scan error just skips the row, still returns 200
+		},
+		{
+			name:   "RowError",
+			userID: 1,
+			mockExpect: func(mock pgxmock.PgxPoolIface) {
+				rows := pgxmock.NewRows([]string{"sent_at", "cve_id", "description", "cvss_score"}).
+					RowError(0, errors.New("row error")) // Introduce row error
+				mock.ExpectQuery("(?i)SELECT ah\\.sent_at, c\\.cve_id, c\\.description, c\\.cvss_score FROM alert_history ah JOIN cves c ON ah\\.cve_id = c\\.id WHERE ah\\.user_id = \\$1 ORDER BY ah\\.sent_at DESC LIMIT 100").
+					WithArgs(1).
+					WillReturnRows(rows)
+			},
+			expectedStatus: http.StatusInternalServerError,
+		},
+		{
+			name:   "Success",
+			userID: 1,
+			mockExpect: func(mock pgxmock.PgxPoolIface) {
+				rows := pgxmock.NewRows([]string{"sent_at", "cve_id", "description", "cvss_score"}).
+					AddRow(time.Now(), "CVE-2023-1234", "Desc", 9.8).
+					AddRow(time.Now(), "CVE-2023-5678", "Desc2", 5.0)
+				mock.ExpectQuery("(?i)SELECT ah\\.sent_at, c\\.cve_id, c\\.description, c\\.cvss_score FROM alert_history ah JOIN cves c ON ah\\.cve_id = c\\.id WHERE ah\\.user_id = \\$1 ORDER BY ah\\.sent_at DESC LIMIT 100").
+					WithArgs(1).
+					WillReturnRows(rows)
+				expectBaseQueries(mock, 1)
+			},
+			expectedStatus: http.StatusOK,
+		},
 	}
-	defer mock.Close()
-	mock.MatchExpectationsInOrder(false)
 
-	app := setupTestApp(t, mock)
-	req := httptest.NewRequest("GET", "/alerts", nil)
-	setSessionUser(t, app, req, 1, false)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock, err := db.SetupTestDB()
+			if err != nil {
+				t.Fatalf("SetupTestDB failed: %v", err)
+			}
+			defer mock.Close()
+			mock.MatchExpectationsInOrder(false)
 
-	// Main alert history query
-	mock.ExpectQuery("(?i)SELECT ah\\.sent_at, c\\.cve_id, c\\.description, c\\.cvss_score FROM alert_history ah JOIN cves c ON ah\\.cve_id = c\\.id WHERE ah\\.user_id = \\$1 ORDER BY ah\\.sent_at DESC LIMIT 100").
-		WithArgs(1).
-		WillReturnRows(mock.NewRows([]string{"sent_at", "cve_id", "description", "cvss_score"}))
+			app := setupTestApp(t, mock)
+			tt.mockExpect(mock)
 
-	expectBaseQueries(mock, 1)
+			req := httptest.NewRequest("GET", "/alerts", nil)
 
-	rr := httptest.NewRecorder()
-	app.AlertHistoryHandler(rr, req)
+			if tt.userID > 0 {
+				setSessionUser(t, app, req, tt.userID, false)
+			}
 
-	if rr.Code != http.StatusOK {
-		t.Errorf("expected 200 OK, got %d", rr.Code)
-	}
+			rr := httptest.NewRecorder()
+			app.AlertHistoryHandler(rr, req)
 
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Errorf("unmet expectations: %v", err)
+			if rr.Code != tt.expectedStatus {
+				t.Errorf("%s: expected status %d, got %d", tt.name, tt.expectedStatus, rr.Code)
+			}
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("%s: unmet expectations: %v", tt.name, err)
+			}
+		})
 	}
 }
 
