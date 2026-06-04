@@ -246,6 +246,7 @@ func (w *Worker) postJSON(webhookURL string, payload interface{}) (bool, string)
 		return false, fmt.Sprintf("failed to create request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Host = parsedURL.Host
 	resp, err := client.Do(req)
 	if err != nil {
 		return false, err.Error()
@@ -296,7 +297,7 @@ func (w *Worker) sendEmailAlert(email string, cve *models.CVE, sev, color, token
 			</div>
 		</div>
 		<p style="font-size: 16px; line-height: 1.7; color: #dfe2eb; margin-bottom: 30px;">{{.Description}}</p>
-		
+
 		<div style="margin-top: 30px;">
 			<table width="100%" border="0" cellspacing="0" cellpadding="0">
 				<tr>
@@ -373,6 +374,7 @@ func (w *Worker) sendGenericWebhook(webhookURL string, cve *models.CVE, asset, e
 
 	req, _ := http.NewRequestWithContext(httpCtx, "POST", webhookURL, strings.NewReader(string(payload)))
 	req.Header.Set("Content-Type", "application/json")
+	req.Host = parsedURL.Host
 
 	// Webhook Signing (Item 10)
 	secret := w.WebhookSecret
