@@ -10,8 +10,6 @@ import (
 	"os"
 	"strconv"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 )
 
 var (
@@ -144,38 +142,24 @@ func (w *Worker) updateGitHubBatch(ctx context.Context, updates []githubUpdateIt
 		return
 	}
 
-	tx, err := w.Pool.Begin(ctx)
+	cveIDs := make([]string, len(updates))
+	counts := make([]int, len(updates))
+
+	for i, up := range updates {
+		cveIDs[i] = up.cveID
+		counts[i] = up.totalCount
+	}
+
+	query := `
+		UPDATE cves
+		SET github_poc_count = u.github_poc_count
+		FROM (SELECT unnest($1::text[]) as cve_id, unnest($2::integer[]) as github_poc_count) as u
+		WHERE cves.cve_id = u.cve_id
+		AND cves.github_poc_count IS DISTINCT FROM u.github_poc_count
+	`
+	_, err := w.Pool.Exec(ctx, query, cveIDs, counts)
 	if err != nil {
-		slog.Error("Worker: [ERROR] Failed to begin transaction for GitHub updates", "error", err)
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	query := "UPDATE cves SET github_poc_count = $1 WHERE cve_id = $2"
-	batch := &pgx.Batch{}
-	for _, up := range updates {
-		batch.Queue(query, up.totalCount, up.cveID)
-	}
-
-	br := tx.SendBatch(ctx, batch)
-	if br != nil {
-		defer br.Close()
-		for _, up := range updates {
-			if _, err := br.Exec(); err != nil {
-				slog.Error("Worker: [ERROR] Failed to update GitHub buzz in DB via batch", "cve_id", up.cveID, "error", err)
-			}
-		}
-	} else {
-		// Fallback for pgxmock test compatibility
-		for _, up := range updates {
-			if _, err := tx.Exec(ctx, query, up.totalCount, up.cveID); err != nil {
-				slog.Error("Worker: [ERROR] Failed to update GitHub buzz in DB", "cve_id", up.cveID, "error", err)
-			}
-		}
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		slog.Error("Worker: [ERROR] Failed to commit GitHub updates", "error", err)
+		slog.Error("Worker: [ERROR] Failed to bulk update GitHub buzz", "error", err)
 	}
 }
 

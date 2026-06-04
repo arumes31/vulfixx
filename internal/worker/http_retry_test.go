@@ -204,9 +204,7 @@ func TestWorkerSync_GitHub_RateLimit(t *testing.T) {
 	w := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
 	mock.ExpectQuery("SELECT cve_id FROM cves").WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-LIMIT-1"))
-	mock.ExpectBegin()
-	mock.ExpectExec("UPDATE cves SET github_poc_count = \\$1 WHERE cve_id = \\$2").WithArgs(42, "CVE-LIMIT-1").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-	mock.ExpectCommit()
+	mock.ExpectExec("UPDATE cves SET github_poc_count = u.github_poc_count").WithArgs([]string{"CVE-LIMIT-1"}, []int{42}).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("github_buzz_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	// Speed up the test

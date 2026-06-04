@@ -44,3 +44,8 @@
 ## 2026-05-30 - Optimized Database Updates in GitHub Buzz Sync
 **Learning:** Performing individual `tx.Exec` calls within a transaction loop in `updateGitHubBatch` for 50 items results in 50 separate database roundtrips, which degrades performance.
 **Action:** Implemented `pgx.Batch` within the transaction to send all update queries in a single database roundtrip, significantly reducing I/O latency, while maintaining a fallback loop for `pgxmock` test compatibility.
+
+## 2026-06-04 - Optimized GitHub Sync with unnest Bulk Update
+**Performance Issue:** While `pgx.Batch` was previously used, a single `UPDATE ... FROM (SELECT unnest(...))` statement is more efficient and idiomatic for bulk updates in PostgreSQL, as it executes as a single command and avoids multiple `Exec` calls.
+**Optimization:** Replaced `pgx.Batch` and transaction logic in `updateGitHubBatch` with a single `UPDATE` query using `unnest` for both CVE IDs and POC counts.
+**Impact:** Reduced database overhead and simplified the implementation by removing the need for manual transaction management and the `pgxmock` fallback loop.
