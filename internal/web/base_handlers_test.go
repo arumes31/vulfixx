@@ -132,6 +132,24 @@ func TestGetClientIP(t *testing.T) {
 		}
 	})
 
+	t.Run("FromXForwardedFor", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("X-Forwarded-For", "9.10.11.12, 10.0.0.1")
+		ip := app.GetClientIP(req)
+		if ip != "9.10.11.12" {
+			t.Errorf("expected 9.10.11.12, got %s", ip)
+		}
+	})
+
+	t.Run("FromXRealIP", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("X-Real-IP", "13.14.15.16")
+		ip := app.GetClientIP(req)
+		if ip != "13.14.15.16" {
+			t.Errorf("expected 13.14.15.16, got %s", ip)
+		}
+	})
+
 	t.Run("InvalidRemoteAddr", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/", nil)
 		req.RemoteAddr = "invalid-addr"

@@ -199,6 +199,25 @@ func (a *App) GetClientIP(r *http.Request) string {
 	if ip, ok := r.Context().Value(clientIPKey).(string); ok {
 		return ip
 	}
+	// Check X-Forwarded-For header
+	xff := r.Header.Get("X-Forwarded-For")
+	if xff != "" {
+		ips := strings.Split(xff, ",")
+		if len(ips) > 0 {
+			ip := strings.TrimSpace(ips[0])
+			if ip != "" {
+				return ip
+			}
+		}
+	}
+	// Check X-Real-IP header
+	xrip := r.Header.Get("X-Real-IP")
+	if xrip != "" {
+		ip := strings.TrimSpace(xrip)
+		if ip != "" {
+			return ip
+		}
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
