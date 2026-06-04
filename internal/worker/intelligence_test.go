@@ -227,5 +227,16 @@ func TestWorker_Health_Coverage(t *testing.T) {
 		defer cancel()
 
 		w.waitUntilNextRun(ctx, "wait_task", 1*time.Hour, 0)
+
+	})
+	t.Run("fetchDuplicatesBatch", func(t *testing.T) {
+		cves := []models.CVE{
+			{ID: 1, CVEID: "CVE-2024-0001", CWEID: "CWE-79", CVSSScore: 7.5, PublishedDate: time.Now(), OSINTData: make(models.JSONBMap)},
+			{ID: 2, CVEID: "CVE-2024-0002", CWEID: "CWE-89", CVSSScore: 8.0, PublishedDate: time.Now(), OSINTData: make(models.JSONBMap)},
+		}
+		results := w.fetchDuplicatesBatch(context.Background(), cves)
+		if len(results) != 0 {
+			t.Errorf("expected 0 results because SendBatch returns nil in mock, got %d", len(results))
+		}
 	})
 }

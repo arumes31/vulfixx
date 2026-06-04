@@ -19,6 +19,7 @@ type DBPool interface {
 	Begin(ctx context.Context) (pgx.Tx, error)
 	Close()
 	Ping(ctx context.Context) error
+	SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults
 }
 
 var (

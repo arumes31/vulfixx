@@ -77,12 +77,17 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 	}
 
 	batch := &pgx.Batch{}
+	// Batch Duplicate Detection
+	duplicatesResults := w.fetchDuplicatesBatch(ctx, cves)
+
 	for _, c := range cves {
 		// 1. Social Sentiment (Reddit & HN)
 		w.updateSocialSentiment(ctx, &c)
 
-		// 2. Duplicate Detection (Simplified)
-		w.detectDuplicates(ctx, &c)
+		// 2. Duplicate Detection (Batched)
+		if dups, ok := duplicatesResults[c.CVEID]; ok {
+			c.OSINTData["similar_threats"] = dups
+		}
 
 		// Queue update
 		osintData, _ := json.Marshal(c.OSINTData)
@@ -165,6 +170,62 @@ func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
 	heatScore := (float64(hnCount) * 2.0) + (float64(redditCount) * 1.5) + (float64(githubCount) * 5.0)
 	c.OSINTData["heat_score"] = heatScore
 }
+func (w *Worker) fetchDuplicatesBatch(ctx context.Context, cves []models.CVE) map[string][]string {
+	results := make(map[string][]string)
+	batch := &pgx.Batch{}
+
+	type trackedCVE struct {
+		cveID string
+	}
+	var tracked []trackedCVE
+
+	for _, c := range cves {
+		if c.CWEID == "" || c.CWEID == "NVD-CWE-noinfo" {
+			continue
+		}
+		tracked = append(tracked, trackedCVE{cveID: c.CVEID})
+		batch.Queue(`
+			SELECT cve_id FROM cves
+			WHERE cwe_id = $1 AND id != $2 AND ABS(cvss_score - $3) <= 0.5 AND published_date > $4
+			ORDER BY ABS(cvss_score - $3) ASC
+			LIMIT 5
+		`, c.CWEID, c.ID, c.CVSSScore, c.PublishedDate.AddDate(0, 0, -7))
+	}
+
+	if batch.Len() == 0 {
+		return results
+	}
+
+	br := w.Pool.SendBatch(ctx, batch)
+	if br == nil {
+		return results
+	}
+	defer br.Close()
+
+	for _, t := range tracked {
+		rows, err := br.Query()
+		if err != nil {
+			slog.Error("Worker: Batch query failed in fetchDuplicatesBatch", "cve_id", t.cveID, "error", err)
+			continue
+		}
+
+		var duplicateIDs []string
+		for rows.Next() {
+			var dupID string
+			if err := rows.Scan(&dupID); err == nil {
+				duplicateIDs = append(duplicateIDs, dupID)
+			}
+		}
+		rows.Close()
+
+		if len(duplicateIDs) > 0 {
+			results[t.cveID] = duplicateIDs
+		}
+	}
+
+	return results
+}
+
 
 func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
 	// Simple duplicate detection: Look for CVEs with similar descriptions published around the same time
