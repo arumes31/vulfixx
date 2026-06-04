@@ -44,3 +44,8 @@
 ## 2026-05-30 - Optimized Database Updates in GitHub Buzz Sync
 **Learning:** Performing individual `tx.Exec` calls within a transaction loop in `updateGitHubBatch` for 50 items results in 50 separate database roundtrips, which degrades performance.
 **Action:** Implemented `pgx.Batch` within the transaction to send all update queries in a single database roundtrip, significantly reducing I/O latency, while maintaining a fallback loop for `pgxmock` test compatibility.
+
+## 2026-06-04 - Optimized Unnecessary Database Count Query
+**Performance Issue:** Executing an explicit `SELECT COUNT(*)` query to count rows after having just queried and loaded the exact same set of rows (with identical conditions and limits) into memory.
+**Learning:** Using `SELECT COUNT(*) FROM (... LIMIT N)` is unnecessary when the data has already been fetched into a slice with the exact same query conditions.
+**Action:** Use `len(slice)` instead to obtain the count, which avoids an extra, redundant database roundtrip.
