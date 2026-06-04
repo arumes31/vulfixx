@@ -429,21 +429,9 @@ func newSafeHTTPClient(timeout time.Duration) *http.Client {
 				}
 			}
 
-			ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+			safeIP, err := security.ResolveSafeIP(ctx, host)
 			if err != nil {
 				return nil, err
-			}
-
-			var safeIP net.IP
-			for _, ipAddr := range ips {
-				if security.IsIPSafe(ipAddr.IP) {
-					safeIP = ipAddr.IP
-					break
-				}
-			}
-
-			if safeIP == nil {
-				return nil, fmt.Errorf("no safe IP for %s", host)
 			}
 
 			return dialer.DialContext(ctx, network, net.JoinHostPort(safeIP.String(), portStr))

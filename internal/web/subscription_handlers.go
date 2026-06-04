@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"html/template"
 	"log"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -140,16 +139,14 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 
 			// SSRF protection: block internal/loopback IPs
 			host := parsed.Hostname()
-			ips, err := net.LookupIP(host)
+			isSafe, err := security.IsHostSafe(r.Context(), host)
 			if err != nil {
 				a.SendResponse(w, r, false, "", "", "Invalid webhook host")
 				return
 			}
-			for _, ip := range ips {
-				if !security.IsIPSafe(ip) {
-					a.SendResponse(w, r, false, "", "", "Internal or restricted webhook URLs are not allowed")
-					return
-				}
+			if !isSafe {
+				a.SendResponse(w, r, false, "", "", "Internal or restricted webhook URLs are not allowed")
+				return
 			}
 
 			jsonData.WebhookURL = parsed.String()

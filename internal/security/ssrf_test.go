@@ -1,6 +1,7 @@
 package security
 
 import (
+	"context"
 	"net"
 	"os"
 	"testing"
@@ -62,6 +63,65 @@ func TestIsIPSafe_NilAndMalformed(t *testing.T) {
 		malformed := net.IP([]byte{1, 2, 3})
 		if IsIPSafe(malformed) {
 			t.Error("expected IsIPSafe(malformed) to be false")
+		}
+	})
+}
+
+func TestResolveSafeIP(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("ValidPublicHost", func(t *testing.T) {
+		// localhost typically resolves to 127.0.0.1, which is not safe unless TEST_MODE=1
+		os.Unsetenv("TEST_MODE")
+		_, err := ResolveSafeIP(ctx, "localhost")
+		if err == nil {
+			t.Error("expected error for localhost when TEST_MODE=0")
+		}
+
+		os.Setenv("TEST_MODE", "1")
+		defer os.Unsetenv("TEST_MODE")
+
+		ip, err := ResolveSafeIP(ctx, "localhost")
+		if err != nil {
+			t.Fatalf("expected no error for localhost in TEST_MODE=1, got %v", err)
+		}
+		if ip == nil {
+			t.Fatal("expected an IP for localhost")
+		}
+	})
+
+	t.Run("UnsafeHost", func(t *testing.T) {
+		os.Unsetenv("TEST_MODE")
+		_, err := ResolveSafeIP(ctx, "localhost")
+		if err == nil {
+			t.Fatal("expected error for unsafe host (localhost) when TEST_MODE=0")
+		}
+	})
+}
+
+func TestIsHostSafe(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("UnsafeHost", func(t *testing.T) {
+		os.Unsetenv("TEST_MODE")
+		safe, err := IsHostSafe(ctx, "localhost")
+		if err != nil {
+			t.Fatalf("IsHostSafe returned error: %v", err)
+		}
+		if safe {
+			t.Fatal("expected IsHostSafe(localhost) to be false")
+		}
+	})
+
+	t.Run("SafeHostInTestMode", func(t *testing.T) {
+		os.Setenv("TEST_MODE", "1")
+		defer os.Unsetenv("TEST_MODE")
+		safe, err := IsHostSafe(ctx, "localhost")
+		if err != nil {
+			t.Fatalf("IsHostSafe returned error: %v", err)
+		}
+		if !safe {
+			t.Fatal("expected IsHostSafe(localhost) to be true in TEST_MODE=1")
 		}
 	})
 }
