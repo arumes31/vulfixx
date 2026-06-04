@@ -30,6 +30,25 @@ func TestSetupHelpers(t *testing.T) {
 		if ReplicaPool != mock {
 			t.Error("SetupTestDB did not set ReplicaPool correctly")
 		}
+
+		// Functional Verification
+		mock.ExpectPing()
+		if err := Pool.Ping(ctx); err != nil {
+			t.Errorf("expected pool ping to succeed, got %v", err)
+		}
+
+		mock.ExpectQuery("SELECT 1").WillReturnRows(pgxmock.NewRows([]string{"one"}).AddRow(1))
+		var val int
+		if err := ReplicaPool.QueryRow(ctx, "SELECT 1").Scan(&val); err != nil {
+			t.Errorf("expected replica pool query to succeed, got %v", err)
+		}
+		if val != 1 {
+			t.Errorf("expected 1, got %d", val)
+		}
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("there were unfulfilled expectations: %s", err)
+		}
 	})
 
 	t.Run("SetupTestRedis", func(t *testing.T) {
