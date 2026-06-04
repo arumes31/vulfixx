@@ -9,10 +9,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"golang.org/x/sync/errgroup"
 )
 
 func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
@@ -62,7 +62,7 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 	}
 	defer rows.Close()
 
-	var cves []models.CVE
+	var cves []*models.CVE
 	for rows.Next() {
 		var c models.CVE
 		var osintJSON []byte
@@ -73,55 +73,63 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		if c.OSINTData == nil {
 			c.OSINTData = make(map[string]interface{})
 		}
-		cves = append(cves, c)
+		cves = append(cves, &c)
 	}
 
-	batch := &pgx.Batch{}
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(10)
+
 	for _, c := range cves {
-		// 1. Social Sentiment (Reddit & HN)
-		w.updateSocialSentiment(ctx, &c)
+		c := c // shadow for goroutine
+		g.Go(func() error {
+			// 1. Social Sentiment (Reddit & HN)
+			w.updateSocialSentiment(gCtx, c)
 
-		// 2. Duplicate Detection (Simplified)
-		w.detectDuplicates(ctx, &c)
+			// 2. Duplicate Detection (Simplified)
+			w.detectDuplicates(gCtx, c)
 
-		// Queue update
-		osintData, _ := json.Marshal(c.OSINTData)
-		batch.Queue("UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
-
-		// Throttle to avoid rate limits
-		time.Sleep(500 * time.Millisecond)
+			return nil
+		})
 	}
 
-	if batch.Len() > 0 {
+	if err := g.Wait(); err != nil {
+		return err
+	}
+
+	if len(cves) > 0 {
 		tx, err := w.Pool.Begin(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to begin transaction for intelligence sync: %w", err)
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
 
+		query := "UPDATE cves SET osint_data = $1 WHERE id = $2"
+		batch := &pgx.Batch{}
+		for _, c := range cves {
+			osintData, _ := json.Marshal(c.OSINTData)
+			batch.Queue(query, osintData, c.ID)
+		}
+
 		br := tx.SendBatch(ctx, batch)
 		if br != nil {
+			defer br.Close()
 			for i := 0; i < batch.Len(); i++ {
 				if _, err := br.Exec(); err != nil {
 					slog.Error("Worker: Batch item failed in intelligence sync", "error", err)
 				}
 			}
-			if err := br.Close(); err != nil {
-				slog.Error("Worker: Failed to close batch results in intelligence sync", "error", err)
-			}
 		} else {
-			// Fallback for mock drivers
+			// Fallback for pgxmock test compatibility
 			for _, c := range cves {
 				osintData, _ := json.Marshal(c.OSINTData)
-				_, err = tx.Exec(ctx, "UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
-				if err != nil {
-					slog.Error("Worker: Fallback update failed in intelligence sync", "cve_id", c.CVEID, "error", err)
+				if _, err := tx.Exec(ctx, query, osintData, c.ID); err != nil {
+					slog.Error("Worker: Intelligence sync update failed", "id", c.ID, "error", err)
 				}
 			}
 		}
 
 		if err := tx.Commit(ctx); err != nil {
-			return fmt.Errorf("failed to commit intelligence sync batch: %w", err)
+			return fmt.Errorf("failed to commit transaction for intelligence sync: %w", err)
 		}
 	}
 
@@ -130,39 +138,27 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 }
 
 func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-
-	wg.Add(2)
-
 	// Hacker News Mentions
-	go func() {
-		defer wg.Done()
-		if count, _, err := w.fetchHNMentions(ctx, c.CVEID); err == nil {
-			mu.Lock()
-			c.OSINTData["hn_mentions"] = count
-			mu.Unlock()
-		}
-	}()
+	if count, _, err := w.fetchHNMentions(ctx, c.CVEID); err == nil {
+		c.OSINTData["hn_mentions"] = count
+	}
 
 	// Reddit Mentions
-	go func() {
-		defer wg.Done()
-		if count, _, err := w.fetchRedditMentions(ctx, c.CVEID); err == nil {
-			mu.Lock()
-			c.OSINTData["reddit_mentions"] = count
-			mu.Unlock()
-		}
-	}()
-
-	wg.Wait()
+	if count, _, err := w.fetchRedditMentions(ctx, c.CVEID); err == nil {
+		c.OSINTData["reddit_mentions"] = count
+	}
 
 	// Sentiment Score Calculation (Simplified Heat Score)
-	hnCount, _ := c.OSINTData["hn_mentions"].(int)
-	redditCount, _ := c.OSINTData["reddit_mentions"].(int)
-	githubCount := c.GitHubPoCCount
+	var hnMentions, redditMentions float64
+	if val, ok := c.OSINTData["hn_mentions"].(int); ok {
+		hnMentions = float64(val)
+	}
+	if val, ok := c.OSINTData["reddit_mentions"].(int); ok {
+		redditMentions = float64(val)
+	}
 
-	heatScore := (float64(hnCount) * 2.0) + (float64(redditCount) * 1.5) + (float64(githubCount) * 5.0)
+	// Calculate a simple heat score
+	heatScore := (hnMentions * 2.0) + redditMentions + (float64(c.GitHubPoCCount) * 5.0)
 	c.OSINTData["heat_score"] = heatScore
 }
 
@@ -230,46 +226,47 @@ func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("User-Agent", "Vulfixx/2.0 (Threat Intelligence Bot)")
+		req.Header.Set("User-Agent", "vulfixx:cve-tracker:v1.0 (by /u/vulfixx)")
 		return req, nil
 	})
+
 	if err != nil {
 		return 0, nil, err
-	}
-
-	if resp == nil {
-		return 0, nil, fmt.Errorf("Reddit API returned nil response")
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return 0, nil, fmt.Errorf("Reddit API returned status %d", resp.StatusCode)
+		return 0, nil, fmt.Errorf("reddit api returned status %d", resp.StatusCode)
 	}
 
-	var rResp struct {
+	// Protect against large responses
+	lr := io.LimitReader(resp.Body, 1*1024*1024)
+	var result struct {
 		Data struct {
 			Children []struct {
-				Data struct {
-					Title     string `json:"title"`
-					Permalink string `json:"permalink"`
-				} `json:"data"`
+				Data map[string]interface{} `json:"data"`
 			} `json:"children"`
 		} `json:"data"`
 	}
 
-	// Limit response size to 1MB to prevent DoS
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1024*1024)).Decode(&rResp); err != nil {
+	if err := json.NewDecoder(lr).Decode(&result); err != nil {
 		return 0, nil, err
 	}
 
-	links := []map[string]string{}
-	for _, child := range rResp.Data.Children {
-		if !isValidRedditPermalink(child.Data.Permalink) {
-			continue
+	var mentions []map[string]string
+	for _, child := range result.Data.Children {
+		mention := make(map[string]string)
+		if title, ok := child.Data["title"].(string); ok {
+			mention["title"] = title
 		}
-		redditLink := fmt.Sprintf("https://www.reddit.com%s", child.Data.Permalink)
-		links = append(links, map[string]string{"title": child.Data.Title, "url": redditLink})
+		if permalink, ok := child.Data["permalink"].(string); ok {
+			if !isValidRedditPermalink(permalink) {
+				continue
+			}
+			mention["url"] = "https://reddit.com" + permalink
+		}
+		mentions = append(mentions, mention)
 	}
 
-	return len(links), links, nil
+	return len(mentions), mentions, nil
 }

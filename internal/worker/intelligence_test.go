@@ -158,6 +158,7 @@ func TestWorker_Intelligence(t *testing.T) {
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE cves SET osint_data = $1 WHERE id = $2")).
 			WithArgs(pgxmock.AnyArg(), 1).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
 		mock.ExpectCommit()
 
 		// Mock updateTaskStats
