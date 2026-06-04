@@ -18,19 +18,25 @@ import (
 const osvConcurrency = 10
 
 type osvResponse struct {
-	ID       string `json:"id"`
-	Modified string `json:"modified"`
-	Affected []struct {
-		Package struct {
-			Name      string `json:"name"`
-			Ecosystem string `json:"ecosystem"`
-		} `json:"package"`
-		Ranges []struct {
-			Type   string              `json:"type"`
-			Events []map[string]string `json:"events"`
-		} `json:"ranges"`
-		Versions []string `json:"versions"`
-	} `json:"affected"`
+	ID       string        `json:"id"`
+	Modified string        `json:"modified"`
+	Affected []osvAffected `json:"affected"`
+}
+
+type osvAffected struct {
+	Package  osvPackage `json:"package"`
+	Ranges   []osvRange `json:"ranges"`
+	Versions []string   `json:"versions"`
+}
+
+type osvPackage struct {
+	Name      string `json:"name"`
+	Ecosystem string `json:"ecosystem"`
+}
+
+type osvRange struct {
+	Type   string              `json:"type"`
+	Events []map[string]string `json:"events"`
 }
 
 func (w *Worker) syncOSVPeriodically(ctx context.Context) {
@@ -60,25 +66,9 @@ type updateItem struct {
 func (w *Worker) syncOSV(ctx context.Context) {
 	slog.Info("Worker: [SYNC] Starting OSV (Open Source Vulnerabilities) synchronization...")
 
-	// Prioritize CVEs that haven't been checked yet, then oldest ones (older than 30 days)
-	rows, err := w.Pool.Query(ctx, `
-		SELECT id, cve_id, vendor, product, affected_products FROM cves
-		WHERE osv_last_updated IS NULL OR osv_last_updated < NOW() - INTERVAL '30 days'
-		ORDER BY osv_last_updated ASC NULLS FIRST
-		LIMIT 200
-	`)
+	cves, err := w.fetchCVEsForOSV(ctx)
 	if err != nil {
-		slog.Error("Worker: [ERROR] Failed to fetch CVEs for OSV sync", "error", err)
 		return
-	}
-	defer rows.Close()
-
-	var cves []models.CVE
-	for rows.Next() {
-		var cve models.CVE
-		if err := rows.Scan(&cve.ID, &cve.CVEID, &cve.Vendor, &cve.Product, &cve.AffectedProducts); err == nil {
-			cves = append(cves, cve)
-		}
 	}
 
 	if len(cves) == 0 {
@@ -111,56 +101,7 @@ func (w *Worker) syncOSV(ctx context.Context) {
 				item := updateItem{cve: cve, osvData: osvData}
 				if osvData != nil {
 					item.hasData = true
-					// Deep Enrichment: Extract products and versions
-					for _, aff := range osvData.Affected {
-						vendor := aff.Package.Ecosystem
-						product := aff.Package.Name
-
-						// Build version string from ranges
-						var versionParts []string
-						for _, r := range aff.Ranges {
-							var start, end string
-							for _, ev := range r.Events {
-								if v, ok := ev["introduced"]; ok && v != "0" {
-									start = "≥" + v
-								}
-								if v, ok := ev["fixed"]; ok {
-									end = "<" + v
-								}
-								if v, ok := ev["last_affected"]; ok {
-									end = "≤" + v
-								}
-							}
-							if start != "" && end != "" {
-								versionParts = append(versionParts, start+" "+end)
-							} else if start != "" {
-								versionParts = append(versionParts, start)
-							} else if end != "" {
-								versionParts = append(versionParts, end)
-							}
-						}
-
-						versionStr := strings.Join(versionParts, ", ")
-						if versionStr == "" && len(aff.Versions) > 0 {
-							// Fallback to first few versions if no ranges
-							if len(aff.Versions) > 3 {
-								versionStr = strings.Join(aff.Versions[:3], ", ") + "..."
-							} else {
-								versionStr = strings.Join(aff.Versions, ", ")
-							}
-						}
-
-						item.cve.AddAffectedProduct(vendor, product, versionStr, false)
-
-						// If primary vendor/product is missing, use OSV as authoritative
-						if item.cve.Vendor == "" {
-							item.cve.Vendor = vendor
-						}
-						if item.cve.Product == "" {
-							item.cve.Product = product
-						}
-						item.changed = true
-					}
+					item.changed = enrichCVEWithOSV(&item.cve, osvData)
 				}
 				mu.Lock()
 				updates = append(updates, item)
@@ -183,10 +124,132 @@ func (w *Worker) syncOSV(ctx context.Context) {
 		return
 	}
 
+	count, err := w.batchUpdateOSV(ctx, updates)
+	if err != nil {
+		slog.Error("Worker: [ERROR] Failed to commit OSV updates", "error", err)
+	}
+
+	w.updateTaskStats(ctx, "osv_sync")
+	slog.Info("Worker: [SYNC] OSV synchronization complete.", "updated_count", count)
+}
+
+func (w *Worker) fetchOSVData(ctx context.Context, cveID string) (*osvResponse, error) {
+	url := fmt.Sprintf("https://api.osv.dev/v1/vulns/%s", cveID)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Vulfixx-Threat-Intel/2.0")
+
+	resp, err := w.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("OSV API returned status %d", resp.StatusCode)
+	}
+
+	var result osvResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+func (w *Worker) fetchCVEsForOSV(ctx context.Context) ([]models.CVE, error) {
+	// Prioritize CVEs that haven't been checked yet, then oldest ones (older than 30 days)
+	rows, err := w.Pool.Query(ctx, `
+		SELECT id, cve_id, vendor, product, affected_products FROM cves
+		WHERE osv_last_updated IS NULL OR osv_last_updated < NOW() - INTERVAL '30 days'
+		ORDER BY osv_last_updated ASC NULLS FIRST
+		LIMIT 200
+	`)
+	if err != nil {
+		slog.Error("Worker: [ERROR] Failed to fetch CVEs for OSV sync", "error", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cves []models.CVE
+	for rows.Next() {
+		var cve models.CVE
+		if err := rows.Scan(&cve.ID, &cve.CVEID, &cve.Vendor, &cve.Product, &cve.AffectedProducts); err == nil {
+			cves = append(cves, cve)
+		}
+	}
+	return cves, nil
+}
+
+func parseOSVVersions(ranges []osvRange, versions []string) string {
+	var versionParts []string
+	for _, r := range ranges {
+		var start, end string
+		for _, ev := range r.Events {
+			if v, ok := ev["introduced"]; ok && v != "0" {
+				start = "≥" + v
+			}
+			if v, ok := ev["fixed"]; ok {
+				end = "<" + v
+			}
+			if v, ok := ev["last_affected"]; ok {
+				end = "≤" + v
+			}
+		}
+		if start != "" && end != "" {
+			versionParts = append(versionParts, start+" "+end)
+		} else if start != "" {
+			versionParts = append(versionParts, start)
+		} else if end != "" {
+			versionParts = append(versionParts, end)
+		}
+	}
+
+	versionStr := strings.Join(versionParts, ", ")
+	if versionStr == "" && len(versions) > 0 {
+		// Fallback to first few versions if no ranges
+		if len(versions) > 3 {
+			versionStr = strings.Join(versions[:3], ", ") + "..."
+		} else {
+			versionStr = strings.Join(versions, ", ")
+		}
+	}
+	return versionStr
+}
+
+func enrichCVEWithOSV(cve *models.CVE, osvData *osvResponse) bool {
+	changed := false
+	// Deep Enrichment: Extract products and versions
+	for _, aff := range osvData.Affected {
+		vendor := aff.Package.Ecosystem
+		product := aff.Package.Name
+
+		versionStr := parseOSVVersions(aff.Ranges, aff.Versions)
+
+		cve.AddAffectedProduct(vendor, product, versionStr, false)
+
+		// If primary vendor/product is missing, use OSV as authoritative
+		if cve.Vendor == "" {
+			cve.Vendor = vendor
+		}
+		if cve.Product == "" {
+			cve.Product = product
+		}
+		changed = true
+	}
+	return changed
+}
+
+func (w *Worker) batchUpdateOSV(ctx context.Context, updates []updateItem) (int, error) {
 	tx, err := w.Pool.Begin(ctx)
 	if err != nil {
-		slog.Error("Worker: [ERROR] Failed to begin transaction for OSV updates", "error", err)
-		return
+		return 0, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
@@ -236,39 +299,8 @@ func (w *Worker) syncOSV(ctx context.Context) {
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		slog.Error("Worker: [ERROR] Failed to commit OSV updates", "error", err)
+		return count, err
 	}
 
-	w.updateTaskStats(ctx, "osv_sync")
-	slog.Info("Worker: [SYNC] OSV synchronization complete.", "updated_count", count)
-}
-
-func (w *Worker) fetchOSVData(ctx context.Context, cveID string) (*osvResponse, error) {
-	url := fmt.Sprintf("https://api.osv.dev/v1/vulns/%s", cveID)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", "Vulfixx-Threat-Intel/2.0")
-
-	resp, err := w.HTTP.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, nil
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OSV API returned status %d", resp.StatusCode)
-	}
-
-	var result osvResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-
-	return &result, nil
+	return count, nil
 }

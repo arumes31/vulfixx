@@ -17,22 +17,22 @@ import (
 )
 
 type Worker struct {
-	Pool               db.DBPool
-	Redis              db.RedisProvider
-	Mailer             EmailSender
-	HTTP               HTTPClient
-	AdminEmail         string
-	WebhookSecret      string
-	alertTimestamps    map[string]time.Time
-	alertMu            sync.Mutex
-	HNLimiter          *rate.Limiter
-	RedditLimiter      *rate.Limiter
-	alertResendBackoff time.Duration
-	enrichmentQueue    chan int
-	AsynqClient        *asynq.Client
-	HNClient           HNClient
-	TickerFactory      func(time.Duration) Ticker
-	TimerFactory       func(time.Duration) Timer
+	Pool                   db.DBPool
+	Redis                  db.RedisProvider
+	Mailer                 EmailSender
+	HTTP                   HTTPClient
+	AdminEmail             string
+	WebhookSecret          string
+	alertTimestamps        map[string]time.Time
+	alertMu                sync.Mutex
+	HNLimiter              *rate.Limiter
+	RedditLimiter          *rate.Limiter
+	alertResendBackoff     time.Duration
+	enrichmentQueue        chan int
+	AsynqClient            *asynq.Client
+	HNClient               HNClient
+	TickerFactory          func(time.Duration) Ticker
+	TimerFactory           func(time.Duration) Timer
 	OnHealthCheckDone      func()
 	OnIntelligenceSyncDone func()
 	OnAdvisoryRSSSyncDone  func()
