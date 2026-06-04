@@ -67,6 +67,8 @@ func getSessionInt(v any) (int, bool) {
 	switch val := v.(type) {
 	case int:
 		return val, true
+	case int32:
+		return int(val), true
 	case int64:
 		return int(val), true
 	case float64:
@@ -83,6 +85,8 @@ func getSessionInt64(v any) (int64, bool) {
 	}
 	switch val := v.(type) {
 	case int:
+		return int64(val), true
+	case int32:
 		return int64(val), true
 	case int64:
 		return val, true

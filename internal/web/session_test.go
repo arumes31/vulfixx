@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"errors"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gorilla/sessions"
 	"github.com/redis/go-redis/v9"
@@ -167,6 +168,7 @@ func TestGetSessionHelpers(t *testing.T) {
 			{int64(2), 2, true},
 			{float64(3.0), 3, true},
 			{float32(4.0), 4, true},
+			{int32(5), 5, true},
 			{nil, 0, false},
 			{"string", 0, false},
 		}
@@ -188,6 +190,7 @@ func TestGetSessionHelpers(t *testing.T) {
 			{int64(2), 2, true},
 			{float64(3.0), 3, true},
 			{float32(4.0), 4, true},
+			{int32(5), 5, true},
 			{nil, 0, false},
 			{"string", 0, false},
 		}
@@ -322,4 +325,117 @@ func TestApp_EnforceConcurrentSessions(t *testing.T) {
 			t.Error("expected sess_2, sess_3, and sess_4 to be preserved in Redis")
 		}
 	})
+}
+
+type mockStore struct {
+	sessions.Store
+	GetFunc  func(r *http.Request, name string) (*sessions.Session, error)
+	SaveFunc func(r *http.Request, w http.ResponseWriter, s *sessions.Session) error
+}
+
+func (m *mockStore) Get(r *http.Request, name string) (*sessions.Session, error) {
+	if m.GetFunc != nil {
+		return m.GetFunc(r, name)
+	}
+	return nil, nil
+}
+
+func (m *mockStore) New(r *http.Request, name string) (*sessions.Session, error) {
+	return m.Get(r, name)
+}
+
+func (m *mockStore) Save(r *http.Request, w http.ResponseWriter, s *sessions.Session) error {
+	if m.SaveFunc != nil {
+		return m.SaveFunc(r, w, s)
+	}
+	return nil
+}
+
+func TestApp_SessionMethods_Mock(t *testing.T) {
+	t.Run("GetActiveUserID_MockError", func(t *testing.T) {
+		mock := &mockStore{
+			GetFunc: func(r *http.Request, name string) (*sessions.Session, error) {
+				return nil, errors.New("mock error")
+			},
+		}
+		app := &App{SessionStore: mock}
+		req, _ := http.NewRequest("GET", "/", nil)
+		id, ok := app.GetActiveUserID(req)
+		if ok || id != 0 {
+			t.Errorf("expected (0, false), got (%d, %v)", id, ok)
+		}
+	})
+
+	t.Run("GetActiveTeamID_NilStore", func(t *testing.T) {
+		app := &App{}
+		req, _ := http.NewRequest("GET", "/", nil)
+		id, ok := app.GetActiveTeamID(req)
+		if ok || id != 0 {
+			t.Errorf("expected (0, false), got (%d, %v)", id, ok)
+		}
+	})
+
+	t.Run("SetActiveTeamID_NilStore", func(t *testing.T) {
+		app := &App{}
+		req, _ := http.NewRequest("GET", "/", nil)
+		rr := httptest.NewRecorder()
+		err := app.SetActiveTeamID(rr, req, 123)
+		if err == nil || err.Error() != "session store not initialized" {
+			t.Errorf("expected 'session store not initialized' error, got %v", err)
+		}
+	})
+
+	t.Run("SetActiveTeamID_SaveError", func(t *testing.T) {
+		mock := &mockStore{}
+		mock.GetFunc = func(r *http.Request, name string) (*sessions.Session, error) {
+			return sessions.NewSession(mock, "vulfixx-session"), nil
+		}
+		mock.SaveFunc = func(r *http.Request, w http.ResponseWriter, s *sessions.Session) error {
+			return errors.New("save error")
+		}
+		app := &App{SessionStore: mock}
+		req, _ := http.NewRequest("GET", "/", nil)
+		rr := httptest.NewRecorder()
+		err := app.SetActiveTeamID(rr, req, 123)
+		if err == nil || err.Error() != "save error" {
+			t.Errorf("expected 'save error', got %v", err)
+		}
+	})
+
+	t.Run("IsAdmin_NilStore", func(t *testing.T) {
+		app := &App{}
+		req, _ := http.NewRequest("GET", "/", nil)
+		if app.IsAdmin(req) {
+			t.Error("expected IsAdmin to return false for nil store")
+		}
+	})
+}
+
+func TestApp_EnforceConcurrentSessions_NilRedis(t *testing.T) {
+	app := &App{}
+	// Should not panic
+	app.EnforceConcurrentSessions(context.Background(), 1, "sess_1")
+}
+
+func TestApp_EnforceConcurrentSessions_EmptySessionID(t *testing.T) {
+	app := &App{Redis: redis.NewClient(&redis.Options{})}
+	// Should return early
+	app.EnforceConcurrentSessions(context.Background(), 1, "")
+}
+
+func TestInitRedisSession_NewStoreError(t *testing.T) {
+	// redisstore.NewRedisStore returns error if it fails to ping.
+	// But it uses context.Background() and it might not fail immediately if not connected yet?
+	// Actually redisstore.NewRedisStore calls rdb.Ping(ctx).Result()
+
+	// Create a client that will fail to ping
+	rdb := redis.NewClient(&redis.Options{
+		Addr: "localhost:1", // invalid address
+	})
+	defer rdb.Close()
+
+	_, err := InitRedisSession(rdb, []byte("key"), true)
+	if err == nil {
+		t.Error("expected error for unreachable redis")
+	}
 }
