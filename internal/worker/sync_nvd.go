@@ -5,6 +5,7 @@ import (
 	"cve-tracker/internal/config"
 	"cve-tracker/internal/llm"
 	"cve-tracker/internal/models"
+	"cve-tracker/internal/db"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -278,7 +279,7 @@ func getCVSSMetric(metrics NVDCVE) (float64, string) {
 	return 0, ""
 }
 
-func getCWEID(weaknesses []struct {
+func extractCWEID(weaknesses []struct {
 	Description []struct {
 		Lang  string `json:"lang"`
 		Value string `json:"value"`
@@ -294,6 +295,15 @@ func getCWEID(weaknesses []struct {
 	return ""
 }
 
+func getCWEID(ctx context.Context, pool db.DBPool, cweName string) *int {
+	var id int
+	err := pool.QueryRow(ctx, "SELECT id FROM cwes WHERE name = $1", cweName).Scan(&id)
+	if err != nil {
+		return nil
+	}
+	return &id
+}
+
 func mapNVDEntryToModel(entry NVDCVEEntry) (models.CVE, error) {
 	cve := entry.CVE
 
@@ -305,7 +315,7 @@ func mapNVDEntryToModel(entry NVDCVEEntry) (models.CVE, error) {
 		}
 	}
 	score, vector := getCVSSMetric(cve)
-	cweID := getCWEID(cve.Weaknesses)
+	cweID := extractCWEID(cve.Weaknesses)
 
 	var references []string
 	exploitAvailable := false
