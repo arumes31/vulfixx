@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -29,6 +30,24 @@ type ExtractionResponse struct {
 }
 
 var ErrRateLimit = errors.New("llm rate limit exceeded")
+
+// defaultGeminiRPM is the free-tier requests-per-minute target used to pace
+// Gemini calls. gemini-2.5-flash (the default model) allows 5 RPM; models such
+// as gemini-2.0-flash or gemini-3.1-flash-lite allow more. Override via the
+// GEMINI_RPM environment variable when using a model/tier with a higher limit.
+const defaultGeminiRPM = 5
+
+// geminiPauseInterval returns how long to wait after a successful Gemini call so
+// the steady-state request rate stays within the (free-tier) RPM limit.
+func geminiPauseInterval() time.Duration {
+	rpm := defaultGeminiRPM
+	if v := strings.TrimSpace(os.Getenv("GEMINI_RPM")); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			rpm = parsed
+		}
+	}
+	return time.Duration(int64(time.Minute) / int64(rpm))
+}
 
 // Global semaphore to limit LLM concurrency to 1.
 // This ensures that only one LLM request is processed at a time across the entire application.
@@ -102,10 +121,17 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 		}
 
 		if err == nil {
-			// Proactive rate limiting for Gemini free tier (15 RPM limit)
+			// Proactive rate limiting for the Gemini free tier. The semaphore is
+			// still held here, so pausing also paces concurrent callers. The pause
+			// is derived from the configured RPM (default 5, matching
+			// gemini-2.5-flash's free-tier limit).
 			if p == "gemini" {
-				slog.Debug("LLM: successful Gemini call, pausing 4s to respect free tier RPM limit")
-				time.Sleep(4 * time.Second)
+				pause := geminiPauseInterval()
+				slog.Debug("LLM: successful Gemini call, pacing to respect free tier RPM", "pause", pause)
+				select {
+				case <-time.After(pause):
+				case <-ctx.Done():
+				}
 			}
 			return results, nil
 		}

@@ -671,3 +671,28 @@ func TestSetCooldownAndIsCooledDown(t *testing.T) {
 		})
 	}
 }
+
+func TestGeminiPauseInterval(t *testing.T) {
+	t.Run("default is 5 RPM (12s)", func(t *testing.T) {
+		t.Setenv("GEMINI_RPM", "")
+		if got := geminiPauseInterval(); got != 12*time.Second {
+			t.Errorf("default pause = %v, want 12s (5 RPM)", got)
+		}
+	})
+	t.Run("honors GEMINI_RPM override", func(t *testing.T) {
+		t.Setenv("GEMINI_RPM", "15")
+		if got := geminiPauseInterval(); got != 4*time.Second {
+			t.Errorf("pause at 15 RPM = %v, want 4s", got)
+		}
+	})
+	t.Run("ignores invalid/zero override", func(t *testing.T) {
+		t.Setenv("GEMINI_RPM", "0")
+		if got := geminiPauseInterval(); got != 12*time.Second {
+			t.Errorf("pause with GEMINI_RPM=0 = %v, want default 12s", got)
+		}
+		t.Setenv("GEMINI_RPM", "notanumber")
+		if got := geminiPauseInterval(); got != 12*time.Second {
+			t.Errorf("pause with invalid GEMINI_RPM = %v, want default 12s", got)
+		}
+	})
+}

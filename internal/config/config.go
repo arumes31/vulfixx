@@ -88,8 +88,10 @@ func LoadConfig() error {
 		AppPort:         getEnv("PORT", "8080"),
 		SentryDSN:       decryptIfEncrypted(getEnv("SENTRY_DSN", "")),
 		GeminiAPIKey:     decryptIfEncrypted(getEnv("GEMINI_API_KEY", "")),
-		GeminiModel:      getEnv("GEMINI_MODEL", "gemini-1.5-flash"),
-		GeminiAPIVersion: getEnv("GEMINI_API_VERSION", "v1"),
+		GeminiModel:      getEnv("GEMINI_MODEL", "gemini-2.5-flash"),
+		// v1beta is required: the structured-output fields the extractor relies on
+		// (responseMimeType / responseSchema) are rejected by the stable v1 API.
+		GeminiAPIVersion: getEnv("GEMINI_API_VERSION", "v1beta"),
 		LLMProvider:      getEnv("LLM_PROVIDER", "ollama"),
 		LLMEndpoint:     getEnv("LLM_ENDPOINT", "http://ollama:11434"),
 		LLMModel:        getEnv("LLM_MODEL", "phi3-vulfixx"),
