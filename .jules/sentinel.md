@@ -1,0 +1,4 @@
+## 2026-06-04 - Fix XSS Vulnerability in CVE Details JSON-LD
+**Vulnerability:** XSS vulnerability through improperly sanitized JSON-LD injected into a script tag using `template.JS(safeJSONLD)`.
+**Learning:** Even if data is JSON marshalled, casting a string to `template.JS` disables Go's HTML template contextual escaping, making it susceptible to XSS if an attacker can sneak in arbitrary tags like `</script><script>alert(1)</script>`. String replacement is an insufficient mitigation compared to proper template engine escaping.
+**Prevention:** Avoid manually converting strings to `template.JS` for JSON data. Pass raw Go maps/structs directly into the `html/template` context variable within script tags, allowing the contextual engine to safely serialize the object to JSON while automatically escaping `<` and `>` into unicode (`\u003c`, `\u003e`).
