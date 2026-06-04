@@ -46,9 +46,10 @@ type Config struct {
 	SecureCookie    bool
 	AppPort         string
 	SentryDSN       string
-	GeminiAPIKey    string
-	GeminiModel     string
-	LLMProvider     string // "ollama" or "gemini"
+	GeminiAPIKey     string
+	GeminiModel      string
+	GeminiAPIVersion string
+	LLMProvider      string // "ollama" or "gemini"
 	LLMEndpoint     string // e.g. "http://ollama:11434"
 	LLMModel        string // e.g. "phi3" or "llama3"
 	LLMTimeout      int    // timeout in seconds
@@ -86,9 +87,10 @@ func LoadConfig() error {
 		AdminTOTPSecret: decryptIfEncrypted(getEnv("ADMIN_TOTP_SECRET", "")),
 		AppPort:         getEnv("PORT", "8080"),
 		SentryDSN:       decryptIfEncrypted(getEnv("SENTRY_DSN", "")),
-		GeminiAPIKey:    decryptIfEncrypted(getEnv("GEMINI_API_KEY", "")),
-		GeminiModel:     getEnv("GEMINI_MODEL", "gemini-1.5-flash"),
-		LLMProvider:     getEnv("LLM_PROVIDER", "ollama"),
+		GeminiAPIKey:     decryptIfEncrypted(getEnv("GEMINI_API_KEY", "")),
+		GeminiModel:      getEnv("GEMINI_MODEL", "gemini-1.5-flash"),
+		GeminiAPIVersion: getEnv("GEMINI_API_VERSION", "v1"),
+		LLMProvider:      getEnv("LLM_PROVIDER", "ollama"),
 		LLMEndpoint:     getEnv("LLM_ENDPOINT", "http://ollama:11434"),
 		LLMModel:        getEnv("LLM_MODEL", "phi3-vulfixx"),
 		LLMTimeout:      getEnvInt("LLM_TIMEOUT", 600),

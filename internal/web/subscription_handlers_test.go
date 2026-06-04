@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"cve-tracker/internal/db"
+	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -200,8 +201,8 @@ func TestSubscriptionHandlers_Detailed(t *testing.T) {
 	t.Run("SubscriptionsHandler_GET", func(t *testing.T) {
 		mock.ExpectQuery("(?is)SELECT us.id, us.keyword, us.min_severity, us.webhook_url,.*FROM user_subscriptions").
 			WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "keyword", "min_severity", "webhook_url", "slack_webhook_url", "teams_webhook_url", "enable_email", "enable_webhook", "enable_slack", "enable_teams", "enable_browser_push", "aggregation_mode", "team_id"}).
-				AddRow(1, "test", 5.0, "", "", "", true, true, false, false, false, "instant", nil))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "keyword", "min_severity", "webhook_url", "slack_webhook_url", "teams_webhook_url", "enable_email", "enable_webhook", "enable_slack", "enable_teams", "enable_browser_push", "aggregation_mode", "filter_logic", "team_id"}).
+				AddRow(1, "test", 5.0, "", "", "", true, true, false, false, false, "instant", "", nil))
 
 		expectBaseQueries(mock, 1)
 
@@ -234,7 +235,7 @@ func TestSubscriptionHandlers_Detailed(t *testing.T) {
 		mock.ExpectBegin()
 		mock.ExpectQuery("SELECT max_subscriptions FROM users WHERE id = \\$1 FOR UPDATE").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"max_subscriptions"}).AddRow(5))
 		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM user_subscriptions WHERE user_id = \\$1").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
-		mock.ExpectExec("INSERT INTO user_subscriptions").WithArgs(1, "new-keyword", 7.5, "", "", "", true, false, false, false, false, "instant").WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectExec("INSERT INTO user_subscriptions").WithArgs(1, "new-keyword", 7.5, "", "", "", true, false, false, false, false, "instant", "").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		mock.ExpectCommit()
 
 		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(1, "subscription_added", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -250,6 +251,84 @@ func TestSubscriptionHandlers_Detailed(t *testing.T) {
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	// Regression: Slack/Teams webhook URLs must be encrypted at rest so the worker
+	// (which calls models.DecryptWebhook on read) can recover them. Previously they
+	// were stored as plaintext, so decryption failed and Slack/Teams alerts silently
+	// never fired.
+	t.Run("SubscriptionsHandler_POST_EncryptsSlackWebhook", func(t *testing.T) {
+		t.Setenv("SESSION_KEY", "THIS_IS_A_MOCK_SESSION_KEY_32_BY")
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		const slackURL = "https://hooks.slack.com/services/T000/B000/XXXXXXXX"
+		form := url.Values{
+			"keyword":           {"kw"},
+			"min_severity":      {"5"},
+			"enable_email":      {"on"},
+			"enable_slack":      {"on"},
+			"slack_webhook_url": {slackURL},
+		}
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT max_subscriptions FROM users WHERE id = \\$1 FOR UPDATE").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"max_subscriptions"}).AddRow(5))
+		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM user_subscriptions WHERE user_id = \\$1").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
+		mock.ExpectExec("INSERT INTO user_subscriptions").
+			WithArgs(1, "kw", 5.0, "", encryptedWebhookArg{plaintext: slackURL, t: t}, "", true, false, true, false, false, "instant", "").
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectCommit()
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(1, "subscription_added", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d. Body: %s", rr.Code, rr.Body.String())
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	// Complex boolean filters are now wired end-to-end: a malformed filter_logic
+	// expression must be rejected before any DB write.
+	t.Run("SubscriptionsHandler_POST_RejectsInvalidFilter", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		form := url.Values{
+			"keyword":      {"kw"},
+			"min_severity": {"5"},
+			"enable_email": {"on"},
+			"filter_logic": {"epss >"}, // truncated term -> invalid
+		}
+		// No DB expectations: the handler must reject before touching the database.
+
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+
+		if !strings.Contains(rr.Body.String(), "Invalid filter logic") {
+			t.Errorf("expected invalid filter logic rejection, got body: %s", rr.Body.String())
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unexpected DB calls for invalid filter: %v", err)
 		}
 	})
 
@@ -303,7 +382,7 @@ func TestSubscriptionHandlers_Detailed(t *testing.T) {
 
 		// 2. UPDATE user_subscriptions
 		mock.ExpectExec("(?i)UPDATE user_subscriptions").
-			WithArgs("updated-keyword", 8.0, "http://example.com/webhook", "", "", true, true, false, false, false, "hourly", 42, 1).
+			WithArgs("updated-keyword", 8.0, "http://example.com/webhook", "", "", true, true, false, false, false, "hourly", "", 42, 1).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 		// 3. INSERT INTO user_activity_logs
@@ -325,4 +404,33 @@ func TestSubscriptionHandlers_Detailed(t *testing.T) {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
+}
+
+// encryptedWebhookArg is a pgxmock argument matcher asserting that the stored
+// webhook value is not the plaintext and decrypts back to the expected plaintext.
+type encryptedWebhookArg struct {
+	plaintext string
+	t         *testing.T
+}
+
+func (e encryptedWebhookArg) Match(v interface{}) bool {
+	s, ok := v.(string)
+	if !ok {
+		e.t.Errorf("expected stored webhook to be a string, got %T", v)
+		return false
+	}
+	if s == e.plaintext {
+		e.t.Errorf("webhook URL stored as plaintext, expected encrypted ciphertext")
+		return false
+	}
+	dec, err := models.DecryptWebhook(s)
+	if err != nil {
+		e.t.Errorf("stored webhook URL failed to decrypt: %v", err)
+		return false
+	}
+	if dec != e.plaintext {
+		e.t.Errorf("decrypted webhook = %q, want %q", dec, e.plaintext)
+		return false
+	}
+	return true
 }

@@ -343,7 +343,7 @@ func TestExtractWithArliAI(t *testing.T) {
 func TestExtractWithGemini(t *testing.T) {
 	t.Run("MissingAPIKey", func(t *testing.T) {
 		ctx := context.Background()
-		_, err := extractWithGemini(ctx, "", "model", "desc")
+		_, err := extractWithGemini(ctx, "", "model", "v1", "desc")
 		if err == nil || !strings.Contains(err.Error(), "gemini api key is required") {
 			t.Fatalf("expected api key required error, got %v", err)
 		}
@@ -381,7 +381,7 @@ func TestExtractWithGemini(t *testing.T) {
 		}
 
 		ctx := context.Background()
-		products, err := extractWithGemini(ctx, "key", "gemini-1.5-flash", "desc")
+		products, err := extractWithGemini(ctx, "key", "gemini-1.5-flash", "v1", "desc")
 		if err != nil {
 			t.Fatalf("extractWithGemini failed: %v", err)
 		}
@@ -408,7 +408,7 @@ func TestExtractWithGemini(t *testing.T) {
 		}
 
 		ctx := context.Background()
-		_, err := extractWithGemini(ctx, "key", "gemini-1.5-flash", "desc")
+		_, err := extractWithGemini(ctx, "key", "gemini-1.5-flash", "v1", "desc")
 		if err == nil {
 			t.Fatal("expected Gemini content error, got nil")
 		}
@@ -446,7 +446,7 @@ func TestExtractWithGemini(t *testing.T) {
 		}
 
 		ctx := context.Background()
-		_, err := extractWithGemini(ctx, "key", "gemini-1.5-flash", "desc")
+		_, err := extractWithGemini(ctx, "key", "gemini-1.5-flash", "v1", "desc")
 		if err == nil {
 			t.Fatal("expected Gemini json decode error, got nil")
 		}
@@ -565,6 +565,7 @@ func TestExtractVendorProduct(t *testing.T) {
 		config.AppConfig.LLMProvider = "gemini"
 		config.AppConfig.GeminiAPIKey = "dummy-key"
 		config.AppConfig.GeminiModel = "gemini-1.5-flash"
+		config.AppConfig.GeminiAPIVersion = "v1"
 
 		products, err := ExtractVendorProduct(context.Background(), "desc", []string{})
 		if err != nil {

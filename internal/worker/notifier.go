@@ -164,7 +164,7 @@ func (w *Worker) sendSlackAlert(webhookURL string, cve *models.CVE, asset string
 				"type": "section",
 				"text": map[string]interface{}{
 					"type": "mrkdwn",
-					"text": fmt.Sprintf("*Severity:* %f\n*Asset:* %s\n\n%s", cve.CVSSScore, asset, cve.Description),
+					"text": fmt.Sprintf("*Severity:* %.1f\n*Asset:* %s\n\n%s", cve.CVSSScore, asset, cve.Description),
 				},
 			},
 			map[string]interface{}{

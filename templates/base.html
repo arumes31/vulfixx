@@ -93,14 +93,14 @@
         @keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(-0.5rem); } }
     </style>
 </head>
-<body class="bg-[#0a0e14] text-on-surface font-sans selection:bg-primary selection:text-on-primary" 
+<body class="bg-surface-container-lowest text-on-surface font-sans selection:bg-primary selection:text-on-primary" 
       data-flash-message="{{.FlashMessage}}" 
       data-flash-type="{{.FlashType}}"
       data-user-logged-in="{{.UserLoggedIn}}"
       data-onboarding-completed="{{.OnboardingCompleted}}">
 
 {{if not .UserLoggedIn}}
-<header class="fixed top-0 left-0 right-0 h-20 bg-[#0a0e14]/80 backdrop-blur-xl border-b border-white/5 z-[100]">
+<header class="fixed top-0 left-0 right-0 h-20 bg-surface-container-lowest/80 backdrop-blur-xl border-b border-white/5 z-100">
     <div class="max-w-7xl mx-auto h-full px-6 flex items-center justify-between">
         <a href="/" class="flex items-center gap-3 group">
             <img src="/static/img/logo.png" alt="Vulfixx Logo" class="h-8 w-auto brand-glow">
@@ -121,55 +121,55 @@
     <div class="px-6 mb-12">
         <div class="flex items-center gap-3">
             <img src="/static/img/logo.png" alt="Vulfixx Logo" class="h-8 w-auto">
-            <span class="text-lg font-black text-[#dfe2eb] font-['Space_Grotesk'] tracking-widest uppercase">CVE Tracker</span>
+            <span class="text-lg font-black text-on-surface font-['Space_Grotesk'] tracking-widest uppercase">CVE Tracker</span>
         </div>
     </div>
     <nav class="flex-1 px-4 space-y-2">
-        <a class="flex items-center gap-4 px-4 py-3 text-[#dfe2eb] opacity-70 hover:bg-[#1c2026] hover:opacity-100 hover:text-[#00daf3] hover:border-l-4 hover:border-[#00daf3] transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase" href="/dashboard">
+        <a class="flex items-center gap-4 px-4 py-3 text-on-surface opacity-70 hover:bg-surface-container hover:opacity-100 hover:text-primary hover:border-l-4 hover:border-primary transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase" href="/dashboard">
             <span class="material-symbols-outlined" aria-hidden="true" data-icon="dashboard">dashboard</span>
             <span>Dashboard</span>
         </a>
-        <a class="flex items-center gap-4 px-4 py-3 text-[#dfe2eb] opacity-70 hover:bg-[#1c2026] hover:opacity-100 hover:text-[#00daf3] hover:border-l-4 hover:border-[#00daf3] transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase" href="/subscriptions">
+        <a class="flex items-center gap-4 px-4 py-3 text-on-surface opacity-70 hover:bg-surface-container hover:opacity-100 hover:text-primary hover:border-l-4 hover:border-primary transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase" href="/subscriptions">
             <span class="material-symbols-outlined" aria-hidden="true" data-icon="star">star</span>
             <span>Subscriptions</span>
         </a>
-        <a class="flex items-center gap-4 px-4 py-3 text-[#dfe2eb] opacity-70 hover:bg-[#1c2026] hover:opacity-100 hover:text-[#00daf3] hover:border-l-4 hover:border-[#00daf3] transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase" href="/assets">
+        <a class="flex items-center gap-4 px-4 py-3 text-on-surface opacity-70 hover:bg-surface-container hover:opacity-100 hover:text-primary hover:border-l-4 hover:border-primary transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase" href="/assets">
             <span class="material-symbols-outlined" aria-hidden="true" data-icon="inventory_2">inventory_2</span>
             <span>Assets</span>
         </a>
-        <a class="flex items-center gap-4 px-4 py-3 text-[#dfe2eb] opacity-70 hover:bg-[#1c2026] hover:opacity-100 hover:text-[#00daf3] hover:border-l-4 hover:border-[#00daf3] transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase" href="/alerts">
+        <a class="flex items-center gap-4 px-4 py-3 text-on-surface opacity-70 hover:bg-surface-container hover:opacity-100 hover:text-primary hover:border-l-4 hover:border-primary transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase" href="/alerts">
             <span class="material-symbols-outlined" aria-hidden="true" data-icon="notifications">notifications</span>
             <span>Alerts</span>
         </a>
-        <a class="flex items-center gap-4 px-4 py-3 text-[#dfe2eb] opacity-70 hover:bg-[#1c2026] hover:opacity-100 hover:text-[#00daf3] hover:border-l-4 hover:border-[#00daf3] transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase" href="/teams">
+        <a class="flex items-center gap-4 px-4 py-3 text-on-surface opacity-70 hover:bg-surface-container hover:opacity-100 hover:text-primary hover:border-l-4 hover:border-primary transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase" href="/teams">
             <span class="material-symbols-outlined" aria-hidden="true" data-icon="groups">groups</span>
             <span>Teams</span>
         </a>
-        <a class="flex items-center gap-4 px-4 py-3 text-[#dfe2eb] opacity-70 hover:bg-[#1c2026] hover:opacity-100 hover:text-[#00daf3] hover:border-l-4 hover:border-[#00daf3] transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase" href="/activity">
+        <a class="flex items-center gap-4 px-4 py-3 text-on-surface opacity-70 hover:bg-surface-container hover:opacity-100 hover:text-primary hover:border-l-4 hover:border-primary transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase" href="/activity">
             <span class="material-symbols-outlined" aria-hidden="true" data-icon="history">history</span>
             <span>Activity</span>
         </a>
         {{if .IsAdmin}}
-        <a class="flex items-center gap-4 px-4 py-3 text-[#dfe2eb] opacity-70 hover:bg-[#1c2026] hover:opacity-100 hover:text-[#00daf3] hover:border-l-4 hover:border-[#00daf3] transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase" href="/admin/users">
+        <a class="flex items-center gap-4 px-4 py-3 text-on-surface opacity-70 hover:bg-surface-container hover:opacity-100 hover:text-primary hover:border-l-4 hover:border-primary transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase" href="/admin/users">
             <span class="material-symbols-outlined" aria-hidden="true" data-icon="admin_panel_settings">admin_panel_settings</span>
             <span>Admin</span>
         </a>
         {{end}}
-        <a class="flex items-center gap-4 px-4 py-3 text-[#dfe2eb] opacity-70 hover:bg-[#1c2026] hover:opacity-100 hover:text-[#00daf3] hover:border-l-4 hover:border-[#00daf3] transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase" href="/settings">
+        <a class="flex items-center gap-4 px-4 py-3 text-on-surface opacity-70 hover:bg-surface-container hover:opacity-100 hover:text-primary hover:border-l-4 hover:border-primary transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase" href="/settings">
             <span class="material-symbols-outlined" aria-hidden="true" data-icon="settings">settings</span>
             <span>Settings</span>
         </a>
-        <button class="compact-toggle-btn w-full flex items-center gap-4 px-4 py-3 text-[#dfe2eb] opacity-70 hover:bg-[#1c2026] hover:opacity-100 hover:text-primary transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase border-none cursor-pointer bg-transparent">
+        <button class="compact-toggle-btn w-full flex items-center gap-4 px-4 py-3 text-on-surface opacity-70 hover:bg-surface-container hover:opacity-100 hover:text-primary transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase border-none cursor-pointer bg-transparent">
             <span class="material-symbols-outlined" aria-hidden="true" id="compact-toggle-icon">density_medium</span>
             <span id="compact-toggle-text">Compact View</span>
         </button>
-        <button class="theme-toggle-btn w-full flex items-center gap-4 px-4 py-3 text-[#dfe2eb] opacity-70 hover:bg-[#1c2026] hover:opacity-100 hover:text-[#00daf3] transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase border-none cursor-pointer bg-transparent">
+        <button class="theme-toggle-btn w-full flex items-center gap-4 px-4 py-3 text-on-surface opacity-70 hover:bg-surface-container hover:opacity-100 hover:text-primary transition-all duration-200 ease-out font-['Space_Grotesk'] font-medium text-sm tracking-widest uppercase border-none cursor-pointer bg-transparent">
             <span class="material-symbols-outlined" aria-hidden="true" id="theme-toggle-icon">light_mode</span>
             <span>Switch Theme</span>
         </button>
     </nav>
     <div class="px-4 py-2 space-y-3">
-        <div class="bg-[#1c2026]/50 rounded-lg p-4 border border-outline-variant/20">
+        <div class="bg-surface-container/50 rounded-lg p-4 border border-outline-variant/20">
             <div class="text-[10px] font-label font-black tracking-[0.2em] uppercase text-on-surface-variant/70 mb-3">Appliance Status</div>
             <div class="space-y-2">
                 <div class="flex items-center justify-between">
@@ -191,7 +191,7 @@
         
         <form action="/logout" method="POST" class="w-full">
             {{.csrfField}}
-            <button type="submit" class="w-full flex items-center justify-center gap-2 bg-[#93000a] text-[#ffdad6] py-3 rounded-md hover:bg-[#690005] transition-colors font-['Space_Grotesk'] tracking-widest text-sm font-bold uppercase">
+            <button type="submit" class="w-full flex items-center justify-center gap-2 bg-error-container text-[#ffdad6] py-3 rounded-md hover:bg-on-error transition-colors font-['Space_Grotesk'] tracking-widest text-sm font-bold uppercase">
                 <span class="material-symbols-outlined text-sm" aria-hidden="true">logout</span> Logout
             </button>
         </form>
@@ -207,8 +207,8 @@
     {{if .UserLoggedIn}}
     <header class="md:hidden flex items-center justify-between p-4 bg-[#10141a] border-b border-white/5">
         <div class="flex items-center gap-2">
-            <span class="material-symbols-outlined text-[#00daf3]" aria-hidden="true">shield</span>
-            <span class="font-black text-[#dfe2eb] font-['Space_Grotesk'] tracking-widest uppercase text-sm">CVE Tracker</span>
+            <span class="material-symbols-outlined text-primary" aria-hidden="true">shield</span>
+            <span class="font-black text-on-surface font-['Space_Grotesk'] tracking-widest uppercase text-sm">CVE Tracker</span>
         </div>
         <div class="flex items-center gap-3">
             <button class="theme-toggle-btn text-gray-400 text-xl" aria-label="Toggle Theme" title="Toggle Theme">
@@ -224,20 +224,20 @@
 
     <!-- Mobile Bottom Navigation -->
     {{if .UserLoggedIn}}
-    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-[#10141a] border-t border-white/10 flex items-center justify-around py-3 px-2 z-[100] backdrop-blur-lg bg-opacity-90">
-        <a href="/dashboard" class="flex flex-col items-center gap-1 text-gray-500 hover:text-[#00daf3] transition-colors">
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-[#10141a] border-t border-white/10 flex items-center justify-around py-3 px-2 z-100 backdrop-blur-lg bg-opacity-90">
+        <a href="/dashboard" class="flex flex-col items-center gap-1 text-gray-500 hover:text-primary transition-colors">
             <span class="material-symbols-outlined text-xl" aria-hidden="true">dashboard</span>
             <span class="text-[9px] font-black uppercase tracking-widest">Dash</span>
         </a>
-        <a href="/subscriptions" class="flex flex-col items-center gap-1 text-gray-500 hover:text-[#00daf3] transition-colors">
+        <a href="/subscriptions" class="flex flex-col items-center gap-1 text-gray-500 hover:text-primary transition-colors">
             <span class="material-symbols-outlined text-xl" aria-hidden="true">star</span>
             <span class="text-[9px] font-black uppercase tracking-widest">Subs</span>
         </a>
-        <a href="/assets" class="flex flex-col items-center gap-1 text-gray-500 hover:text-[#00daf3] transition-colors">
+        <a href="/assets" class="flex flex-col items-center gap-1 text-gray-500 hover:text-primary transition-colors">
             <span class="material-symbols-outlined text-xl" aria-hidden="true">inventory_2</span>
             <span class="text-[9px] font-black uppercase tracking-widest">Assets</span>
         </a>
-        <a href="/settings" class="flex flex-col items-center gap-1 text-gray-500 hover:text-[#00daf3] transition-colors">
+        <a href="/settings" class="flex flex-col items-center gap-1 text-gray-500 hover:text-primary transition-colors">
             <span class="material-symbols-outlined text-xl" aria-hidden="true">settings</span>
             <span class="text-[9px] font-black uppercase tracking-widest">Set</span>
         </a>

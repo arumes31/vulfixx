@@ -91,7 +91,7 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 
 		switch p {
 		case "gemini":
-			results, err = extractWithGemini(ctx, config.AppConfig.GeminiAPIKey, config.AppConfig.GeminiModel, fullContext)
+			results, err = extractWithGemini(ctx, config.AppConfig.GeminiAPIKey, config.AppConfig.GeminiModel, config.AppConfig.GeminiAPIVersion, fullContext)
 		case "ollama":
 			results, err = extractWithOllama(ctx, config.AppConfig.LLMEndpoint, config.AppConfig.LLMModel, fullContext)
 		case "arliai":
@@ -128,13 +128,16 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 	return nil, fmt.Errorf("no valid llm providers configured (current: %s)", config.AppConfig.LLMProvider)
 }
 
-func extractWithGemini(ctx context.Context, apiKey, model, description string) ([]ProductResult, error) {
+func extractWithGemini(ctx context.Context, apiKey, model, apiVersion, description string) ([]ProductResult, error) {
 	if apiKey == "" {
 		return nil, fmt.Errorf("gemini api key is required")
 	}
 
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey: apiKey,
+		HTTPOptions: genai.HTTPOptions{
+			APIVersion: apiVersion,
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gemini client: %w", err)

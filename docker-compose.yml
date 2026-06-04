@@ -30,6 +30,7 @@ services:
       - LLM_TIMEOUT=${LLM_TIMEOUT:-600}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+      - GEMINI_API_VERSION=${GEMINI_API_VERSION:-v1}
       - LLM_DEBUG=${LLM_DEBUG:-false}
     depends_on:
       - db

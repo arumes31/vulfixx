@@ -164,6 +164,33 @@ func TestWorkerAlert_EvaluateSubscriptions(t *testing.T) {
 			{"buzz >= 5", true},
 			{"regex: exploit", true},
 			{"regex: unknown", false},
+			// Less-than / less-than-or-equal operators (previously silently ignored).
+			{"epss < 0.6", true},
+			{"epss < 0.4", false},
+			{"epss <= 0.5", true},
+			{"buzz < 10", false},
+			{"buzz <= 10", true},
+			// Equality / inequality operators.
+			{"epss == 0.5", true},
+			{"epss != 0.5", false},
+			{"cisa != true", false},
+			{"cisa = false", false},
+			// severity / cvss variable (documented in the README but previously unhandled).
+			{"severity > 9", true},
+			{"severity < 9", false},
+			{"cvss >= 9.8", true},
+			// AND combinations.
+			{"cisa = true && epss > 0.1", true},
+			{"cisa = true && epss > 0.9", false},
+			// OR combinations (previously treated as AND).
+			{"epss > 0.9 || cisa = true", true},
+			{"epss > 0.9 || buzz > 100", false},
+			// AND binds tighter than OR: (severity > 100 && cisa = true) || buzz >= 5.
+			{"severity > 100 && cisa = true || buzz >= 5", true},
+			// Malformed / unknown terms fail closed.
+			{"epss >", false},
+			{"unknownvar > 1", false},
+			{"epss !! 0.5", false},
 		}
 
 		for _, tc := range testCases {
@@ -172,6 +199,33 @@ func TestWorkerAlert_EvaluateSubscriptions(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestValidateComplexFilter(t *testing.T) {
+	cases := []struct {
+		logic   string
+		wantErr bool
+	}{
+		{"", false},
+		{"epss > 0.1", false},
+		{"epss <= 0.5", false},
+		{"cisa = true && severity >= 9", false},
+		{"epss > 0.1 || buzz < 5", false},
+		{"regex: openssl", false},
+		{"epss >", true},                 // truncated term
+		{"unknownvar > 1", true},          // unknown variable
+		{"epss !! 0.5", true},             // bad operator
+		{"epss > 0.1 &&", true},           // dangling operator
+		{"&& epss > 0.1", true},           // leading operator
+		{"epss > 0.1 epss > 0.2", true},   // missing connective
+		{"epss > notanumber", true},       // non-numeric value
+	}
+	for _, c := range cases {
+		err := ValidateComplexFilter(c.logic)
+		if (err != nil) != c.wantErr {
+			t.Errorf("ValidateComplexFilter(%q) error = %v, wantErr %v", c.logic, err, c.wantErr)
+		}
+	}
 }
 
 func TestWorkerAlert_SendAlert(t *testing.T) {
