@@ -1,0 +1,22 @@
+<<<<<<< SEARCH
+		mock.ExpectQuery("SELECT is_totp_enabled, COALESCE\\(totp_secret, ''\\) FROM users WHERE id = \\$1").
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"is_totp_enabled", "totp_secret"}).AddRow(true, secret))
+
+		mock.ExpectQuery("SELECT is_admin FROM users WHERE id = \\$1").
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"is_admin"}).AddRow(false))
+=======
+		mock.ExpectQuery("SELECT is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE id = \\$1").
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"is_totp_enabled", "totp_secret", "is_admin"}).AddRow(true, secret, false))
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+		mock.ExpectQuery("SELECT is_totp_enabled, COALESCE\\(totp_secret, ''\\) FROM users WHERE id = \\$1").
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"is_totp_enabled", "totp_secret"}).AddRow(true, secret))
+=======
+		mock.ExpectQuery("SELECT is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE id = \\$1").
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"is_totp_enabled", "totp_secret", "is_admin"}).AddRow(true, secret, false))
+>>>>>>> REPLACE

@@ -294,13 +294,9 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 			req.AddCookie(c)
 		}
 
-		mock.ExpectQuery("SELECT is_totp_enabled, COALESCE\\(totp_secret, ''\\) FROM users WHERE id = \\$1").
+		mock.ExpectQuery("SELECT is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE id = \\$1").
 			WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"is_totp_enabled", "totp_secret"}).AddRow(true, secret))
-
-		mock.ExpectQuery("SELECT is_admin FROM users WHERE id = \\$1").
-			WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"is_admin"}).AddRow(false))
+			WillReturnRows(pgxmock.NewRows([]string{"is_totp_enabled", "totp_secret", "is_admin"}).AddRow(true, secret, false))
 
 		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		rr := httptest.NewRecorder()
@@ -346,9 +342,9 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 			req.AddCookie(c)
 		}
 
-		mock.ExpectQuery("SELECT is_totp_enabled, COALESCE\\(totp_secret, ''\\) FROM users WHERE id = \\$1").
+		mock.ExpectQuery("SELECT is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE id = \\$1").
 			WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"is_totp_enabled", "totp_secret"}).AddRow(true, secret))
+			WillReturnRows(pgxmock.NewRows([]string{"is_totp_enabled", "totp_secret", "is_admin"}).AddRow(true, secret, false))
 
 		rr := httptest.NewRecorder()
 		expectBaseQueries(mock, 0)
@@ -394,7 +390,8 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 		app.Redis.Set(req.Context(), "login_failures:"+app.GetClientIP(req), 5, 0)
 
 		rr := httptest.NewRecorder()
-		app.LoginHandler(rr, req)
+		handler := app.LoginRateLimitMiddleware(http.HandlerFunc(app.LoginHandler))
+		handler.ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusOK {
 			t.Errorf("expected 200 OK, got %d", rr.Code)

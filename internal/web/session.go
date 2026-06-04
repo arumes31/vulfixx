@@ -183,3 +183,44 @@ func (a *App) EnforceConcurrentSessions(ctx context.Context, userID int, session
 		}
 	}
 }
+
+// establishPreAuthSession sets up the partial session state required for the TOTP flow.
+func (a *App) establishPreAuthSession(w http.ResponseWriter, r *http.Request, userID int) error {
+	session, err := a.SessionStore.Get(r, "vulfixx-session")
+	if err != nil {
+		return err
+	}
+
+	session.Values["pre_auth_user_id"] = userID
+	session.Values["pre_auth_ts"] = time.Now().Unix()
+	session.Values["pre_auth_attempts"] = 0
+
+	return session.Save(r, w)
+}
+
+// establishUserSession handles full user login, including session regeneration for fixation protection,
+// assigning user data, and enforcing concurrent session limits.
+func (a *App) establishUserSession(w http.ResponseWriter, r *http.Request, userID int, isAdmin bool) error {
+	session, err := a.SessionStore.Get(r, "vulfixx-session")
+	if err != nil {
+		return err
+	}
+
+	// Regenerate session to prevent session fixation
+	session.Options.MaxAge = -1
+	if err := session.Save(r, w); err != nil {
+		log.Printf("Error invalidating old session: %v", err)
+	}
+
+	newSession, _ := a.SessionStore.Get(r, "vulfixx-session")
+	newSession.Values["user_id"] = userID
+	newSession.Values["is_admin"] = isAdmin
+	newSession.Values["totp_verified"] = true
+
+	if err := newSession.Save(r, w); err != nil {
+		return err
+	}
+
+	a.EnforceConcurrentSessions(r.Context(), userID, newSession.ID)
+	return nil
+}

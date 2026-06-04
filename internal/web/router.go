@@ -29,8 +29,8 @@ func (app *App) Routes(cfg *config.Config) (http.Handler, error) {
 	// Public routes
 	r.Method("GET", "/", app.RateLimitMiddleware(http.HandlerFunc(app.IndexHandler)))
 	r.Method("GET", "/feed", app.RateLimitMiddleware(http.HandlerFunc(app.RSSFeedHandler)))
-	r.Method("GET", "/login", app.RateLimitMiddleware(http.HandlerFunc(app.LoginHandler)))
-	r.Method("POST", "/login", app.RateLimitMiddleware(http.HandlerFunc(app.LoginHandler)))
+	r.Method("GET", "/login", app.LoginRateLimitMiddleware(app.RateLimitMiddleware(http.HandlerFunc(app.LoginHandler))))
+	r.Method("POST", "/login", app.LoginRateLimitMiddleware(app.RateLimitMiddleware(http.HandlerFunc(app.LoginHandler))))
 	r.Method("GET", "/register", app.RateLimitMiddleware(http.HandlerFunc(app.RegisterHandler)))
 	r.Method("POST", "/register", app.RateLimitMiddleware(http.HandlerFunc(app.RegisterHandler)))
 	r.Method("GET", "/resend-verification", app.RateLimitMiddleware(http.HandlerFunc(app.ResendVerificationHandler)))

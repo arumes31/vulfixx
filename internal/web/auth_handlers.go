@@ -38,11 +38,6 @@ import (
 func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	clientIP := a.GetClientIP(r)
 	if r.Method == http.MethodGet {
-		rlKeyGet := "login_failures:" + clientIP
-		if count, err := a.Redis.Get(r.Context(), rlKeyGet).Int(); err == nil && count >= 5 {
-			a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Too many attempts"})
-			return
-		}
 		a.RenderTemplate(w, r, "login.html", nil)
 		return
 	}
@@ -105,18 +100,12 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Verify rate limit before checking TOTP
-		rlKey := "login_failures:" + clientIP
-		if count, err := a.Redis.Get(r.Context(), rlKey).Int(); err == nil && count >= 5 {
-			a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Too many attempts"})
-			return
-		}
-
 		var isTOTPEnabled bool
 		var secret string
-		err := a.Pool.QueryRow(r.Context(), "SELECT is_totp_enabled, COALESCE(totp_secret, '') FROM users WHERE id = $1", preAuthUserID).Scan(&isTOTPEnabled, &secret)
+		var isAdmin bool
+		err := a.Pool.QueryRow(r.Context(), "SELECT is_totp_enabled, COALESCE(totp_secret, ''), is_admin FROM users WHERE id = $1", preAuthUserID).Scan(&isTOTPEnabled, &secret, &isAdmin)
 		if err != nil {
-			log.Printf("DB error fetching TOTP secret: %v", err)
+			log.Printf("DB error fetching user data: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
@@ -135,11 +124,12 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if !totp.Validate(totpCode, secret) {
+			rlKey := "login_failures:" + clientIP
 			pipe := a.Redis.Pipeline()
 			pipe.Incr(r.Context(), rlKey)
 			pipe.Expire(r.Context(), rlKey, 15*time.Minute)
 			if _, err := pipe.Exec(r.Context()); err != nil {
-				log.Printf("Redis pipeline error for %s: %v", rlKey, err) // #nosec G706 // #nosec G706
+				log.Printf("Redis pipeline error for %s: %v", rlKey, err) // #nosec G706
 			}
 			a.RenderTemplate(w, r, "login.html", map[string]interface{}{
 				"Error":       "Invalid TOTP code",
@@ -147,46 +137,25 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+
 		// Clear rate limit on success
+		rlKey := "login_failures:" + clientIP
 		a.Redis.Del(r.Context(), rlKey)
 
-		// Regenerate session to prevent session fixation
-		session.Options.MaxAge = -1
-		if err := session.Save(r, w); err != nil {
-			log.Printf("Error invalidating pre-auth session: %v", err)
-		}
-		newSession, _ := a.SessionStore.Get(r, "vulfixx-session")
-		newSession.Values["user_id"] = preAuthUserID
-		newSession.Values["totp_verified"] = true
-
-		var isAdmin bool
-		err = a.Pool.QueryRow(r.Context(), "SELECT is_admin FROM users WHERE id = $1", preAuthUserID).Scan(&isAdmin)
-		if err != nil {
-			log.Printf("DB error fetching is_admin: %v", err)
+		if err := a.establishUserSession(w, r, preAuthUserID, isAdmin); err != nil {
+			log.Printf("Error establishing user session: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
-		newSession.Values["is_admin"] = isAdmin
 
-		if err := newSession.Save(r, w); err != nil {
-			log.Printf("Error saving new session: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-		a.EnforceConcurrentSessions(r.Context(), preAuthUserID, newSession.ID)
-		a.LogActivity(r.Context(), preAuthUserID, "login", "Successful 2FA login", a.GetClientIP(r), r.UserAgent())
+		a.LogActivity(r.Context(), preAuthUserID, "login", "Successful 2FA login", clientIP, r.UserAgent())
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
-		return
-	}
-
-	rlKeyLogin := "login_failures:" + clientIP
-	if count, err := a.Redis.Get(r.Context(), rlKeyLogin).Int(); err == nil && count >= 5 {
-		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Too many attempts"})
 		return
 	}
 
 	user, err := auth.Login(r.Context(), email, password)
 	if err != nil {
+		rlKeyLogin := "login_failures:" + clientIP
 		pipe := a.Redis.Pipeline()
 		pipe.Incr(r.Context(), rlKeyLogin)
 		pipe.Expire(r.Context(), rlKeyLogin, 15*time.Minute)
@@ -198,11 +167,8 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if user.IsTOTPEnabled {
-		session.Values["pre_auth_user_id"] = user.ID
-		session.Values["pre_auth_ts"] = time.Now().Unix()
-		session.Values["pre_auth_attempts"] = 0
-		if err := session.Save(r, w); err != nil {
-			log.Printf("Error saving session: %v", err)
+		if err := a.establishPreAuthSession(w, r, user.ID); err != nil {
+			log.Printf("Error establishing pre-auth session: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
@@ -214,40 +180,18 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Regenerate session to prevent session fixation
-	session.Options.MaxAge = -1
-	if err := session.Save(r, w); err != nil {
-		log.Printf("Error invalidating old session: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	newSession, err := a.SessionStore.Get(r, "vulfixx-session")
-	if err != nil {
-		log.Printf("Error getting new session: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	newSession.Values["user_id"] = user.ID
-	newSession.Values["is_admin"] = user.IsAdmin
-	if err := newSession.Save(r, w); err != nil {
-		log.Printf("Error saving new session: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	a.EnforceConcurrentSessions(r.Context(), user.ID, newSession.ID)
-	a.LogActivity(r.Context(), user.ID, "login", "Successful login", clientIP, r.UserAgent())
+	// Clear rate limit on success
+	a.Redis.Del(r.Context(), "login_failures:"+clientIP)
 
+	if err := a.establishUserSession(w, r, user.ID, user.IsAdmin); err != nil {
+		log.Printf("Error establishing user session: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	a.LogActivity(r.Context(), user.ID, "login", "Successful login", clientIP, r.UserAgent())
 	http.Redirect(w, r, "/dashboard", http.StatusFound)
 }
-
-// RegisterHandler handles user registration.
-// @Summary User Registration
-// @Description Register a new user with email, password, password confirmation, and captcha answer.
-// @Tags Auth
-// @Accept x-www-form-urlencoded
-// @Produce html
-// @Param email formData string true "User Email"
-// @Param password formData string true "User Password"
 // @Param password_confirm formData string true "Confirm Password"
 // @Param captcha formData string true "Captcha Answer"
 // @Success 200 {string} string "Success"
