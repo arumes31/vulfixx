@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -86,24 +88,27 @@ func (w *Worker) syncOSV(ctx context.Context) {
 		return
 	}
 
-	var updates []updateItem
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	cveChan := make(chan models.CVE, len(cves))
+	var (
+		updates []updateItem
+		mu      sync.Mutex
+	)
+
+	g, gCtx := errgroup.WithContext(ctx)
+	cveChan := make(chan models.CVE)
+
+	// OSV API doesn't have a strict rate limit, but we'll stay at a reasonable rate.
+	// 20 requests per second is plenty and very safe.
+	limiter := rate.NewLimiter(rate.Limit(20), 5)
 
 	// Start workers
 	for i := 0; i < osvConcurrency; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		g.Go(func() error {
 			for cve := range cveChan {
-				select {
-				case <-ctx.Done():
-					return
-				default:
+				if err := limiter.Wait(gCtx); err != nil {
+					return err
 				}
 
-				osvData, err := w.fetchOSVData(ctx, cve.CVEID)
+				osvData, err := w.fetchOSVData(gCtx, cve.CVEID)
 				if err != nil {
 					continue
 				}
@@ -165,18 +170,25 @@ func (w *Worker) syncOSV(ctx context.Context) {
 				mu.Lock()
 				updates = append(updates, item)
 				mu.Unlock()
-				// Reduced sleep since we are concurrent but still want to be polite
-				time.Sleep(50 * time.Millisecond)
 			}
-		}()
+			return nil
+		})
 	}
 
 	// Feed workers
+Loop:
 	for _, cve := range cves {
-		cveChan <- cve
+		select {
+		case cveChan <- cve:
+		case <-gCtx.Done():
+			break Loop
+		}
 	}
 	close(cveChan)
-	wg.Wait()
+
+	if err := g.Wait(); err != nil && err != context.Canceled {
+		slog.Error("Worker: [ERROR] OSV sync workers failed", "error", err)
+	}
 
 	if len(updates) == 0 {
 		w.updateTaskStats(ctx, "osv_sync")
