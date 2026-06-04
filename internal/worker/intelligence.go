@@ -264,12 +264,12 @@ func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []
 	}
 
 	if resp == nil {
-		return 0, nil, fmt.Errorf("Reddit API returned nil response")
+		return 0, nil, fmt.Errorf("reddit API returned nil response")
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return 0, nil, fmt.Errorf("Reddit API returned status %d", resp.StatusCode)
+		return 0, nil, fmt.Errorf("reddit API returned status %d", resp.StatusCode)
 	}
 
 	var rResp struct {

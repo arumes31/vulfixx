@@ -57,7 +57,7 @@ func (c *algoliaHNClient) FetchMentions(ctx context.Context, query string) (int,
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return 0, nil, fmt.Errorf("Hacker News API returned status %d", resp.StatusCode)
+		return 0, nil, fmt.Errorf("hacker News API returned status %d", resp.StatusCode)
 	}
 
 	var hnResp struct {
