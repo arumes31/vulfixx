@@ -399,6 +399,14 @@ func extractWithArliAI(ctx context.Context, apiKey, model, endpoint, description
 		return nil, fmt.Errorf("arliai api key is required")
 	}
 
+	defer func() {
+		// Pace requests to ArliAI (FREE plan limits parallel requests to 1)
+		select {
+		case <-time.After(3 * time.Second):
+		case <-ctx.Done():
+		}
+	}()
+
 	systemPrompt := `Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from the provided description and reference URLs.
 
 RULES:
@@ -460,63 +468,69 @@ Output: {"products": [
 			timeSleep(wait)
 		}
 
-		resp, err := client.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode == 403 || resp.StatusCode == 429 {
-			body, _ := io.ReadAll(resp.Body)
-			if strings.Contains(string(body), "parallel") || strings.Contains(string(body), "rate") || strings.Contains(string(body), "limit") {
-				lastErr = ErrRateLimit
-				// Reset request body for retry if possible (re-create request)
-				req, _ = http.NewRequestWithContext(ctx, "POST", endpoint+"/chat/completions", bytes.NewBuffer(jsonData))
-				req.Header.Set("Content-Type", "application/json")
-				req.Header.Set("Authorization", "Bearer "+apiKey)
-				continue
+		products, err, shouldRetry := func() ([]ProductResult, error, bool) {
+			resp, err := client.Do(req)
+			if err != nil {
+				return nil, err, false
 			}
-			return nil, fmt.Errorf("arliai api error (status %d): %s", resp.StatusCode, string(body))
+			defer resp.Body.Close()
+
+			if resp.StatusCode == 403 || resp.StatusCode == 429 {
+				body, _ := io.ReadAll(resp.Body)
+				if strings.Contains(string(body), "parallel") || strings.Contains(string(body), "rate") || strings.Contains(string(body), "limit") {
+					// Reset request body for retry if possible (re-create request)
+					req, _ = http.NewRequestWithContext(ctx, "POST", endpoint+"/chat/completions", bytes.NewBuffer(jsonData))
+					req.Header.Set("Content-Type", "application/json")
+					req.Header.Set("Authorization", "Bearer "+apiKey)
+					return nil, ErrRateLimit, true
+				}
+				return nil, fmt.Errorf("arliai api error (status %d): %s", resp.StatusCode, string(body)), false
+			}
+
+			if resp.StatusCode != http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
+				return nil, fmt.Errorf("arliai api error (status %d): %s", resp.StatusCode, string(body)), false
+			}
+
+			var chatResp struct {
+				Choices []struct {
+					Message struct {
+						Content string `json:"content"`
+					} `json:"message"`
+				} `json:"choices"`
+			}
+
+			if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+				return nil, err, false
+			}
+
+			if len(chatResp.Choices) == 0 {
+				return nil, fmt.Errorf("arliai returned no choices"), false
+			}
+
+			content := chatResp.Choices[0].Message.Content
+			if os.Getenv("LLM_DEBUG") == "true" {
+				slog.Debug("LLM: [DEBUG] ArliAI Raw Response", "response", content)
+			}
+
+			// Clean JSON if the model wrapped it in markdown code blocks
+			content = strings.TrimPrefix(content, "```json")
+			content = strings.TrimPrefix(content, "```")
+			content = strings.TrimSuffix(content, "```")
+			content = strings.TrimSpace(content)
+
+			var res ExtractionResponse
+			if err := json.Unmarshal([]byte(content), &res); err != nil {
+				return nil, fmt.Errorf("failed to parse arliai json: %w (content: %s)", err, content), false
+			}
+
+			return res.Products, nil, false
+		}()
+
+		if !shouldRetry {
+			return products, err
 		}
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			return nil, fmt.Errorf("arliai api error (status %d): %s", resp.StatusCode, string(body))
-		}
-
-		var chatResp struct {
-			Choices []struct {
-				Message struct {
-					Content string `json:"content"`
-				} `json:"message"`
-			} `json:"choices"`
-		}
-
-		if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
-			return nil, err
-		}
-
-		if len(chatResp.Choices) == 0 {
-			return nil, fmt.Errorf("arliai returned no choices")
-		}
-
-		content := chatResp.Choices[0].Message.Content
-		if os.Getenv("LLM_DEBUG") == "true" {
-			slog.Debug("LLM: [DEBUG] ArliAI Raw Response", "response", content)
-		}
-
-		// Clean JSON if the model wrapped it in markdown code blocks
-		content = strings.TrimPrefix(content, "```json")
-		content = strings.TrimPrefix(content, "```")
-		content = strings.TrimSuffix(content, "```")
-		content = strings.TrimSpace(content)
-
-		var res ExtractionResponse
-		if err := json.Unmarshal([]byte(content), &res); err != nil {
-			return nil, fmt.Errorf("failed to parse arliai json: %w (content: %s)", err, content)
-		}
-
-		return res.Products, nil
+		lastErr = err
 	}
 
 	return nil, lastErr
