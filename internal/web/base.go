@@ -592,3 +592,10 @@ func sanitizeForLog(s string) string {
 	s = strings.ReplaceAll(s, string(rune(0)), "")
 	return s
 }
+
+// SendResponse sends a JSON response with the given status code and data.
+func SendResponse(w http.ResponseWriter, statusCode int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(data)
+}

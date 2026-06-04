@@ -403,3 +403,60 @@ func TestRenderTemplate(t *testing.T) {
 		}
 	})
 }
+
+func TestSendResponseStandalone(t *testing.T) {
+	tests := []struct {
+		name           string
+		statusCode     int
+		data           interface{}
+		expectedBody   string
+		expectedStatus int
+	}{
+		{
+			name:           "Simple success response",
+			statusCode:     http.StatusOK,
+			data:           map[string]string{"status": "ok"},
+			expectedBody:   `{"status":"ok"}`,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "Error response",
+			statusCode:     http.StatusBadRequest,
+			data:           map[string]string{"error": "bad request"},
+			expectedBody:   `{"error":"bad request"}`,
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "Complex data",
+			statusCode: http.StatusCreated,
+			data: struct {
+				ID int `json:"id"`
+			}{ID: 123},
+			expectedBody:   `{"id":123}`,
+			expectedStatus: http.StatusCreated,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			SendResponse(rr, tt.statusCode, tt.data)
+
+			if rr.Code != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr.Code)
+			}
+
+			contentType := rr.Header().Get("Content-Type")
+			if contentType != "application/json" {
+				t.Errorf("expected Content-Type application/json, got %s", contentType)
+			}
+
+			// Trim newline from expected if necessary, though json.Encoder adds one.
+			// Encode adds a newline at the end.
+			expectedBodyWithNewline := tt.expectedBody + "\n"
+			if rr.Body.String() != expectedBodyWithNewline {
+				t.Errorf("expected body %q, got %q", expectedBodyWithNewline, rr.Body.String())
+			}
+		})
+	}
+}
