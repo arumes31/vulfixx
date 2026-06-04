@@ -434,3 +434,445 @@ func (e encryptedWebhookArg) Match(v interface{}) bool {
 	}
 	return true
 }
+
+func TestSubscriptionHandlers_GETErrors(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+	app := setupTestApp(t, mock)
+
+	t.Run("MissingUserID", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "/subscriptions", nil)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if rr.Code != http.StatusFound {
+			t.Errorf("expected 302 Found, got %d", rr.Code)
+		}
+	})
+
+	t.Run("QueryError", func(t *testing.T) {
+		mock.ExpectQuery("(?is)SELECT us.id, us.keyword, us.min_severity, us.webhook_url,.*FROM user_subscriptions").
+			WithArgs(1).
+			WillReturnError(fmt.Errorf("db error"))
+
+		expectBaseQueries(mock, 1)
+
+		req, _ := http.NewRequest("GET", "/subscriptions", nil)
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "Error fetching subscriptions") && !strings.Contains(rr.Body.String(), "Error") {
+			t.Errorf("expected error message in body")
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("ScanError", func(t *testing.T) {
+		mock.ExpectQuery("(?is)SELECT us.id, us.keyword, us.min_severity, us.webhook_url,.*FROM user_subscriptions").
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "keyword", "min_severity", "webhook_url", "slack_webhook_url", "teams_webhook_url", "enable_email", "enable_webhook", "enable_slack", "enable_teams", "enable_browser_push", "aggregation_mode", "filter_logic", "team_id"}).
+				AddRow("invalid_id", "test", 5.0, "", "", "", true, true, false, false, false, "instant", "", nil))
+
+		expectBaseQueries(mock, 1)
+
+		req, _ := http.NewRequest("GET", "/subscriptions", nil)
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("RowsErr", func(t *testing.T) {
+		mock.ExpectQuery("(?is)SELECT us.id, us.keyword, us.min_severity, us.webhook_url,.*FROM user_subscriptions").
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"id", "keyword", "min_severity", "webhook_url", "slack_webhook_url", "teams_webhook_url", "enable_email", "enable_webhook", "enable_slack", "enable_teams", "enable_browser_push", "aggregation_mode", "filter_logic", "team_id"}).
+				AddRow(1, "test", 5.0, "", "", "", true, true, false, false, false, "instant", "", nil).
+				RowError(0, fmt.Errorf("row error")))
+
+		expectBaseQueries(mock, 1)
+
+		req, _ := http.NewRequest("GET", "/subscriptions", nil)
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", rr.Code)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+}
+
+func TestSubscriptionHandlers_POSTValidationErrors(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+	app := setupTestApp(t, mock)
+
+	t.Run("JSONDecodeError", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(`{invalid json`))
+		req.Header.Set("Content-Type", "application/json")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "Error decoding JSON") {
+			t.Errorf("expected JSON error in body")
+		}
+	})
+
+	t.Run("FormParseError", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(`%xxx`))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "Error parsing form") {
+			t.Errorf("expected form parse error in body")
+		}
+	})
+
+	t.Run("KeywordEmpty", func(t *testing.T) {
+		form := url.Values{"keyword": {""}}
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "Keyword is required") {
+			t.Errorf("expected keyword required error in body")
+		}
+	})
+
+	t.Run("KeywordTooLong", func(t *testing.T) {
+		longKw := strings.Repeat("a", 101)
+		form := url.Values{"keyword": {longKw}}
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "Target infrastructure keyword too long") {
+			t.Errorf("expected keyword too long error in body")
+		}
+	})
+
+	t.Run("InvalidSeverity_Negative", func(t *testing.T) {
+		form := url.Values{"keyword": {"kw"}, "min_severity": {"-1"}}
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "Invalid severity score") {
+			t.Errorf("expected invalid severity error in body")
+		}
+	})
+
+	t.Run("InvalidSeverity_TooHigh", func(t *testing.T) {
+		form := url.Values{"keyword": {"kw"}, "min_severity": {"11"}}
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "Invalid severity score") {
+			t.Errorf("expected invalid severity error in body")
+		}
+	})
+
+	t.Run("EnableWebhook_MissingURL", func(t *testing.T) {
+		form := url.Values{"keyword": {"kw"}, "enable_webhook": {"on"}, "webhook_url": {""}}
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "A webhook URL is required") {
+			t.Errorf("expected missing webhook url error in body")
+		}
+	})
+
+	t.Run("EnableWebhook_InvalidURLScheme", func(t *testing.T) {
+		form := url.Values{"keyword": {"kw"}, "enable_webhook": {"on"}, "webhook_url": {"ftp://example.com"}}
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "valid HTTP/HTTPS webhook URL is required") {
+			t.Errorf("expected invalid scheme error in body")
+		}
+	})
+
+	t.Run("EnableWebhook_SSRF_LookupFail", func(t *testing.T) {
+		form := url.Values{"keyword": {"kw"}, "enable_webhook": {"on"}, "webhook_url": {"http://this.domain.does.not.exist.at.all.com"}}
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "Invalid webhook host") {
+			t.Errorf("expected invalid webhook host error in body")
+		}
+	})
+
+	t.Run("EnableWebhook_SSRF_Localhost", func(t *testing.T) {
+		form := url.Values{"keyword": {"kw"}, "enable_webhook": {"on"}, "webhook_url": {"http://127.0.0.1"}}
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "Internal or restricted webhook URLs are not allowed") {
+			t.Errorf("expected SSRF block error in body")
+		}
+	})
+
+	t.Run("EnableWebhook_TooLong", func(t *testing.T) {
+		longURL := "http://example.com/" + strings.Repeat("a", 2048)
+		form := url.Values{"keyword": {"kw"}, "enable_webhook": {"on"}, "webhook_url": {longURL}}
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "Webhook URL is too long") {
+			t.Errorf("expected webhook too long error in body")
+		}
+	})
+
+	t.Run("InvalidAggregationMode", func(t *testing.T) {
+		form := url.Values{"keyword": {"kw"}, "aggregation_mode": {"invalid_mode"}}
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "Invalid aggregation mode") {
+			t.Errorf("expected invalid aggregation mode error in body")
+		}
+	})
+}
+
+func TestSubscriptionHandlers_POSTDBErrors(t *testing.T) {
+	t.Run("EncryptSlackError", func(t *testing.T) {
+		t.Setenv("SESSION_KEY", "too_short") // Causes EncryptWebhook to fail
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		form := url.Values{"keyword": {"kw"}, "slack_webhook_url": {"http://slack.com"}}
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "Internal server error") {
+			t.Errorf("expected internal server error due to slack encrypt fail")
+		}
+	})
+
+	t.Run("EncryptTeamsError", func(t *testing.T) {
+		t.Setenv("SESSION_KEY", "too_short")
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		form := url.Values{"keyword": {"kw"}, "teams_webhook_url": {"http://teams.com"}}
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "Internal server error") {
+			t.Errorf("expected internal server error due to teams encrypt fail")
+		}
+	})
+
+	t.Run("BeginTxError", func(t *testing.T) {
+		t.Setenv("SESSION_KEY", "THIS_IS_A_MOCK_SESSION_KEY_32_BY")
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		mock.ExpectBegin().WillReturnError(fmt.Errorf("begin error"))
+
+		form := url.Values{"keyword": {"kw"}}
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "Internal server error") {
+			t.Errorf("expected internal server error due to tx begin fail")
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("QueryMaxSubsError", func(t *testing.T) {
+		t.Setenv("SESSION_KEY", "THIS_IS_A_MOCK_SESSION_KEY_32_BY")
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT max_subscriptions FROM users WHERE id = \\$1 FOR UPDATE").WithArgs(1).WillReturnError(fmt.Errorf("db error"))
+		mock.ExpectRollback()
+
+		form := url.Values{"keyword": {"kw"}}
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "Internal server error") {
+			t.Errorf("expected internal server error due to max_subs query fail")
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("QueryCountSubsError", func(t *testing.T) {
+		t.Setenv("SESSION_KEY", "THIS_IS_A_MOCK_SESSION_KEY_32_BY")
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT max_subscriptions FROM users WHERE id = \\$1 FOR UPDATE").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"max_subscriptions"}).AddRow(5))
+		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM user_subscriptions WHERE user_id = \\$1").WithArgs(1).WillReturnError(fmt.Errorf("db error"))
+		mock.ExpectRollback()
+
+		form := url.Values{"keyword": {"kw"}}
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "Internal server error") {
+			t.Errorf("expected internal server error due to count query fail")
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("MaxSubsReached", func(t *testing.T) {
+		t.Setenv("SESSION_KEY", "THIS_IS_A_MOCK_SESSION_KEY_32_BY")
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT max_subscriptions FROM users WHERE id = \\$1 FOR UPDATE").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"max_subscriptions"}).AddRow(2))
+		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM user_subscriptions WHERE user_id = \\$1").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(2))
+		mock.ExpectRollback()
+
+		form := url.Values{"keyword": {"kw"}}
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "Maximum of 2 subscriptions allowed") {
+			t.Errorf("expected max subscriptions allowed error")
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("InsertSubError", func(t *testing.T) {
+		t.Setenv("SESSION_KEY", "THIS_IS_A_MOCK_SESSION_KEY_32_BY")
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT max_subscriptions FROM users WHERE id = \\$1 FOR UPDATE").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"max_subscriptions"}).AddRow(5))
+		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM user_subscriptions WHERE user_id = \\$1").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
+		mock.ExpectExec("INSERT INTO user_subscriptions").WithArgs(1, "kw", 0.0, "", "", "", false, false, false, false, false, "instant", "").WillReturnError(fmt.Errorf("db error"))
+		mock.ExpectRollback()
+
+		form := url.Values{"keyword": {"kw"}}
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "Error saving subscription") {
+			t.Errorf("expected error saving subscription")
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("CommitTxError", func(t *testing.T) {
+		t.Setenv("SESSION_KEY", "THIS_IS_A_MOCK_SESSION_KEY_32_BY")
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT max_subscriptions FROM users WHERE id = \\$1 FOR UPDATE").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"max_subscriptions"}).AddRow(5))
+		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM user_subscriptions WHERE user_id = \\$1").WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
+		mock.ExpectExec("INSERT INTO user_subscriptions").WithArgs(1, "kw", 0.0, "", "", "", false, false, false, false, false, "instant", "").WillReturnResult(pgxmock.NewResult("INSERT", 1))
+		mock.ExpectCommit().WillReturnError(fmt.Errorf("commit error"))
+
+		form := url.Values{"keyword": {"kw"}}
+		req, _ := http.NewRequest("POST", "/subscriptions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, 1, false)
+		rr := httptest.NewRecorder()
+		app.SubscriptionsHandler(rr, req)
+		if !strings.Contains(rr.Body.String(), "Internal server error") {
+			t.Errorf("expected internal server error due to commit tx fail")
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+}
