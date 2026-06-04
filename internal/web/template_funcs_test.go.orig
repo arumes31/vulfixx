@@ -3,7 +3,6 @@ package web
 import (
 	"html/template"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -294,47 +293,6 @@ func TestTemplateFunc_Initialization(t *testing.T) {
 		err := app.InitTemplatesWithFuncs()
 		if err == nil || !strings.Contains(err.Error(), "no templates directory found") {
 			t.Errorf("expected no templates directory error, got %v", err)
-		}
-	})
-
-	t.Run("InitTemplatesWithFuncs template parse error", func(t *testing.T) {
-		tmp := t.TempDir()
-		origDir, _ := os.Getwd()
-		defer os.Chdir(origDir)
-
-		templatesDir := filepath.Join(tmp, "templates")
-		os.MkdirAll(templatesDir, 0755)
-		os.WriteFile(filepath.Join(templatesDir, "base.html"), []byte("{{define \"base\"}}{{block \"content\" .}}{{end}}{{end}}"), 0644)
-		os.WriteFile(filepath.Join(templatesDir, "error.html"), []byte("{{template \"base\" .}}{{define \"content\"}}{{end"), 0644) // missing closing }}
-
-		os.Chdir(tmp)
-		app := &App{}
-		err := app.InitTemplatesWithFuncs()
-		if err != nil {
-			t.Fatalf("InitTemplatesWithFuncs should not return error on individual template parse failure: %v", err)
-		}
-
-		if len(app.TemplateMap) != 0 {
-			t.Errorf("expected 0 templates due to parse error, got %d", len(app.TemplateMap))
-		}
-	})
-
-	t.Run("findTemplatesDir parent", func(t *testing.T) {
-		tmp := t.TempDir()
-		origDir, _ := os.Getwd()
-		defer os.Chdir(origDir)
-
-		templatesDir := filepath.Join(tmp, "templates")
-		os.MkdirAll(templatesDir, 0755)
-		os.WriteFile(filepath.Join(templatesDir, "base.html"), []byte("base"), 0644)
-
-		subDir := filepath.Join(tmp, "a", "b", "c")
-		os.MkdirAll(subDir, 0755)
-
-		os.Chdir(subDir)
-		got := findTemplatesDir()
-		if !strings.HasSuffix(got, "templates") {
-			t.Errorf("expected templates dir, got %s", got)
 		}
 	})
 }
