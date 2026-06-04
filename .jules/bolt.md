@@ -44,3 +44,13 @@
 ## 2026-05-30 - Optimized Database Updates in GitHub Buzz Sync
 **Learning:** Performing individual `tx.Exec` calls within a transaction loop in `updateGitHubBatch` for 50 items results in 50 separate database roundtrips, which degrades performance.
 **Action:** Implemented `pgx.Batch` within the transaction to send all update queries in a single database roundtrip, significantly reducing I/O latency, while maintaining a fallback loop for `pgxmock` test compatibility.
+
+## 2026-06-04 - Batch Database Updates for InTheWild Sync
+
+**Performance Issue:** Individual database updates within a concurrent worker loop caused high transaction overhead and multiple database roundtrips.
+
+**Learning:** Consolidating updates into a single batch after concurrent processing finishes significantly reduces database pressure and improves sync throughput.
+
+**Optimization:** Implemented `pgx.Batch` to group all updates into a single transaction after the `errgroup` worker pool completes its tasks.
+
+**Impact:** Reduced database roundtrips from N to 1 per sync run, improving reliability and performance.

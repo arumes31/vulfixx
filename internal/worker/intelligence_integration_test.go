@@ -84,10 +84,12 @@ func TestWorker_InTheWildSync(t *testing.T) {
 	mock.ExpectQuery("SELECT cve_id FROM cves").
 		WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-2024-TEST"))
 
-	// Expect the data update
+	// Expect the data update inside a transaction due to batching
+	mock.ExpectBegin()
 	mock.ExpectExec("UPDATE cves SET inthewild_data").
 		WithArgs(pgxmock.AnyArg(), "CVE-2024-TEST").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectCommit()
 
 	// Expect the final task stats update
 	mock.ExpectExec("INSERT INTO worker_sync_stats").

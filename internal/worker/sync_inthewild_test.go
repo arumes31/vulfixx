@@ -49,9 +49,11 @@ func TestWorkerSync_InTheWild(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT cve_id FROM cves WHERE (inthewild_last_updated IS NULL OR inthewild_last_updated < NOW() - INTERVAL '30 days') AND cve_id ~ '^CVE-\\d{4}-\\d+$' ORDER BY inthewild_last_updated ASC NULLS FIRST LIMIT 100")).
 			WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-ITW-1"))
 
+		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE cves SET inthewild_data = $1, inthewild_last_updated = NOW() WHERE cve_id = $2")).
 			WithArgs(pgxmock.AnyArg(), "CVE-ITW-1").
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectCommit()
 
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("inthewild_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
@@ -68,9 +70,11 @@ func TestWorkerSync_InTheWild(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT cve_id FROM cves WHERE (inthewild_last_updated IS NULL OR inthewild_last_updated < NOW() - INTERVAL '30 days') AND cve_id ~ '^CVE-\\d{4}-\\d+$' ORDER BY inthewild_last_updated ASC NULLS FIRST LIMIT 100")).
 			WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-ITW-NONE"))
 
+		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE cves SET inthewild_last_updated = NOW() WHERE cve_id = $1")).
 			WithArgs("CVE-ITW-NONE").
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectCommit()
 
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("inthewild_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
@@ -109,11 +113,13 @@ func TestWorkerSync_InTheWild_Concurrent(t *testing.T) {
 			AddRow("CVE-2024-0002").
 			AddRow("CVE-2024-0003"))
 
+	mock.ExpectBegin()
 	for i := 1; i <= 3; i++ {
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE cves SET inthewild_data = $1, inthewild_last_updated = NOW() WHERE cve_id = $2")).
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	}
+	mock.ExpectCommit()
 
 	mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("inthewild_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
