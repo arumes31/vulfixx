@@ -673,26 +673,105 @@ func TestSetCooldownAndIsCooledDown(t *testing.T) {
 }
 
 func TestGeminiPauseInterval(t *testing.T) {
-	t.Run("default is 5 RPM (12s)", func(t *testing.T) {
+	t.Run("default is 15 RPM (4s)", func(t *testing.T) {
 		t.Setenv("GEMINI_RPM", "")
-		if got := geminiPauseInterval(); got != 12*time.Second {
-			t.Errorf("default pause = %v, want 12s (5 RPM)", got)
+		if got := geminiPauseInterval(); got != 4*time.Second {
+			t.Errorf("default pause = %v, want 4s (15 RPM)", got)
 		}
 	})
 	t.Run("honors GEMINI_RPM override", func(t *testing.T) {
-		t.Setenv("GEMINI_RPM", "15")
-		if got := geminiPauseInterval(); got != 4*time.Second {
-			t.Errorf("pause at 15 RPM = %v, want 4s", got)
+		t.Setenv("GEMINI_RPM", "5")
+		if got := geminiPauseInterval(); got != 12*time.Second {
+			t.Errorf("pause at 5 RPM = %v, want 12s", got)
 		}
 	})
 	t.Run("ignores invalid/zero override", func(t *testing.T) {
 		t.Setenv("GEMINI_RPM", "0")
-		if got := geminiPauseInterval(); got != 12*time.Second {
-			t.Errorf("pause with GEMINI_RPM=0 = %v, want default 12s", got)
+		if got := geminiPauseInterval(); got != 4*time.Second {
+			t.Errorf("pause with GEMINI_RPM=0 = %v, want default 4s", got)
 		}
 		t.Setenv("GEMINI_RPM", "notanumber")
-		if got := geminiPauseInterval(); got != 12*time.Second {
-			t.Errorf("pause with invalid GEMINI_RPM = %v, want default 12s", got)
+		if got := geminiPauseInterval(); got != 4*time.Second {
+			t.Errorf("pause with invalid GEMINI_RPM = %v, want default 4s", got)
 		}
 	})
+}
+
+func TestGeminiDailyLimit(t *testing.T) {
+	t.Run("default is 500", func(t *testing.T) {
+		t.Setenv("GEMINI_RPD", "")
+		if got := geminiDailyLimit(); got != 500 {
+			t.Errorf("default limit = %d, want 500", got)
+		}
+	})
+	t.Run("honors override", func(t *testing.T) {
+		t.Setenv("GEMINI_RPD", "1000")
+		if got := geminiDailyLimit(); got != 1000 {
+			t.Errorf("limit = %d, want 1000", got)
+		}
+	})
+	t.Run("zero disables tracking", func(t *testing.T) {
+		t.Setenv("GEMINI_RPD", "0")
+		if got := geminiDailyLimit(); got != 0 {
+			t.Errorf("limit = %d, want 0 (disabled)", got)
+		}
+	})
+	t.Run("invalid falls back to default", func(t *testing.T) {
+		t.Setenv("GEMINI_RPD", "notanumber")
+		if got := geminiDailyLimit(); got != 500 {
+			t.Errorf("limit = %d, want default 500", got)
+		}
+	})
+}
+
+func TestGeminiDailyQuotaExceeded(t *testing.T) {
+	orig := geminiRPDIncr
+	t.Cleanup(func() { geminiRPDIncr = orig })
+
+	t.Run("under limit allows", func(t *testing.T) {
+		t.Setenv("GEMINI_RPD", "500")
+		geminiRPDIncr = func(context.Context) (int64, error) { return 1, nil }
+		if geminiDailyQuotaExceeded(context.Background()) {
+			t.Error("expected allowed when count (1) <= limit (500)")
+		}
+	})
+	t.Run("at limit allows", func(t *testing.T) {
+		t.Setenv("GEMINI_RPD", "500")
+		geminiRPDIncr = func(context.Context) (int64, error) { return 500, nil }
+		if geminiDailyQuotaExceeded(context.Background()) {
+			t.Error("expected allowed when count (500) == limit (500)")
+		}
+	})
+	t.Run("over limit blocks", func(t *testing.T) {
+		t.Setenv("GEMINI_RPD", "500")
+		geminiRPDIncr = func(context.Context) (int64, error) { return 501, nil }
+		if !geminiDailyQuotaExceeded(context.Background()) {
+			t.Error("expected blocked when count (501) > limit (500)")
+		}
+	})
+	t.Run("redis error fails open", func(t *testing.T) {
+		t.Setenv("GEMINI_RPD", "500")
+		geminiRPDIncr = func(context.Context) (int64, error) { return 0, errors.New("redis down") }
+		if geminiDailyQuotaExceeded(context.Background()) {
+			t.Error("expected fail-open (allowed) on redis error")
+		}
+	})
+	t.Run("disabled never blocks and never increments", func(t *testing.T) {
+		t.Setenv("GEMINI_RPD", "0")
+		called := false
+		geminiRPDIncr = func(context.Context) (int64, error) { called = true; return 999999, nil }
+		if geminiDailyQuotaExceeded(context.Background()) {
+			t.Error("expected allowed when tracking disabled")
+		}
+		if called {
+			t.Error("expected no Redis increment when tracking disabled")
+		}
+	})
+}
+
+func TestDurationUntilUTCMidnight(t *testing.T) {
+	d := durationUntilUTCMidnight()
+	if d <= 0 || d > 24*time.Hour {
+		t.Errorf("durationUntilUTCMidnight = %v, want (0, 24h]", d)
+	}
 }

@@ -88,7 +88,7 @@ func LoadConfig() error {
 		AppPort:         getEnv("PORT", "8080"),
 		SentryDSN:       decryptIfEncrypted(getEnv("SENTRY_DSN", "")),
 		GeminiAPIKey:     decryptIfEncrypted(getEnv("GEMINI_API_KEY", "")),
-		GeminiModel:      getEnv("GEMINI_MODEL", "gemini-2.5-flash"),
+		GeminiModel:      getEnv("GEMINI_MODEL", "gemini-3.1-flash-lite"),
 		// v1beta is required: the structured-output fields the extractor relies on
 		// (responseMimeType / responseSchema) are rejected by the stable v1 API.
 		GeminiAPIVersion: getEnv("GEMINI_API_VERSION", "v1beta"),

@@ -189,9 +189,10 @@ Vulfixx is hardened with enterprise-grade system improvements designed for high-
 | `LLM_MODEL` | Model name for Ollama (e.g. `phi3-vulfixx`, `llama3`) | `phi3-vulfixx` |
 | `LLM_TIMEOUT` | Intelligence extraction timeout (seconds) | `600` |
 | `GEMINI_API_KEY`| API Key for Google Gemini provider | `(empty)` |
-| `GEMINI_MODEL` | Gemini model version | `gemini-2.5-flash` |
+| `GEMINI_MODEL` | Gemini model version | `gemini-3.1-flash-lite` |
 | `GEMINI_API_VERSION`| API version for Google Gemini provider (must be `v1beta` for structured output) | `v1beta` |
-| `GEMINI_RPM` | Free-tier requests-per-minute used to pace Gemini calls (raise for paid tiers / higher-limit models) | `5` |
+| `GEMINI_RPM` | Free-tier requests-per-minute used to pace Gemini calls (raise for paid tiers / higher-limit models) | `15` |
+| `GEMINI_RPD` | Free-tier requests-per-day hard ceiling, tracked in Redis per UTC day (`0` disables; raise for paid tiers) | `500` |
 | `ARLIAI_API_KEY`| API Key for ArliAI (Qwen/Llama provider) | `(empty)` |
 | `ARLIAI_MODEL` | ArliAI model (e.g. `Qwen2.5-72B-Instruct`) | `Qwen2.5-72B-Instruct` |
 | `ARLIAI_ENDPOINT`| ArliAI API base URL | `https://api.arliai.com/v1` |
