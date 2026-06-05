@@ -57,7 +57,7 @@ func main() {
 		LLMEndpoint:      envOr("LLM_ENDPOINT", "http://ollama:11434"),
 		LLMModel:         envOr("LLM_MODEL", "phi3-vulfixx"),
 		GeminiAPIKey:     os.Getenv("GEMINI_API_KEY"),
-		GeminiModel:      envOr("GEMINI_MODEL", "gemini-3.1-flash-lite"),
+		Gemini31LiteModel: envOr("GEMINI_MODEL", "gemini-3.1-flash-lite"),
 		GeminiAPIVersion: envOr("GEMINI_API_VERSION", "v1beta"),
 		MistralAPIKey:    os.Getenv("MISTRAL_API_KEY"),
 		MistralModel:     envOr("MISTRAL_MODEL", "mistral-small-latest"),

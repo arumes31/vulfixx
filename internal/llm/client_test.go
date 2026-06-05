@@ -562,9 +562,9 @@ func TestExtractVendorProduct(t *testing.T) {
 			},
 		}
 
-		config.AppConfig.LLMProvider = "gemini"
+		config.AppConfig.LLMProvider = "gemini31flashlite"
 		config.AppConfig.GeminiAPIKey = "dummy-key"
-		config.AppConfig.GeminiModel = "gemini-1.5-flash"
+		config.AppConfig.Gemini31LiteModel = "gemini-1.5-flash"
 		config.AppConfig.GeminiAPIVersion = "v1"
 
 		products, err := ExtractVendorProduct(context.Background(), "desc", []string{})
@@ -724,41 +724,6 @@ func TestGeminiDailyLimit(t *testing.T) {
 	})
 }
 
-// TestExtractWithGemmaIntegration exercises the real Gemma model end-to-end.
-// Skipped unless GEMMA_INTEGRATION=1 and GEMINI_API_KEY are set (so CI/offline
-// runs don't depend on the network).
-func TestExtractWithGemmaIntegration(t *testing.T) {
-	if os.Getenv("GEMMA_INTEGRATION") != "1" {
-		t.Skip("set GEMMA_INTEGRATION=1 and GEMINI_API_KEY to run the live Gemma test")
-	}
-	key := os.Getenv("GEMINI_API_KEY")
-	if key == "" {
-		t.Skip("GEMINI_API_KEY not set")
-	}
-	model := os.Getenv("GEMMA_MODEL")
-	if model == "" {
-		model = "gemma-4-31b-it"
-	}
-	products, err := extractWithGemma(context.Background(), key, model, "v1beta",
-		"Buffer overflow in Cisco IOS before 15.1 allows remote attackers to execute code.")
-	if err != nil {
-		t.Fatalf("extractWithGemma failed: %v", err)
-	}
-	if len(products) == 0 {
-		t.Fatal("expected at least one product from Gemma")
-	}
-	t.Logf("gemma returned: %+v", products)
-	found := false
-	for _, p := range products {
-		if strings.Contains(strings.ToLower(p.Product), "ios") || strings.Contains(strings.ToLower(p.Vendor), "cisco") {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("expected Cisco/IOS in results, got %+v", products)
-	}
-}
-
 func TestGoogleFailover(t *testing.T) {
 	t.Run("resolves all failover providers with correct defaults", func(t *testing.T) {
 		for _, tc := range []struct {
@@ -767,10 +732,8 @@ func TestGoogleFailover(t *testing.T) {
 			defRPM     int
 			defRPD     int
 		}{
-			{"gemini35", true, 5, 20},
-			{"gemini3", true, 5, 20},
-			{"gemma", false, 15, 1500},
-			{"gemma2", false, 15, 1500},
+			{"gemini35flash", true, 15, 20},
+			{"gemini3flash", true, 15, 20},
 		} {
 			f, ok := googleFailoverFor(tc.provider)
 			if !ok {
@@ -784,70 +747,33 @@ func TestGoogleFailover(t *testing.T) {
 				t.Errorf("%s defaults = %d/%d, want %d/%d", tc.provider, f.defRPM, f.defRPD, tc.defRPM, tc.defRPD)
 			}
 		}
-		if _, ok := googleFailoverFor("gemini"); ok {
-			t.Error("primary gemini should not be a failover provider")
+		if _, ok := googleFailoverFor("gemini31flashlite"); ok {
+			t.Error("primary gemini31flashlite should not be a failover provider")
 		}
 		if _, ok := googleFailoverFor("mistral"); ok {
 			t.Error("mistral should not resolve as a failover")
 		}
 	})
 	t.Run("pace honors RPM override and default", func(t *testing.T) {
-		f, _ := googleFailoverFor("gemini35")
-		t.Setenv("GEMINI35_RPM", "")
-		if got := googleFailoverPace(f); got != 12*time.Second { // 5 RPM default
-			t.Errorf("default gemini35 pace = %v, want 12s (5 RPM)", got)
+		f, _ := googleFailoverFor("gemini35flash")
+		t.Setenv("GEMINI35FLASH_RPM", "")
+		if got := googleFailoverPace(f); got != 4*time.Second { // 15 RPM default
+			t.Errorf("default gemini35flash pace = %v, want 4s (15 RPM)", got)
 		}
-		t.Setenv("GEMINI35_RPM", "15")
-		if got := googleFailoverPace(f); got != 4*time.Second {
-			t.Errorf("gemini35 pace at 15 RPM = %v, want 4s", got)
+		t.Setenv("GEMINI35FLASH_RPM", "5")
+		if got := googleFailoverPace(f); got != 12*time.Second {
+			t.Errorf("gemini35flash pace at 5 RPM = %v, want 12s", got)
 		}
 	})
 	t.Run("daily limit honors override, default, and zero", func(t *testing.T) {
-		f, _ := googleFailoverFor("gemma")
-		t.Setenv("GEMMA_RPD", "")
-		if got := googleFailoverDailyLimit(f); got != 1500 {
-			t.Errorf("default gemma limit = %d, want 1500", got)
+		f, _ := googleFailoverFor("gemini35flash")
+		t.Setenv("GEMINI35FLASH_RPD", "")
+		if got := googleFailoverDailyLimit(f); got != 20 {
+			t.Errorf("default gemini35flash limit = %d, want 20", got)
 		}
-		t.Setenv("GEMMA_RPD", "0")
+		t.Setenv("GEMINI35FLASH_RPD", "0")
 		if got := googleFailoverDailyLimit(f); got != 0 {
-			t.Errorf("gemma limit = %d, want 0 (disabled)", got)
-		}
-		f35, _ := googleFailoverFor("gemini35")
-		t.Setenv("GEMINI35_RPD", "")
-		if got := googleFailoverDailyLimit(f35); got != 20 {
-			t.Errorf("default gemini35 limit = %d, want 20", got)
-		}
-	})
-}
-
-func TestParseExtractionJSON(t *testing.T) {
-	cases := []struct {
-		name string
-		in   string
-		want int // number of products expected
-	}{
-		{"plain object", `{"products":[{"vendor":"Cisco","product":"IOS","version":"< 15.1"}]}`, 1},
-		{"json fence", "```json\n{\"products\":[{\"vendor\":\"A\",\"product\":\"B\",\"version\":null}]}\n```", 1},
-		{"bare fence", "```\n{\"products\":[]}\n```", 0},
-		{"surrounding prose", "Here is the result:\n{\"products\":[{\"vendor\":\"X\",\"product\":\"Y\",\"version\":\"1\"}]}\nDone.", 1},
-		// Realistic verbose Gemma output: reasoning prose that itself contains
-		// brace-like format fragments, followed by the real answer in a fence.
-		{"gemma verbose with prose braces", "*   Goal: extract products.\n*   Format: {\"products\":[{\"vendor\",\"product\",\"version\"}]}\n*   Vendor: Cisco\n\n```json\n{\n  \"products\": [\n    {\"vendor\": \"Cisco\", \"product\": \"IOS\", \"version\": \"before 15.1\"}\n  ]\n}\n```", 1},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			res, err := parseExtractionJSON(c.in)
-			if err != nil {
-				t.Fatalf("parseExtractionJSON(%q) error: %v", c.in, err)
-			}
-			if len(res.Products) != c.want {
-				t.Errorf("got %d products, want %d", len(res.Products), c.want)
-			}
-		})
-	}
-	t.Run("garbage errors", func(t *testing.T) {
-		if _, err := parseExtractionJSON("not json at all"); err == nil {
-			t.Error("expected error for non-JSON input")
+			t.Errorf("gemini35flash limit = %d, want 0 (disabled)", got)
 		}
 	})
 }

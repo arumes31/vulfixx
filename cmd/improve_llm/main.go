@@ -127,6 +127,13 @@ func main() {
 	}
 
 	curPrompt := currentPrompt(provider)
+	winnerFile := provider + "_prompt.winner.txt"
+	// Auto-resume from winner if it exists
+	if b, err := os.ReadFile(winnerFile); err == nil && len(b) > 0 {
+		curPrompt = string(b)
+		fmt.Printf("Auto-resuming from existing winner: %s\n", winnerFile)
+	}
+
 	// PROMPT_FILE lets us evaluate a candidate prompt (e.g. a winner produced by a
 	// prior run) instead of the one currently in client.go — used to cross-validate
 	// a prompt tuned on one provider against another before adopting it.
@@ -146,16 +153,12 @@ func main() {
 	switch provider {
 	case "mistral":
 		mdl = config.AppConfig.MistralModel
-	case "gemini":
-		mdl = config.AppConfig.GeminiModel
-	case "gemini35":
+	case "gemini31flashlite":
+		mdl = config.AppConfig.Gemini31LiteModel
+	case "gemini35flash":
 		mdl = config.AppConfig.Gemini35Model
-	case "gemini3":
+	case "gemini3flash":
 		mdl = config.AppConfig.Gemini3Model
-	case "gemma":
-		mdl = config.AppConfig.GemmaModel
-	case "gemma2":
-		mdl = config.AppConfig.Gemma2Model
 	}
 
 	switch mode {
@@ -172,7 +175,7 @@ func main() {
 		collectFailures(provider, endpoint, mdl, curPrompt, evalSet, trainSet)
 
 	case "basemodels":
-		candidates := strings.Split(env("BASE_MODELS", "qwen2.5:3b,llama3.2:3b,gemma2:2b"), ",")
+		candidates := strings.Split(env("BASE_MODELS", "qwen2.5:3b,llama3.2:3b"), ",")
 		type res struct {
 			model string
 			full  float64
@@ -352,15 +355,11 @@ func predict(provider, endpoint, mdl, prompt, desc string) []llm.ProductResult {
 	switch provider {
 	case "mistral":
 		return callMistralExtract(prompt, desc)
-	case "gemini":
-		return callGeminiExtract(config.AppConfig.GeminiModel, prompt, desc)
-	case "gemini35", "gemini3":
+	case "gemini31flashlite":
+		return callGeminiExtract(config.AppConfig.Gemini31LiteModel, prompt, desc)
+	case "gemini35flash", "gemini3flash":
 		// Gemini-family failover models: structured output like the primary Gemini.
 		return callGeminiExtract(mdl, prompt, desc)
-	case "gemma", "gemma2":
-		// mdl already resolved to the Gemma model id; Gemma needs a schema-less
-		// request and tolerant parsing (verbose output wrapped in ```json).
-		return callGemmaExtract(mdl, prompt, desc)
 	default:
 		return callOllama(endpoint, mdl, prompt, desc)
 	}
@@ -400,7 +399,7 @@ func callOllama(endpoint, mdl, systemPrompt, desc string) []llm.ProductResult {
 			} `json:"error"`
 		}
 		_ = json.NewDecoder(resp.Body).Decode(&errResp)
-		fmt.Printf("debug: gemma status %d: %s (%s)\n", resp.StatusCode, errResp.Error.Message, errResp.Error.Status)
+		fmt.Printf("debug: ollama status %d: %s (%s)\n", resp.StatusCode, errResp.Error.Message, errResp.Error.Status)
 		return nil
 	}
 	var gen struct {
@@ -678,7 +677,7 @@ func callMistralExtract(systemPrompt, desc string) []llm.ProductResult {
 			} `json:"error"`
 		}
 		_ = json.NewDecoder(resp.Body).Decode(&errResp)
-		fmt.Printf("debug: gemma status %d: %s (%s)\n", resp.StatusCode, errResp.Error.Message, errResp.Error.Status)
+		fmt.Printf("debug: mistral status %d: %s (%s)\n", resp.StatusCode, errResp.Error.Message, errResp.Error.Status)
 		return nil
 	}
 	var cr struct {
@@ -728,7 +727,7 @@ func callGeminiExtract(model, systemPrompt, desc string) []llm.ProductResult {
 			} `json:"error"`
 		}
 		_ = json.NewDecoder(resp.Body).Decode(&errResp)
-		fmt.Printf("debug: gemma status %d: %s (%s)\n", resp.StatusCode, errResp.Error.Message, errResp.Error.Status)
+		fmt.Printf("debug: gemini status %d: %s (%s)\n", resp.StatusCode, errResp.Error.Message, errResp.Error.Status)
 		return nil
 	}
 	var gr struct {
@@ -746,121 +745,6 @@ func callGeminiExtract(model, systemPrompt, desc string) []llm.ProductResult {
 	}
 	return parseProducts(gr.Candidates[0].Content.Parts[0].Text)
 }
-
-// callGemmaExtract calls a Gemma model on the Google API. Gemma does NOT support
-// system_instruction or structured output, so the prompt is folded into a single
-// user turn and the (often verbose) text response is parsed tolerantly.
-func callGemmaExtract(model, systemPrompt, desc string) []llm.ProductResult {
-	url := fmt.Sprintf("%s/models/%s:generateContent?key=%s",
-		"https://generativelanguage.googleapis.com/v1beta",
-		model, config.AppConfig.GeminiAPIKey)
-	prompt := systemPrompt + "\n\nReturn ONLY the JSON object, no markdown fences or commentary.\n\nDescription: " + desc
-	payload := map[string]interface{}{
-		"contents": []map[string]interface{}{
-			{"parts": []map[string]string{{"text": prompt}}},
-		},
-		"generationConfig": map[string]interface{}{"temperature": 0},
-	}
-	jsonData, _ := json.Marshal(payload)
-	client := &http.Client{Timeout: 90 * time.Second}
-	resp, err := client.Post(url, "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == 429 {
-		time.Sleep(4 * time.Second)
-		return nil
-	}
-	if resp.StatusCode != 200 {
-		var errResp struct {
-			Error struct {
-				Message string `json:"message"`
-				Status  string `json:"status"`
-			} `json:"error"`
-		}
-		_ = json.NewDecoder(resp.Body).Decode(&errResp)
-		fmt.Printf("debug: gemma status %d: %s (%s)\n", resp.StatusCode, errResp.Error.Message, errResp.Error.Status)
-		return nil
-	}
-	var gr struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&gr); err != nil ||
-		len(gr.Candidates) == 0 || len(gr.Candidates[0].Content.Parts) == 0 {
-		return nil
-	}
-	// Pace to respect the Gemma free-tier limit (default 15 RPM = 4s). Override
-	// with GEMMA_PACE_MS for paid tiers.
-	pace := 4200 * time.Millisecond
-	if v := os.Getenv("GEMMA_PACE_MS"); v != "" {
-		if ms, err := strconv.Atoi(v); err == nil && ms >= 0 {
-			pace = time.Duration(ms) * time.Millisecond
-		}
-	}
-	time.Sleep(pace)
-	return parseGemmaProducts(gr.Candidates[0].Content.Parts[0].Text)
-}
-
-// parseGemmaProducts tolerantly extracts {"products":[...]} from verbose Gemma
-// output: it prefers fenced ```json blocks, then string-aware balanced {...}
-// spans containing a "products" key.
-func parseGemmaProducts(raw string) []llm.ProductResult {
-	// 1. fenced blocks
-	for _, m := range gemmaFenceRe.FindAllStringSubmatch(raw, -1) {
-		if strings.Contains(m[1], "\"products\"") {
-			if p := parseProducts(m[1]); len(p) > 0 || strings.Contains(m[1], "[]") {
-				return p
-			}
-		}
-	}
-	// 2. whole string
-	if p := parseProducts(raw); p != nil {
-		return p
-	}
-	// 3. balanced {...} spans containing "products"
-	depth, start := 0, -1
-	inStr, esc := false, false
-	for i := 0; i < len(raw); i++ {
-		c := raw[i]
-		switch {
-		case esc:
-			esc = false
-		case c == '\\' && inStr:
-			esc = true
-		case c == '"':
-			inStr = !inStr
-		case inStr:
-		case c == '{':
-			if depth == 0 {
-				start = i
-			}
-			depth++
-		case c == '}':
-			if depth > 0 {
-				depth--
-				if depth == 0 && start >= 0 {
-					cand := raw[start : i+1]
-					if strings.Contains(cand, "\"products\"") {
-						if p := parseProducts(cand); p != nil {
-							return p
-						}
-					}
-					start = -1
-				}
-			}
-		}
-	}
-	return nil
-}
-
-var gemmaFenceRe = regexp.MustCompile("(?s)```(?:json)?\\s*(.*?)```")
 
 func refinePrompt(teacher, current string, failures []evalCase) (string, error) {
 	var sb strings.Builder
@@ -950,7 +834,7 @@ func callMistral(prompt string) (string, error) {
 func callGemini(prompt string) (string, error) {
 	url := fmt.Sprintf("%s/models/%s:generateContent?key=%s",
 		"https://generativelanguage.googleapis.com/v1beta",
-		config.AppConfig.GeminiModel, config.AppConfig.GeminiAPIKey)
+		config.AppConfig.Gemini31LiteModel, config.AppConfig.GeminiAPIKey)
 	payload := map[string]interface{}{
 		"contents": []map[string]interface{}{
 			{"parts": []map[string]string{{"text": prompt}}},

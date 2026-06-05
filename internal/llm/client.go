@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,7 +34,7 @@ var ErrRateLimit = errors.New("llm rate limit exceeded")
 
 // defaultGeminiRPM is the free-tier requests-per-minute target used to pace
 // Gemini calls. 15 RPM matches the default model's free-tier limit
-// (gemini-3.1-flash-lite = 15 RPM / 500 RPD). Override via the GEMINI_RPM
+// (gemini-3.1-flash-lite = 15 RPM / 500 RPD). Override via the GEMINI31FLASHLITE_RPM
 // environment variable when using a model/tier with a different limit.
 const defaultGeminiRPM = 15
 
@@ -43,7 +42,11 @@ const defaultGeminiRPM = 15
 // the steady-state request rate stays within the (free-tier) RPM limit.
 func geminiPauseInterval() time.Duration {
 	rpm := defaultGeminiRPM
-	if v := strings.TrimSpace(os.Getenv("GEMINI_RPM")); v != "" {
+	v := strings.TrimSpace(os.Getenv("GEMINI31FLASHLITE_RPM"))
+	if v == "" {
+		v = strings.TrimSpace(os.Getenv("GEMINI_RPM"))
+	}
+	if v != "" {
 		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
 			rpm = parsed
 		}
@@ -52,7 +55,7 @@ func geminiPauseInterval() time.Duration {
 }
 
 // defaultGeminiRPD is the free-tier requests-per-day limit for the default model
-// (gemini-3.1-flash-lite = 500 RPD). Override via the GEMINI_RPD environment
+// (gemini-3.1-flash-lite = 500 RPD). Override via the GEMINI31FLASHLITE_RPD environment
 // variable; set it to 0 to disable daily quota tracking entirely.
 const defaultGeminiRPD = 500
 
@@ -60,7 +63,11 @@ const defaultGeminiRPD = 500
 // value <= 0 disables tracking.
 func geminiDailyLimit() int {
 	limit := defaultGeminiRPD
-	if v := strings.TrimSpace(os.Getenv("GEMINI_RPD")); v != "" {
+	v := strings.TrimSpace(os.Getenv("GEMINI31FLASHLITE_RPD"))
+	if v == "" {
+		v = strings.TrimSpace(os.Getenv("GEMINI_RPD"))
+	}
+	if v != "" {
 		if parsed, err := strconv.Atoi(v); err == nil {
 			limit = parsed
 		}
@@ -70,20 +77,19 @@ func geminiDailyLimit() int {
 
 // googleFailover describes a non-primary Google model used in the fallback
 // chain after the primary Gemini model (gemini-3.1-flash-lite, provider
-// "gemini"). Each has its own rate limits and an independent Redis daily
+// "gemini31flashlite"). Each has its own rate limits and an independent Redis daily
 // counter. `structured` selects the request style: Gemini models support
-// structured output (extractWithGemini); Gemma models do not (extractWithGemma).
+// structured output (extractWithGemini).
 //
 // Provider keys and defaults (override via the *_MODEL / *_RPM / *_RPD env vars):
 //
-//	gemini35 -> gemini-3.5-flash        5 RPM / 20   RPD (structured)
-//	gemini3  -> gemini-3-flash-preview  5 RPM / 20   RPD (structured)
-//	gemma    -> gemma-4-31b-it         15 RPM / 1500 RPD (schema-less)
-//	gemma2   -> gemma-4-26b-a4b-it     15 RPM / 1500 RPD (schema-less)
+//	gemini35flash      -> gemini-3.5-flash        15 RPM / 20   RPD (structured)
+//	gemini3flash       -> gemini-3-flash-preview  15 RPM / 20   RPD (structured)
+//	gemini31flashlite  -> gemini-3.1-flash-lite   15 RPM / 500  RPD (structured)
 //
 // A typical quality-first, quota-aware chain:
 //
-//	LLM_PROVIDER=gemini3,gemini,gemma,gemma2,mistral,ollama
+//	LLM_PROVIDER=gemini35flash,gemini3flash,gemini31flashlite,mistral,ollama
 type googleFailover struct {
 	model      string // Google API model id
 	rpmEnv     string
@@ -99,14 +105,10 @@ type googleFailover struct {
 // stay overridable.
 func googleFailoverFor(provider string) (googleFailover, bool) {
 	switch provider {
-	case "gemini35":
-		return googleFailover{config.AppConfig.Gemini35Model, "GEMINI35_RPM", 5, "GEMINI35_RPD", 20, "gemini35", true}, true
-	case "gemini3":
-		return googleFailover{config.AppConfig.Gemini3Model, "GEMINI3_RPM", 5, "GEMINI3_RPD", 20, "gemini3", true}, true
-	case "gemma":
-		return googleFailover{config.AppConfig.GemmaModel, "GEMMA_RPM", 15, "GEMMA_RPD", 1500, "gemma", false}, true
-	case "gemma2":
-		return googleFailover{config.AppConfig.Gemma2Model, "GEMMA2_RPM", 15, "GEMMA2_RPD", 1500, "gemma2", false}, true
+	case "gemini35flash":
+		return googleFailover{config.AppConfig.Gemini35Model, "GEMINI35FLASH_RPM", 15, "GEMINI35FLASH_RPD", 20, "gemini35flash", true}, true
+	case "gemini3flash":
+		return googleFailover{config.AppConfig.Gemini3Model, "GEMINI3FLASH_RPM", 15, "GEMINI3FLASH_RPD", 20, "gemini3flash", true}, true
 	}
 	return googleFailover{}, false
 }
@@ -255,7 +257,7 @@ func isCooledDown(provider string) bool {
 }
 
 // ExtractVendorProduct chooses the appropriate provider(s) (Gemini, Ollama, or Mistral) to extract all vendor/product/version names.
-// It supports a fallback chain if LLM_PROVIDER is a comma-separated list (e.g. "gemini,mistral").
+// It supports a fallback chain if LLM_PROVIDER is a comma-separated list (e.g. "gemini35flash,gemini3flash,gemini31flashlite,mistral,ollama").
 func ExtractVendorProduct(ctx context.Context, description string, references []string) ([]ProductResult, error) {
 	// Acquire semaphore (queue up if another job is running)
 	select {
@@ -283,12 +285,12 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 		// Enforce the Gemini free-tier daily request ceiling (RPD). Once hit,
 		// cool Gemini down until the UTC day rolls over so the rest of this run
 		// falls through to other providers instead of racking up 429s.
-		if p == "gemini" && geminiDailyQuotaExceeded(ctx) {
+		if p == "gemini31flashlite" && geminiDailyQuotaExceeded(ctx) {
 			setCooldown(p, durationUntilUTCMidnight())
-			lastErr = fmt.Errorf("%w: gemini daily request quota reached", ErrRateLimit)
+			lastErr = fmt.Errorf("%w: gemini31flashlite daily request quota reached", ErrRateLimit)
 			continue
 		}
-		// Google failover providers (gemini35, gemini3, gemma, gemma2) each enforce
+		// Google failover providers (gemini35flash, gemini3flash) each enforce
 		// their own independent daily ceiling.
 		gf, isFailover := googleFailoverFor(p)
 		if isFailover && googleFailoverQuotaExceeded(ctx, gf) {
@@ -301,15 +303,11 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 		var err error
 
 		switch {
-		case p == "gemini":
-			results, err = extractWithGemini(ctx, config.AppConfig.GeminiAPIKey, config.AppConfig.GeminiModel, config.AppConfig.GeminiAPIVersion, fullContext)
+		case p == "gemini31flashlite":
+			results, err = extractWithGemini(ctx, config.AppConfig.GeminiAPIKey, config.AppConfig.Gemini31LiteModel, config.AppConfig.GeminiAPIVersion, fullContext)
 		case isFailover && gf.structured:
 			// Gemini-family failover model (same API key): supports structured output.
 			results, err = extractWithGemini(ctx, config.AppConfig.GeminiAPIKey, gf.model, config.AppConfig.GeminiAPIVersion, fullContext)
-		case isFailover:
-			// Gemma failover model: schema-less request because Gemma doesn't support
-			// structured output.
-			results, err = extractWithGemma(ctx, config.AppConfig.GeminiAPIKey, gf.model, config.AppConfig.GeminiAPIVersion, fullContext)
 		case p == "ollama":
 			results, err = extractWithOllama(ctx, config.AppConfig.LLMEndpoint, config.AppConfig.LLMModel, fullContext)
 		case p == "mistral":
@@ -323,7 +321,7 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 			// Proactive rate limiting for the Google free tier. The semaphore is
 			// still held here, so pausing also paces concurrent callers.
 			var pause time.Duration
-			if p == "gemini" {
+			if p == "gemini31flashlite" {
 				pause = geminiPauseInterval()
 			} else if isFailover {
 				pause = googleFailoverPace(gf)
@@ -363,27 +361,25 @@ func getSystemPrompt() string {
 	return `Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from the provided CVE description and reference URLs. Return ONLY a JSON object with a key "products" containing a list of objects, each with "vendor", "product", and "version".
 
 RULES:
-1. Use the Reference URLs to disambiguate generic names (e.g. the description says "ftpd" but the references point to "wu-ftpd" -> use "wu-ftpd").
-2. List EVERY distinct affected product. When several products or editions are named (e.g. "Total Security, Internet Security, and AntiVirus Pro"), output one entry per product. Do NOT merge them into one.
-3. Treat a device and its firmware as ONE product: use the device/model name and do NOT emit a separate "... Firmware" entry.
-4. ONLY extract products stated to be vulnerable. NEVER extract a technology that is merely the vulnerability TYPE or mechanism: for "SQL injection" do NOT output SQL or SQL Server; for "XSS" do NOT output JavaScript; for "XML external entity" do NOT output XML.
-5. For a plugin, extension, or theme, the product is the plugin/theme name and the vendor is its author. Do NOT report the host platform (WordPress, Drupal, Joomla) as the vendor or product unless the platform core itself is the vulnerable software.
-6. Use the EXACT names from the text. Do NOT hallucinate or modernize names, and do NOT invent version numbers.
-7. Format versions: "before"/"prior to" X -> "< X"; "through" X or "X and earlier" -> "<= X"; "X through Y" -> "X through Y"; "from X before Y" -> ">= X, < Y". Use null when no version is given.
-8. If a vulnerability affects a wide range of hardware models (e.g. "MediaTek SoCs"), and individual models are not listed in the text, use the general category or component name (e.g. "MediaTek SoCs" or "KeyInstall") as the product.
+1. EXHAUSTIVITY: List EVERY distinct product mentioned as vulnerable. If a series of products is named (e.g., "Product A, B, and C"), output one entry per product. NEVER return an empty list if any product is mentioned.
+2. DISAMBIGUATE: Use Reference URLs to identify specific product names if the description is generic (e.g., "ftpd" -> "wu-ftpd"). 
+3. "AS USED IN": When a vulnerability is in a component "as used in" a host product (e.g., "WebKit as used in Safari"), extract the host product (Safari) as the affected software.
+4. PLATFORMS: If a vulnerability is specific to a platform (e.g., "on Windows", "for Android", "on Mac OS X"), extract that platform as an additional affected product.
+5. ALIASES (aka): If a product has an alias (e.g., "Dashboard (aka Horizon)"), prefer the most distinct name ("Horizon"). 
+6. PLUGINS: For plugins/themes/extensions, the product is the extension name and the vendor is its author. Do NOT report the host platform (WordPress, Drupal) as the vendor unless the core platform is also vulnerable.
+7. VERSIONING: Format versions strictly: "before"/"prior to" X -> "< X"; "through" X or "X and earlier" -> "<= X"; "X through Y" -> "X through Y"; "from X before Y" -> ">= X, < Y". Use null if no version is given.
+8. HARDWARE: Treat a device and its firmware as ONE product. Use the device model name.
+9. NEGATIVE CONSTRAINTS: NEVER extract vulnerability types (XSS, SQLi), function names (e.g., "vfprintf"), file paths (e.g., "config.php"), or CVE IDs as products. Use exact names from the text; do not hallucinate.
 
 EXAMPLES:
-Input: "Vulnerability in Cisco IOS before 15.1"
-Output: {"products": [{"vendor": "Cisco", "product": "IOS", "version": "< 15.1"}]}
-
-Input: "The debug command in Sendmail is enabled"
-Output: {"products": [{"vendor": "Sendmail", "product": "Sendmail", "version": null}]}
-
-Input: "A vulnerability in MediaTek keyInstall allows for local escalation..."
-Output: {"products": [{"vendor": "MediaTek", "product": "keyInstall", "version": null}]}
-
 Input: "Buffer overflow in Quick Heal Total Security 10.1, Internet Security 10.1, and AntiVirus Pro 10.1"
-Output: {"products": [{"vendor": "Quick Heal", "product": "Total Security", "version": "10.1"}, {"vendor": "Quick Heal", "product": "Internet Security", "version": "10.1"}, {"vendor": "Quick Heal", "product": "AntiVirus Pro", "version": "10.1"}]}`
+Output: {"products": [{"vendor": "Quick Heal", "product": "Total Security", "version": "10.1"}, {"vendor": "Quick Heal", "product": "Internet Security", "version": "10.1"}, {"vendor": "Quick Heal", "product": "AntiVirus Pro", "version": "10.1"}]}
+
+Input: "Vulnerability in WebKit, as used in Apple Safari before 4.0.5 on Windows"
+Output: {"products": [{"vendor": "Apple", "product": "Safari", "version": "< 4.0.5"}, {"vendor": "Microsoft", "product": "Windows", "version": null}]}
+
+Input: "MediaTek keyInstall (aka keymgr) allows escalation..."
+Output: {"products": [{"vendor": "MediaTek", "product": "keymgr", "version": null}]}`
 }
 
 // getOllamaSystemPrompt returns the extraction instructions for the local model.
@@ -472,127 +468,6 @@ func extractWithGemini(ctx context.Context, apiKey, model, apiVersion, descripti
 		return nil, err
 	}
 	return res.Products, nil
-}
-
-// extractWithGemma calls the Google API with a Gemma model. Gemma models do not
-// support structured output (ResponseSchema) the way Gemini models do, so this
-// sends a plain request and parses the JSON object out of the text response
-// (tolerating ```json fences and surrounding prose). Used as a higher daily
-// quota failover for Gemini.
-func extractWithGemma(ctx context.Context, apiKey, model, apiVersion, description string) ([]ProductResult, error) {
-	if apiKey == "" {
-		return nil, fmt.Errorf("gemini api key is required")
-	}
-
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey: apiKey,
-		HTTPOptions: genai.HTTPOptions{
-			APIVersion: apiVersion,
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create gemini client: %w", err)
-	}
-
-	cfg := &genai.GenerateContentConfig{
-		Temperature: genai.Ptr[float32](0.0),
-	}
-
-	prompt := getSystemPrompt() + "\n\nReturn ONLY the JSON object, with no markdown fences or commentary.\n\nDescription: " + description
-	if os.Getenv("LLM_DEBUG") == "true" {
-		slog.Debug("LLM: [DEBUG] Gemma Prompt", "model", model, "prompt", prompt)
-	}
-
-	result, err := client.Models.GenerateContent(ctx, model, genai.Text(prompt), cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	raw := result.Text()
-	if os.Getenv("LLM_DEBUG") == "true" {
-		slog.Debug("LLM: [DEBUG] Gemma Raw Response", "response", raw)
-	}
-
-	res, err := parseExtractionJSON(raw)
-	if err != nil {
-		return nil, fmt.Errorf("gemma: %w", err)
-	}
-	return res.Products, nil
-}
-
-// fencedBlockRe captures the body of a ```json ... ``` or ``` ... ``` block.
-var fencedBlockRe = regexp.MustCompile("(?s)```(?:json)?\\s*(.*?)```")
-
-// parseExtractionJSON tolerantly extracts the {"products": [...]} object from a
-// model response. Gemma models in particular are verbose: they emit reasoning
-// prose (which can itself contain brace-like fragments) and wrap the real answer
-// in a ```json fence. So we (1) try fenced blocks first, (2) try the whole
-// string, then (3) scan for string-aware balanced {...} objects that contain a
-// "products" key — never a naive first-{ to last-} span.
-func parseExtractionJSON(raw string) (ExtractionResponse, error) {
-	var res ExtractionResponse
-
-	tryParse := func(s string) bool {
-		s = strings.TrimSpace(s)
-		if s == "" {
-			return false
-		}
-		return json.Unmarshal([]byte(s), &res) == nil
-	}
-
-	// 1. Fenced code blocks (most reliable for Gemma).
-	for _, m := range fencedBlockRe.FindAllStringSubmatch(raw, -1) {
-		if strings.Contains(m[1], "\"products\"") && tryParse(m[1]) {
-			return res, nil
-		}
-	}
-	// 2. Whole response as-is.
-	if tryParse(raw) {
-		return res, nil
-	}
-	// 3. String-aware balanced {...} objects containing "products".
-	for _, cand := range balancedObjects(raw) {
-		if strings.Contains(cand, "\"products\"") && tryParse(cand) {
-			return res, nil
-		}
-	}
-	return res, fmt.Errorf("could not parse JSON from response")
-}
-
-// balancedObjects returns every top-level {...} span in s, tracking string
-// literals (and escapes) so braces inside quoted strings don't unbalance the
-// scan. Used to pull a JSON object out of verbose model output.
-func balancedObjects(s string) []string {
-	var out []string
-	depth, start := 0, -1
-	inStr, esc := false, false
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case esc:
-			esc = false
-		case c == '\\' && inStr:
-			esc = true
-		case c == '"':
-			inStr = !inStr
-		case inStr:
-			// inside a string literal: ignore structural chars
-		case c == '{':
-			if depth == 0 {
-				start = i
-			}
-			depth++
-		case c == '}':
-			if depth > 0 {
-				depth--
-				if depth == 0 && start >= 0 {
-					out = append(out, s[start:i+1])
-					start = -1
-				}
-			}
-		}
-	}
-	return out
 }
 
 func extractWithOllama(ctx context.Context, endpoint, model, description string) ([]ProductResult, error) {

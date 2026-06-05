@@ -41,6 +41,7 @@ mistral_prompt.winner.txt
 fetch_cves.exe~
 nvd_cves.json
 cves.json
+mistral_failures.json
 # Regenerable benchmark fixture (built by cmd/fetch_cves); not version-controlled.
 testset.json
 

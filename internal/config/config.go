@@ -47,12 +47,10 @@ type Config struct {
 	AppPort          string
 	SentryDSN        string
 	GeminiAPIKey     string
-	GeminiModel      string
+	Gemini31LiteModel string
 	GeminiAPIVersion string
 	Gemini35Model    string // higher-quality, low-quota Gemini failover (e.g. gemini-3.5-flash)
 	Gemini3Model     string // Gemini 3 Flash failover (e.g. gemini-3-flash-preview)
-	GemmaModel       string // Gemma model on the Google API used as a higher-quota failover for Gemini
-	Gemma2Model      string // second Gemma failover model (e.g. gemma-4-26b-a4b-it)
 	LLMProvider      string // "ollama" or "gemini"
 	LLMEndpoint      string // e.g. "http://ollama:11434"
 	LLMModel         string // e.g. "phi3" or "llama3"
@@ -92,15 +90,13 @@ func LoadConfig() error {
 		AppPort:         getEnv("PORT", "8080"),
 		SentryDSN:       decryptIfEncrypted(getEnv("SENTRY_DSN", "")),
 		GeminiAPIKey:    decryptIfEncrypted(getEnv("GEMINI_API_KEY", "")),
-		GeminiModel:     getEnv("GEMINI_MODEL", "gemini-3.1-flash-lite"),
+		Gemini31LiteModel: getEnv("GEMINI31FLASHLITE_MODEL", getEnv("GEMINI31LITE_MODEL", getEnv("GEMINI_MODEL", "gemini-3.1-flash-lite"))),
 		// v1beta is required: the structured-output fields the extractor relies on
 		// (responseMimeType / responseSchema) are rejected by the stable v1 API.
 		GeminiAPIVersion: getEnv("GEMINI_API_VERSION", "v1beta"),
-		Gemini35Model:    getEnv("GEMINI35_MODEL", "gemini-3.5-flash"),
-		Gemini3Model:     getEnv("GEMINI3_MODEL", "gemini-3-flash-preview"),
-		GemmaModel:       getEnv("GEMMA_MODEL", "gemma-4-31b-it"),
-		Gemma2Model:      getEnv("GEMMA2_MODEL", "gemma-4-26b-a4b-it"),
-		LLMProvider:      getEnv("LLM_PROVIDER", "gemini3,gemini,gemma,gemma2,mistral,ollama"),
+		Gemini35Model:    getEnv("GEMINI35FLASH_MODEL", getEnv("GEMINI35_MODEL", "gemini-3.5-flash")),
+		Gemini3Model:     getEnv("GEMINI3FLASH_MODEL", getEnv("GEMINI3_MODEL", "gemini-3-flash-preview")),
+		LLMProvider:      getEnv("LLM_PROVIDER", "gemini35flash,gemini3flash,gemini31flashlite,mistral,ollama"),
 		LLMEndpoint:      getEnv("LLM_ENDPOINT", "http://ollama:11434"),
 		LLMModel:         getEnv("LLM_MODEL", "phi3-vulfixx"),
 		LLMTimeout:       getEnvInt("LLM_TIMEOUT", 600),
