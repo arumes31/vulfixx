@@ -218,8 +218,8 @@ func TestMainFunction(t *testing.T) {
 	// Call main directly with a testset.json created
 	tmpdir := t.TempDir()
 	origDir, _ := os.Getwd()
-	os.Chdir(tmpdir)
-	defer os.Chdir(origDir)
+	_ = os.Chdir(tmpdir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	testset := `[
 		{
@@ -230,7 +230,7 @@ func TestMainFunction(t *testing.T) {
 			"truth": [{"vendor": "cisco", "product": "ios"}]
 		}
 	]`
-	os.WriteFile("testset.json", []byte(testset), 0644)
+	_ = os.WriteFile("testset.json", []byte(testset), 0644)
 
 	// Since we don't actually want to call LLM, we can limit providers
 	t.Setenv("TEST_PROVIDER", "none")

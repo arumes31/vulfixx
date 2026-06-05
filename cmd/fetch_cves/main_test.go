@@ -191,7 +191,7 @@ func TestFetch(t *testing.T) {
 					t.Errorf("missing or incorrect apiKey header")
 				}
 				w.WriteHeader(tc.statusCode)
-				w.Write([]byte(tc.body))
+				_, _ = w.Write([]byte(tc.body))
 			}))
 			defer server.Close()
 
@@ -270,7 +270,7 @@ func TestCollectYear(t *testing.T) {
 				},
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -290,10 +290,10 @@ func TestMainFunction(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := nvdResp{
-			TotalResults: 0,
+			TotalResults:    0,
 			Vulnerabilities: nil,
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -305,8 +305,8 @@ func TestMainFunction(t *testing.T) {
 	// Change to a temporary directory so we can write testset.json safely
 	tmpdir := t.TempDir()
 	origDir, _ := os.Getwd()
-	os.Chdir(tmpdir)
-	defer os.Chdir(origDir)
+	_ = os.Chdir(tmpdir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	// Call main directly. It shouldn't os.Exit if os.WriteFile succeeds.
 	main()
