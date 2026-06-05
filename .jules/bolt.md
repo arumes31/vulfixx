@@ -44,3 +44,8 @@
 ## 2026-05-30 - Optimized Database Updates in GitHub Buzz Sync
 **Learning:** Performing individual `tx.Exec` calls within a transaction loop in `updateGitHubBatch` for 50 items results in 50 separate database roundtrips, which degrades performance.
 **Action:** Implemented `pgx.Batch` within the transaction to send all update queries in a single database roundtrip, significantly reducing I/O latency, while maintaining a fallback loop for `pgxmock` test compatibility.
+## 2026-05-30 - Optimized GitHub Sync with Concurrent Worker Pool
+**Performance Issue:** Sequential HTTP requests in the GitHub Buzz synchronization loop caused significant latency, especially when an unauthenticated rate limit was applied (7 seconds per request).
+**Learning:** By utilizing `golang.org/x/sync/errgroup` and a custom `rate.Limiter`, we can parallelize the network I/O bounds while strictly enforcing GitHub's API rate limits. It is also critical to not shadow the main context when using `errgroup.WithContext(ctx)` to ensure subsequent synchronous database operations are not passed a cancelled context after the errgroup finishes.
+**Optimization:** Refactored the `syncGitHubBuzz` loop to use 5 concurrent workers. Extracted the rate limiter to a shared struct property (`GitHubLimiter`) mapped to the presence of a `GITHUB_TOKEN`.
+**Impact:** Significantly reduced total sync execution time through parallel execution, without violating API rate limits or sacrificing batch-update efficiency.

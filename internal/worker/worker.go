@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"golang.org/x/time/rate"
 	"log/slog"
+	"os"
 	"sync"
 	"time"
 
@@ -27,6 +28,7 @@ type Worker struct {
 	alertMu            sync.Mutex
 	HNLimiter          *rate.Limiter
 	RedditLimiter      *rate.Limiter
+	GitHubLimiter      *rate.Limiter
 	alertResendBackoff time.Duration
 	enrichmentQueue    chan int
 	AsynqClient        *asynq.Client
@@ -44,6 +46,13 @@ func (w *Worker) initLimiters() {
 	}
 	if w.RedditLimiter == nil {
 		w.RedditLimiter = rate.NewLimiter(rate.Every(500*time.Millisecond), 1)
+	}
+	if w.GitHubLimiter == nil {
+		if os.Getenv("GITHUB_TOKEN") != "" {
+			w.GitHubLimiter = rate.NewLimiter(rate.Every(2200*time.Millisecond), 1)
+		} else {
+			w.GitHubLimiter = rate.NewLimiter(rate.Every(7*time.Second), 1)
+		}
 	}
 }
 

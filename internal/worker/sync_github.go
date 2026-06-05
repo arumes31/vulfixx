@@ -11,7 +11,10 @@ import (
 	"strconv"
 	"time"
 
+	"sync"
+
 	"github.com/jackc/pgx/v5"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -64,73 +67,98 @@ func (w *Worker) syncGitHubBuzz(ctx context.Context) {
 
 	start := time.Now()
 	var pendingUpdates []githubUpdateItem
+	var mu sync.Mutex
 
-CVELoop:
-	for _, cveID := range cveIDs {
-		select {
-		case <-ctx.Done():
-			goto executeRemaining
-		default:
-		}
+	g, egCtx := errgroup.WithContext(ctx)
+	cveChan := make(chan string)
 
-		var ghResp struct {
-			TotalCount int `json:"total_count"`
-		}
+	numWorkers := 5
 
-		githubURL := fmt.Sprintf("https://api.github.com/search/repositories?q=%s", cveID)
-		resp, err := DoWithRetry(ctx, w.HTTP, RetryConfig{
-			MaxRetries:  3,
-			MaxWait:     5 * time.Minute,
-			ShouldRetry: githubShouldRetry,
-			Label:       "GitHub Buzz Sync",
-		}, func() (*http.Request, error) {
-			req, err := http.NewRequestWithContext(ctx, "GET", githubURL, nil)
-			if err != nil {
-				return nil, err
+	for i := 0; i < numWorkers; i++ {
+		g.Go(func() error {
+			for cveID := range cveChan {
+				if w.GitHubLimiter != nil {
+					if err := w.GitHubLimiter.Wait(egCtx); err != nil {
+						return err
+					}
+				}
+
+				var ghResp struct {
+					TotalCount int `json:"total_count"`
+				}
+
+				githubURL := fmt.Sprintf("https://api.github.com/search/repositories?q=%s", cveID)
+				resp, err := DoWithRetry(egCtx, w.HTTP, RetryConfig{
+					MaxRetries:  3,
+					MaxWait:     5 * time.Minute,
+					ShouldRetry: githubShouldRetry,
+					Label:       "GitHub Buzz Sync",
+				}, func() (*http.Request, error) {
+					req, err := http.NewRequestWithContext(egCtx, "GET", githubURL, nil)
+					if err != nil {
+						return nil, err
+					}
+					req.Header.Set("Accept", "application/vnd.github.v3+json")
+					req.Header.Set("User-Agent", "Vulfixx-Threat-Intel")
+					if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+						req.Header.Set("Authorization", "token "+token)
+					}
+					return req, nil
+				})
+
+				if err != nil {
+					slog.Error("Worker: [ERROR] GitHub request failed after retries", "cve_id", cveID, "error", err)
+					continue
+				}
+				if resp == nil {
+					continue
+				}
+
+				if resp.StatusCode != http.StatusOK {
+					slog.Warn("Worker: [WARN] GitHub API returned non-OK status", "status", resp.StatusCode, "cve_id", cveID)
+					_ = resp.Body.Close()
+					continue
+				}
+
+				err = json.NewDecoder(resp.Body).Decode(&ghResp)
+				_ = resp.Body.Close()
+				if err != nil {
+					slog.Error("Worker: [ERROR] Failed to decode GitHub response", "cve_id", cveID, "error", err)
+					continue
+				}
+
+				mu.Lock()
+				pendingUpdates = append(pendingUpdates, githubUpdateItem{cveID: cveID, totalCount: ghResp.TotalCount})
+				var batch []githubUpdateItem
+				if len(pendingUpdates) >= 50 {
+					batch = pendingUpdates
+					pendingUpdates = nil
+				}
+				mu.Unlock()
+
+				if len(batch) > 0 {
+					w.updateGitHubBatch(ctx, batch)
+				}
 			}
-			req.Header.Set("Accept", "application/vnd.github.v3+json")
-			req.Header.Set("User-Agent", "Vulfixx-Threat-Intel")
-			if token := os.Getenv("GITHUB_TOKEN"); token != "" {
-				req.Header.Set("Authorization", "token "+token)
-			}
-			return req, nil
+			return nil
 		})
-
-		if err != nil {
-			slog.Error("Worker: [ERROR] GitHub request failed after retries", "cve_id", cveID, "error", err)
-			continue CVELoop
-		}
-		if resp == nil {
-			continue CVELoop
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			slog.Warn("Worker: [WARN] GitHub API returned non-OK status", "status", resp.StatusCode, "cve_id", cveID)
-			_ = resp.Body.Close()
-			continue CVELoop
-		}
-
-		err = json.NewDecoder(resp.Body).Decode(&ghResp)
-		_ = resp.Body.Close()
-		if err != nil {
-			slog.Error("Worker: [ERROR] Failed to decode GitHub response", "cve_id", cveID, "error", err)
-			continue CVELoop
-		}
-
-		pendingUpdates = append(pendingUpdates, githubUpdateItem{cveID: cveID, totalCount: ghResp.TotalCount})
-		if len(pendingUpdates) >= 50 {
-			w.updateGitHubBatch(ctx, pendingUpdates)
-			pendingUpdates = nil
-		}
-
-		select {
-		case <-ctx.Done():
-			goto executeRemaining
-		case <-time.After(githubSyncDelay):
-		}
 	}
 
-executeRemaining:
+	go func() {
+		defer close(cveChan)
+		for _, id := range cveIDs {
+			select {
+			case <-ctx.Done():
+				return
+			case cveChan <- id:
+			}
+		}
+	}()
+
+	if err := g.Wait(); err != nil && err != context.Canceled {
+		slog.Error("Worker: [ERROR] GitHub sync worker group error", "error", err)
+	}
+
 	if len(pendingUpdates) > 0 {
 		w.updateGitHubBatch(ctx, pendingUpdates)
 	}
