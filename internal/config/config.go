@@ -49,6 +49,8 @@ type Config struct {
 	GeminiAPIKey     string
 	GeminiModel      string
 	GeminiAPIVersion string
+	Gemini35Model    string // higher-quality, low-quota Gemini failover (e.g. gemini-3.5-flash)
+	Gemini3Model     string // Gemini 3 Flash failover (e.g. gemini-3-flash-preview)
 	GemmaModel       string // Gemma model on the Google API used as a higher-quota failover for Gemini
 	Gemma2Model      string // second Gemma failover model (e.g. gemma-4-26b-a4b-it)
 	LLMProvider      string // "ollama" or "gemini"
@@ -94,9 +96,11 @@ func LoadConfig() error {
 		// v1beta is required: the structured-output fields the extractor relies on
 		// (responseMimeType / responseSchema) are rejected by the stable v1 API.
 		GeminiAPIVersion: getEnv("GEMINI_API_VERSION", "v1beta"),
-		GemmaModel:       getEnv("GEMMA_MODEL", "gemma-4-31b-it"),
-		Gemma2Model:      getEnv("GEMMA2_MODEL", "gemma-4-26b-a4b-it"),
-		LLMProvider:      getEnv("LLM_PROVIDER", "ollama"),
+		Gemini35Model:    getEnv("GEMINI35_MODEL", "gemini-3.5-flash"),
+		Gemini3Model:     getEnv("GEMINI3_MODEL", "gemini-3-flash"),
+		GemmaModel:       getEnv("GEMMA_MODEL", "gemma-2-27b-it"),
+		Gemma2Model:      getEnv("GEMMA2_MODEL", "gemma-2-9b-it"),
+		LLMProvider:      getEnv("LLM_PROVIDER", "gemini3,gemini,gemma,gemma2,mistral,ollama"),
 		LLMEndpoint:      getEnv("LLM_ENDPOINT", "http://ollama:11434"),
 		LLMModel:         getEnv("LLM_MODEL", "phi3-vulfixx"),
 		LLMTimeout:       getEnvInt("LLM_TIMEOUT", 600),

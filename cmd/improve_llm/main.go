@@ -148,6 +148,10 @@ func main() {
 		mdl = config.AppConfig.MistralModel
 	case "gemini":
 		mdl = config.AppConfig.GeminiModel
+	case "gemini35":
+		mdl = config.AppConfig.Gemini35Model
+	case "gemini3":
+		mdl = config.AppConfig.Gemini3Model
 	case "gemma":
 		mdl = config.AppConfig.GemmaModel
 	case "gemma2":
@@ -159,6 +163,13 @@ func main() {
 		full, rec := evalPrompt(provider, endpoint, mdl, curPrompt, evalSet, true)
 		fmt.Printf("\nBASELINE %s/%s: full-match=%.1f%% avg-recall=%.1f%% over %d cases\n",
 			provider, mdl, full*100, rec*100, len(evalSet))
+
+	case "collect":
+		// Agent-as-teacher mode: measure the held-out baseline and dump the
+		// training-set FAILURES (with the model's actual prediction) to JSON so a
+		// human/agent can craft an improved prompt offline, then validate it with
+		// MODE=baseline PROMPT_FILE=<candidate>. No LLM teacher is called.
+		collectFailures(provider, endpoint, mdl, curPrompt, evalSet, trainSet)
 
 	case "basemodels":
 		candidates := strings.Split(env("BASE_MODELS", "qwen2.5:3b,llama3.2:3b,gemma2:2b"), ",")
@@ -255,6 +266,63 @@ func improveLoop(provider, endpoint, mdl, startPrompt string, evalSet, trainSet 
 	}
 }
 
+// failureRecord is one mis-extracted CVE captured for offline (agent) analysis.
+type failureRecord struct {
+	ID         string              `json:"id"`
+	Desc       string              `json:"desc"`
+	Recall     float64             `json:"recall"`
+	Truth      []truthProduct      `json:"truth"`
+	Prediction []llm.ProductResult `json:"prediction"`
+}
+
+// collectReport is what MODE=collect writes for an agent teacher to consume.
+type collectReport struct {
+	Provider           string          `json:"provider"`
+	Model              string          `json:"model"`
+	BaselineFull       float64         `json:"baseline_full_match"`
+	BaselineRec        float64         `json:"baseline_avg_recall"`
+	EvalN              int             `json:"eval_n"`
+	CurrentPromptChars int             `json:"current_prompt_chars"`
+	CurrentPrompt      string          `json:"current_prompt"`
+	Failures           []failureRecord `json:"failures"`
+}
+
+// collectFailures measures the held-out baseline and writes all training-set
+// failures (with the model's actual prediction) to <provider>_failures.json so
+// an agent can author an improved prompt, then validate it with
+// MODE=baseline PROMPT_FILE=<candidate>.
+func collectFailures(provider, endpoint, mdl, prompt string, evalSet, trainSet []evalCase) {
+	full, rec := evalPrompt(provider, endpoint, mdl, prompt, evalSet, false)
+	fmt.Printf("\nBASELINE %s/%s: full-match=%.1f%% avg-recall=%.1f%% (eval n=%d)\n",
+		provider, mdl, full*100, rec*100, len(evalSet))
+
+	rep := collectReport{
+		Provider: provider, Model: mdl,
+		BaselineFull: full, BaselineRec: rec, EvalN: len(evalSet),
+		CurrentPromptChars: len(prompt), CurrentPrompt: prompt,
+	}
+	for i, c := range trainSet {
+		preds := predict(provider, endpoint, mdl, prompt, c.Desc)
+		r, _ := scoreCase(c.Truth, preds)
+		status := "PASS"
+		if r < 0.999 {
+			status = "FAIL"
+			rep.Failures = append(rep.Failures, failureRecord{
+				ID: c.ID, Desc: c.Desc, Recall: r, Truth: c.Truth, Prediction: preds,
+			})
+		}
+		fmt.Printf("[%d/%d] %s r=%.2f %s\n", i+1, len(trainSet), c.ID, r, status)
+	}
+	out, _ := json.MarshalIndent(rep, "", "  ")
+	fname := provider + "_failures.json"
+	if err := os.WriteFile(fname, out, 0600); err != nil {
+		fmt.Printf("warn: could not write %s: %v\n", fname, err)
+		return
+	}
+	fmt.Printf("\n=== collected %d failures over %d train CVEs -> %s ===\n", len(rep.Failures), len(trainSet), fname)
+	fmt.Printf("baseline full-match=%.1f%% recall=%.1f%%; craft an improved prompt, then validate with MODE=baseline PROMPT_FILE=<candidate>\n", full*100, rec*100)
+}
+
 // evalPrompt scores a (model, prompt) pair over a set of cases.
 // Returns (fullMatchRate, avgRecall). fullMatch = recall==1.0 for that CVE.
 func evalPrompt(provider, endpoint, mdl, prompt string, cases []evalCase, verbose bool) (float64, float64) {
@@ -285,7 +353,10 @@ func predict(provider, endpoint, mdl, prompt, desc string) []llm.ProductResult {
 	case "mistral":
 		return callMistralExtract(prompt, desc)
 	case "gemini":
-		return callGeminiExtract(prompt, desc)
+		return callGeminiExtract(config.AppConfig.GeminiModel, prompt, desc)
+	case "gemini35", "gemini3":
+		// Gemini-family failover models: structured output like the primary Gemini.
+		return callGeminiExtract(mdl, prompt, desc)
 	case "gemma", "gemma2":
 		// mdl already resolved to the Gemma model id; Gemma needs a schema-less
 		// request and tolerant parsing (verbose output wrapped in ```json).
@@ -610,10 +681,10 @@ func callMistralExtract(systemPrompt, desc string) []llm.ProductResult {
 
 // callGeminiExtract runs extraction via Gemini with `systemPrompt` as the
 // system instruction.
-func callGeminiExtract(systemPrompt, desc string) []llm.ProductResult {
+func callGeminiExtract(model, systemPrompt, desc string) []llm.ProductResult {
 	url := fmt.Sprintf("%s/models/%s:generateContent?key=%s",
 		"https://generativelanguage.googleapis.com/v1beta",
-		config.AppConfig.GeminiModel, config.AppConfig.GeminiAPIKey)
+		model, config.AppConfig.GeminiAPIKey)
 	payload := map[string]interface{}{
 		"system_instruction": map[string]interface{}{
 			"parts": []map[string]string{{"text": systemPrompt}},

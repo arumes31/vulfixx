@@ -31,6 +31,14 @@ services:
       - GEMINI_API_VERSION=${GEMINI_API_VERSION:-v1beta}
       - GEMINI_RPM=${GEMINI_RPM:-15}
       - GEMINI_RPD=${GEMINI_RPD:-500}
+      # Higher-quality, low-quota Gemini failovers tried BEFORE flash-lite when in
+      # LLM_PROVIDER (e.g. LLM_PROVIDER=gemini35,gemini3,gemini,gemma,gemma2,...).
+      - GEMINI35_MODEL=${GEMINI35_MODEL:-gemini-3.5-flash}
+      - GEMINI35_RPM=${GEMINI35_RPM:-5}
+      - GEMINI35_RPD=${GEMINI35_RPD:-20}
+      - GEMINI3_MODEL=${GEMINI3_MODEL:-gemini-3-flash-preview}
+      - GEMINI3_RPM=${GEMINI3_RPM:-5}
+      - GEMINI3_RPD=${GEMINI3_RPD:-20}
       # Gemma failover (used when LLM_PROVIDER includes "gemma"): same Google API
       # key, higher daily quota. Set GEMMA_MODEL to the exact API model id.
       - GEMMA_MODEL=${GEMMA_MODEL:-gemma-4-31b-it}

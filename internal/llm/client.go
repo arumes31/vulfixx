@@ -68,43 +68,54 @@ func geminiDailyLimit() int {
 	return limit
 }
 
-// defaultGemmaRPM / defaultGemmaRPD are the free-tier limits for the Gemma
-// failover models on the Google API (gemma-4-31b-it and gemma-4-26b-a4b-it =
-// 15 RPM / 1500 RPD each). The higher daily ceiling is exactly why these Gemma
-// models are used as failovers once the primary Gemini model (e.g.
-// gemini-3.1-flash-lite, 500 RPD) is exhausted. Override per provider via
-// GEMMA_RPM/GEMMA_RPD and GEMMA2_RPM/GEMMA2_RPD.
-const defaultGemmaRPM = 15
-const defaultGemmaRPD = 1500
-
-// gemmaSpec describes one Gemma failover provider in the chain: which model to
-// call, the env vars that override its rate limits, and the Redis key prefix
-// for its independent daily counter.
-type gemmaSpec struct {
-	model    string // Google API model id
-	rpmEnv   string
-	rpdEnv   string
-	redisKey string
+// googleFailover describes a non-primary Google model used in the fallback
+// chain after the primary Gemini model (gemini-3.1-flash-lite, provider
+// "gemini"). Each has its own rate limits and an independent Redis daily
+// counter. `structured` selects the request style: Gemini models support
+// structured output (extractWithGemini); Gemma models do not (extractWithGemma).
+//
+// Provider keys and defaults (override via the *_MODEL / *_RPM / *_RPD env vars):
+//
+//	gemini35 -> gemini-3.5-flash        5 RPM / 20   RPD (structured)
+//	gemini3  -> gemini-3-flash          5 RPM / 20   RPD (structured)
+//	gemma    -> gemma-2-27b-it         15 RPM / 1500 RPD (schema-less)
+//	gemma2   -> gemma-2-9b-it          15 RPM / 1500 RPD (schema-less)
+//
+// A typical quality-first, quota-aware chain:
+//
+//	LLM_PROVIDER=gemini3,gemini,gemma,gemma2,mistral,ollama
+type googleFailover struct {
+	model      string // Google API model id
+	rpmEnv     string
+	defRPM     int
+	rpdEnv     string
+	defRPD     int
+	redisKey   string
+	structured bool
 }
 
-// gemmaSpecFor resolves a provider name (e.g. "gemma", "gemma2") to its spec, or
-// returns ok=false if the name is not a Gemma failover provider. Model ids are
-// read from config so they stay overridable via GEMMA_MODEL / GEMMA2_MODEL.
-func gemmaSpecFor(provider string) (gemmaSpec, bool) {
+// googleFailoverFor resolves a provider name to its spec, or ok=false if the
+// name is not a Google failover provider. Model ids come from config so they
+// stay overridable.
+func googleFailoverFor(provider string) (googleFailover, bool) {
 	switch provider {
+	case "gemini35":
+		return googleFailover{config.AppConfig.Gemini35Model, "GEMINI35_RPM", 5, "GEMINI35_RPD", 20, "gemini35", true}, true
+	case "gemini3":
+		return googleFailover{config.AppConfig.Gemini3Model, "GEMINI3_RPM", 5, "GEMINI3_RPD", 20, "gemini3", true}, true
 	case "gemma":
-		return gemmaSpec{config.AppConfig.GemmaModel, "GEMMA_RPM", "GEMMA_RPD", "gemma"}, true
+		return googleFailover{config.AppConfig.GemmaModel, "GEMMA_RPM", 15, "GEMMA_RPD", 1500, "gemma", false}, true
 	case "gemma2":
-		return gemmaSpec{config.AppConfig.Gemma2Model, "GEMMA2_RPM", "GEMMA2_RPD", "gemma2"}, true
+		return googleFailover{config.AppConfig.Gemma2Model, "GEMMA2_RPM", 15, "GEMMA2_RPD", 1500, "gemma2", false}, true
 	}
-	return gemmaSpec{}, false
+	return googleFailover{}, false
 }
 
-// gemmaPauseInterval returns the post-call pacing for a Gemma provider, honoring
-// its RPM override env var.
-func gemmaPauseInterval(rpmEnv string) time.Duration {
-	rpm := defaultGemmaRPM
-	if v := strings.TrimSpace(os.Getenv(rpmEnv)); v != "" {
+// googleFailoverPace returns the post-call pacing for a failover provider,
+// honoring its RPM override env var.
+func googleFailoverPace(f googleFailover) time.Duration {
+	rpm := f.defRPM
+	if v := strings.TrimSpace(os.Getenv(f.rpmEnv)); v != "" {
 		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
 			rpm = parsed
 		}
@@ -112,11 +123,11 @@ func gemmaPauseInterval(rpmEnv string) time.Duration {
 	return time.Duration(int64(time.Minute) / int64(rpm))
 }
 
-// gemmaDailyLimit returns a Gemma provider's requests-per-day ceiling from its
-// RPD override env var (<= 0 disables tracking).
-func gemmaDailyLimit(rpdEnv string) int {
-	limit := defaultGemmaRPD
-	if v := strings.TrimSpace(os.Getenv(rpdEnv)); v != "" {
+// googleFailoverDailyLimit returns a failover provider's requests-per-day
+// ceiling from its RPD override env var (<= 0 disables tracking).
+func googleFailoverDailyLimit(f googleFailover) int {
+	limit := f.defRPD
+	if v := strings.TrimSpace(os.Getenv(f.rpdEnv)); v != "" {
 		if parsed, err := strconv.Atoi(v); err == nil {
 			limit = parsed
 		}
@@ -124,10 +135,10 @@ func gemmaDailyLimit(rpdEnv string) int {
 	return limit
 }
 
-// gemmaRPDIncr increments today's (UTC) request counter for the given Redis key
-// prefix, so each Gemma model tracks its daily quota independently of Gemini and
-// of the other Gemma model. Package var so tests can substitute a fake.
-var gemmaRPDIncr = func(ctx context.Context, keyPrefix string) (int64, error) {
+// googleFailoverRPDIncr increments today's (UTC) request counter for the given
+// Redis key prefix, so each failover model tracks its daily quota independently.
+// Package var so tests can substitute a fake.
+var googleFailoverRPDIncr = func(ctx context.Context, keyPrefix string) (int64, error) {
 	if db.RedisClient == nil {
 		return 0, errors.New("redis client not initialized")
 	}
@@ -142,20 +153,20 @@ var gemmaRPDIncr = func(ctx context.Context, keyPrefix string) (int64, error) {
 	return n, nil
 }
 
-// gemmaDailyQuotaExceeded increments and checks a Gemma provider's daily counter
-// against its RPD limit. Fails open on Redis errors.
-func gemmaDailyQuotaExceeded(ctx context.Context, spec gemmaSpec) bool {
-	limit := gemmaDailyLimit(spec.rpdEnv)
+// googleFailoverQuotaExceeded increments and checks a failover provider's daily
+// counter against its RPD limit. Fails open on Redis errors.
+func googleFailoverQuotaExceeded(ctx context.Context, f googleFailover) bool {
+	limit := googleFailoverDailyLimit(f)
 	if limit <= 0 {
 		return false
 	}
-	count, err := gemmaRPDIncr(ctx, spec.redisKey)
+	count, err := googleFailoverRPDIncr(ctx, f.redisKey)
 	if err != nil {
-		slog.Warn("LLM: could not check Gemma daily quota, allowing call", "model", spec.model, "error", err)
+		slog.Warn("LLM: could not check Google failover daily quota, allowing call", "model", f.model, "error", err)
 		return false
 	}
 	if count > int64(limit) {
-		slog.Warn("LLM: Gemma daily request quota reached", "model", spec.model, "count", count, "limit", limit)
+		slog.Warn("LLM: Google failover daily request quota reached", "model", f.model, "count", count, "limit", limit)
 		return true
 	}
 	return false
@@ -277,10 +288,10 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 			lastErr = fmt.Errorf("%w: gemini daily request quota reached", ErrRateLimit)
 			continue
 		}
-		// Gemma providers are the higher-quota Google failovers; each enforces its
-		// own independent daily ceiling.
-		gSpec, isGemma := gemmaSpecFor(p)
-		if isGemma && gemmaDailyQuotaExceeded(ctx, gSpec) {
+		// Google failover providers (gemini35, gemini3, gemma, gemma2) each enforce
+		// their own independent daily ceiling.
+		gf, isFailover := googleFailoverFor(p)
+		if isFailover && googleFailoverQuotaExceeded(ctx, gf) {
 			setCooldown(p, durationUntilUTCMidnight())
 			lastErr = fmt.Errorf("%w: %s daily request quota reached", ErrRateLimit, p)
 			continue
@@ -292,10 +303,13 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 		switch {
 		case p == "gemini":
 			results, err = extractWithGemini(ctx, config.AppConfig.GeminiAPIKey, config.AppConfig.GeminiModel, config.AppConfig.GeminiAPIVersion, fullContext)
-		case isGemma:
-			// Same Google API key/endpoint, different (higher-quota) model. Uses a
-			// schema-less request because Gemma models don't support structured output.
-			results, err = extractWithGemma(ctx, config.AppConfig.GeminiAPIKey, gSpec.model, config.AppConfig.GeminiAPIVersion, fullContext)
+		case isFailover && gf.structured:
+			// Gemini-family failover model (same API key): supports structured output.
+			results, err = extractWithGemini(ctx, config.AppConfig.GeminiAPIKey, gf.model, config.AppConfig.GeminiAPIVersion, fullContext)
+		case isFailover:
+			// Gemma failover model: schema-less request because Gemma doesn't support
+			// structured output.
+			results, err = extractWithGemma(ctx, config.AppConfig.GeminiAPIKey, gf.model, config.AppConfig.GeminiAPIVersion, fullContext)
 		case p == "ollama":
 			results, err = extractWithOllama(ctx, config.AppConfig.LLMEndpoint, config.AppConfig.LLMModel, fullContext)
 		case p == "mistral":
@@ -307,13 +321,12 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 
 		if err == nil {
 			// Proactive rate limiting for the Google free tier. The semaphore is
-			// still held here, so pausing also paces concurrent callers. The pause
-			// is derived from the configured RPM (default 15).
+			// still held here, so pausing also paces concurrent callers.
 			var pause time.Duration
 			if p == "gemini" {
 				pause = geminiPauseInterval()
-			} else if isGemma {
-				pause = gemmaPauseInterval(gSpec.rpmEnv)
+			} else if isFailover {
+				pause = googleFailoverPace(gf)
 			}
 			if pause > 0 {
 				slog.Debug("LLM: successful Google call, pacing to respect free tier RPM", "provider", p, "pause", pause)

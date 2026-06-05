@@ -759,44 +759,63 @@ func TestExtractWithGemmaIntegration(t *testing.T) {
 	}
 }
 
-func TestGemmaPaceAndLimit(t *testing.T) {
-	t.Run("pace default is 15 RPM (4s)", func(t *testing.T) {
-		t.Setenv("GEMMA_RPM", "")
-		if got := gemmaPauseInterval("GEMMA_RPM"); got != 4*time.Second {
-			t.Errorf("default gemma pause = %v, want 4s", got)
+func TestGoogleFailover(t *testing.T) {
+	t.Run("resolves all failover providers with correct defaults", func(t *testing.T) {
+		for _, tc := range []struct {
+			provider   string
+			structured bool
+			defRPM     int
+			defRPD     int
+		}{
+			{"gemini35", true, 5, 20},
+			{"gemini3", true, 5, 20},
+			{"gemma", false, 15, 1500},
+			{"gemma2", false, 15, 1500},
+		} {
+			f, ok := googleFailoverFor(tc.provider)
+			if !ok {
+				t.Errorf("%s should resolve", tc.provider)
+				continue
+			}
+			if f.structured != tc.structured {
+				t.Errorf("%s structured = %v, want %v", tc.provider, f.structured, tc.structured)
+			}
+			if f.defRPM != tc.defRPM || f.defRPD != tc.defRPD {
+				t.Errorf("%s defaults = %d/%d, want %d/%d", tc.provider, f.defRPM, f.defRPD, tc.defRPM, tc.defRPD)
+			}
+		}
+		if _, ok := googleFailoverFor("gemini"); ok {
+			t.Error("primary gemini should not be a failover provider")
+		}
+		if _, ok := googleFailoverFor("mistral"); ok {
+			t.Error("mistral should not resolve as a failover")
 		}
 	})
-	t.Run("pace honors RPM override env", func(t *testing.T) {
-		t.Setenv("GEMMA_RPM", "6")
-		if got := gemmaPauseInterval("GEMMA_RPM"); got != 10*time.Second {
-			t.Errorf("gemma pause at 6 RPM = %v, want 10s", got)
+	t.Run("pace honors RPM override and default", func(t *testing.T) {
+		f, _ := googleFailoverFor("gemini35")
+		t.Setenv("GEMINI35_RPM", "")
+		if got := googleFailoverPace(f); got != 12*time.Second { // 5 RPM default
+			t.Errorf("default gemini35 pace = %v, want 12s (5 RPM)", got)
+		}
+		t.Setenv("GEMINI35_RPM", "15")
+		if got := googleFailoverPace(f); got != 4*time.Second {
+			t.Errorf("gemini35 pace at 15 RPM = %v, want 4s", got)
 		}
 	})
-	t.Run("daily default is 1500", func(t *testing.T) {
+	t.Run("daily limit honors override, default, and zero", func(t *testing.T) {
+		f, _ := googleFailoverFor("gemma")
 		t.Setenv("GEMMA_RPD", "")
-		if got := gemmaDailyLimit("GEMMA_RPD"); got != 1500 {
+		if got := googleFailoverDailyLimit(f); got != 1500 {
 			t.Errorf("default gemma limit = %d, want 1500", got)
 		}
-	})
-	t.Run("daily honors override and zero disables", func(t *testing.T) {
-		t.Setenv("GEMMA2_RPD", "3000")
-		if got := gemmaDailyLimit("GEMMA2_RPD"); got != 3000 {
-			t.Errorf("gemma limit = %d, want 3000", got)
-		}
-		t.Setenv("GEMMA2_RPD", "0")
-		if got := gemmaDailyLimit("GEMMA2_RPD"); got != 0 {
+		t.Setenv("GEMMA_RPD", "0")
+		if got := googleFailoverDailyLimit(f); got != 0 {
 			t.Errorf("gemma limit = %d, want 0 (disabled)", got)
 		}
-	})
-	t.Run("spec resolves both gemma providers", func(t *testing.T) {
-		if _, ok := gemmaSpecFor("gemma"); !ok {
-			t.Error("gemma should resolve to a spec")
-		}
-		if _, ok := gemmaSpecFor("gemma2"); !ok {
-			t.Error("gemma2 should resolve to a spec")
-		}
-		if _, ok := gemmaSpecFor("mistral"); ok {
-			t.Error("mistral should not resolve to a gemma spec")
+		f35, _ := googleFailoverFor("gemini35")
+		t.Setenv("GEMINI35_RPD", "")
+		if got := googleFailoverDailyLimit(f35); got != 20 {
+			t.Errorf("default gemini35 limit = %d, want 20", got)
 		}
 	})
 }
