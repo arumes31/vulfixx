@@ -1056,6 +1056,14 @@ func (a *App) buildPublicDashboardWhereClause(filters publicDashboardFilters) (s
 func (a *App) fetchPublicDashboardMetrics(ctx context.Context, whereClause string, args []any) (publicDashboardMetrics, error) {
 	var metrics publicDashboardMetrics
 	if whereClause == " WHERE (1=1) " {
+		statsJSON, err := a.getOrRefreshGlobalStats(ctx)
+		if err == nil {
+			metrics.totalItems = statsJSON.Total
+			metrics.kevCount = statsJSON.KevCount
+			metrics.critCount = statsJSON.CritCount
+			return metrics, nil
+		}
+		// Fallback to local memory cache if database query fails
 		statsCache.RLock()
 		metrics.totalItems = statsCache.total
 		metrics.kevCount = statsCache.kevCount
@@ -1226,6 +1234,14 @@ func (a *App) fetchPublicDashboardCVEs(ctx context.Context, filters publicDashbo
 func (a *App) fetchPublicDashboardStats(ctx context.Context, whereClause string, args []any) (publicDashboardStats, error) {
 	var stats publicDashboardStats
 	if whereClause == " WHERE (1=1) " {
+		statsJSON, err := a.getOrRefreshGlobalStats(ctx)
+		if err == nil {
+			stats.severityCounts = statsJSON.SeverityCounts
+			stats.topCWEs = statsJSON.TopCWEs
+			stats.epssDist = statsJSON.EpssDist
+			return stats, nil
+		}
+		// Fallback to local memory cache if database query fails
 		statsCache.RLock()
 		stats.severityCounts = statsCache.severityCounts
 		stats.topCWEs = statsCache.topCWEs

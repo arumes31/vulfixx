@@ -130,7 +130,7 @@ func (w *Worker) runFullSync(ctx context.Context, isBackfill bool, startIndex in
 		params.Set("lastModEndDate", endTime.Format(time.RFC3339))
 	}
 
-	resultsPerPage := 500
+	resultsPerPage := 50
 
 	retryCount := 0
 	const maxNVDRetries = 5
@@ -487,7 +487,6 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 		return nil
 	}
 
-	var modelsToUpsert []models.CVE
 	consecutiveLLMFailures := 0
 	skipLLMForBatch := false
 
@@ -522,25 +521,31 @@ func (w *Worker) upsertCVEs(ctx context.Context, entries []NVDCVEEntry, isBackfi
 			consecutiveLLMFailures = 0
 		}
 
-		modelsToUpsert = append(modelsToUpsert, model)
-	}
-
-	successfulCVEs, err := w.executeCVEBatchUpsert(ctx, modelsToUpsert)
-	if err != nil {
-		return err
-	}
-
-	slog.Info("Worker: [DATABASE CONFIRMED] Batch added successfully to DB", "batch_size", len(successfulCVEs))
-
-	for _, model := range successfulCVEs {
-		select {
-		case w.enrichmentQueue <- model.ID:
-		default:
+		// Save the single CVE immediately to the database for live dashboard updates
+		successfulCVEs, err := w.executeCVEBatchUpsert(ctx, []models.CVE{model})
+		if err != nil {
+			slog.Error("Worker: Error upserting CVE to DB", "cve_id", model.CVEID, "error", err)
+			continue
 		}
 
-		if !isBackfill {
-			if err := w.enqueueAlertsForCVE(ctx, model); err != nil {
-				slog.Error("Worker: Error enqueuing alerts for CVE", "cve_id", model.CVEID, "error", err)
+		if len(successfulCVEs) > 0 {
+			savedModel := successfulCVEs[0]
+			slog.Info("Worker: [DATABASE CONFIRMED] CVE added successfully to DB", "cve_id", savedModel.CVEID)
+
+			// Invalidate Redis dashboard and stats cache keys
+			if w.Redis != nil {
+				_ = w.Redis.Del(ctx, "public_dashboard_default_v2", "vulfixx:dashboard_stats").Err()
+			}
+
+			select {
+			case w.enrichmentQueue <- savedModel.ID:
+			default:
+			}
+
+			if !isBackfill {
+				if err := w.enqueueAlertsForCVE(ctx, savedModel); err != nil {
+					slog.Error("Worker: Error enqueuing alerts for CVE", "cve_id", savedModel.CVEID, "error", err)
+				}
 			}
 		}
 	}
