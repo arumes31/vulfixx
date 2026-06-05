@@ -13,3 +13,7 @@
 ## 2026-05-28 - ARIA attributes for alert/status containers
 **Learning:** Flash messages indicating success or error states need proper ARIA roles to ensure they are immediately announced by screen readers without requiring the user to navigate to them.
 **Action:** Use `role="alert" aria-atomic="true"` for error messages and `role="status" aria-live="polite"` for non-critical information/success messages in template partials.
+
+## 2026-05-30 - ARIA Labels for Select Elements
+**Learning:** Found an accessibility issue where `<select>` elements without an associated `<label>` using the `for` attribute lack an accessible name. This causes screen readers to announce the element simply as "combobox", providing no context about its purpose, which creates a poor experience for users relying on assistive technologies.
+**Action:** Always ensure that `<select>` elements have an accessible name. If an explicitly associated `<label>` cannot be used, add an `aria-label` attribute (e.g., `aria-label="Select Workspace"`) to provide clear context for screen reader users.
