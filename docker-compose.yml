@@ -37,9 +37,9 @@ services:
       - GEMINI_RPM=${GEMINI_RPM:-15}
       - GEMINI_RPD=${GEMINI_RPD:-500}
       - LLM_DEBUG=${LLM_DEBUG:-false}
-      - ARLIAI_API_KEY=${ARLIAI_API_KEY}
-      - ARLIAI_MODEL=${ARLIAI_MODEL:-Qwen2.5-72B-Instruct}
-      - ARLIAI_ENDPOINT=${ARLIAI_ENDPOINT:-https://api.arliai.com/v1}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - MISTRAL_MODEL=${MISTRAL_MODEL:-mistral-small-latest}
+      - MISTRAL_ENDPOINT=${MISTRAL_ENDPOINT:-https://api.mistral.ai/v1}
       - TRUSTED_PROXIES=${TRUSTED_PROXIES}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
     depends_on:

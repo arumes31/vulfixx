@@ -26,40 +26,40 @@ func decryptIfEncrypted(val string) string {
 }
 
 type Config struct {
-	DBHost          string
-	DBPort          string
-	DBUser          string
-	DBPassword      string
-	DBName          string
-	RedisURL        string
-	SessionKey      string
-	CSRFKey         string
-	BaseURL         string
-	SMTPHost        string
-	SMTPPort        int
-	SMTPUser        string
-	SMTPPass        string
-	SMTPMailFrom    string
-	AdminEmail      string
-	AdminPassword   string
-	AdminTOTPSecret string
-	SecureCookie    bool
-	AppPort         string
-	SentryDSN       string
+	DBHost           string
+	DBPort           string
+	DBUser           string
+	DBPassword       string
+	DBName           string
+	RedisURL         string
+	SessionKey       string
+	CSRFKey          string
+	BaseURL          string
+	SMTPHost         string
+	SMTPPort         int
+	SMTPUser         string
+	SMTPPass         string
+	SMTPMailFrom     string
+	AdminEmail       string
+	AdminPassword    string
+	AdminTOTPSecret  string
+	SecureCookie     bool
+	AppPort          string
+	SentryDSN        string
 	GeminiAPIKey     string
 	GeminiModel      string
 	GeminiAPIVersion string
 	LLMProvider      string // "ollama" or "gemini"
-	LLMEndpoint     string // e.g. "http://ollama:11434"
-	LLMModel        string // e.g. "phi3" or "llama3"
-	LLMTimeout      int    // timeout in seconds
-	ArliAIAPIKey    string
-	ArliAIModel     string
-	ArliAIEndpoint  string
-	GRPCPort        string
-	GRPCCertFile    string
-	GRPCKeyFile     string
-	WebhookSecret   string
+	LLMEndpoint      string // e.g. "http://ollama:11434"
+	LLMModel         string // e.g. "phi3" or "llama3"
+	LLMTimeout       int    // timeout in seconds
+	MistralAPIKey    string
+	MistralModel     string
+	MistralEndpoint  string
+	GRPCPort         string
+	GRPCCertFile     string
+	GRPCKeyFile      string
+	WebhookSecret    string
 }
 
 var (
@@ -87,22 +87,22 @@ func LoadConfig() error {
 		AdminTOTPSecret: decryptIfEncrypted(getEnv("ADMIN_TOTP_SECRET", "")),
 		AppPort:         getEnv("PORT", "8080"),
 		SentryDSN:       decryptIfEncrypted(getEnv("SENTRY_DSN", "")),
-		GeminiAPIKey:     decryptIfEncrypted(getEnv("GEMINI_API_KEY", "")),
-		GeminiModel:      getEnv("GEMINI_MODEL", "gemini-3.1-flash-lite"),
+		GeminiAPIKey:    decryptIfEncrypted(getEnv("GEMINI_API_KEY", "")),
+		GeminiModel:     getEnv("GEMINI_MODEL", "gemini-3.1-flash-lite"),
 		// v1beta is required: the structured-output fields the extractor relies on
 		// (responseMimeType / responseSchema) are rejected by the stable v1 API.
 		GeminiAPIVersion: getEnv("GEMINI_API_VERSION", "v1beta"),
 		LLMProvider:      getEnv("LLM_PROVIDER", "ollama"),
-		LLMEndpoint:     getEnv("LLM_ENDPOINT", "http://ollama:11434"),
-		LLMModel:        getEnv("LLM_MODEL", "phi3-vulfixx"),
-		LLMTimeout:      getEnvInt("LLM_TIMEOUT", 600),
-		ArliAIAPIKey:    decryptIfEncrypted(getEnv("ARLIAI_API_KEY", "")),
-		ArliAIModel:     getEnv("ARLIAI_MODEL", "Qwen2.5-72B-Instruct"),
-		ArliAIEndpoint:  getEnv("ARLIAI_ENDPOINT", "https://api.arliai.com/v1"),
-		GRPCPort:        getEnv("GRPC_PORT", "9091"),
-		GRPCCertFile:    getEnv("GRPC_CERT_FILE", ""),
-		GRPCKeyFile:     getEnv("GRPC_KEY_FILE", ""),
-		WebhookSecret:   getEnv("WEBHOOK_SECRET", ""),
+		LLMEndpoint:      getEnv("LLM_ENDPOINT", "http://ollama:11434"),
+		LLMModel:         getEnv("LLM_MODEL", "phi3-vulfixx"),
+		LLMTimeout:       getEnvInt("LLM_TIMEOUT", 600),
+		MistralAPIKey:    decryptIfEncrypted(getEnv("MISTRAL_API_KEY", "")),
+		MistralModel:     getEnv("MISTRAL_MODEL", "mistral-small-latest"),
+		MistralEndpoint:  getEnv("MISTRAL_ENDPOINT", "https://api.mistral.ai/v1"),
+		GRPCPort:         getEnv("GRPC_PORT", "9091"),
+		GRPCCertFile:     getEnv("GRPC_CERT_FILE", ""),
+		GRPCKeyFile:      getEnv("GRPC_KEY_FILE", ""),
+		WebhookSecret:    getEnv("WEBHOOK_SECRET", ""),
 	}
 
 	port, err := strconv.Atoi(getEnv("SMTP_PORT", "587"))
