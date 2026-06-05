@@ -128,10 +128,10 @@ func TestExtractWithOllama(t *testing.T) {
 
 }
 
-func TestExtractWithArliAI(t *testing.T) {
+func TestExtractWithMistral(t *testing.T) {
 	t.Run("MissingAPIKey", func(t *testing.T) {
 		ctx := context.Background()
-		_, err := extractWithArliAI(ctx, "", "model", "url", "desc")
+		_, err := extractWithMistral(ctx, "", "model", "url", "desc")
 		if err == nil || !strings.Contains(err.Error(), "api key is required") {
 			t.Fatalf("expected api key required error, got %v", err)
 		}
@@ -154,9 +154,9 @@ func TestExtractWithArliAI(t *testing.T) {
 		defer server.Close()
 
 		ctx := context.Background()
-		products, err := extractWithArliAI(ctx, "key", "model", server.URL, "desc")
+		products, err := extractWithMistral(ctx, "key", "model", server.URL, "desc")
 		if err != nil {
-			t.Fatalf("extractWithArliAI failed: %v", err)
+			t.Fatalf("extractWithMistral failed: %v", err)
 		}
 		if len(products) != 1 || products[0].Vendor != "Arli" {
 			t.Fatalf("unexpected results: %+v", products)
@@ -180,9 +180,9 @@ func TestExtractWithArliAI(t *testing.T) {
 		defer server.Close()
 
 		ctx := context.Background()
-		products, err := extractWithArliAI(ctx, "key", "model", server.URL, "desc")
+		products, err := extractWithMistral(ctx, "key", "model", server.URL, "desc")
 		if err != nil {
-			t.Fatalf("extractWithArliAI failed: %v", err)
+			t.Fatalf("extractWithMistral failed: %v", err)
 		}
 		if len(products) != 1 || products[0].Vendor != "ArliMd" {
 			t.Fatalf("unexpected results: %+v", products)
@@ -191,7 +191,7 @@ func TestExtractWithArliAI(t *testing.T) {
 
 	t.Run("HTTPRequestError", func(t *testing.T) {
 		ctx := context.Background()
-		_, err := extractWithArliAI(ctx, "key", "model", "http://invalid-url-12345", "desc")
+		_, err := extractWithMistral(ctx, "key", "model", "http://invalid-url-12345", "desc")
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -208,8 +208,8 @@ func TestExtractWithArliAI(t *testing.T) {
 		defer server.Close()
 
 		ctx := context.Background()
-		_, err := extractWithArliAI(ctx, "key", "model", server.URL, "desc")
-		if err == nil || !strings.Contains(err.Error(), "arliai returned no choices") {
+		_, err := extractWithMistral(ctx, "key", "model", server.URL, "desc")
+		if err == nil || !strings.Contains(err.Error(), "mistral returned no choices") {
 			t.Fatalf("expected no choices error, got %v", err)
 		}
 	})
@@ -231,8 +231,8 @@ func TestExtractWithArliAI(t *testing.T) {
 		defer server.Close()
 
 		ctx := context.Background()
-		_, err := extractWithArliAI(ctx, "key", "model", server.URL, "desc")
-		if err == nil || !strings.Contains(err.Error(), "failed to parse arliai json") {
+		_, err := extractWithMistral(ctx, "key", "model", server.URL, "desc")
+		if err == nil || !strings.Contains(err.Error(), "failed to parse mistral json") {
 			t.Fatalf("expected parse error, got %v", err)
 		}
 	})
@@ -245,8 +245,8 @@ func TestExtractWithArliAI(t *testing.T) {
 		defer server.Close()
 
 		ctx := context.Background()
-		_, err := extractWithArliAI(ctx, "key", "model", server.URL, "desc")
-		if err == nil || !strings.Contains(err.Error(), "arliai api error (status 401)") {
+		_, err := extractWithMistral(ctx, "key", "model", server.URL, "desc")
+		if err == nil || !strings.Contains(err.Error(), "mistral api error (status 401)") {
 			t.Fatalf("expected unauthorized error, got %v", err)
 		}
 	})
@@ -259,7 +259,7 @@ func TestExtractWithArliAI(t *testing.T) {
 		defer server.Close()
 
 		ctx := context.Background()
-		_, err := extractWithArliAI(ctx, "key", "model", server.URL, "desc")
+		_, err := extractWithMistral(ctx, "key", "model", server.URL, "desc")
 		if err == nil {
 			t.Fatal("expected choice json error, got nil")
 		}
@@ -294,9 +294,9 @@ func TestExtractWithArliAI(t *testing.T) {
 		defer server.Close()
 
 		ctx := context.Background()
-		products, err := extractWithArliAI(ctx, "key", "model", server.URL, "desc")
+		products, err := extractWithMistral(ctx, "key", "model", server.URL, "desc")
 		if err != nil {
-			t.Fatalf("extractWithArliAI retry flow failed: %v", err)
+			t.Fatalf("extractWithMistral retry flow failed: %v", err)
 		}
 		if attempts != 3 {
 			t.Fatalf("expected 3 attempts, got %d", attempts)
@@ -319,7 +319,7 @@ func TestExtractWithArliAI(t *testing.T) {
 		defer server.Close()
 
 		ctx := context.Background()
-		_, err := extractWithArliAI(ctx, "key", "model", server.URL, "desc")
+		_, err := extractWithMistral(ctx, "key", "model", server.URL, "desc")
 		if !errors.Is(err, ErrRateLimit) {
 			t.Fatalf("expected ErrRateLimit error, got %v", err)
 		}
@@ -333,8 +333,8 @@ func TestExtractWithArliAI(t *testing.T) {
 		defer server.Close()
 
 		ctx := context.Background()
-		_, err := extractWithArliAI(ctx, "key", "model", server.URL, "desc")
-		if err == nil || !strings.Contains(err.Error(), "arliai api error (status 403)") {
+		_, err := extractWithMistral(ctx, "key", "model", server.URL, "desc")
+		if err == nil || !strings.Contains(err.Error(), "mistral api error (status 403)") {
 			t.Fatalf("expected forbidden error, got %v", err)
 		}
 	})
@@ -501,7 +501,7 @@ func TestExtractVendorProduct(t *testing.T) {
 		}
 	})
 
-	t.Run("ArliAIPath", func(t *testing.T) {
+	t.Run("MistralPath", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			resp := map[string]interface{}{
 				"choices": []map[string]interface{}{
@@ -517,14 +517,14 @@ func TestExtractVendorProduct(t *testing.T) {
 		}))
 		defer server.Close()
 
-		config.AppConfig.LLMProvider = "arliai"
-		config.AppConfig.ArliAIAPIKey = "dummy-key"
-		config.AppConfig.ArliAIModel = "model"
-		config.AppConfig.ArliAIEndpoint = server.URL
+		config.AppConfig.LLMProvider = "mistral"
+		config.AppConfig.MistralAPIKey = "dummy-key"
+		config.AppConfig.MistralModel = "model"
+		config.AppConfig.MistralEndpoint = server.URL
 
 		products, err := ExtractVendorProduct(context.Background(), "desc", []string{})
 		if err != nil {
-			t.Fatalf("ExtractVendorProduct ArliAI path failed: %v", err)
+			t.Fatalf("ExtractVendorProduct Mistral path failed: %v", err)
 		}
 		if len(products) != 1 || products[0].Vendor != "ArliTest" {
 			t.Fatalf("unexpected product results: %+v", products)

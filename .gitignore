@@ -30,6 +30,30 @@ coverage_stats.txt
 # Custom exclusions
 .swarm/
 scratch/
+
+# LLM extraction test harness: generated binaries, raw NVD dump, local Modelfiles.
+# Source (cmd/test_llms, cmd/fetch_cves, run_test.sh) and the curated testset.json
+# are kept; these are regenerable artifacts.
+test_llms_*_linux
+test_llms_linux
+fetch_cves.exe~
+nvd_cves.json
+cves.json
+# Regenerable benchmark fixture (built by cmd/fetch_cves); not version-controlled.
+testset.json
+
+# Scratch artifacts accidentally committed: code-review/fix diffs and coverage report.
+code_review_input.diff
+fix_nitpicks.diff
+coverage_func.txt
+*.diff
+Modelfile.improved
+Modelfile.qwen
+# Local secrets / scratch (test_llms.ps1 holds plaintext API keys — never commit)
+test_llms.ps1
+bench_ollama.ps1
+bench_results/
+.claude/
 coverage
 # Narrowed documentation ignores
 vendor/**/*.md
@@ -47,6 +71,8 @@ results/*.json
 !composer.json
 !package.json
 !package-lock.json
+# Project builds with npm (Dockerfile `npm ci`); pnpm lockfile is not used.
+pnpm-lock.yaml
 
 # Local runtime directories
 /data/

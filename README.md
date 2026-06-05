@@ -184,7 +184,7 @@ Vulfixx is hardened with enterprise-grade system improvements designed for high-
 | `APP_ENV` | Application environment (`development`, `production`) | `production` |
 | `PORT` | Application server port | `8080` |
 | `SENTRY_DSN` | Sentry DSN for error reporting | `(empty)` |
-| `LLM_PROVIDER`| LLM provider (`ollama`, `gemini`, `arliai`) | `ollama` |
+| `LLM_PROVIDER`| LLM provider chain, comma-separated (`ollama`, `gemini`, `mistral`) | `ollama` |
 | `LLM_ENDPOINT`| API endpoint for local LLM (Ollama) | `http://ollama:11434` |
 | `LLM_MODEL` | Model name for Ollama (e.g. `phi3-vulfixx`, `llama3`) | `phi3-vulfixx` |
 | `LLM_TIMEOUT` | Intelligence extraction timeout (seconds) | `600` |
@@ -193,9 +193,9 @@ Vulfixx is hardened with enterprise-grade system improvements designed for high-
 | `GEMINI_API_VERSION`| API version for Google Gemini provider (must be `v1beta` for structured output) | `v1beta` |
 | `GEMINI_RPM` | Free-tier requests-per-minute used to pace Gemini calls (raise for paid tiers / higher-limit models) | `15` |
 | `GEMINI_RPD` | Free-tier requests-per-day hard ceiling, tracked in Redis per UTC day (`0` disables; raise for paid tiers) | `500` |
-| `ARLIAI_API_KEY`| API Key for ArliAI (Qwen/Llama provider) | `(empty)` |
-| `ARLIAI_MODEL` | ArliAI model (e.g. `Qwen2.5-72B-Instruct`) | `Qwen2.5-72B-Instruct` |
-| `ARLIAI_ENDPOINT`| ArliAI API base URL | `https://api.arliai.com/v1` |
+| `MISTRAL_API_KEY`| API Key for Mistral AI provider | `(empty)` |
+| `MISTRAL_MODEL` | Mistral model (e.g. `mistral-small-latest`) | `mistral-small-latest` |
+| `MISTRAL_ENDPOINT`| Mistral API base URL | `https://api.mistral.ai/v1` |
 | `LLM_DEBUG` | Enable raw LLM prompt/response logging (`true`/`false`) | `false` |
 
 ### Ollama Server Tuning (Ollama container only)

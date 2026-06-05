@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"crypto/rand"
+	"cve-tracker/internal/config"
 	"cve-tracker/internal/db"
 	"cve-tracker/internal/models"
 	"encoding/hex"
@@ -80,7 +81,14 @@ func (w *Worker) Start(ctx context.Context) {
 
 	// Test LLM connectivity on startup if provider is configured
 	go func() {
-		testCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		timeout := 30 * time.Second
+		if config.AppConfig.LLMTimeout > 0 {
+			timeout = time.Duration(config.AppConfig.LLMTimeout) * time.Second
+			if timeout > 120*time.Second {
+				timeout = 120 * time.Second
+			}
+		}
+		testCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		w.TestLLMConnectivity(testCtx)
 	}()

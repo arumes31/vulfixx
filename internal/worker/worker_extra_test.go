@@ -181,9 +181,9 @@ func TestWorker_Health_Comprehensive(t *testing.T) {
 		config.AppConfig.GeminiAPIKey = "test-key"
 		w2.TestLLMConnectivity(context.Background())
 
-		// 3. ArliAI Happy path
-		config.AppConfig.LLMProvider = "arliai"
-		config.AppConfig.ArliAIAPIKey = "test-key"
+		// 3. Mistral Happy path
+		config.AppConfig.LLMProvider = "mistral"
+		config.AppConfig.MistralAPIKey = "test-key"
 		w2.TestLLMConnectivity(context.Background())
 	})
 }

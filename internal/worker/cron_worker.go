@@ -180,7 +180,7 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, cves []models.CVE, t
 
 		var vendor, product string
 		var extractedProducts []llm.ProductResult
-		if config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama" || config.AppConfig.ArliAIAPIKey != "" {
+		if config.AppConfig.GeminiAPIKey != "" || config.AppConfig.LLMProvider == "ollama" || config.AppConfig.MistralAPIKey != "" {
 			// Call LLM as primary for missing data with isolated timeout
 			llmCtx, cancel := context.WithTimeout(ctx, time.Duration(config.AppConfig.LLMTimeout+10)*time.Second)
 			products, err := llm.ExtractVendorProduct(llmCtx, c.Description, c.References)

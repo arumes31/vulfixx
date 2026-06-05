@@ -149,8 +149,8 @@ func isCooledDown(provider string) bool {
 	return true
 }
 
-// ExtractVendorProduct chooses the appropriate provider(s) (Gemini, Ollama, or ArliAI) to extract all vendor/product/version names.
-// It supports a fallback chain if LLM_PROVIDER is a comma-separated list (e.g. "gemini,arliai").
+// ExtractVendorProduct chooses the appropriate provider(s) (Gemini, Ollama, or Mistral) to extract all vendor/product/version names.
+// It supports a fallback chain if LLM_PROVIDER is a comma-separated list (e.g. "gemini,mistral").
 func ExtractVendorProduct(ctx context.Context, description string, references []string) ([]ProductResult, error) {
 	// Acquire semaphore (queue up if another job is running)
 	select {
@@ -192,8 +192,8 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 			results, err = extractWithGemini(ctx, config.AppConfig.GeminiAPIKey, config.AppConfig.GeminiModel, config.AppConfig.GeminiAPIVersion, fullContext)
 		case "ollama":
 			results, err = extractWithOllama(ctx, config.AppConfig.LLMEndpoint, config.AppConfig.LLMModel, fullContext)
-		case "arliai":
-			results, err = extractWithArliAI(ctx, config.AppConfig.ArliAIAPIKey, config.AppConfig.ArliAIModel, config.AppConfig.ArliAIEndpoint, fullContext)
+		case "mistral":
+			results, err = extractWithMistral(ctx, config.AppConfig.MistralAPIKey, config.AppConfig.MistralModel, config.AppConfig.MistralEndpoint, fullContext)
 		default:
 			slog.Warn("LLM: [WARN] Unsupported provider in chain", "provider", p)
 			continue
@@ -231,6 +231,66 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 		return nil, lastErr
 	}
 	return nil, fmt.Errorf("no valid llm providers configured (current: %s)", config.AppConfig.LLMProvider)
+}
+
+// getSystemPrompt returns the shared extraction instructions used by every
+// provider (Gemini, Ollama, Mistral). Keeping a single source of truth means an
+// improvement to the rules or examples benefits all three models at once.
+func getSystemPrompt() string {
+	return `Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from the provided CVE description and reference URLs. Return ONLY a JSON object with a key "products" containing a list of objects, each with "vendor", "product", and "version".
+
+RULES:
+1. Use the Reference URLs to disambiguate generic names (e.g. the description says "ftpd" but the references point to "wu-ftpd" -> use "wu-ftpd").
+2. List EVERY distinct affected product. When several products or editions are named (e.g. "Total Security, Internet Security, and AntiVirus Pro"), output one entry per product. Do NOT merge them into one.
+3. Treat a device and its firmware as ONE product: use the device/model name and do NOT emit a separate "... Firmware" entry.
+4. ONLY extract products stated to be vulnerable. NEVER extract a technology that is merely the vulnerability TYPE or mechanism: for "SQL injection" do NOT output SQL or SQL Server; for "XSS" do NOT output JavaScript; for "XML external entity" do NOT output XML.
+5. For a plugin, extension, or theme, the product is the plugin/theme name and the vendor is its author. Do NOT report the host platform (WordPress, Drupal, Joomla) as the vendor or product unless the platform core itself is the vulnerable software.
+6. Use the EXACT names from the text. Do NOT hallucinate or modernize names, and do NOT invent version numbers.
+7. Format versions: "before"/"prior to" X -> "< X"; "through" X or "X and earlier" -> "<= X"; "X through Y" -> "X through Y"; "from X before Y" -> ">= X, < Y". Use null when no version is given.
+8. The vendor and version values in the EXAMPLES below are illustrative only; never copy them unless they actually appear in the input.
+
+EXAMPLES:
+Input: "Vulnerability in Cisco IOS before 15.1"
+Output: {"products": [{"vendor": "Cisco", "product": "IOS", "version": "< 15.1"}]}
+
+Input: "The debug command in Sendmail is enabled"
+Output: {"products": [{"vendor": "Sendmail", "product": "Sendmail", "version": null}]}
+
+Input: "SQL injection in the login form of Acme Portal 2.3 allows attackers to ..."
+Output: {"products": [{"vendor": "Acme", "product": "Acme Portal", "version": "2.3"}]}
+
+Input: "Buffer overflow in Quick Heal Total Security 10.1, Internet Security 10.1, and AntiVirus Pro 10.1"
+Output: {"products": [{"vendor": "Quick Heal", "product": "Total Security", "version": "10.1"}, {"vendor": "Quick Heal", "product": "Internet Security", "version": "10.1"}, {"vendor": "Quick Heal", "product": "AntiVirus Pro", "version": "10.1"}]}`
+}
+
+// getOllamaSystemPrompt returns the extraction instructions for the local model.
+// Empirically the small local model (phi3, ~3.8B) is highly prompt-sensitive:
+// the richer shared prompt used for Gemini/Mistral causes over-extraction
+// (function names, empty entries) and lowers accuracy, so the local model keeps
+// this leaner, well-tested prompt instead. See bench notes in run_test.sh.
+func getOllamaSystemPrompt() string {
+	return `Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from the provided description and reference URLs.
+
+RULES:
+1. Return results ONLY as a JSON object with a key "products" containing a list of objects.
+2. Use the Reference URLs to disambiguate generic names (e.g. if description says "ftpd" but references point to "wu-ftpd", use "wu-ftpd").
+3. If a version is described as "prior to", "before", "through", or "and earlier", format it as a range (e.g. "< 1.2.3" or "<= 4.5").
+4. DO NOT hallucinate modern product names for legacy software. Use the exact names from the text.
+5. If multiple products are mentioned, list them all.
+
+EXAMPLES:
+Input: "Vulnerability in Cisco IOS before 15.1"
+Output: {"products": [{"vendor": "Cisco", "product": "IOS", "version": "< 15.1"}]}
+
+Input: "The debug command in Sendmail is enabled"
+Output: {"products": [{"vendor": "Sendmail", "product": "Sendmail", "version": null}]}
+
+Input: "Azure Service Fabric for Linux RCE affects version 9.1 before 9.1.2498.1, 10.0 before 10.0.2345.1, and 10.1 before 10.1.2308.1"
+Output: {"products": [
+  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "9.1 < 9.1.2498.1"},
+  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "10.0 < 10.0.2345.1"},
+  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "10.1 < 10.1.2308.1"}
+]}`
 }
 
 func extractWithGemini(ctx context.Context, apiKey, model, apiVersion, description string) ([]ProductResult, error) {
@@ -273,22 +333,7 @@ func extractWithGemini(ctx context.Context, apiKey, model, apiVersion, descripti
 		Temperature:      genai.Ptr[float32](0.0),
 	}
 
-	prompt := `Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from the provided description and reference URLs.
-
-RULES:
-1. Use the Reference URLs to disambiguate generic names (e.g. if description says "ftpd" but references point to "wu-ftpd", use "wu-ftpd").
-2. If a version is described as "prior to", "before", "through", or "and earlier", format it as a range (e.g. "< 1.2.3" or "<= 4.5").
-3. DO NOT hallucinate modern product names for legacy software. Use the exact names from the text.
-4. If multiple products are mentioned, list them all.
-
-EXAMPLES:
-Input: "Vulnerability in Cisco IOS before 15.1"
-Output: {"products": [{"vendor": "Cisco", "product": "IOS", "version": "< 15.1"}]}
-
-Input: "The debug command in Sendmail is enabled"
-Output: {"products": [{"vendor": "Sendmail", "product": "Sendmail", "version": null}]}
-
-Description: ` + description
+	prompt := getSystemPrompt() + "\n\nDescription: " + description
 	if os.Getenv("LLM_DEBUG") == "true" {
 		slog.Debug("LLM: [DEBUG] Gemini Prompt", "prompt", prompt)
 	}
@@ -314,30 +359,7 @@ func extractWithOllama(ctx context.Context, endpoint, model, description string)
 		endpoint = "http://localhost:11434"
 	}
 
-	prompt := `Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from the provided description and reference URLs.
-
-RULES:
-1. Return results ONLY as a JSON object with a key "products" containing a list of objects.
-2. Use the Reference URLs to disambiguate generic names (e.g. if description says "ftpd" but references point to "wu-ftpd", use "wu-ftpd").
-3. If a version is described as "prior to", "before", "through", or "and earlier", format it as a range (e.g. "< 1.2.3" or "<= 4.5").
-4. DO NOT hallucinate modern product names for legacy software. Use the exact names from the text.
-5. If multiple products are mentioned, list them all.
-
-EXAMPLES:
-Input: "Vulnerability in Cisco IOS before 15.1"
-Output: {"products": [{"vendor": "Cisco", "product": "IOS", "version": "< 15.1"}]}
-
-Input: "The debug command in Sendmail is enabled"
-Output: {"products": [{"vendor": "Sendmail", "product": "Sendmail", "version": null}]}
-
-Input: "Azure Service Fabric for Linux RCE affects version 9.1 before 9.1.2498.1, 10.0 before 10.0.2345.1, and 10.1 before 10.1.2308.1"
-Output: {"products": [
-  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "9.1 < 9.1.2498.1"},
-  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "10.0 < 10.0.2345.1"},
-  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "10.1 < 10.1.2308.1"}
-]}
-
-Description: ` + description
+	prompt := getOllamaSystemPrompt() + "\n\nDescription: " + description
 
 	if os.Getenv("LLM_DEBUG") == "true" {
 		slog.Debug("LLM: [DEBUG] Ollama Prompt", "prompt", prompt)
@@ -394,37 +416,24 @@ Description: ` + description
 
 var timeSleep = time.Sleep
 
-func extractWithArliAI(ctx context.Context, apiKey, model, endpoint, description string) ([]ProductResult, error) {
+func extractWithMistral(ctx context.Context, apiKey, model, endpoint, description string) ([]ProductResult, error) {
 	if apiKey == "" {
-		return nil, fmt.Errorf("arliai api key is required")
+		return nil, fmt.Errorf("mistral api key is required")
 	}
 
-	systemPrompt := `Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from the provided description and reference URLs.
+	defer func() {
+		// Pace requests to Mistral (free tier allows ~1 request/second).
+		select {
+		case <-time.After(2 * time.Second):
+		case <-ctx.Done():
+		}
+	}()
 
-RULES:
-1. Return results ONLY as a JSON object with a key "products" containing a list of objects.
-2. Use the Reference URLs to disambiguate generic names (e.g. if description says "ftpd" but references point to "wu-ftpd", use "wu-ftpd").
-3. If a version is described as "prior to", "before", "through", or "and earlier", format it as a range (e.g. "< 1.2.3" or "<= 4.5").
-4. DO NOT hallucinate modern product names for legacy software. Use the exact names from the text.
-5. If multiple products are mentioned, list them all.
-
-EXAMPLES:
-Input: "Vulnerability in Cisco IOS before 15.1"
-Output: {"products": [{"vendor": "Cisco", "product": "IOS", "version": "< 15.1"}]}
-
-Input: "The debug command in Sendmail is enabled"
-Output: {"products": [{"vendor": "Sendmail", "product": "Sendmail", "version": null}]}
-
-Input: "Azure Service Fabric for Linux RCE affects version 9.1 before 9.1.2498.1, 10.0 before 10.0.2345.1, and 10.1 before 10.1.2308.1"
-Output: {"products": [
-  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "9.1 < 9.1.2498.1"},
-  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "10.0 < 10.0.2345.1"},
-  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "10.1 < 10.1.2308.1"}
-]}`
+	systemPrompt := getSystemPrompt()
 
 	if os.Getenv("LLM_DEBUG") == "true" {
-		slog.Debug("LLM: [DEBUG] ArliAI System Prompt", "prompt", systemPrompt)
-		slog.Debug("LLM: [DEBUG] ArliAI Description", "description", description)
+		slog.Debug("LLM: [DEBUG] Mistral System Prompt", "prompt", systemPrompt)
+		slog.Debug("LLM: [DEBUG] Mistral Description", "description", description)
 	}
 
 	payload := map[string]interface{}{
@@ -456,67 +465,73 @@ Output: {"products": [
 		if i > 0 {
 			// Backoff before retry
 			wait := time.Duration(i*2) * time.Second
-			slog.Info("LLM: [RETRY] ArliAI hit limit, waiting before retry", "wait", wait, "attempt", i, "max_retries", 3)
+			slog.Info("LLM: [RETRY] Mistral hit limit, waiting before retry", "wait", wait, "attempt", i, "max_retries", 3)
 			timeSleep(wait)
 		}
 
-		resp, err := client.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode == 403 || resp.StatusCode == 429 {
-			body, _ := io.ReadAll(resp.Body)
-			if strings.Contains(string(body), "parallel") || strings.Contains(string(body), "rate") || strings.Contains(string(body), "limit") {
-				lastErr = ErrRateLimit
-				// Reset request body for retry if possible (re-create request)
-				req, _ = http.NewRequestWithContext(ctx, "POST", endpoint+"/chat/completions", bytes.NewBuffer(jsonData))
-				req.Header.Set("Content-Type", "application/json")
-				req.Header.Set("Authorization", "Bearer "+apiKey)
-				continue
+		products, err, shouldRetry := func() ([]ProductResult, error, bool) {
+			resp, err := client.Do(req)
+			if err != nil {
+				return nil, err, false
 			}
-			return nil, fmt.Errorf("arliai api error (status %d): %s", resp.StatusCode, string(body))
+			defer resp.Body.Close()
+
+			if resp.StatusCode == 403 || resp.StatusCode == 429 {
+				body, _ := io.ReadAll(resp.Body)
+				if strings.Contains(string(body), "parallel") || strings.Contains(string(body), "rate") || strings.Contains(string(body), "limit") {
+					// Reset request body for retry if possible (re-create request)
+					req, _ = http.NewRequestWithContext(ctx, "POST", endpoint+"/chat/completions", bytes.NewBuffer(jsonData))
+					req.Header.Set("Content-Type", "application/json")
+					req.Header.Set("Authorization", "Bearer "+apiKey)
+					return nil, ErrRateLimit, true
+				}
+				return nil, fmt.Errorf("mistral api error (status %d): %s", resp.StatusCode, string(body)), false
+			}
+
+			if resp.StatusCode != http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
+				return nil, fmt.Errorf("mistral api error (status %d): %s", resp.StatusCode, string(body)), false
+			}
+
+			var chatResp struct {
+				Choices []struct {
+					Message struct {
+						Content string `json:"content"`
+					} `json:"message"`
+				} `json:"choices"`
+			}
+
+			if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+				return nil, err, false
+			}
+
+			if len(chatResp.Choices) == 0 {
+				return nil, fmt.Errorf("mistral returned no choices"), false
+			}
+
+			content := chatResp.Choices[0].Message.Content
+			if os.Getenv("LLM_DEBUG") == "true" {
+				slog.Debug("LLM: [DEBUG] Mistral Raw Response", "response", content)
+			}
+
+			// Clean JSON if the model wrapped it in markdown code blocks
+			content = strings.TrimPrefix(content, "```json")
+			content = strings.TrimPrefix(content, "```")
+			content = strings.TrimSuffix(content, "```")
+			content = strings.TrimSpace(content)
+
+			var res ExtractionResponse
+			if err := json.Unmarshal([]byte(content), &res); err != nil {
+				return nil, fmt.Errorf("failed to parse mistral json: %w (content: %s)", err, content), false
+			}
+
+			return res.Products, nil, false
+		}()
+
+		if !shouldRetry {
+			return products, err
 		}
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			return nil, fmt.Errorf("arliai api error (status %d): %s", resp.StatusCode, string(body))
-		}
-
-		var chatResp struct {
-			Choices []struct {
-				Message struct {
-					Content string `json:"content"`
-				} `json:"message"`
-			} `json:"choices"`
-		}
-
-		if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
-			return nil, err
-		}
-
-		if len(chatResp.Choices) == 0 {
-			return nil, fmt.Errorf("arliai returned no choices")
-		}
-
-		content := chatResp.Choices[0].Message.Content
-		if os.Getenv("LLM_DEBUG") == "true" {
-			slog.Debug("LLM: [DEBUG] ArliAI Raw Response", "response", content)
-		}
-
-		// Clean JSON if the model wrapped it in markdown code blocks
-		content = strings.TrimPrefix(content, "```json")
-		content = strings.TrimPrefix(content, "```")
-		content = strings.TrimSuffix(content, "```")
-		content = strings.TrimSpace(content)
-
-		var res ExtractionResponse
-		if err := json.Unmarshal([]byte(content), &res); err != nil {
-			return nil, fmt.Errorf("failed to parse arliai json: %w (content: %s)", err, content)
-		}
-
-		return res.Products, nil
+		lastErr = err
 	}
 
 	return nil, lastErr
