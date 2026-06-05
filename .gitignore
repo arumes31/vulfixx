@@ -71,6 +71,8 @@ results/*.json
 !composer.json
 !package.json
 !package-lock.json
+# Project builds with npm (Dockerfile `npm ci`); pnpm lockfile is not used.
+pnpm-lock.yaml
 
 # Local runtime directories
 /data/
