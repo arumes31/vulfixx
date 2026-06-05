@@ -54,16 +54,16 @@ type testCVE struct {
 }
 
 func main() {
-	perYear := 6
+	perYear := 10
 	if v := os.Getenv("PER_YEAR"); v != "" {
-		fmt.Sscanf(v, "%d", &perYear)
+		_, _ = fmt.Sscanf(v, "%d", &perYear)
 	}
 	years := []int{2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025}
 	if v := os.Getenv("YEARS"); v != "" {
 		years = years[:0]
 		for _, s := range strings.Split(v, ",") {
 			var y int
-			fmt.Sscanf(strings.TrimSpace(s), "%d", &y)
+			_, _ = fmt.Sscanf(strings.TrimSpace(s), "%d", &y)
 			if y > 0 {
 				years = append(years, y)
 			}
@@ -92,7 +92,7 @@ func main() {
 	})
 
 	out, _ := json.MarshalIndent(all, "", "  ")
-	if err := os.WriteFile("testset.json", out, 0644); err != nil {
+	if err := os.WriteFile("testset.json", out, 0600); err != nil {
 		fmt.Printf("write error: %v\n", err)
 		os.Exit(1)
 	}
@@ -110,17 +110,17 @@ func main() {
 // `want` CVEs that have an English description and at least one CPE-derived
 // vendor/product pair. It prefers a mix of single- and multi-product entries.
 func collectYear(client *http.Client, apiKey string, year, want int) []testCVE {
-	// NVD 2.0 caps the published-date range at 120 days, so query a single
-	// ~119-day window per year (Jan 1 - Apr 29). That is plenty to find a
-	// handful of CVEs with clean CPE data.
-	start := fmt.Sprintf("%d-01-01T00:00:00.000", year)
-	end := fmt.Sprintf("%d-04-29T23:59:59.999", year)
+	// Randomize the start month to get a diverse set of CVEs.
+	// NVD 2.0 caps the published-date range at 120 days.
+	randMonth := 1 + (time.Now().UnixNano() % 8) // Jan to Aug
+	start := fmt.Sprintf("%d-%02d-01T00:00:00.000", year, randMonth)
+	end := fmt.Sprintf("%d-%02d-28T23:59:59.999", year, randMonth+3)
 
 	var result []testCVE
 	multiCount := 0
 	// Page through; NVD caps resultsPerPage at 2000 but we keep pages small and
 	// scan a few hundred entries per year to find ones with clean CPE data.
-	for startIdx := 0; startIdx < 600 && len(result) < want; startIdx += 200 {
+	for startIdx := 0; startIdx < 2000 && len(result) < want; startIdx += 200 {
 		url := fmt.Sprintf("%s?pubStartDate=%s&pubEndDate=%s&resultsPerPage=200&startIndex=%d",
 			nvdBase, start, end, startIdx)
 		resp := fetch(client, apiKey, url)
@@ -136,9 +136,8 @@ func collectYear(client *http.Client, apiKey string, year, want int) []testCVE {
 				continue
 			}
 			isMulti := distinctProducts(tc.Truth) > 1
-			// Aim for at least a third multi-product; otherwise cap how many
-			// single-product entries we keep so multi ones aren't crowded out.
-			if !isMulti && len(result)-multiCount >= (want*2/3) && multiCount < want/3 {
+			// Aim for at least 40% multi-product.
+			if !isMulti && len(result)-multiCount >= (want*6/10) && multiCount < want*4/10 {
 				continue
 			}
 			if isMulti {
@@ -230,7 +229,7 @@ func fetch(client *http.Client, apiKey, url string) *nvdResp {
 			continue
 		}
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			fmt.Printf("  NVD status %d (attempt %d)\n", resp.StatusCode, attempt)
 			continue
