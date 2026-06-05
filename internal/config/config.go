@@ -97,9 +97,9 @@ func LoadConfig() error {
 		// (responseMimeType / responseSchema) are rejected by the stable v1 API.
 		GeminiAPIVersion: getEnv("GEMINI_API_VERSION", "v1beta"),
 		Gemini35Model:    getEnv("GEMINI35_MODEL", "gemini-3.5-flash"),
-		Gemini3Model:     getEnv("GEMINI3_MODEL", "gemini-3-flash"),
-		GemmaModel:       getEnv("GEMMA_MODEL", "gemma-2-27b-it"),
-		Gemma2Model:      getEnv("GEMMA2_MODEL", "gemma-2-9b-it"),
+		Gemini3Model:     getEnv("GEMINI3_MODEL", "gemini-3-flash-preview"),
+		GemmaModel:       getEnv("GEMMA_MODEL", "gemma-4-31b-it"),
+		Gemma2Model:      getEnv("GEMMA2_MODEL", "gemma-4-26b-a4b-it"),
 		LLMProvider:      getEnv("LLM_PROVIDER", "gemini3,gemini,gemma,gemma2,mistral,ollama"),
 		LLMEndpoint:      getEnv("LLM_ENDPOINT", "http://ollama:11434"),
 		LLMModel:         getEnv("LLM_MODEL", "phi3-vulfixx"),

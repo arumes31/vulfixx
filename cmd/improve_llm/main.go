@@ -393,6 +393,14 @@ func callOllama(endpoint, mdl, systemPrompt, desc string) []llm.ProductResult {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
+		var errResp struct {
+			Error struct {
+				Message string `json:"message"`
+				Status  string `json:"status"`
+			} `json:"error"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&errResp)
+		fmt.Printf("debug: gemma status %d: %s (%s)\n", resp.StatusCode, errResp.Error.Message, errResp.Error.Status)
 		return nil
 	}
 	var gen struct {
@@ -663,6 +671,14 @@ func callMistralExtract(systemPrompt, desc string) []llm.ProductResult {
 		return nil
 	}
 	if resp.StatusCode != 200 {
+		var errResp struct {
+			Error struct {
+				Message string `json:"message"`
+				Status  string `json:"status"`
+			} `json:"error"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&errResp)
+		fmt.Printf("debug: gemma status %d: %s (%s)\n", resp.StatusCode, errResp.Error.Message, errResp.Error.Status)
 		return nil
 	}
 	var cr struct {
@@ -705,6 +721,14 @@ func callGeminiExtract(model, systemPrompt, desc string) []llm.ProductResult {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
+		var errResp struct {
+			Error struct {
+				Message string `json:"message"`
+				Status  string `json:"status"`
+			} `json:"error"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&errResp)
+		fmt.Printf("debug: gemma status %d: %s (%s)\n", resp.StatusCode, errResp.Error.Message, errResp.Error.Status)
 		return nil
 	}
 	var gr struct {
@@ -749,6 +773,14 @@ func callGemmaExtract(model, systemPrompt, desc string) []llm.ProductResult {
 		return nil
 	}
 	if resp.StatusCode != 200 {
+		var errResp struct {
+			Error struct {
+				Message string `json:"message"`
+				Status  string `json:"status"`
+			} `json:"error"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&errResp)
+		fmt.Printf("debug: gemma status %d: %s (%s)\n", resp.StatusCode, errResp.Error.Message, errResp.Error.Status)
 		return nil
 	}
 	var gr struct {

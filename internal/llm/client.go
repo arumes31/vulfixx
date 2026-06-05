@@ -77,9 +77,9 @@ func geminiDailyLimit() int {
 // Provider keys and defaults (override via the *_MODEL / *_RPM / *_RPD env vars):
 //
 //	gemini35 -> gemini-3.5-flash        5 RPM / 20   RPD (structured)
-//	gemini3  -> gemini-3-flash          5 RPM / 20   RPD (structured)
-//	gemma    -> gemma-2-27b-it         15 RPM / 1500 RPD (schema-less)
-//	gemma2   -> gemma-2-9b-it          15 RPM / 1500 RPD (schema-less)
+//	gemini3  -> gemini-3-flash-preview  5 RPM / 20   RPD (structured)
+//	gemma    -> gemma-4-31b-it         15 RPM / 1500 RPD (schema-less)
+//	gemma2   -> gemma-4-26b-a4b-it     15 RPM / 1500 RPD (schema-less)
 //
 // A typical quality-first, quota-aware chain:
 //
