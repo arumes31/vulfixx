@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-const nvdBase = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+var nvdBase = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 
 type nvdCVE struct {
 	ID           string `json:"id"`
