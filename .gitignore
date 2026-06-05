@@ -41,6 +41,12 @@ nvd_cves.json
 cves.json
 # Regenerable benchmark fixture (built by cmd/fetch_cves); not version-controlled.
 testset.json
+
+# Scratch artifacts accidentally committed: code-review/fix diffs and coverage report.
+code_review_input.diff
+fix_nitpicks.diff
+coverage_func.txt
+*.diff
 Modelfile.improved
 Modelfile.qwen
 # Local secrets / scratch (test_llms.ps1 holds plaintext API keys — never commit)
