@@ -724,6 +724,115 @@ func TestGeminiDailyLimit(t *testing.T) {
 	})
 }
 
+// TestExtractWithGemmaIntegration exercises the real Gemma model end-to-end.
+// Skipped unless GEMMA_INTEGRATION=1 and GEMINI_API_KEY are set (so CI/offline
+// runs don't depend on the network).
+func TestExtractWithGemmaIntegration(t *testing.T) {
+	if os.Getenv("GEMMA_INTEGRATION") != "1" {
+		t.Skip("set GEMMA_INTEGRATION=1 and GEMINI_API_KEY to run the live Gemma test")
+	}
+	key := os.Getenv("GEMINI_API_KEY")
+	if key == "" {
+		t.Skip("GEMINI_API_KEY not set")
+	}
+	model := os.Getenv("GEMMA_MODEL")
+	if model == "" {
+		model = "gemma-4-31b-it"
+	}
+	products, err := extractWithGemma(context.Background(), key, model, "v1beta",
+		"Buffer overflow in Cisco IOS before 15.1 allows remote attackers to execute code.")
+	if err != nil {
+		t.Fatalf("extractWithGemma failed: %v", err)
+	}
+	if len(products) == 0 {
+		t.Fatal("expected at least one product from Gemma")
+	}
+	t.Logf("gemma returned: %+v", products)
+	found := false
+	for _, p := range products {
+		if strings.Contains(strings.ToLower(p.Product), "ios") || strings.Contains(strings.ToLower(p.Vendor), "cisco") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected Cisco/IOS in results, got %+v", products)
+	}
+}
+
+func TestGemmaPaceAndLimit(t *testing.T) {
+	t.Run("pace default is 15 RPM (4s)", func(t *testing.T) {
+		t.Setenv("GEMMA_RPM", "")
+		if got := gemmaPauseInterval("GEMMA_RPM"); got != 4*time.Second {
+			t.Errorf("default gemma pause = %v, want 4s", got)
+		}
+	})
+	t.Run("pace honors RPM override env", func(t *testing.T) {
+		t.Setenv("GEMMA_RPM", "6")
+		if got := gemmaPauseInterval("GEMMA_RPM"); got != 10*time.Second {
+			t.Errorf("gemma pause at 6 RPM = %v, want 10s", got)
+		}
+	})
+	t.Run("daily default is 1500", func(t *testing.T) {
+		t.Setenv("GEMMA_RPD", "")
+		if got := gemmaDailyLimit("GEMMA_RPD"); got != 1500 {
+			t.Errorf("default gemma limit = %d, want 1500", got)
+		}
+	})
+	t.Run("daily honors override and zero disables", func(t *testing.T) {
+		t.Setenv("GEMMA2_RPD", "3000")
+		if got := gemmaDailyLimit("GEMMA2_RPD"); got != 3000 {
+			t.Errorf("gemma limit = %d, want 3000", got)
+		}
+		t.Setenv("GEMMA2_RPD", "0")
+		if got := gemmaDailyLimit("GEMMA2_RPD"); got != 0 {
+			t.Errorf("gemma limit = %d, want 0 (disabled)", got)
+		}
+	})
+	t.Run("spec resolves both gemma providers", func(t *testing.T) {
+		if _, ok := gemmaSpecFor("gemma"); !ok {
+			t.Error("gemma should resolve to a spec")
+		}
+		if _, ok := gemmaSpecFor("gemma2"); !ok {
+			t.Error("gemma2 should resolve to a spec")
+		}
+		if _, ok := gemmaSpecFor("mistral"); ok {
+			t.Error("mistral should not resolve to a gemma spec")
+		}
+	})
+}
+
+func TestParseExtractionJSON(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want int // number of products expected
+	}{
+		{"plain object", `{"products":[{"vendor":"Cisco","product":"IOS","version":"< 15.1"}]}`, 1},
+		{"json fence", "```json\n{\"products\":[{\"vendor\":\"A\",\"product\":\"B\",\"version\":null}]}\n```", 1},
+		{"bare fence", "```\n{\"products\":[]}\n```", 0},
+		{"surrounding prose", "Here is the result:\n{\"products\":[{\"vendor\":\"X\",\"product\":\"Y\",\"version\":\"1\"}]}\nDone.", 1},
+		// Realistic verbose Gemma output: reasoning prose that itself contains
+		// brace-like format fragments, followed by the real answer in a fence.
+		{"gemma verbose with prose braces", "*   Goal: extract products.\n*   Format: {\"products\":[{\"vendor\",\"product\",\"version\"}]}\n*   Vendor: Cisco\n\n```json\n{\n  \"products\": [\n    {\"vendor\": \"Cisco\", \"product\": \"IOS\", \"version\": \"before 15.1\"}\n  ]\n}\n```", 1},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			res, err := parseExtractionJSON(c.in)
+			if err != nil {
+				t.Fatalf("parseExtractionJSON(%q) error: %v", c.in, err)
+			}
+			if len(res.Products) != c.want {
+				t.Errorf("got %d products, want %d", len(res.Products), c.want)
+			}
+		})
+	}
+	t.Run("garbage errors", func(t *testing.T) {
+		if _, err := parseExtractionJSON("not json at all"); err == nil {
+			t.Error("expected error for non-JSON input")
+		}
+	})
+}
+
 func TestGeminiDailyQuotaExceeded(t *testing.T) {
 	orig := geminiRPDIncr
 	t.Cleanup(func() { geminiRPDIncr = orig })

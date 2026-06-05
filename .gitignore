@@ -36,6 +36,8 @@ scratch/
 # are kept; these are regenerable artifacts.
 test_llms_*_linux
 test_llms_linux
+improve_llm_linux
+mistral_prompt.winner.txt
 fetch_cves.exe~
 nvd_cves.json
 cves.json

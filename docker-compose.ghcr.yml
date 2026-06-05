@@ -31,6 +31,15 @@ services:
       - GEMINI_API_VERSION=${GEMINI_API_VERSION:-v1beta}
       - GEMINI_RPM=${GEMINI_RPM:-15}
       - GEMINI_RPD=${GEMINI_RPD:-500}
+      # Gemma failover (used when LLM_PROVIDER includes "gemma"): same Google API
+      # key, higher daily quota. Set GEMMA_MODEL to the exact API model id.
+      - GEMMA_MODEL=${GEMMA_MODEL:-gemma-4-31b-it}
+      - GEMMA_RPM=${GEMMA_RPM:-15}
+      - GEMMA_RPD=${GEMMA_RPD:-1500}
+      # Second Gemma failover (LLM_PROVIDER includes "gemma2"); its own daily quota.
+      - GEMMA2_MODEL=${GEMMA2_MODEL:-gemma-4-26b-a4b-it}
+      - GEMMA2_RPM=${GEMMA2_RPM:-15}
+      - GEMMA2_RPD=${GEMMA2_RPD:-1500}
       - LLM_DEBUG=${LLM_DEBUG:-false}
       - MISTRAL_API_KEY=${MISTRAL_API_KEY}
       - MISTRAL_MODEL=${MISTRAL_MODEL:-mistral-small-latest}

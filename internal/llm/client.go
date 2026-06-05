@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -65,6 +66,99 @@ func geminiDailyLimit() int {
 		}
 	}
 	return limit
+}
+
+// defaultGemmaRPM / defaultGemmaRPD are the free-tier limits for the Gemma
+// failover models on the Google API (gemma-4-31b-it and gemma-4-26b-a4b-it =
+// 15 RPM / 1500 RPD each). The higher daily ceiling is exactly why these Gemma
+// models are used as failovers once the primary Gemini model (e.g.
+// gemini-3.1-flash-lite, 500 RPD) is exhausted. Override per provider via
+// GEMMA_RPM/GEMMA_RPD and GEMMA2_RPM/GEMMA2_RPD.
+const defaultGemmaRPM = 15
+const defaultGemmaRPD = 1500
+
+// gemmaSpec describes one Gemma failover provider in the chain: which model to
+// call, the env vars that override its rate limits, and the Redis key prefix
+// for its independent daily counter.
+type gemmaSpec struct {
+	model    string // Google API model id
+	rpmEnv   string
+	rpdEnv   string
+	redisKey string
+}
+
+// gemmaSpecFor resolves a provider name (e.g. "gemma", "gemma2") to its spec, or
+// returns ok=false if the name is not a Gemma failover provider. Model ids are
+// read from config so they stay overridable via GEMMA_MODEL / GEMMA2_MODEL.
+func gemmaSpecFor(provider string) (gemmaSpec, bool) {
+	switch provider {
+	case "gemma":
+		return gemmaSpec{config.AppConfig.GemmaModel, "GEMMA_RPM", "GEMMA_RPD", "gemma"}, true
+	case "gemma2":
+		return gemmaSpec{config.AppConfig.Gemma2Model, "GEMMA2_RPM", "GEMMA2_RPD", "gemma2"}, true
+	}
+	return gemmaSpec{}, false
+}
+
+// gemmaPauseInterval returns the post-call pacing for a Gemma provider, honoring
+// its RPM override env var.
+func gemmaPauseInterval(rpmEnv string) time.Duration {
+	rpm := defaultGemmaRPM
+	if v := strings.TrimSpace(os.Getenv(rpmEnv)); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			rpm = parsed
+		}
+	}
+	return time.Duration(int64(time.Minute) / int64(rpm))
+}
+
+// gemmaDailyLimit returns a Gemma provider's requests-per-day ceiling from its
+// RPD override env var (<= 0 disables tracking).
+func gemmaDailyLimit(rpdEnv string) int {
+	limit := defaultGemmaRPD
+	if v := strings.TrimSpace(os.Getenv(rpdEnv)); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			limit = parsed
+		}
+	}
+	return limit
+}
+
+// gemmaRPDIncr increments today's (UTC) request counter for the given Redis key
+// prefix, so each Gemma model tracks its daily quota independently of Gemini and
+// of the other Gemma model. Package var so tests can substitute a fake.
+var gemmaRPDIncr = func(ctx context.Context, keyPrefix string) (int64, error) {
+	if db.RedisClient == nil {
+		return 0, errors.New("redis client not initialized")
+	}
+	key := keyPrefix + ":rpd:" + time.Now().UTC().Format("2006-01-02")
+	n, err := db.RedisClient.Incr(ctx, key).Result()
+	if err != nil {
+		return 0, err
+	}
+	if n == 1 {
+		_ = db.RedisClient.Expire(ctx, key, 48*time.Hour).Err()
+	}
+	return n, nil
+}
+
+// gemmaDailyQuotaExceeded increments and checks a Gemma provider's daily counter
+// against its RPD limit. Fails open on Redis errors.
+func gemmaDailyQuotaExceeded(ctx context.Context, spec gemmaSpec) bool {
+	limit := gemmaDailyLimit(spec.rpdEnv)
+	if limit <= 0 {
+		return false
+	}
+	count, err := gemmaRPDIncr(ctx, spec.redisKey)
+	if err != nil {
+		slog.Warn("LLM: could not check Gemma daily quota, allowing call", "model", spec.model, "error", err)
+		return false
+	}
+	if count > int64(limit) {
+		slog.Warn("LLM: Gemma daily request quota reached", "model", spec.model, "count", count, "limit", limit)
+		return true
+	}
+	return false
 }
 
 // geminiRPDIncr atomically increments today's (UTC) Gemini request counter in
@@ -183,16 +277,28 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 			lastErr = fmt.Errorf("%w: gemini daily request quota reached", ErrRateLimit)
 			continue
 		}
+		// Gemma providers are the higher-quota Google failovers; each enforces its
+		// own independent daily ceiling.
+		gSpec, isGemma := gemmaSpecFor(p)
+		if isGemma && gemmaDailyQuotaExceeded(ctx, gSpec) {
+			setCooldown(p, durationUntilUTCMidnight())
+			lastErr = fmt.Errorf("%w: %s daily request quota reached", ErrRateLimit, p)
+			continue
+		}
 
 		var results []ProductResult
 		var err error
 
-		switch p {
-		case "gemini":
+		switch {
+		case p == "gemini":
 			results, err = extractWithGemini(ctx, config.AppConfig.GeminiAPIKey, config.AppConfig.GeminiModel, config.AppConfig.GeminiAPIVersion, fullContext)
-		case "ollama":
+		case isGemma:
+			// Same Google API key/endpoint, different (higher-quota) model. Uses a
+			// schema-less request because Gemma models don't support structured output.
+			results, err = extractWithGemma(ctx, config.AppConfig.GeminiAPIKey, gSpec.model, config.AppConfig.GeminiAPIVersion, fullContext)
+		case p == "ollama":
 			results, err = extractWithOllama(ctx, config.AppConfig.LLMEndpoint, config.AppConfig.LLMModel, fullContext)
-		case "mistral":
+		case p == "mistral":
 			results, err = extractWithMistral(ctx, config.AppConfig.MistralAPIKey, config.AppConfig.MistralModel, config.AppConfig.MistralEndpoint, fullContext)
 		default:
 			slog.Warn("LLM: [WARN] Unsupported provider in chain", "provider", p)
@@ -200,13 +306,17 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 		}
 
 		if err == nil {
-			// Proactive rate limiting for the Gemini free tier. The semaphore is
+			// Proactive rate limiting for the Google free tier. The semaphore is
 			// still held here, so pausing also paces concurrent callers. The pause
-			// is derived from the configured RPM (default 15, matching
-			// gemini-3.1-flash-lite's free-tier limit).
+			// is derived from the configured RPM (default 15).
+			var pause time.Duration
 			if p == "gemini" {
-				pause := geminiPauseInterval()
-				slog.Debug("LLM: successful Gemini call, pacing to respect free tier RPM", "pause", pause)
+				pause = geminiPauseInterval()
+			} else if isGemma {
+				pause = gemmaPauseInterval(gSpec.rpmEnv)
+			}
+			if pause > 0 {
+				slog.Debug("LLM: successful Google call, pacing to respect free tier RPM", "provider", p, "pause", pause)
 				select {
 				case <-time.After(pause):
 				case <-ctx.Done():
@@ -247,7 +357,7 @@ RULES:
 5. For a plugin, extension, or theme, the product is the plugin/theme name and the vendor is its author. Do NOT report the host platform (WordPress, Drupal, Joomla) as the vendor or product unless the platform core itself is the vulnerable software.
 6. Use the EXACT names from the text. Do NOT hallucinate or modernize names, and do NOT invent version numbers.
 7. Format versions: "before"/"prior to" X -> "< X"; "through" X or "X and earlier" -> "<= X"; "X through Y" -> "X through Y"; "from X before Y" -> ">= X, < Y". Use null when no version is given.
-8. The vendor and version values in the EXAMPLES below are illustrative only; never copy them unless they actually appear in the input.
+8. If a vulnerability affects a wide range of hardware models (e.g. "MediaTek SoCs"), and individual models are not listed in the text, use the general category or component name (e.g. "MediaTek SoCs" or "KeyInstall") as the product.
 
 EXAMPLES:
 Input: "Vulnerability in Cisco IOS before 15.1"
@@ -256,8 +366,8 @@ Output: {"products": [{"vendor": "Cisco", "product": "IOS", "version": "< 15.1"}
 Input: "The debug command in Sendmail is enabled"
 Output: {"products": [{"vendor": "Sendmail", "product": "Sendmail", "version": null}]}
 
-Input: "SQL injection in the login form of Acme Portal 2.3 allows attackers to ..."
-Output: {"products": [{"vendor": "Acme", "product": "Acme Portal", "version": "2.3"}]}
+Input: "A vulnerability in MediaTek keyInstall allows for local escalation..."
+Output: {"products": [{"vendor": "MediaTek", "product": "keyInstall", "version": null}]}
 
 Input: "Buffer overflow in Quick Heal Total Security 10.1, Internet Security 10.1, and AntiVirus Pro 10.1"
 Output: {"products": [{"vendor": "Quick Heal", "product": "Total Security", "version": "10.1"}, {"vendor": "Quick Heal", "product": "Internet Security", "version": "10.1"}, {"vendor": "Quick Heal", "product": "AntiVirus Pro", "version": "10.1"}]}`
@@ -277,6 +387,7 @@ RULES:
 3. If a version is described as "prior to", "before", "through", or "and earlier", format it as a range (e.g. "< 1.2.3" or "<= 4.5").
 4. DO NOT hallucinate modern product names for legacy software. Use the exact names from the text.
 5. If multiple products are mentioned, list them all.
+6. Treat device and firmware as ONE product.
 
 EXAMPLES:
 Input: "Vulnerability in Cisco IOS before 15.1"
@@ -285,12 +396,8 @@ Output: {"products": [{"vendor": "Cisco", "product": "IOS", "version": "< 15.1"}
 Input: "The debug command in Sendmail is enabled"
 Output: {"products": [{"vendor": "Sendmail", "product": "Sendmail", "version": null}]}
 
-Input: "Azure Service Fabric for Linux RCE affects version 9.1 before 9.1.2498.1, 10.0 before 10.0.2345.1, and 10.1 before 10.1.2308.1"
-Output: {"products": [
-  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "9.1 < 9.1.2498.1"},
-  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "10.0 < 10.0.2345.1"},
-  {"vendor": "Microsoft", "product": "Azure Service Fabric (Linux)", "version": "10.1 < 10.1.2308.1"}
-]}`
+Input: "MediaTek keyInstall local escalation of privilege affects various SoCs"
+Output: {"products": [{"vendor": "MediaTek", "product": "keyInstall", "version": null}]}`
 }
 
 func extractWithGemini(ctx context.Context, apiKey, model, apiVersion, description string) ([]ProductResult, error) {
@@ -352,6 +459,127 @@ func extractWithGemini(ctx context.Context, apiKey, model, apiVersion, descripti
 		return nil, err
 	}
 	return res.Products, nil
+}
+
+// extractWithGemma calls the Google API with a Gemma model. Gemma models do not
+// support structured output (ResponseSchema) the way Gemini models do, so this
+// sends a plain request and parses the JSON object out of the text response
+// (tolerating ```json fences and surrounding prose). Used as a higher daily
+// quota failover for Gemini.
+func extractWithGemma(ctx context.Context, apiKey, model, apiVersion, description string) ([]ProductResult, error) {
+	if apiKey == "" {
+		return nil, fmt.Errorf("gemini api key is required")
+	}
+
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey: apiKey,
+		HTTPOptions: genai.HTTPOptions{
+			APIVersion: apiVersion,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create gemini client: %w", err)
+	}
+
+	cfg := &genai.GenerateContentConfig{
+		Temperature: genai.Ptr[float32](0.0),
+	}
+
+	prompt := getSystemPrompt() + "\n\nReturn ONLY the JSON object, with no markdown fences or commentary.\n\nDescription: " + description
+	if os.Getenv("LLM_DEBUG") == "true" {
+		slog.Debug("LLM: [DEBUG] Gemma Prompt", "model", model, "prompt", prompt)
+	}
+
+	result, err := client.Models.GenerateContent(ctx, model, genai.Text(prompt), cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	raw := result.Text()
+	if os.Getenv("LLM_DEBUG") == "true" {
+		slog.Debug("LLM: [DEBUG] Gemma Raw Response", "response", raw)
+	}
+
+	res, err := parseExtractionJSON(raw)
+	if err != nil {
+		return nil, fmt.Errorf("gemma: %w", err)
+	}
+	return res.Products, nil
+}
+
+// fencedBlockRe captures the body of a ```json ... ``` or ``` ... ``` block.
+var fencedBlockRe = regexp.MustCompile("(?s)```(?:json)?\\s*(.*?)```")
+
+// parseExtractionJSON tolerantly extracts the {"products": [...]} object from a
+// model response. Gemma models in particular are verbose: they emit reasoning
+// prose (which can itself contain brace-like fragments) and wrap the real answer
+// in a ```json fence. So we (1) try fenced blocks first, (2) try the whole
+// string, then (3) scan for string-aware balanced {...} objects that contain a
+// "products" key — never a naive first-{ to last-} span.
+func parseExtractionJSON(raw string) (ExtractionResponse, error) {
+	var res ExtractionResponse
+
+	tryParse := func(s string) bool {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return false
+		}
+		return json.Unmarshal([]byte(s), &res) == nil
+	}
+
+	// 1. Fenced code blocks (most reliable for Gemma).
+	for _, m := range fencedBlockRe.FindAllStringSubmatch(raw, -1) {
+		if strings.Contains(m[1], "\"products\"") && tryParse(m[1]) {
+			return res, nil
+		}
+	}
+	// 2. Whole response as-is.
+	if tryParse(raw) {
+		return res, nil
+	}
+	// 3. String-aware balanced {...} objects containing "products".
+	for _, cand := range balancedObjects(raw) {
+		if strings.Contains(cand, "\"products\"") && tryParse(cand) {
+			return res, nil
+		}
+	}
+	return res, fmt.Errorf("could not parse JSON from response")
+}
+
+// balancedObjects returns every top-level {...} span in s, tracking string
+// literals (and escapes) so braces inside quoted strings don't unbalance the
+// scan. Used to pull a JSON object out of verbose model output.
+func balancedObjects(s string) []string {
+	var out []string
+	depth, start := 0, -1
+	inStr, esc := false, false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case esc:
+			esc = false
+		case c == '\\' && inStr:
+			esc = true
+		case c == '"':
+			inStr = !inStr
+		case inStr:
+			// inside a string literal: ignore structural chars
+		case c == '{':
+			if depth == 0 {
+				start = i
+			}
+			depth++
+		case c == '}':
+			if depth > 0 {
+				depth--
+				if depth == 0 && start >= 0 {
+					out = append(out, s[start:i+1])
+					start = -1
+				}
+			}
+		}
+	}
+	return out
 }
 
 func extractWithOllama(ctx context.Context, endpoint, model, description string) ([]ProductResult, error) {
