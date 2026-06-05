@@ -793,8 +793,9 @@ Propose an IMPROVED system prompt. Rules:
 }
 
 func trim(s string, n int) string {
-	if len(s) > n {
-		return s[:n] + "..."
+	r := []rune(s)
+	if len(r) > n {
+		return string(r[:n]) + "..."
 	}
 	return s
 }

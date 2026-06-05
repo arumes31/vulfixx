@@ -71,7 +71,10 @@ func main() {
 
 func fetchBatch(client *http.Client, apiKey, url string) ([]byte, int, error) {
 	for attempt := 1; attempt <= 5; attempt++ {
-		req, _ := http.NewRequest("GET", url, nil)
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to create request: %w", err)
+		}
 		if apiKey != "" {
 			req.Header.Set("apiKey", apiKey)
 		}
