@@ -53,8 +53,22 @@ type testCVE struct {
 	Truth []truthProduct `json:"truth"`
 }
 
+const (
+	DefaultPerYear        = 10
+	DefaultTimeout        = 60 * time.Second
+	DefaultResultsPerPage = 200
+	MaxStartIndex         = 2000
+)
+
 func main() {
-	perYear := 10
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	perYear := DefaultPerYear
 	if v := os.Getenv("PER_YEAR"); v != "" {
 		_, _ = fmt.Sscanf(v, "%d", &perYear)
 	}
@@ -71,7 +85,7 @@ func main() {
 	}
 
 	apiKey := os.Getenv("NVD_API_KEY")
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := &http.Client{Timeout: DefaultTimeout}
 
 	var all []testCVE
 	for _, year := range years {
@@ -93,8 +107,7 @@ func main() {
 
 	out, _ := json.MarshalIndent(all, "", "  ")
 	if err := os.WriteFile("testset.json", out, 0600); err != nil {
-		fmt.Printf("write error: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("write error: %w", err)
 	}
 
 	multi := 0
@@ -104,6 +117,7 @@ func main() {
 		}
 	}
 	fmt.Printf("\nWrote testset.json: %d CVEs total, %d with multiple distinct products\n", len(all), multi)
+	return nil
 }
 
 // collectYear pages through the published window for a year and returns up to
@@ -120,9 +134,9 @@ func collectYear(client *http.Client, apiKey string, year, want int) []testCVE {
 	multiCount := 0
 	// Page through; NVD caps resultsPerPage at 2000 but we keep pages small and
 	// scan a few hundred entries per year to find ones with clean CPE data.
-	for startIdx := 0; startIdx < 2000 && len(result) < want; startIdx += 200 {
-		url := fmt.Sprintf("%s?pubStartDate=%s&pubEndDate=%s&resultsPerPage=200&startIndex=%d",
-			nvdBase, start, end, startIdx)
+	for startIdx := 0; startIdx < MaxStartIndex && len(result) < want; startIdx += DefaultResultsPerPage {
+		url := fmt.Sprintf("%s?pubStartDate=%s&pubEndDate=%s&resultsPerPage=%d&startIndex=%d",
+			nvdBase, start, end, DefaultResultsPerPage, startIdx)
 		resp := fetch(client, apiKey, url)
 		if resp == nil || len(resp.Vulnerabilities) == 0 {
 			break
