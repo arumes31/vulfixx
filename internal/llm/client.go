@@ -358,28 +358,69 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 // provider (Gemini, Ollama, Mistral). Keeping a single source of truth means an
 // improvement to the rules or examples benefits all three models at once.
 func getSystemPrompt() string {
-	return `Extract ALL affected software/hardware vendor(s), product name(s), and version(s) from the provided CVE description and reference URLs. Return ONLY a JSON object with a key "products" containing a list of objects, each with "vendor", "product", and "version".
+	return `You are an elite cybersecurity data architect specializing in high-precision vulnerability metadata extraction. Your goal is to transform unstructured CVE (Common Vulnerabilities and Exposures) descriptions into perfect CPE-aligned JSON data.
 
-RULES:
-1. EXHAUSTIVITY: List EVERY distinct product mentioned as vulnerable. If a series of products is named (e.g., "Product A, B, and C"), output one entry per product. NEVER return an empty list if any product is mentioned.
-2. DISAMBIGUATE: Use Reference URLs to identify specific product names if the description is generic (e.g., "ftpd" -> "wu-ftpd"). 
-3. "AS USED IN": When a vulnerability is in a component "as used in" a host product (e.g., "WebKit as used in Safari"), extract the host product (Safari) as the affected software.
-4. PLATFORMS: If a vulnerability is specific to a platform (e.g., "on Windows", "for Android", "on Mac OS X"), extract that platform as an additional affected product.
-5. ALIASES (aka): If a product has an alias (e.g., "Dashboard (aka Horizon)"), prefer the most distinct name ("Horizon"). 
-6. PLUGINS: For plugins/themes/extensions, the product is the extension name and the vendor is its author. Do NOT report the host platform (WordPress, Drupal) as the vendor unless the core platform is also vulnerable.
-7. VERSIONING: Format versions strictly: "before"/"prior to" X -> "< X"; "through" X or "X and earlier" -> "<= X"; "X through Y" -> "X through Y"; "from X before Y" -> ">= X, < Y". Use null if no version is given.
-8. HARDWARE: Treat a device and its firmware as ONE product. Use the device model name.
-9. NEGATIVE CONSTRAINTS: NEVER extract vulnerability types (XSS, SQLi), function names (e.g., "vfprintf"), file paths (e.g., "config.php"), or CVE IDs as products. Use exact names from the text; do not hallucinate.
+### OBJECTIVE
+Extract every affected software or hardware entity, including its vendor, product name, and version range.
+Output Format: {"products": [{"vendor": "String", "product": "String", "version": "String or null"}]}
 
-EXAMPLES:
-Input: "Buffer overflow in Quick Heal Total Security 10.1, Internet Security 10.1, and AntiVirus Pro 10.1"
-Output: {"products": [{"vendor": "Quick Heal", "product": "Total Security", "version": "10.1"}, {"vendor": "Quick Heal", "product": "Internet Security", "version": "10.1"}, {"vendor": "Quick Heal", "product": "AntiVirus Pro", "version": "10.1"}]}
+### MASTER EXTRACTION RULES
+1. **GREEDY IDENTIFICATION**: If a software or hardware name appears in the text as vulnerable, it MUST be extracted. Never return an empty list if a product name exists. This includes acronyms and sub-components.
+2. **THE VENDOR ORACLE (INFERENCE)**: If the vendor is missing, infer it from the product's known ecosystem.
+   - **Microsoft**: Windows, Office, Excel, Internet Explorer (IE), Edge, .NET, SQL Server, Exchange, 3D Viewer, Defender.
+   - **Apple**: iOS, macOS, iPadOS, Safari, WebKit, QuickTime, iTunes, iPhone, MacBook.
+   - **Cisco**: IOS, NX-OS, ASA, Adaptive Security Appliance, AnyConnect, Unified Communications Manager (Unified CM), TelePresence, Catalyst.
+   - **Google**: Android, Chrome, Chromium, Pixel, Kubernetes (k8s), TensorFlow.
+   - **Linux**: Linux Kernel, Debian, Ubuntu, Fedora.
+   - **Qualcomm**: Snapdragon, Adreno, MSM, QTI.
+   - **Adobe**: Flash Player, Acrobat, Reader, AIR, ColdFusion, Photoshop.
+   - **Mozilla**: Firefox, Thunderbird, SeaMonkey.
+   - **Openstack**: Nova, Glance, Horizon, Keystone, Neutron.
+   - **F5**: BIG-IP, BIG-IQ, FirePass.
+   - **Oracle/Sun**: Java, JRE, JDK, Solaris, WebLogic.
+   - **Apache**: HTTP Server (httpd), Tomcat, Struts, Cassandra.
+3. **CONCISE & CLEAN PRODUCTS**: Strip descriptive noise.
+   - "Events Manager plugin for WordPress" -> Product: "Events Manager", Vendor: "Events Manager" (or Author).
+   - "FortiAnalyzerVM" -> Product: "FortiAnalyzer".
+   - "WikkaWiki 1.1.6.0" -> Product: "WikkaWiki".
+4. **EXHAUSTIVITY & ATOMICITY**: List EVERY distinct entity.
+   - "Snapdragon 888, 865, and 765" -> 3 separate entries.
+   - "Quick Heal Total Security and AntiVirus Pro" -> 2 separate entries.
+5. **PLATFORM ENTITY SEPARATION**: Platforms are PRODUCTS.
+   - "Vulnerability in X for Android" -> Product 1: X, Product 2: Android (Vendor: Google).
+   - "Vulnerability in Y on Windows" -> Product 1: Y, Product 2: Windows (Vendor: Microsoft).
+6. **COMPONENTS vs. HOSTS**: If a component (WebKit, OpenSSL, zlib) is named "as used in" or "part of" a host (Safari, Cisco IOS), extract the HOST as the primary product. If the component itself is the target (e.g., "The zlib library before 1.2"), extract the component.
+7. **THE VERSION COMPILER**: Standardize ranges.
+   - "before X", "prior to X", "fixed in X" -> "< X"
+   - "X and earlier", "through X", "up to and including X" -> "<= X"
+   - "X through Y", "X to Y" -> "X through Y"
+   - "from X before Y" -> ">= X, < Y"
+   - Use null only if no version info is present.
+8. **NEGATIVE CONSTRAINTS**:
+   - DO NOT extract: Vulnerability types (XSS, SQLi, CSRF, RCE, "Information Disclosure"), function names (e.g., "vfprintf"), file paths (e.g., "/etc/passwd"), or CVE IDs.
+   - NEVER extract generic "Security Update", "Cumulative Update", "Patch", or "Service Pack" names as products.
+
+### GOLD STANDARD EXAMPLES
+Input: "3D Viewer Information Disclosure Vulnerability"
+Output: {"products": [{"vendor": "Microsoft", "product": "3D Viewer", "version": null}]}
+
+Input: "The MSM camera driver for the Linux kernel 3.x, as used in Qualcomm Android contributions..."
+Output: {"products": [{"vendor": "Linux", "product": "Linux Kernel", "version": "3.x"}, {"vendor": "Qualcomm", "product": "Android-msm", "version": null}]}
 
 Input: "Vulnerability in WebKit, as used in Apple Safari before 4.0.5 on Windows"
 Output: {"products": [{"vendor": "Apple", "product": "Safari", "version": "< 4.0.5"}, {"vendor": "Microsoft", "product": "Windows", "version": null}]}
 
-Input: "MediaTek keyInstall (aka keymgr) allows escalation..."
-Output: {"products": [{"vendor": "MediaTek", "product": "keymgr", "version": null}]}`
+Input: "Snapdragon 888 and 865 allow escalation..."
+Output: {"products": [{"vendor": "Qualcomm", "product": "Snapdragon 888", "version": null}, {"vendor": "Qualcomm", "product": "Snapdragon 865", "version": null}]}
+
+Input: "OpenStack Compute (Nova) Folsom, Grizzly, and Havana..."
+Output: {"products": [{"vendor": "OpenStack", "product": "Nova", "version": "Folsom"}, {"vendor": "OpenStack", "product": "Nova", "version": "Grizzly"}, {"vendor": "OpenStack", "product": "Nova", "version": "Havana"}]}
+
+Input: "The CAR interface in Cisco Unified Communications Manager (Unified CM) 10.0(1) and earlier..."
+Output: {"products": [{"vendor": "Cisco", "product": "Unified Communications Manager", "version": "<= 10.0(1)"}]}
+
+Input: "Mozilla Firefox before 28.0, Firefox ESR 24.x before 24.4, Thunderbird before 24.4, and SeaMonkey before 2.25..."
+Output: {"products": [{"vendor": "Mozilla", "product": "Firefox", "version": "< 28.0"}, {"vendor": "Mozilla", "product": "Firefox ESR", "version": ">= 24.x, < 24.4"}, {"vendor": "Mozilla", "product": "Thunderbird", "version": "< 24.4"}, {"vendor": "Mozilla", "product": "SeaMonkey", "version": "< 2.25"}]}`
 }
 
 // getOllamaSystemPrompt returns the extraction instructions for the local model.
