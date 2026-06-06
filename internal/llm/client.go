@@ -356,7 +356,7 @@ func extractWithGemini(ctx context.Context, apiKey, model, apiVersion, descripti
 
 func extractWithOllama(ctx context.Context, endpoint, model, description string) ([]ProductResult, error) {
 	if endpoint == "" {
-		endpoint = "http://localhost:11434"
+		endpoint = config.DefaultLLMEndpoint
 	}
 
 	prompt := getOllamaSystemPrompt() + "\n\nDescription: " + description

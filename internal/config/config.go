@@ -25,6 +25,17 @@ func decryptIfEncrypted(val string) string {
 	return val
 }
 
+const (
+	DefaultDBPort            = "5432"
+	DefaultRedisURL          = "localhost:6379"
+	DefaultRedisSentinelAddr = "localhost:26379"
+	DefaultBaseURL           = "http://localhost:8080"
+	DefaultSMTPPort          = "587"
+	DefaultLLMEndpoint       = "http://localhost:11434"
+	DefaultGRPCPort          = "9091"
+	DefaultAppPort           = "8080"
+)
+
 type Config struct {
 	DBHost           string
 	DBPort           string
@@ -71,21 +82,21 @@ var AppConfig Config
 func LoadConfig() error {
 	AppConfig = Config{
 		DBHost:          getEnv("DB_HOST", "db"),
-		DBPort:          getEnv("DB_PORT", "5432"),
+		DBPort:          getEnv("DB_PORT", DefaultDBPort),
 		DBUser:          getEnv("DB_USER", "cveuser"),
 		DBPassword:      decryptIfEncrypted(getEnv("DB_PASSWORD", "")),
 		DBName:          getEnv("DB_NAME", "cvetracker"),
-		RedisURL:        getEnv("REDIS_URL", "redis:6379"),
+		RedisURL:        getEnv("REDIS_URL", DefaultRedisURL),
 		SessionKey:      getEnv("SESSION_KEY", ""),
 		CSRFKey:         getEnv("CSRF_KEY", ""),
-		BaseURL:         getEnv("BASE_URL", "http://localhost:8080"),
+		BaseURL:         getEnv("BASE_URL", DefaultBaseURL),
 		SMTPHost:        getEnv("SMTP_HOST", "smtp.example.com"),
 		SMTPUser:        getEnv("SMTP_USER", "user@example.com"),
 		SMTPPass:        decryptIfEncrypted(getEnv("SMTP_PASS", "")),
 		AdminEmail:      getEnv("ADMIN_EMAIL", ""),
 		AdminPassword:   decryptIfEncrypted(getEnv("ADMIN_PASSWORD", "")),
 		AdminTOTPSecret: decryptIfEncrypted(getEnv("ADMIN_TOTP_SECRET", "")),
-		AppPort:         getEnv("PORT", "8080"),
+		AppPort:         getEnv("PORT", DefaultAppPort),
 		SentryDSN:       decryptIfEncrypted(getEnv("SENTRY_DSN", "")),
 		GeminiAPIKey:    decryptIfEncrypted(getEnv("GEMINI_API_KEY", "")),
 		GeminiModel:     getEnv("GEMINI_MODEL", "gemini-3.1-flash-lite"),
@@ -93,22 +104,22 @@ func LoadConfig() error {
 		// (responseMimeType / responseSchema) are rejected by the stable v1 API.
 		GeminiAPIVersion: getEnv("GEMINI_API_VERSION", "v1beta"),
 		LLMProvider:      getEnv("LLM_PROVIDER", "ollama"),
-		LLMEndpoint:      getEnv("LLM_ENDPOINT", "http://ollama:11434"),
+		LLMEndpoint:      getEnv("LLM_ENDPOINT", DefaultLLMEndpoint),
 		LLMModel:         getEnv("LLM_MODEL", "phi3-vulfixx"),
 		LLMTimeout:       getEnvInt("LLM_TIMEOUT", 600),
 		MistralAPIKey:    decryptIfEncrypted(getEnv("MISTRAL_API_KEY", "")),
 		MistralModel:     getEnv("MISTRAL_MODEL", "mistral-small-latest"),
 		MistralEndpoint:  getEnv("MISTRAL_ENDPOINT", "https://api.mistral.ai/v1"),
-		GRPCPort:         getEnv("GRPC_PORT", "9091"),
+		GRPCPort:         getEnv("GRPC_PORT", DefaultGRPCPort),
 		GRPCCertFile:     getEnv("GRPC_CERT_FILE", ""),
 		GRPCKeyFile:      getEnv("GRPC_KEY_FILE", ""),
 		WebhookSecret:    getEnv("WEBHOOK_SECRET", ""),
 	}
 
-	port, err := strconv.Atoi(getEnv("SMTP_PORT", "587"))
+	port, err := strconv.Atoi(getEnv("SMTP_PORT", DefaultSMTPPort))
 	if err != nil {
-		logPrintf("Invalid SMTP_PORT: %v. Defaulting to 587", err)
-		port = 587
+		logPrintf("Invalid SMTP_PORT: %v. Defaulting to %s", err, DefaultSMTPPort)
+		port, _ = strconv.Atoi(DefaultSMTPPort)
 	}
 	AppConfig.SMTPPort = port
 

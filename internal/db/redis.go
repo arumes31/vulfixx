@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"crypto/tls"
+	"cve-tracker/internal/config"
 	"os"
 	"strings"
 
@@ -33,7 +34,7 @@ func InitRedis() error {
 			sentinelAddrsStr = os.Getenv("REDIS_URL")
 		}
 		if sentinelAddrsStr == "" {
-			sentinelAddrsStr = "localhost:26379"
+			sentinelAddrsStr = config.DefaultRedisSentinelAddr
 		}
 		sentinelAddrs := strings.Split(sentinelAddrsStr, ",")
 		for i := range sentinelAddrs {
@@ -80,7 +81,7 @@ func InitRedis() error {
 			// Single Node Redis
 			url := os.Getenv("REDIS_URL")
 			if url == "" {
-				url = "localhost:6379"
+				url = config.DefaultRedisURL
 			}
 			if strings.HasPrefix(url, "redis://") || strings.HasPrefix(url, "rediss://") {
 				opt, err := redis.ParseURL(url)

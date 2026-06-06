@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"cve-tracker/internal/config"
 	"cve-tracker/internal/models"
 	"cve-tracker/internal/security"
 	"encoding/json"
@@ -14,8 +15,6 @@ import (
 )
 
 const (
-	defaultRedisAddr         = "localhost:6379"
-	defaultRedisSentinelAddr = "localhost:26379"
 	defaultAsynqConcurrency  = 10
 )
 
@@ -29,7 +28,7 @@ func GetAsynqRedisConnOpt() asynq.RedisConnOpt {
 			sentinelAddrsStr = os.Getenv("REDIS_URL")
 		}
 		if sentinelAddrsStr == "" {
-			sentinelAddrsStr = defaultRedisSentinelAddr
+			sentinelAddrsStr = config.DefaultRedisSentinelAddr
 		}
 		sentinelAddrs := strings.Split(sentinelAddrsStr, ",")
 		for i := range sentinelAddrs {
@@ -60,7 +59,7 @@ func GetAsynqRedisConnOpt() asynq.RedisConnOpt {
 
 	url := os.Getenv("REDIS_URL")
 	if url == "" {
-		url = defaultRedisAddr
+		url = config.DefaultRedisURL
 	}
 	return asynq.RedisClientOpt{
 		Addr:     url,

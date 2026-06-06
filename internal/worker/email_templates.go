@@ -2,6 +2,7 @@ package worker
 
 import (
 	"bytes"
+	"cve-tracker/internal/config"
 	"fmt"
 	"html/template"
 	"os"
@@ -161,7 +162,7 @@ func RenderEmailTemplate(title, bodyTmpl string, data interface{}) (string, erro
 
 	baseURL := os.Getenv("BASE_URL")
 	if baseURL == "" {
-		baseURL = "http://localhost:8080"
+		baseURL = config.DefaultBaseURL
 	}
 	baseURL = strings.TrimSuffix(baseURL, "/")
 

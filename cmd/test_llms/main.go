@@ -51,10 +51,17 @@ type score struct {
 }
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})))
 
 	config.AppConfig = config.Config{
-		LLMEndpoint:      envOr("LLM_ENDPOINT", "http://ollama:11434"),
+		LLMEndpoint:      envOr("LLM_ENDPOINT", config.DefaultLLMEndpoint),
 		LLMModel:         envOr("LLM_MODEL", "phi3-vulfixx"),
 		GeminiAPIKey:     os.Getenv("GEMINI_API_KEY"),
 		GeminiModel:      envOr("GEMINI_MODEL", "gemini-3.1-flash-lite"),
@@ -67,13 +74,11 @@ func main() {
 
 	data, err := os.ReadFile("testset.json")
 	if err != nil {
-		fmt.Printf("Error: cannot read testset.json: %v\n(run: go run ./cmd/fetch_cves to build it)\n", err)
-		os.Exit(1)
+		return fmt.Errorf("cannot read testset.json: %w\n(run: go run ./cmd/fetch_cves to build it)", err)
 	}
 	var cves []testCVE
 	if err := json.Unmarshal(data, &cves); err != nil {
-		fmt.Printf("Error parsing testset.json: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("parsing testset.json: %w", err)
 	}
 	for i := range cves {
 		cves[i].Truth = filterTruth(cves[i].Truth, cves[i].Desc)
@@ -148,6 +153,7 @@ func main() {
 		fmt.Printf("  avg recall=%.3f  avg precision=%.3f  full-pass rate=%.1f%%\n",
 			sc.recallSum/n, sc.precisonSum/n, 100*float64(sc.fullPass)/n)
 	}
+	return nil
 }
 
 // distroVendors are Linux distributions / OS packagers that appear in CPE

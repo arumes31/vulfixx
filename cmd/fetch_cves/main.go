@@ -54,6 +54,13 @@ type testCVE struct {
 }
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Printf("error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	perYear := 10
 	if v := os.Getenv("PER_YEAR"); v != "" {
 		_, _ = fmt.Sscanf(v, "%d", &perYear)
@@ -93,8 +100,7 @@ func main() {
 
 	out, _ := json.MarshalIndent(all, "", "  ")
 	if err := os.WriteFile("testset.json", out, 0600); err != nil {
-		fmt.Printf("write error: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("write error: %w", err)
 	}
 
 	multi := 0
@@ -104,6 +110,7 @@ func main() {
 		}
 	}
 	fmt.Printf("\nWrote testset.json: %d CVEs total, %d with multiple distinct products\n", len(all), multi)
+	return nil
 }
 
 // collectYear pages through the published window for a year and returns up to

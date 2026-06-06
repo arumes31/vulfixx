@@ -37,8 +37,8 @@ func TestLoadConfig(t *testing.T) {
 				if c.DBHost != "db" {
 					t.Errorf("DBHost = %v, want db", c.DBHost)
 				}
-				if c.DBPort != "5432" {
-					t.Errorf("DBPort = %v, want 5432", c.DBPort)
+				if c.DBPort != DefaultDBPort {
+					t.Errorf("DBPort = %v, want %s", c.DBPort, DefaultDBPort)
 				}
 				if c.DBUser != "cveuser" {
 					t.Errorf("DBUser = %v, want cveuser", c.DBUser)
@@ -46,11 +46,11 @@ func TestLoadConfig(t *testing.T) {
 				if c.DBName != "cvetracker" {
 					t.Errorf("DBName = %v, want cvetracker", c.DBName)
 				}
-				if c.RedisURL != "redis:6379" {
-					t.Errorf("RedisURL = %v, want redis:6379", c.RedisURL)
+				if c.RedisURL != DefaultRedisURL {
+					t.Errorf("RedisURL = %v, want %s", c.RedisURL, DefaultRedisURL)
 				}
-				if c.BaseURL != "http://localhost:8080" {
-					t.Errorf("BaseURL = %v, want http://localhost:8080", c.BaseURL)
+				if c.BaseURL != DefaultBaseURL {
+					t.Errorf("BaseURL = %v, want %s", c.BaseURL, DefaultBaseURL)
 				}
 				if c.SMTPHost != "smtp.example.com" {
 					t.Errorf("SMTPHost = %v, want smtp.example.com", c.SMTPHost)
