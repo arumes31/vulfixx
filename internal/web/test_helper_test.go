@@ -116,7 +116,7 @@ func TestExpectBaseQueries(t *testing.T) {
 		_ = mock.QueryRow(context.Background(), "SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1", 123).Scan(&count)
 
 		// Team list
-		_, _ = mock.Query(context.Background(), "SELECT t.id, t.name FROM teams t", 123)
+		_, _ = mock.Query(context.Background(), "SELECT t.id, t.name, tm.user_id FROM teams t", 123, 0)
 
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("not all expectations were met: %v", err)
