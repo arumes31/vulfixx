@@ -525,7 +525,7 @@ func TestRenderAJAX(t *testing.T) {
 			name: "Template execution error",
 			setup: func(a *App) {
 				a.TemplateMu.Lock()
-				// Load an invalid template mapping (no "cve_rows" defined in text/template)
+				// Load an invalid template mapping (no "cve_rows" defined in html/template)
 				a.TemplateMap["public_dashboard.html"] = template.Must(template.New("empty").Parse(""))
 				a.TemplateMu.Unlock()
 			},
