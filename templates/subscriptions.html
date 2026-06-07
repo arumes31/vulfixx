@@ -23,14 +23,14 @@
                 <form id="subscription-form" action="/subscriptions" method="POST" class="space-y-6">
                     {{.CSRFField}}
                     <div class="space-y-2">
-                        <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Target Infrastructure</label>
-                        <input type="text" name="keyword" placeholder="e.g. Fortigate, FortiOS, FortiManager" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
+                        <label for="keyword" class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Target Infrastructure</label>
+                        <input id="keyword" type="text" name="keyword" placeholder="e.g. Fortigate, FortiOS, FortiManager" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
                         <p class="text-[10px] text-gray-500">Track multiple products by separating them with commas.</p>
                     </div>
                     
                     <div class="space-y-2">
-                        <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Minimum CVSS Severity</label>
-                        <input type="number" step="0.1" name="min_severity" value="7.0" min="0.0" max="10.0" required class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all font-mono">
+                        <label for="min_severity" class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Minimum CVSS Severity</label>
+                        <input id="min_severity" type="number" step="0.1" name="min_severity" value="7.0" min="0.0" max="10.0" required class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all font-mono">
                     </div>
 
                     <div class="space-y-3 pt-2">
@@ -83,23 +83,23 @@
                     </div>
 
                     <div id="webhook-field" class="space-y-2 hidden">
-                        <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Webhook URL</label>
-                        <input type="url" name="webhook_url" placeholder="https://hooks.example.com/..." class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
+                        <label for="webhook_url" class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Webhook URL</label>
+                        <input id="webhook_url" type="url" name="webhook_url" placeholder="https://hooks.example.com/..." class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
                     </div>
 
                     <div id="slack-webhook-field" class="space-y-2 hidden">
-                        <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Slack Webhook URL</label>
-                        <input type="url" name="slack_webhook_url" placeholder="https://hooks.slack.com/services/..." class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
+                        <label for="slack_webhook_url" class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Slack Webhook URL</label>
+                        <input id="slack_webhook_url" type="url" name="slack_webhook_url" placeholder="https://hooks.slack.com/services/..." class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
                     </div>
 
                     <div id="teams-webhook-field" class="space-y-2 hidden">
-                        <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Teams Webhook URL</label>
-                        <input type="url" name="teams_webhook_url" placeholder="https://outlook.office.com/webhook/..." class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
+                        <label for="teams_webhook_url" class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Teams Webhook URL</label>
+                        <input id="teams_webhook_url" type="url" name="teams_webhook_url" placeholder="https://outlook.office.com/webhook/..." class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
                     </div>
 
                     <div class="space-y-2">
-                        <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Alert Frequency</label>
-                        <select name="aggregation_mode" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all appearance-none cursor-pointer">
+                        <label for="aggregation_mode" class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Alert Frequency</label>
+                        <select id="aggregation_mode" name="aggregation_mode" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all appearance-none cursor-pointer">
                             <option value="instant" class="bg-[#10141a]">Instant (Real-time)</option>
                             <option value="hourly" class="bg-[#10141a]">Hourly Digest</option>
                             <option value="daily" class="bg-[#10141a]">Daily Summary</option>
@@ -107,8 +107,8 @@
                     </div>
 
                     <div class="space-y-2">
-                        <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Advanced Filter (optional)</label>
-                        <input type="text" name="filter_logic" placeholder="e.g. cisa = true &amp;&amp; epss > 0.1 || severity >= 9" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
+                        <label for="filter_logic" class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Advanced Filter (optional)</label>
+                        <input id="filter_logic" type="text" name="filter_logic" placeholder="e.g. cisa = true &amp;&amp; epss > 0.1 || severity >= 9" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
                         <p class="text-[10px] text-gray-500 leading-relaxed">Variables: <code>epss</code>, <code>severity</code>, <code>buzz</code>, <code>cisa</code>, and <code>regex: pattern</code>. Operators: <code>&gt; &gt;= &lt; &lt;= == !=</code> combined with <code>&amp;&amp;</code> / <code>||</code>.</p>
                     </div>
 
@@ -263,13 +263,13 @@
         content.innerHTML = `
             <form id="edit-sub-form" class="space-y-5">
                 <div class="space-y-2">
-                    <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Target Infrastructure</label>
-                    <input type="text" name="keyword" value="${subData.keyword || ''}" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
+                    <label for="edit_keyword" class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Target Infrastructure</label>
+                    <input id="edit_keyword" type="text" name="keyword" value="${subData.keyword || ''}" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all">
                     <p class="text-[10px] text-gray-500">Track multiple products by separating them with commas.</p>
                 </div>
                 <div class="space-y-2">
-                    <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Minimum CVSS Severity</label>
-                    <input type="number" step="0.1" name="min_severity" value="${subData.min_severity || 7.0}" min="0.0" max="10.0" required class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all font-mono">
+                    <label for="edit_min_severity" class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Minimum CVSS Severity</label>
+                    <input id="edit_min_severity" type="number" step="0.1" name="min_severity" value="${subData.min_severity || 7.0}" min="0.0" max="10.0" required class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all font-mono">
                 </div>
                 <div class="space-y-3">
                     <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Notification Pipelines</label>
@@ -280,8 +280,8 @@
                     ${makeToggle('enable_browser_push', 'notifications_active', 'Browser Push', subData.enable_browser_push, 'orange-500')}
                 </div>
                 <div class="space-y-2">
-                    <label class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Alert Frequency</label>
-                    <select name="aggregation_mode" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all appearance-none cursor-pointer">
+                    <label for="edit_aggregation_mode" class="text-[10px] font-black tracking-widest uppercase text-gray-500 block">Alert Frequency</label>
+                    <select id="edit_aggregation_mode" name="aggregation_mode" class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary transition-all appearance-none cursor-pointer">
                         <option value="instant" ${subData.aggregation_mode === 'instant' ? 'selected' : ''} class="bg-[#10141a]">Instant (Real-time)</option>
                         <option value="hourly" ${subData.aggregation_mode === 'hourly' ? 'selected' : ''} class="bg-[#10141a]">Hourly Digest</option>
                         <option value="daily" ${subData.aggregation_mode === 'daily' ? 'selected' : ''} class="bg-[#10141a]">Daily Summary</option>
