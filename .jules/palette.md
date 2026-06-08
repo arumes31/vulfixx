@@ -13,3 +13,6 @@
 ## 2026-05-28 - ARIA attributes for alert/status containers
 **Learning:** Flash messages indicating success or error states need proper ARIA roles to ensure they are immediately announced by screen readers without requiring the user to navigate to them.
 **Action:** Use `role="alert" aria-atomic="true"` for error messages and `role="status" aria-live="polite"` for non-critical information/success messages in template partials.
+## 2025-06-08 - Added descriptive aria labels
+**Learning:** Some elements like buttons or links used for severity badges or pagination only had icons, and screen readers lack the context on their purpose without `aria-label`s.
+**Action:** Always add descriptive `aria-label`s to purely visual indicators and buttons using icons to give screen readers proper context.
