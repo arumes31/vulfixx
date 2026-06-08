@@ -61,15 +61,15 @@ func run() error {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})))
 
 	config.AppConfig = config.Config{
-		LLMEndpoint:      envOr("LLM_ENDPOINT", config.DefaultLLMEndpoint),
-		LLMModel:         envOr("LLM_MODEL", config.DefaultLLMModel),
+		LLMEndpoint:      envOr("LLM_ENDPOINT", "http://ollama:11434"),
+		LLMModel:         envOr("LLM_MODEL", "phi3-vulfixx"),
 		GeminiAPIKey:     os.Getenv("GEMINI_API_KEY"),
-		GeminiModel:      envOr("GEMINI_MODEL", config.DefaultGeminiModel),
-		GeminiAPIVersion: envOr("GEMINI_API_VERSION", config.DefaultGeminiAPI),
+		GeminiModel:      envOr("GEMINI_MODEL", "gemini-3.1-flash-lite"),
+		GeminiAPIVersion: envOr("GEMINI_API_VERSION", "v1beta"),
 		MistralAPIKey:    os.Getenv("MISTRAL_API_KEY"),
-		MistralModel:     envOr("MISTRAL_MODEL", config.DefaultMistralModel),
-		MistralEndpoint:  envOr("MISTRAL_ENDPOINT", config.DefaultMistralEndpoint),
-		LLMTimeout:       envIntOr("LLM_TIMEOUT", config.DefaultLLMTimeout),
+		MistralModel:     envOr("MISTRAL_MODEL", "mistral-small-latest"),
+		MistralEndpoint:  envOr("MISTRAL_ENDPOINT", "https://api.mistral.ai/v1"),
+		LLMTimeout:       envIntOr("LLM_TIMEOUT", 1800),
 	}
 
 	data, err := os.ReadFile("testset.json")
