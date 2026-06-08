@@ -34,7 +34,7 @@ func (w *Worker) syncGitHubBuzzPeriodically(ctx context.Context) {
 
 type githubUpdateItem struct {
 	cveID      string
-	totalCount int
+	totalCount int32
 }
 
 func (w *Worker) syncGitHubBuzz(ctx context.Context) {
@@ -72,7 +72,7 @@ CVELoop:
 		}
 
 		var ghResp struct {
-			TotalCount int `json:"total_count"`
+			TotalCount int32 `json:"total_count"`
 		}
 
 		githubURL := fmt.Sprintf("https://api.github.com/search/repositories?q=%s", cveID)
@@ -147,7 +147,7 @@ func (w *Worker) updateGitHubBatch(ctx context.Context, updates []githubUpdateIt
 
 	for i, up := range updates {
 		cveIDs[i] = up.cveID
-		counts[i] = int32(up.totalCount)
+		counts[i] = up.totalCount
 	}
 
 	// ⚡ Bolt Optimization: Replaced loop-based pgx.Batch execution with a single bulk update using PostgreSQL unnest().
