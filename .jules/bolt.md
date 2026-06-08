@@ -44,3 +44,9 @@
 ## 2026-05-30 - Optimized Database Updates in GitHub Buzz Sync
 **Learning:** Performing individual `tx.Exec` calls within a transaction loop in `updateGitHubBatch` for 50 items results in 50 separate database roundtrips, which degrades performance.
 **Action:** Implemented `pgx.Batch` within the transaction to send all update queries in a single database roundtrip, significantly reducing I/O latency, while maintaining a fallback loop for `pgxmock` test compatibility.
+
+## 2026-06-08 - Optimized PostgreSQL Bulk Updates with unnest
+**Performance Issue:** Batching bulk updates using `pgx.Batch` and iterating over `batch.Queue` followed by executing them via a transaction causes unnecessary complexity and multiple database roundtrips, reducing write throughput for large datasets.
+**Learning:** Using PostgreSQL's `unnest` function combined with an `UPDATE ... FROM` statement allows multiple rows to be updated in a single atomic database execution roundtrip. To prevent WAL bloat for rows that haven't actually changed, append an `IS DISTINCT FROM` clause to the `WHERE` condition. Additionally, when passing integer arrays to PostgreSQL `unnest($2::int[])` via the `pgx` driver, the corresponding Go type must be `[]int32` (not `[]int`, which maps to `bigint[]` and causes casting errors).
+**Optimization:** Replaced the `pgx.Batch` loop inside `updateGitHubBatch` with a single `UPDATE cves SET ... FROM (SELECT unnest($1::text[]), unnest($2::int[])) ... WHERE ... IS DISTINCT FROM` query.
+**Impact:** Reduced database roundtrips from N+1 to 1 per batch execution, prevented unnecessary WAL writes, and improved bulk update performance.

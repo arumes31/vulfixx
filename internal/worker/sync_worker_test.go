@@ -279,9 +279,16 @@ func TestWorkerSync_GitHub(t *testing.T) {
 
 		mock.ExpectQuery("SELECT cve_id FROM cves").WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-GH-1"))
 
-		mock.ExpectBegin()
-		mock.ExpectExec("UPDATE cves SET github_poc_count = \\$1 WHERE cve_id = \\$2").WithArgs(42, "CVE-GH-1").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-		mock.ExpectCommit()
+		query := `
+		UPDATE cves
+		SET github_poc_count = u.github_poc_count
+		FROM (SELECT unnest($1::text[]) as cve_id, unnest($2::int[]) as github_poc_count) as u
+		WHERE cves.cve_id = u.cve_id
+		AND cves.github_poc_count IS DISTINCT FROM u.github_poc_count
+	`
+		mock.ExpectExec(regexp.QuoteMeta(query)).
+			WithArgs([]string{"CVE-GH-1"}, []int32{42}).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("github_buzz_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
