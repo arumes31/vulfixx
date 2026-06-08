@@ -170,7 +170,7 @@ func TestFetchAndCollectYear(t *testing.T) {
 				},
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer ts.Close()
 
@@ -225,7 +225,7 @@ func TestMainProcess(t *testing.T) {
 		// Mock NVD response
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			resp := nvdResp{}
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 		}))
 		defer ts.Close()
 

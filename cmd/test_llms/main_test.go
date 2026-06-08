@@ -170,7 +170,7 @@ func TestMainProcess(t *testing.T) {
 	if os.Getenv("BE_CRASHER") == "1" {
 		// Just verify that the code can handle file not found nicely via an exit (we simulate the os.Exit here if needed)
 		// Or we can mock the file.
-		os.WriteFile("testset.json", []byte(`[{"id":"CVE-1","year":2021,"desc":"test","refs":[],"truth":[]}]`), 0644)
+		_ = os.WriteFile("testset.json", []byte(`[{"id":"CVE-1","year":2021,"desc":"test","refs":[],"truth":[]}]`), 0644)
 		// Make it fast
 		os.Setenv("TEST_PROVIDER", "mock")
 		os.Setenv("TEST_LIMIT", "0")
