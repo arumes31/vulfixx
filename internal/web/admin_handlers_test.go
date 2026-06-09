@@ -30,8 +30,8 @@ func TestAdminUserManagementHandler(t *testing.T) {
 				// RenderTemplate expectations
 				mock.ExpectQuery("SELECT onboarding_completed FROM users WHERE id = \\$1").WithArgs(1).
 					WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed"}).AddRow(true))
-				mock.ExpectQuery("SELECT t.id, t.name").WithArgs(1).
-					WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(1, "Team A"))
+				mock.ExpectQuery("(?is)SELECT t.id, t.name, \\(tm.user_id IS NOT NULL\\) AS is_member FROM teams t").WithArgs(1, 0).
+					WillReturnRows(pgxmock.NewRows([]string{"id", "name", "is_member"}).AddRow(1, "Team A", true))
 			},
 			expectedStatus: http.StatusOK,
 		},

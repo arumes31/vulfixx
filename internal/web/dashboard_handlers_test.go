@@ -282,9 +282,9 @@ func TestDashboardHandler_TeamView(t *testing.T) {
 		WithArgs(userID).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
 
-	mock.ExpectQuery("(?is)SELECT t.id, t.name FROM teams t").
-		WithArgs(userID).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(teamID, "Team10"))
+	mock.ExpectQuery("(?is)SELECT t.id, t.name, \\(tm.user_id IS NOT NULL\\) AS is_member FROM teams t").
+		WithArgs(userID, teamID).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "name", "is_member"}).AddRow(teamID, "Team10", true))
 
 	rr := httptest.NewRecorder()
 	app.DashboardHandler(rr, req)

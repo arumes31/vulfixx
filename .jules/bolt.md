@@ -44,3 +44,7 @@
 ## 2026-05-30 - Optimized Database Updates in GitHub Buzz Sync
 **Learning:** Performing individual `tx.Exec` calls within a transaction loop in `updateGitHubBatch` for 50 items results in 50 separate database roundtrips, which degrades performance.
 **Action:** Implemented `pgx.Batch` within the transaction to send all update queries in a single database roundtrip, significantly reducing I/O latency, while maintaining a fallback loop for `pgxmock` test compatibility.
+## 2026-06-09 - Optimized Dashboard N+1 Query for teams and active team
+**Performance Issue:** N+1 Query in RenderTemplate.
+**Learning:** Fetching the active team's name and user's teams in separate queries leads to unnecessary database hits on every dashboard view.
+**Action:** Combine fetching user's teams and active team name into a single query using LEFT JOIN and OR conditions to fix the N+1 issue.
