@@ -95,8 +95,10 @@
     --default-font-family: var(--font-sans);
     --default-mono-font-family: var(--font-mono);
     --color-surface: #10141a;
+    --color-surface-container: #1c2026;
     --color-surface-container-low: #181c22;
     --color-surface-container-high: #262a31;
+    --color-surface-container-lowest: #0a0e14;
     --color-on-surface: #dfe2eb;
     --color-on-surface-variant: #c2c6d7;
     --color-primary: #00daf3;
@@ -350,7 +352,7 @@
   .z-50 {
     z-index: 50;
   }
-  .z-\[100\] {
+  .z-100 {
     z-index: 100;
   }
   .col-span-full {
@@ -1163,23 +1165,11 @@
   .border-t-primary {
     border-top-color: var(--color-primary);
   }
-  .bg-\[\#0a0e14\] {
-    background-color: #0a0e14;
-  }
-  .bg-\[\#0a0e14\]\/80 {
-    background-color: color-mix(in oklab, #0a0e14 80%, transparent);
-  }
-  .bg-\[\#1c2026\]\/50 {
-    background-color: color-mix(in oklab, #1c2026 50%, transparent);
-  }
   .bg-\[\#181c22\] {
     background-color: #181c22;
   }
   .bg-\[\#10141a\] {
     background-color: #10141a;
-  }
-  .bg-\[\#93000a\] {
-    background-color: #93000a;
   }
   .bg-blue-400\/10 {
     background-color: color-mix(in srgb, oklch(70.7% 0.165 254.624) 10%, transparent);
@@ -1213,6 +1203,9 @@
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-emerald-500) 10%, transparent);
     }
+  }
+  .bg-error-container {
+    background-color: var(--color-error-container);
   }
   .bg-error-container\/10 {
     background-color: color-mix(in srgb, #93000a 10%, transparent);
@@ -1447,6 +1440,21 @@
   }
   .bg-surface-container-low {
     background-color: var(--color-surface-container-low);
+  }
+  .bg-surface-container-lowest {
+    background-color: var(--color-surface-container-lowest);
+  }
+  .bg-surface-container-lowest\/80 {
+    background-color: color-mix(in srgb, #0a0e14 80%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-surface-container-lowest) 80%, transparent);
+    }
+  }
+  .bg-surface-container\/50 {
+    background-color: color-mix(in srgb, #1c2026 50%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-surface-container) 50%, transparent);
+    }
   }
   .bg-tertiary {
     background-color: var(--color-tertiary);
@@ -1889,12 +1897,6 @@
   }
   .whitespace-pre-wrap {
     white-space: pre-wrap;
-  }
-  .text-\[\#00daf3\] {
-    color: #00daf3;
-  }
-  .text-\[\#dfe2eb\] {
-    color: #dfe2eb;
   }
   .text-\[\#ffdad6\] {
     color: #ffdad6;
@@ -2582,10 +2584,10 @@
       }
     }
   }
-  .hover\:border-\[\#00daf3\] {
+  .hover\:border-primary {
     &:hover {
       @media (hover: hover) {
-        border-color: #00daf3;
+        border-color: var(--color-primary);
       }
     }
   }
@@ -2683,20 +2685,6 @@
       }
     }
   }
-  .hover\:bg-\[\#1c2026\] {
-    &:hover {
-      @media (hover: hover) {
-        background-color: #1c2026;
-      }
-    }
-  }
-  .hover\:bg-\[\#690005\] {
-    &:hover {
-      @media (hover: hover) {
-        background-color: #690005;
-      }
-    }
-  }
   .hover\:bg-error {
     &:hover {
       @media (hover: hover) {
@@ -2711,6 +2699,13 @@
         @supports (color: color-mix(in lab, red, red)) {
           background-color: color-mix(in oklab, var(--color-error-container) 30%, transparent);
         }
+      }
+    }
+  }
+  .hover\:bg-on-error {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--color-on-error);
       }
     }
   }
@@ -2771,6 +2766,13 @@
       }
     }
   }
+  .hover\:bg-surface-container {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--color-surface-container);
+      }
+    }
+  }
   .hover\:bg-tertiary {
     &:hover {
       @media (hover: hover) {
@@ -2805,13 +2807,6 @@
         @supports (color: color-mix(in lab, red, red)) {
           background-color: color-mix(in oklab, var(--color-white) 2%, transparent);
         }
-      }
-    }
-  }
-  .hover\:text-\[\#00daf3\] {
-    &:hover {
-      @media (hover: hover) {
-        color: #00daf3;
       }
     }
   }

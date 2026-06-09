@@ -13,3 +13,6 @@
 ## 2026-05-28 - ARIA attributes for alert/status containers
 **Learning:** Flash messages indicating success or error states need proper ARIA roles to ensure they are immediately announced by screen readers without requiring the user to navigate to them.
 **Action:** Use `role="alert" aria-atomic="true"` for error messages and `role="status" aria-live="polite"` for non-critical information/success messages in template partials.
+## 2024-05-19 - Missing 'for' attributes in forms
+**Learning:** The forms in templates/subscriptions.html were using labels visually but without proper ID and 'for' attribute linking, specifically also when forms are generated in JS logic in templates.
+**Action:** When adding accessible forms, check any JS generated HTML inside the `<script>` tags of standard HTML templates, prefix their IDs to ensure uniqueness if the JS form appears multiple times, and correctly use matching `for` and `id` properties.
