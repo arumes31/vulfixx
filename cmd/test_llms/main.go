@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -170,15 +171,15 @@ var distroVendors = map[string]bool{
 // the original is kept so the CVE remains scoreable.
 func filterTruth(t []truthProduct, desc string) []truthProduct {
 	dtoks := descTokenSet(desc)
-	var out []truthProduct
-	for _, p := range t {
+	out := slices.DeleteFunc(slices.Clone(t), func(p truthProduct) bool {
 		if distroVendors[strings.ToLower(strings.TrimSpace(p.Vendor))] {
-			continue
+			return true // delete
 		}
 		if mentioned(p.Product, dtoks) || mentioned(p.Vendor, dtoks) {
-			out = append(out, p)
+			return false // keep
 		}
-	}
+		return true // delete
+	})
 	if len(out) == 0 {
 		return t
 	}
@@ -251,16 +252,14 @@ var nonAlnum = regexp.MustCompile(`[^a-z0-9]+`)
 func tokens(s string) []string {
 	s = strings.ToLower(s)
 	s = nonAlnum.ReplaceAllString(s, " ")
-	var out []string
-	for _, t := range strings.Fields(s) {
+	return slices.DeleteFunc(strings.Fields(s), func(t string) bool {
 		// Drop ultra-generic words that create false matches.
 		switch t {
 		case "the", "a", "an", "for", "and", "software", "project", "plugin", "module", "server", "system":
-			continue
+			return true // delete
 		}
-		out = append(out, t)
-	}
-	return out
+		return false // keep
+	})
 }
 
 // productMatch fuzzily compares a CPE-derived name against an LLM-predicted
