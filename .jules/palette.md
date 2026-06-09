@@ -13,3 +13,7 @@
 ## 2026-05-28 - ARIA attributes for alert/status containers
 **Learning:** Flash messages indicating success or error states need proper ARIA roles to ensure they are immediately announced by screen readers without requiring the user to navigate to them.
 **Action:** Use `role="alert" aria-atomic="true"` for error messages and `role="status" aria-live="polite"` for non-critical information/success messages in template partials.
+
+## 2026-06-09 - ARIA attributes for toast notifications
+**Learning:** Toast notifications dynamically added to the DOM are often ignored by screen readers if they lack proper ARIA live region attributes. Adding these attributes correctly enhances accessibility for users relying on assistive technology.
+**Action:** When dynamically creating notification elements (like toasts), ensure they have `role="alert"` and `aria-live="assertive"` for errors, and `role="status"` and `aria-live="polite"` for non-critical information/success messages.
