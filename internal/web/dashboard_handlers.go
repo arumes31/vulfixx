@@ -1495,7 +1495,7 @@ func (a *App) buildDashboardWhereClause(filters dashboardFilters, userID int, ac
 				SELECT 1 FROM user_subscriptions us
 				WHERE (us.user_id = $1 OR us.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
 				  AND c.cvss_score >= us.min_severity
-				  AND (us.keyword = '' OR c.description ILIKE '%%' || us.keyword || '%%')
+				  AND (us.keyword = '' OR c.description ILIKE '%%' || REPLACE(REPLACE(REPLACE(us.keyword, '\', '\\'), '%', '\%'), '_', '\_') || '%%' ESCAPE '\')
 			)
 		) `)
 		where.WriteString(" AND (ucs.status IS NULL OR (ucs.status != 'resolved' AND ucs.status != 'ignored')) ")
