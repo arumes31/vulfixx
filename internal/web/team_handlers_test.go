@@ -33,8 +33,8 @@ func TestTeamsHandler(t *testing.T) {
 				// RenderTemplate expectations
 				mock.ExpectQuery("SELECT onboarding_completed FROM users WHERE id = \\$1").WithArgs(1).
 					WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed"}).AddRow(true))
-				mock.ExpectQuery("SELECT t.id, t.name").WithArgs(1).
-					WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(1, "Team A").AddRow(2, "Team B"))
+				mock.ExpectQuery("(?is)SELECT t.id, t.name, tm.user_id FROM teams t.*").WithArgs(1, pgxmock.AnyArg()).
+					WillReturnRows(pgxmock.NewRows([]string{"id", "name", "user_id"}).AddRow(1, "Team A", 1).AddRow(2, "Team B", 1))
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -59,8 +59,8 @@ func TestTeamsHandler(t *testing.T) {
 				// RenderTemplate expectations (required because TeamsHandler continues after scan error)
 				mock.ExpectQuery("SELECT onboarding_completed FROM users WHERE id = \\$1").WithArgs(1).
 					WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed"}).AddRow(true))
-				mock.ExpectQuery("SELECT t.id, t.name").WithArgs(1).
-					WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(1, "Team A"))
+				mock.ExpectQuery("(?is)SELECT t.id, t.name, tm.user_id FROM teams t.*").WithArgs(1, pgxmock.AnyArg()).
+					WillReturnRows(pgxmock.NewRows([]string{"id", "name", "user_id"}).AddRow(1, "Team A", 1))
 			},
 			expectedStatus: http.StatusOK, // scans error is logged but continues
 		},

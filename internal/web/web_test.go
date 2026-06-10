@@ -108,9 +108,9 @@ func TestWebEndpointsCoverage(t *testing.T) {
 		}
 
 		if !isPublic {
-			mock.ExpectQuery(regexp.QuoteMeta("SELECT t.id, t.name FROM teams t JOIN team_members tm ON t.id = tm.team_id WHERE tm.user_id = $1")).
-				WithArgs(pgxmock.AnyArg()).
-				WillReturnRows(pgxmock.NewRows([]string{"id", "name"}))
+			mock.ExpectQuery("(?is)SELECT t.id, t.name, tm.user_id FROM teams t.*").
+				WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
+				WillReturnRows(pgxmock.NewRows([]string{"id", "name", "user_id"}))
 		}
 
 		req, _ := http.NewRequest(method, ts.URL+path, bytes.NewReader(body))

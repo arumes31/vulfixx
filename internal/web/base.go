@@ -310,23 +310,38 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 		_ = a.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1", userID).Scan(&subCount)
 		renderData["SubCount"] = subCount
 
-		// Fetch user's teams
+		// ⚡ Bolt Optimization: Batch fetch user teams and active team to prevent N+1 queries
+		activeTeamID, ok := a.GetActiveTeamID(r)
+		var activeTeamQueryID int
+		if ok && activeTeamID != 0 {
+			activeTeamQueryID = activeTeamID
+		}
+
 		var userTeams []map[string]interface{}
+		var teamName string
+
 		teamRows, err := a.Pool.Query(r.Context(), `
-			SELECT t.id, t.name 
+			SELECT t.id, t.name, tm.user_id
 			FROM teams t
-			JOIN team_members tm ON t.id = tm.team_id
-			WHERE tm.user_id = $1
-		`, userID)
+			LEFT JOIN team_members tm ON t.id = tm.team_id AND tm.user_id = $1
+			WHERE tm.user_id = $1 OR t.id = $2
+		`, userID, activeTeamQueryID)
+
 		if err != nil {
 			slog.Error("RenderTemplate teams query failed", "user_id", userID, "error", err)
 		} else {
 			defer teamRows.Close()
 			for teamRows.Next() {
 				var id int
-				var teamName string
-				if err := teamRows.Scan(&id, &teamName); err == nil {
-					userTeams = append(userTeams, map[string]interface{}{"ID": id, "Name": teamName})
+				var currentTeamName string
+				var dbUserID *int
+				if err := teamRows.Scan(&id, &currentTeamName, &dbUserID); err == nil {
+					if dbUserID != nil && *dbUserID == userID {
+						userTeams = append(userTeams, map[string]interface{}{"ID": id, "Name": currentTeamName})
+					}
+					if id == activeTeamQueryID {
+						teamName = currentTeamName
+					}
 				}
 			}
 			if err := teamRows.Err(); err != nil {
@@ -335,35 +350,14 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 			renderData["UserTeams"] = userTeams
 		}
 
-		activeTeamID, ok := a.GetActiveTeamID(r)
 		if ok && activeTeamID != 0 {
-			var teamName string
-			var found bool
-
-			// Attempt to find the active team name in the already fetched user teams
-			for _, team := range userTeams {
-				if team["ID"] == activeTeamID {
-					if name, ok := team["Name"].(string); ok {
-						teamName = name
-						found = true
-						break
-					}
-				}
-			}
-
-			// Fallback to database query if not found in pre-fetched teams
-			if !found {
-				err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
-				if err != nil {
-					slog.Error("Error fetching active team name", "error", err)
-				} else {
-					renderData["ActiveTeamName"] = teamName
-				}
-			} else {
-				renderData["ActiveTeamName"] = teamName
-			}
-
 			renderData["ActiveTeamID"] = activeTeamID
+			if teamName != "" {
+				renderData["ActiveTeamName"] = teamName
+			} else {
+				// Fallback if team somehow wasn't returned
+				renderData["ActiveTeamName"] = "Private Workspace"
+			}
 		} else {
 			renderData["ActiveTeamID"] = 0
 			renderData["ActiveTeamName"] = "Private Workspace"
