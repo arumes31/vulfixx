@@ -95,7 +95,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	}
 	_ = resLogin.Body.Close()
 
-	doAuthReq := func(method, path string, body []byte, extraMocks func(), _ ...int) *http.Response {
+	doAuthReq := func(method, path string, body []byte, extraMocks func(), _ ...int) {
 		isPublic := path == "/" || strings.HasPrefix(path, "/feed") || path == "/login" || path == "/register" || strings.HasPrefix(path, "/verify-email") || strings.HasPrefix(path, "/confirm-email-change") || path == "/logout" || strings.HasPrefix(path, "/cve/") || path == "/robots.txt" || path == "/sitemap.xml"
 
 		if !isPublic {
@@ -123,14 +123,13 @@ func TestWebEndpointsCoverage(t *testing.T) {
 		res, err := client.Do(req)
 		if err != nil {
 			t.Errorf("Request to %s failed: %v", path, err)
-			return nil
+			return
 		}
 		t.Cleanup(func() {
 			if res != nil {
 				_ = res.Body.Close()
 			}
 		})
-		return res
 	}
 
 	// 1. Home

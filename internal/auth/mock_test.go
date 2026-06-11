@@ -14,7 +14,7 @@ func TestMockedErrors(t *testing.T) {
 
 	t.Run("GenerateTokenRandFail", func(t *testing.T) {
 		orig := randRead
-		randRead = func(b []byte) (int, error) { return 0, errors.New("rand fail") }
+		randRead = func(_ []byte) (int, error) { return 0, errors.New("rand fail") }
 		defer func() { randRead = orig }()
 
 		_, err := GenerateToken()
@@ -25,7 +25,7 @@ func TestMockedErrors(t *testing.T) {
 
 	t.Run("RegisterArgon2idFail", func(t *testing.T) {
 		orig := argon2idGeneratePassword
-		argon2idGeneratePassword = func(password string) (string, error) { return "", errors.New("argon2id fail") }
+		argon2idGeneratePassword = func(_ string) (string, error) { return "", errors.New("argon2id fail") }
 		defer func() { argon2idGeneratePassword = orig }()
 
 		_, err := Register(ctx, "test@test.com", "password")
@@ -36,7 +36,7 @@ func TestMockedErrors(t *testing.T) {
 
 	t.Run("RegisterGenerateTokenFail", func(t *testing.T) {
 		orig := randRead
-		randRead = func(b []byte) (int, error) { return 0, errors.New("rand fail") }
+		randRead = func(_ []byte) (int, error) { return 0, errors.New("rand fail") }
 		defer func() { randRead = orig }()
 
 		_, err := Register(ctx, "test@test.com", "password")
@@ -68,7 +68,7 @@ func TestMockedErrors(t *testing.T) {
 
 	t.Run("InitAdminArgon2idFail", func(t *testing.T) {
 		orig := argon2idGeneratePassword
-		argon2idGeneratePassword = func(password string) (string, error) { return "", errors.New("argon2id fail") }
+		argon2idGeneratePassword = func(_ string) (string, error) { return "", errors.New("argon2id fail") }
 		defer func() { argon2idGeneratePassword = orig }()
 
 		err := InitAdmin(ctx, "admin@test.com", "password", "secret")
@@ -79,7 +79,7 @@ func TestMockedErrors(t *testing.T) {
 
 	t.Run("InitAdminGenerateTokenFail", func(t *testing.T) {
 		orig := randRead
-		randRead = func(b []byte) (int, error) { return 0, errors.New("rand fail") }
+		randRead = func(_ []byte) (int, error) { return 0, errors.New("rand fail") }
 		defer func() { randRead = orig }()
 
 		err := InitAdmin(ctx, "admin@test.com", "password", "secret")
@@ -96,7 +96,7 @@ func TestMockedErrors(t *testing.T) {
 		defer mock.Close()
 
 		orig := argon2idGeneratePassword
-		argon2idGeneratePassword = func(password string) (string, error) { return "", errors.New("argon2id fail") }
+		argon2idGeneratePassword = func(_ string) (string, error) { return "", errors.New("argon2id fail") }
 		defer func() { argon2idGeneratePassword = orig }()
 
 		// Setup DB mock to pass initial checks
@@ -112,7 +112,7 @@ func TestMockedErrors(t *testing.T) {
 
 	t.Run("RequestEmailChangeGenerateTokenFail", func(t *testing.T) {
 		orig := randRead
-		randRead = func(b []byte) (int, error) { return 0, errors.New("rand fail") }
+		randRead = func(_ []byte) (int, error) { return 0, errors.New("rand fail") }
 		defer func() { randRead = orig }()
 
 		_, _, err := RequestEmailChange(ctx, 1, "new@test.com")

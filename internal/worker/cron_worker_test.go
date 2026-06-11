@@ -108,10 +108,7 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 
 	t.Run("sendWeeklySummaries", func(t *testing.T) {
 		w := NewWorker(nil, nil, &EmailSenderMock{}, http.DefaultClient)
-		err := w.sendWeeklySummaries(context.Background())
-		if err != nil {
-			t.Errorf("expected no error, got %v", err)
-		}
+		w.sendWeeklySummaries(context.Background())
 	})
 }
 

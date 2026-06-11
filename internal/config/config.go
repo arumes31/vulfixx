@@ -186,13 +186,13 @@ func LoadConfig() error {
 	}
 
 	// Validate and decode keys
-	csrfKey, err := decodeKey("CSRFKey", AppConfig.CSRFKey, 32, appEnv)
+	csrfKey, err := decodeKey("CSRFKey", AppConfig.CSRFKey, appEnv)
 	if err != nil {
 		return err
 	}
 	AppConfig.CSRFKey = csrfKey
 
-	sessionKey, err := decodeKey("SessionKey", AppConfig.SessionKey, 32, appEnv)
+	sessionKey, err := decodeKey("SessionKey", AppConfig.SessionKey, appEnv)
 	if err != nil {
 		return err
 	}
@@ -201,13 +201,15 @@ func LoadConfig() error {
 	return nil
 }
 
-func decodeKey(name, val string, expectedLen int, appEnv string) (string, error) {
+func decodeKey(name, val string, appEnv string) (string, error) {
 	if val == "" {
 		return "", nil
 	}
 
 	var decoded []byte
 	var err error
+
+	expectedLen := 32
 
 	// Try hex first only if length matches
 	if len(val) == expectedLen*2 {
