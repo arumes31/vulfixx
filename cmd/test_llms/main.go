@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -170,15 +171,15 @@ var distroVendors = map[string]bool{
 // the original is kept so the CVE remains scoreable.
 func filterTruth(t []truthProduct, desc string) []truthProduct {
 	dtoks := descTokenSet(desc)
-	var out []truthProduct
-	for _, p := range t {
+	out := slices.DeleteFunc(slices.Clone(t), func(p truthProduct) bool {
 		if distroVendors[strings.ToLower(strings.TrimSpace(p.Vendor))] {
-			continue
+			return true
 		}
 		if mentioned(p.Product, dtoks) || mentioned(p.Vendor, dtoks) {
-			out = append(out, p)
+			return false
 		}
-	}
+		return true
+	})
 	if len(out) == 0 {
 		return t
 	}

@@ -10,6 +10,7 @@ import (
 	"net/smtp"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -184,23 +185,21 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 }
 
 func classifyVendorAdvisories(references []string) []string {
-	advisories := []string{}
 	keywords := []string{
 		"advisory", "bulletin", "security-advisories", "msrc", "security/notices",
 		"security/advisories", "kb", "security-center", "ghsa", "osv",
 		"security-guidance", "fixed", "patch",
 	}
 
-	for _, ref := range references {
+	return slices.DeleteFunc(slices.Clone(references), func(ref string) bool {
 		lower := strings.ToLower(ref)
 		for _, kw := range keywords {
 			if strings.Contains(lower, kw) {
-				advisories = append(advisories, ref)
-				break
+				return false
 			}
 		}
-	}
-	return advisories
+		return true
+	})
 }
 
 // isValidRedditPermalink checks if a Reddit permalink is safe.
