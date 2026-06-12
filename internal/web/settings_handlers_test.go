@@ -82,7 +82,7 @@ func TestChangePasswordHandler(t *testing.T) {
 
 		// 2. auth.ChangePassword selection query
 		mock.ExpectQuery("SELECT password_hash, is_totp_enabled, COALESCE\\(totp_secret, ''\\) FROM users WHERE id = \\$1").WithArgs(1).
-			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(string(hash), false, ""))
+			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(hash, false, ""))
 
 		// 3. auth.ChangePassword update
 		mock.ExpectExec("UPDATE users").WithArgs(pgxmock.AnyArg(), 1).
@@ -275,7 +275,7 @@ func TestChangePasswordHandler(t *testing.T) {
 		mock.ExpectQuery("SELECT password_hash, is_totp_enabled, COALESCE\\(totp_secret, ''\\) FROM users WHERE id = \\$1").
 			WithArgs(userID).
 			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).
-				AddRow(string(hashedPassword), true, "secret"))
+				AddRow(hashedPassword, true, "secret"))
 
 		expectBaseQueries(mock, userID)
 		rr := httptest.NewRecorder()
@@ -322,7 +322,7 @@ func TestChangePasswordHandler(t *testing.T) {
 		mock.ExpectQuery("SELECT password_hash, is_totp_enabled, COALESCE\\(totp_secret, ''\\) FROM users WHERE id = \\$1").
 			WithArgs(userID).
 			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).
-				AddRow(string(hashedPassword), false, ""))
+				AddRow(hashedPassword, false, ""))
 
 		// UPDATE fails
 		mock.ExpectExec("UPDATE users").WithArgs(pgxmock.AnyArg(), userID).
@@ -376,7 +376,7 @@ func TestSettingsHandlers_Detailed(t *testing.T) {
 		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE email = \\$1").
 			WithArgs("user@example.com").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
-				AddRow(userID, "user@example.com", string(hashedPassword), true, false, "", false))
+				AddRow(userID, "user@example.com", hashedPassword, true, false, "", false))
 
 		mock.ExpectExec("DELETE FROM users WHERE id = \\$1").
 			WithArgs(userID).
@@ -505,7 +505,7 @@ func TestChangeEmailHandler(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE(totp_secret, ''), is_admin FROM users WHERE email = $1")).
 			WithArgs("old@example.com").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
-				AddRow(userID, "old@example.com", string(hashedPassword), true, false, "", false))
+				AddRow(userID, "old@example.com", hashedPassword, true, false, "", false))
 
 		expectBaseQueries(mock, userID)
 
@@ -565,7 +565,7 @@ func TestChangeEmailHandler(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE(totp_secret, ''), is_admin FROM users WHERE email = $1")).
 			WithArgs("old@example.com").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
-				AddRow(userID, "old@example.com", string(hashedPassword), true, false, "", false))
+				AddRow(userID, "old@example.com", hashedPassword, true, false, "", false))
 
 		// 3. auth.RequestEmailChange
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO email_change_requests")).
@@ -630,7 +630,7 @@ func TestChangeEmailHandler(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE(totp_secret, ''), is_admin FROM users WHERE email = $1")).
 			WithArgs("old@example.com").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
-				AddRow(userID, "old@example.com", string(hashedPassword), true, false, "", false))
+				AddRow(userID, "old@example.com", hashedPassword, true, false, "", false))
 
 		// 3. auth.RequestEmailChange
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO email_change_requests")).
@@ -705,7 +705,7 @@ func TestChangeEmailHandler(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE(totp_secret, ''), is_admin FROM users WHERE email = ")).
 			WithArgs("old@example.com").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
-				AddRow(userID, "old@example.com", string(hashedPassword), true, false, "", false))
+				AddRow(userID, "old@example.com", hashedPassword, true, false, "", false))
 
 		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO email_change_requests")).
 			WithArgs(userID, "new@example.com", pgxmock.AnyArg(), pgxmock.AnyArg()).

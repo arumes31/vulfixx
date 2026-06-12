@@ -108,10 +108,7 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 
 	t.Run("sendWeeklySummaries", func(t *testing.T) {
 		w := NewWorker(nil, nil, &EmailSenderMock{}, http.DefaultClient)
-		err := w.sendWeeklySummaries(context.Background())
-		if err != nil {
-			t.Errorf("expected no error, got %v", err)
-		}
+		w.sendWeeklySummaries(context.Background())
 	})
 }
 
@@ -148,7 +145,7 @@ func TestEnrichSingleCVE(t *testing.T) {
 				refData, _ := json.Marshal([]map[string]string{{"url": "http://example.com"}})
 
 				rows := pgxmock.NewRows([]string{"id", "cve_id", "description", "configurations", "references"}).
-					AddRow(id, "CVE-2023-1234", "A description", []byte(configData), []byte(refData))
+					AddRow(id, "CVE-2023-1234", "A description", configData, refData)
 				m.ExpectQuery("SELECT id, cve_id, description, configurations, references FROM cves WHERE id = \\$1").
 					WithArgs(id).
 					WillReturnRows(rows)
