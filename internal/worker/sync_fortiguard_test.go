@@ -18,19 +18,6 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// testLogger is a simple logger for testing that writes to t.Log
-type testLogger struct {
-	t *testing.T
-}
-
-func (l *testLogger) Info(msg string, args ...interface{}) {
-	l.t.Logf(msg, args...)
-}
-
-func (l *testLogger) Error(msg string, args ...interface{}) {
-	l.t.Logf("ERROR: "+msg, args...)
-}
-
 func TestParseFortiGuardAdvisoryHTML(t *testing.T) {
 	tests := []struct {
 		name           string

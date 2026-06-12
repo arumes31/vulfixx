@@ -575,7 +575,9 @@ func TestWorker_Start_Lifecycle(t *testing.T) {
 	defer mock.Close()
 	mock.MatchExpectationsInOrder(false)
 
-	w := NewWorker(mock, rdb, &EmailSenderMock{}, http.DefaultClient)
+	// MockHTTPClient (DoFunc unset) fails every request immediately, keeping
+	// this lifecycle test hermetic — no real network calls from sync tasks.
+	w := NewWorker(mock, rdb, &EmailSenderMock{}, &MockHTTPClient{})
 
 	// Inject mocks for timers/tickers to isolate time checks
 	tickerChan := make(chan time.Time)
@@ -587,11 +589,14 @@ func TestWorker_Start_Lifecycle(t *testing.T) {
 		return &mockTimer{c: timerChan}
 	}
 
-	// Mock stats queries for all 11 periodic tasks
+	// Mock stats queries for all 12 periodic tasks. Every task started by
+	// Worker.Start must be listed: an unmatched concurrent query trips a
+	// double-unlock bug in pgxmock v3.4.0 (findExpectationFunc) and panics.
 	tasks := []string{
 		"nvd_sync", "cisa_kev_sync", "epss_sync", "threat_intel_sync",
 		"github_buzz_sync", "intelligence_sync", "greynoise_sync",
-		"osv_sync", "inthewild_sync", "advisory_rss_sync", "health_check",
+		"osv_sync", "inthewild_sync", "advisory_rss_sync", "fortiguard_sync",
+		"health_check",
 	}
 	for _, task := range tasks {
 		mock.ExpectQuery("SELECT last_run FROM worker_sync_stats WHERE task_name = \\$1").

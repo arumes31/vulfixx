@@ -26,44 +26,44 @@ func decryptIfEncrypted(val string) string {
 }
 
 type Config struct {
-	DBHost           string
-	DBPort           string
-	DBUser           string
-	DBPassword       string
-	DBName           string
-	RedisURL         string
-	SessionKey       string
-	CSRFKey          string
-	BaseURL          string
-	SMTPHost         string
-	SMTPPort         int
-	SMTPUser         string
-	SMTPPass         string
-	SMTPMailFrom     string
-	AdminEmail       string
-	AdminPassword    string
-	AdminTOTPSecret  string
-	SecureCookie     bool
-	AppPort          string
-	SentryDSN        string
-	GeminiAPIKey     string
+	DBHost            string
+	DBPort            string
+	DBUser            string
+	DBPassword        string
+	DBName            string
+	RedisURL          string
+	SessionKey        string
+	CSRFKey           string
+	BaseURL           string
+	SMTPHost          string
+	SMTPPort          int
+	SMTPUser          string
+	SMTPPass          string
+	SMTPMailFrom      string
+	AdminEmail        string
+	AdminPassword     string
+	AdminTOTPSecret   string
+	SecureCookie      bool
+	AppPort           string
+	SentryDSN         string
+	GeminiAPIKey      string
 	Gemini31LiteModel string
-	GeminiAPIVersion string
-	Gemini35Model    string // higher-quality, low-quota Gemini failover (e.g. gemini-3.5-flash)
-	Gemini3Model     string // Gemini 3 Flash failover (e.g. gemini-3-flash-preview)
-	GemmaModel       string // Gemma failover on the same Google API key (e.g. gemma-4-31b-it)
-	Gemma2Model      string // second Gemma failover (e.g. gemma-4-26b-a4b-it)
-	LLMProvider      string // "ollama" or "gemini"
-	LLMEndpoint      string // e.g. "http://ollama:11434"
-	LLMModel         string // e.g. "phi3" or "llama3"
-	LLMTimeout       int    // timeout in seconds
-	MistralAPIKey    string
-	MistralModel     string
-	MistralEndpoint  string
-	GRPCPort         string
-	GRPCCertFile     string
-	GRPCKeyFile      string
-	WebhookSecret    string
+	GeminiAPIVersion  string
+	Gemini35Model     string // higher-quality, low-quota Gemini failover (e.g. gemini-3.5-flash)
+	Gemini3Model      string // Gemini 3 Flash failover (e.g. gemini-3-flash-preview)
+	GemmaModel        string // Gemma failover on the same Google API key (e.g. gemma-4-31b-it)
+	Gemma2Model       string // second Gemma failover (e.g. gemma-4-26b-a4b-it)
+	LLMProvider       string // "ollama" or "gemini"
+	LLMEndpoint       string // e.g. "http://ollama:11434"
+	LLMModel          string // e.g. "phi3" or "llama3"
+	LLMTimeout        int    // timeout in seconds
+	MistralAPIKey     string
+	MistralModel      string
+	MistralEndpoint   string
+	GRPCPort          string
+	GRPCCertFile      string
+	GRPCKeyFile       string
+	WebhookSecret     string
 }
 
 var (
@@ -74,24 +74,24 @@ var AppConfig Config
 
 func LoadConfig() error {
 	AppConfig = Config{
-		DBHost:          getEnv("DB_HOST", "db"),
-		DBPort:          getEnv("DB_PORT", "5432"),
-		DBUser:          getEnv("DB_USER", "cveuser"),
-		DBPassword:      decryptIfEncrypted(getEnv("DB_PASSWORD", "")),
-		DBName:          getEnv("DB_NAME", "cvetracker"),
-		RedisURL:        getEnv("REDIS_URL", "redis:6379"),
-		SessionKey:      getEnv("SESSION_KEY", ""),
-		CSRFKey:         getEnv("CSRF_KEY", ""),
-		BaseURL:         getEnv("BASE_URL", "http://localhost:8080"),
-		SMTPHost:        getEnv("SMTP_HOST", "smtp.example.com"),
-		SMTPUser:        getEnv("SMTP_USER", "user@example.com"),
-		SMTPPass:        decryptIfEncrypted(getEnv("SMTP_PASS", "")),
-		AdminEmail:      getEnv("ADMIN_EMAIL", ""),
-		AdminPassword:   decryptIfEncrypted(getEnv("ADMIN_PASSWORD", "")),
-		AdminTOTPSecret: decryptIfEncrypted(getEnv("ADMIN_TOTP_SECRET", "")),
-		AppPort:         getEnv("PORT", "8080"),
-		SentryDSN:       decryptIfEncrypted(getEnv("SENTRY_DSN", "")),
-		GeminiAPIKey:    decryptIfEncrypted(getEnv("GEMINI_API_KEY", "")),
+		DBHost:            getEnv("DB_HOST", "db"),
+		DBPort:            getEnv("DB_PORT", "5432"),
+		DBUser:            getEnv("DB_USER", "cveuser"),
+		DBPassword:        decryptIfEncrypted(getEnv("DB_PASSWORD", "")),
+		DBName:            getEnv("DB_NAME", "cvetracker"),
+		RedisURL:          getEnv("REDIS_URL", "redis:6379"),
+		SessionKey:        getEnv("SESSION_KEY", ""),
+		CSRFKey:           getEnv("CSRF_KEY", ""),
+		BaseURL:           getEnv("BASE_URL", "http://localhost:8080"),
+		SMTPHost:          getEnv("SMTP_HOST", "smtp.example.com"),
+		SMTPUser:          getEnv("SMTP_USER", "user@example.com"),
+		SMTPPass:          decryptIfEncrypted(getEnv("SMTP_PASS", "")),
+		AdminEmail:        getEnv("ADMIN_EMAIL", ""),
+		AdminPassword:     decryptIfEncrypted(getEnv("ADMIN_PASSWORD", "")),
+		AdminTOTPSecret:   decryptIfEncrypted(getEnv("ADMIN_TOTP_SECRET", "")),
+		AppPort:           getEnv("PORT", "8080"),
+		SentryDSN:         decryptIfEncrypted(getEnv("SENTRY_DSN", "")),
+		GeminiAPIKey:      decryptIfEncrypted(getEnv("GEMINI_API_KEY", "")),
 		Gemini31LiteModel: getEnv("GEMINI31FLASHLITE_MODEL", getEnv("GEMINI31LITE_MODEL", getEnv("GEMINI_MODEL", "gemini-3.1-flash-lite"))),
 		// v1beta is required: the structured-output fields the extractor relies on
 		// (responseMimeType / responseSchema) are rejected by the stable v1 API.

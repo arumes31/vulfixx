@@ -145,7 +145,7 @@ func (c *CVE) SetVendorAdvisory(vendor string, advisory map[string]interface{}) 
 
 // HasVendorAdvisory checks if any vendor advisory data exists.
 func (c *CVE) HasVendorAdvisory() bool {
-	return c.VendorAdvisories != nil && len(c.VendorAdvisories) > 0
+	return len(c.VendorAdvisories) > 0
 }
 
 type CVEConfigurations []CVEConfiguration
@@ -264,16 +264,27 @@ type AlertHistory struct {
 // GetDetectedProduct attempts to determine the vendor and product from the CVE description
 // or from CPE configuration data.
 func (c *CVE) GetDetectedProduct() (vendor, product string) {
-	// First try CPE configurations
+	// First try CPE configurations: prefer matches flagged vulnerable, but fall
+	// back to the first criteria if none are flagged.
 	if len(c.Configurations) > 0 {
+		firstCriteria := ""
 		for _, config := range c.Configurations {
 			for _, node := range config.Nodes {
 				for _, match := range node.CPEMatch {
-					if match.Criteria != "" && match.Vulnerable {
+					if match.Criteria == "" {
+						continue
+					}
+					if match.Vulnerable {
 						return parseCPEVendorProduct(match.Criteria)
+					}
+					if firstCriteria == "" {
+						firstCriteria = match.Criteria
 					}
 				}
 			}
+		}
+		if firstCriteria != "" {
+			return parseCPEVendorProduct(firstCriteria)
 		}
 	}
 
@@ -318,14 +329,10 @@ func (c *CVE) GetAffectedProducts() []AffectedProduct {
 	return products
 }
 
-// parseCPEVendorProduct extracts vendor and product from a CPE 2.3 URI string.
+// parseCPEVendorProduct extracts vendor and product from a CPE 2.3 URI string,
+// normalized the same way as ParseCPE.
 func parseCPEVendorProduct(cpe string) (string, string) {
-	parts := strings.Split(cpe, ":")
-	if len(parts) < 5 {
-		return "", ""
-	}
-	vendor := strings.Title(parts[3])
-	product := strings.Title(parts[4])
+	vendor, product, _, _ := ParseCPE(cpe)
 	return vendor, product
 }
 
@@ -347,35 +354,64 @@ func formatVersionRange(match CPEMatch) string {
 	return strings.Join(parts, " ")
 }
 
+// knownVendorProducts is an ordered list (deterministic iteration) of vendors
+// and their product keywords used for description-based detection.
+var knownVendorProducts = []struct {
+	vendor   string
+	products []string
+}{
+	{"Fortinet", []string{"FortiGate", "FortiManager", "FortiAnalyzer", "FortiOS", "FortiProxy", "FortiMail", "FortiWeb", "FortiEDR", "FortiSIEM", "FortiSandbox"}},
+	{"Cisco", []string{"IOS", "IOS XE", "IOS XR", "ASA", "NX-OS", "ACI", "Duo", "Umbrella", "Webex", "AnyConnect"}},
+	{"Microsoft", []string{"Windows", "Office", "Exchange", "SharePoint", "Azure", "IIS", "SQL Server", ".NET", "Edge"}},
+	{"Apache", []string{"Tomcat", "HTTP Server", "Kafka", "Struts", "Log4j", "Spark", "Hadoop", "Flink"}},
+	{"VMware", []string{"vCenter Server", "vCenter", "ESXi", "Workstation", "Fusion", "NSX", "Horizon"}},
+	{"Linux", []string{"Kernel"}},
+	{"Red Hat", []string{"Enterprise Linux", "OpenShift", "JBoss"}},
+	{"Oracle", []string{"Java", "MySQL", "VirtualBox", "WebLogic", "Database"}},
+	{"Google", []string{"Chrome", "Android"}},
+	{"Apple", []string{"iOS", "macOS", "Safari", "Xcode"}},
+	{"Mozilla", []string{"Firefox"}},
+	{"Grafana", []string{"Grafana"}},
+}
+
 // detectProductFromDescription uses keyword matching to guess vendor/product from a description.
 func detectProductFromDescription(desc string) (string, string) {
-	keywordMap := map[string][]string{
-		"Fortinet":  {"FortiGate", "FortiManager", "FortiAnalyzer", "FortiOS", "FortiProxy", "FortiMail", "FortiWeb", "FortiEDR", "FortiSIEM", "FortiSandbox"},
-		"Cisco":     {"IOS", "IOS XE", "IOS XR", "ASA", "NX-OS", "ACI", "Duo", "Umbrella", "Webex", "AnyConnect"},
-		"Microsoft": {"Windows", "Office", "Exchange", "SharePoint", "Azure", "IIS", "SQL Server", ".NET", "Edge"},
-		"Apache":    {"Tomcat", "HTTP Server", "Kafka", "Struts", "Log4j", "Spark", "Hadoop", "Flink"},
-		"VMware":    {"vCenter", "ESXi", "Workstation", "Fusion", "NSX", "Horizon"},
-		"Linux":     {"Kernel"},
-		"Red Hat":   {"Enterprise Linux", "OpenShift", "JBoss"},
-		"Oracle":    {"Java", "MySQL", "VirtualBox", "WebLogic", "Database"},
-		"Google":    {"Chrome", "Android"},
-		"Apple":     {"iOS", "macOS", "Safari", "Xcode"},
-		"Mozilla":   {"Firefox"},
-		"Grafana":   {"Grafana"},
-	}
-
-	for vendor, products := range keywordMap {
-		for _, product := range products {
-			if strings.Contains(desc, product) {
-				return vendor, product
+	// Pass 1: product keyword match. Prefer the longest matching keyword so
+	// specific names win over their prefixes (e.g. "IOS XE" over "IOS").
+	bestVendor, bestProduct := "", ""
+	for _, entry := range knownVendorProducts {
+		for _, product := range entry.products {
+			if strings.Contains(desc, product) && len(product) > len(bestProduct) {
+				bestVendor, bestProduct = entry.vendor, product
 			}
 		}
-		if strings.Contains(strings.ToLower(desc), strings.ToLower(vendor)) {
-			return vendor, ""
+	}
+	if bestProduct != "" {
+		return bestVendor, bestProduct
+	}
+
+	// Pass 2: vendor name appears in the description.
+	lowerDesc := strings.ToLower(desc)
+	for _, entry := range knownVendorProducts {
+		if strings.Contains(lowerDesc, strings.ToLower(entry.vendor)) {
+			return entry.vendor, ""
 		}
 	}
 
-	// Generic heuristic: "in <Vendor> <Product>" pattern
+	// Pass 3: "in <vendor> <Product>" pattern, e.g. "detected in alexta69 MeTube".
+	words := strings.Fields(desc)
+	for i := 0; i+2 < len(words); i++ {
+		if !strings.EqualFold(words[i], "in") {
+			continue
+		}
+		vendorWord := strings.Trim(words[i+1], ".,;:()")
+		productWord := strings.Trim(words[i+2], ".,;:()")
+		if len(vendorWord) > 2 && len(productWord) > 0 && productWord[0] >= 'A' && productWord[0] <= 'Z' {
+			return capitalize(vendorWord), capitalize(productWord)
+		}
+	}
+
+	// Pass 4: generic "<Vendor> <Product>" capitalized-pair heuristic.
 	for _, word := range strings.Fields(desc) {
 		if len(word) > 2 && word[0] >= 'A' && word[0] <= 'Z' {
 			// Check if next word could be a product
@@ -496,14 +532,24 @@ func (c *CVE) GetLineage() []string {
 	return result
 }
 
+// cpeVendorAliases maps raw CPE vendor tokens to their common display names.
+var cpeVendorAliases = map[string]string{
+	"canonical": "Ubuntu",
+}
+
 // ParseCPE parses a CPE 2.3 URI string and returns vendor, product, version, and type.
-// Vendor and product are capitalized and underscores replaced with spaces.
+// Vendor and product are capitalized and underscores replaced with spaces. The type is
+// the CPE "part" component: "a" (application), "o" (OS), or "h" (hardware).
 func ParseCPE(cpe string) (vendor, product, version, cpeType string) {
 	parts := strings.Split(cpe, ":")
 	if len(parts) < 5 {
 		return "", "", "", ""
 	}
-	vendor = capitalize(strings.ReplaceAll(parts[3], "_", " "))
+	if alias, ok := cpeVendorAliases[strings.ToLower(parts[3])]; ok {
+		vendor = alias
+	} else {
+		vendor = capitalize(strings.ReplaceAll(parts[3], "_", " "))
+	}
 	product = capitalize(strings.ReplaceAll(parts[4], "_", " "))
 	if len(parts) > 5 {
 		version = parts[5]
@@ -511,9 +557,7 @@ func ParseCPE(cpe string) (vendor, product, version, cpeType string) {
 			version = ""
 		}
 	}
-	if len(parts) > 6 {
-		cpeType = parts[6]
-	}
+	cpeType = parts[2]
 	return vendor, product, version, cpeType
 }
 
