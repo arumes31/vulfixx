@@ -51,6 +51,8 @@ type Config struct {
 	GeminiAPIVersion string
 	Gemini35Model    string // higher-quality, low-quota Gemini failover (e.g. gemini-3.5-flash)
 	Gemini3Model     string // Gemini 3 Flash failover (e.g. gemini-3-flash-preview)
+	GemmaModel       string // Gemma failover on the same Google API key (e.g. gemma-4-31b-it)
+	Gemma2Model      string // second Gemma failover (e.g. gemma-4-26b-a4b-it)
 	LLMProvider      string // "ollama" or "gemini"
 	LLMEndpoint      string // e.g. "http://ollama:11434"
 	LLMModel         string // e.g. "phi3" or "llama3"
@@ -96,6 +98,8 @@ func LoadConfig() error {
 		GeminiAPIVersion: getEnv("GEMINI_API_VERSION", "v1beta"),
 		Gemini35Model:    getEnv("GEMINI35FLASH_MODEL", getEnv("GEMINI35_MODEL", "gemini-3.5-flash")),
 		Gemini3Model:     getEnv("GEMINI3FLASH_MODEL", getEnv("GEMINI3_MODEL", "gemini-3-flash-preview")),
+		GemmaModel:       getEnv("GEMMA_MODEL", "gemma-4-31b-it"),
+		Gemma2Model:      getEnv("GEMMA2_MODEL", "gemma-4-26b-a4b-it"),
 		LLMProvider:      getEnv("LLM_PROVIDER", "gemini35flash,gemini3flash,gemini31flashlite,mistral,ollama"),
 		LLMEndpoint:      getEnv("LLM_ENDPOINT", "http://ollama:11434"),
 		LLMModel:         getEnv("LLM_MODEL", "phi3-vulfixx"),

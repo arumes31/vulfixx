@@ -202,7 +202,7 @@ func TestWorkerSync_CISA(t *testing.T) {
 		mock.ExpectExec("UPDATE cves SET cisa_ransomware = true WHERE cve_id = ANY").
 			WithArgs([]string{"CVE-2023-1111"}).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
-		mock.ExpectExec("UPDATE cves SET cisa_kev_data").WithArgs(pgxmock.AnyArg(), "CVE-2023-1111").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("UPDATE cves SET cisa_kev_data").WithArgs([]string{"CVE-2023-1111"}, pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("cisa_kev_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 

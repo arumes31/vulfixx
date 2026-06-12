@@ -734,6 +734,8 @@ func TestGoogleFailover(t *testing.T) {
 		}{
 			{"gemini35flash", true, 15, 20},
 			{"gemini3flash", true, 15, 20},
+			{"gemma", true, 15, 1500},
+			{"gemma2", true, 15, 1500},
 		} {
 			f, ok := googleFailoverFor(tc.provider)
 			if !ok {
@@ -764,6 +766,12 @@ func TestGoogleFailover(t *testing.T) {
 		if got := googleFailoverPace(f); got != 12*time.Second {
 			t.Errorf("gemini35flash pace at 5 RPM = %v, want 12s", got)
 		}
+		// Short (.env/docker-compose) name works as fallback
+		t.Setenv("GEMINI35FLASH_RPM", "")
+		t.Setenv("GEMINI35_RPM", "6")
+		if got := googleFailoverPace(f); got != 10*time.Second {
+			t.Errorf("gemini35flash pace via GEMINI35_RPM fallback = %v, want 10s", got)
+		}
 	})
 	t.Run("daily limit honors override, default, and zero", func(t *testing.T) {
 		f, _ := googleFailoverFor("gemini35flash")
@@ -774,6 +782,12 @@ func TestGoogleFailover(t *testing.T) {
 		t.Setenv("GEMINI35FLASH_RPD", "0")
 		if got := googleFailoverDailyLimit(f); got != 0 {
 			t.Errorf("gemini35flash limit = %d, want 0 (disabled)", got)
+		}
+		// Short (.env/docker-compose) name works as fallback
+		t.Setenv("GEMINI35FLASH_RPD", "")
+		t.Setenv("GEMINI35_RPD", "50")
+		if got := googleFailoverDailyLimit(f); got != 50 {
+			t.Errorf("gemini35flash limit via GEMINI35_RPD fallback = %d, want 50", got)
 		}
 	})
 }

@@ -419,15 +419,8 @@ func (w *Worker) parseFortiGuardRSS(r io.Reader) (map[string]struct {
 			continue
 		}
 
-		// Check if this is a FortiGuard advisory by looking for FG-IR-XXXX-XXX pattern
-		advisoryID := ""
-		for _, part := range parts {
-			if strings.HasPrefix(part, "FG-IR-") {
-				advisoryID = part
-				break
-			}
-		}
-
+		// Identify FortiGuard advisories with the same regex as production code
+		advisoryID := fortiGuardIDRegex.FindString(item.Title)
 		if advisoryID == "" {
 			continue // Not a FortiGuard advisory
 		}

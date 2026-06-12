@@ -14,7 +14,11 @@ SET vendor_advisories = jsonb_build_object(
         'advisory_id', osint_data->>'fortiguard_advisory_id',
         'advisory_url', osint_data->>'fortiguard_advisory_url',
         'severity', osint_data->>'fortiguard_severity',
-        'cvss_score', (osint_data->>'fortiguard_cvss_score')::numeric,
+        'cvss_score', CASE
+            WHEN osint_data->>'fortiguard_cvss_score' ~ '^[0-9]+(\.[0-9]+)?$'
+            THEN (osint_data->>'fortiguard_cvss_score')::numeric
+            ELSE NULL
+        END,
         'cvss_vector', osint_data->>'fortiguard_cvss_vector',
         'impact', osint_data->>'fortiguard_impact',
         'fix', osint_data->>'fortiguard_fix',
@@ -37,4 +41,4 @@ WHERE osint_data ? 'fortiguard_advisory_id';
 -- +goose Down
 -- Remove vendor_advisories column
 DROP INDEX IF EXISTS idx_cves_vendor_advisories_gin;
-ALTER TABLE cves DROP COLUMN IF NOT EXISTS vendor_advisories;
+ALTER TABLE cves DROP COLUMN IF EXISTS vendor_advisories;

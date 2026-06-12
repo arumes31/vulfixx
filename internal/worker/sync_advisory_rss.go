@@ -265,16 +265,19 @@ func (w *Worker) integrateAdvisoryCVE(ctx context.Context, cveID string, item Ge
 			vendorAdvisory := map[string]interface{}{
 				"fortiguard": fgData,
 			}
-			vendorAdvisoryJSON, _ := json.Marshal(vendorAdvisory)
-
-			_, err = tx.Exec(ctx,
-				"UPDATE cves SET vendor_advisories = COALESCE(vendor_advisories, '{}'::jsonb) || $1::jsonb, updated_at = NOW() WHERE cve_id = $2",
-				vendorAdvisoryJSON, cveID)
-			if err != nil {
-				slog.Error("Worker: [ERROR] Failed to update vendor_advisories for FortiGuard advisory", "cve_id", cveID, "fg_id", fortiguardID, "error", err)
+			vendorAdvisoryJSON, marshalErr := json.Marshal(vendorAdvisory)
+			if marshalErr != nil {
+				slog.Error("Worker: [ERROR] Failed to marshal FortiGuard vendor advisory, skipping update", "cve_id", cveID, "fg_id", fortiguardID, "error", marshalErr)
 			} else {
-				fortiguardUpdated = true
-				slog.Info("Worker: [SYNC] Stored FortiGuard advisory in vendor_advisories", "cve_id", cveID, "fg_id", fortiguardID)
+				_, err = tx.Exec(ctx,
+					"UPDATE cves SET vendor_advisories = COALESCE(vendor_advisories, '{}'::jsonb) || $1::jsonb, updated_at = NOW() WHERE cve_id = $2",
+					vendorAdvisoryJSON, cveID)
+				if err != nil {
+					slog.Error("Worker: [ERROR] Failed to update vendor_advisories for FortiGuard advisory", "cve_id", cveID, "fg_id", fortiguardID, "error", err)
+				} else {
+					fortiguardUpdated = true
+					slog.Info("Worker: [SYNC] Stored FortiGuard advisory in vendor_advisories", "cve_id", cveID, "fg_id", fortiguardID)
+				}
 			}
 		}
 	}
@@ -298,9 +301,9 @@ func (w *Worker) integrateAdvisoryCVE(ctx context.Context, cveID string, item Ge
 			slog.Error("Worker: [ERROR] Failed to enqueue alerts for CVE", "cve_id", cveID, "error", err)
 		}
 	} else if fortiguardUpdated {
-		// Reference already exists but FortiGuard OSINT data was updated — commit that change
+		// Reference already exists but FortiGuard advisory data was updated — commit that change
 		if err := tx.Commit(ctx); err != nil {
-			slog.Error("Worker: [ERROR] Failed to commit transaction for FortiGuard osint_data update", "cve_id", cveID, "error", err)
+			slog.Error("Worker: [ERROR] Failed to commit transaction for FortiGuard vendor_advisories update", "cve_id", cveID, "error", err)
 		}
 	}
 }

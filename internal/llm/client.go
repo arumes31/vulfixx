@@ -86,15 +86,17 @@ func geminiDailyLimit() int {
 //	gemini35flash      -> gemini-3.5-flash        15 RPM / 20   RPD (structured)
 //	gemini3flash       -> gemini-3-flash-preview  15 RPM / 20   RPD (structured)
 //	gemini31flashlite  -> gemini-3.1-flash-lite   15 RPM / 500  RPD (structured)
+//	gemma              -> gemma-4-31b-it          15 RPM / 1500 RPD (structured)
+//	gemma2             -> gemma-4-26b-a4b-it      15 RPM / 1500 RPD (structured)
 //
 // A typical quality-first, quota-aware chain:
 //
-//	LLM_PROVIDER=gemini35flash,gemini3flash,gemini31flashlite,mistral,ollama
+//	LLM_PROVIDER=gemini35flash,gemini3flash,gemini31flashlite,gemma,gemma2,mistral,ollama
 type googleFailover struct {
-	model      string // Google API model id
-	rpmEnv     string
+	model      string   // Google API model id
+	rpmEnvs    []string // override env vars, checked in order (first non-empty wins)
 	defRPM     int
-	rpdEnv     string
+	rpdEnvs    []string
 	defRPD     int
 	redisKey   string
 	structured bool
@@ -106,18 +108,33 @@ type googleFailover struct {
 func googleFailoverFor(provider string) (googleFailover, bool) {
 	switch provider {
 	case "gemini35flash":
-		return googleFailover{config.AppConfig.Gemini35Model, "GEMINI35FLASH_RPM", 15, "GEMINI35FLASH_RPD", 20, "gemini35flash", true}, true
+		return googleFailover{config.AppConfig.Gemini35Model, []string{"GEMINI35FLASH_RPM", "GEMINI35_RPM"}, 15, []string{"GEMINI35FLASH_RPD", "GEMINI35_RPD"}, 20, "gemini35flash", true}, true
 	case "gemini3flash":
-		return googleFailover{config.AppConfig.Gemini3Model, "GEMINI3FLASH_RPM", 15, "GEMINI3FLASH_RPD", 20, "gemini3flash", true}, true
+		return googleFailover{config.AppConfig.Gemini3Model, []string{"GEMINI3FLASH_RPM", "GEMINI3_RPM"}, 15, []string{"GEMINI3FLASH_RPD", "GEMINI3_RPD"}, 20, "gemini3flash", true}, true
+	case "gemma":
+		return googleFailover{config.AppConfig.GemmaModel, []string{"GEMMA_RPM"}, 15, []string{"GEMMA_RPD"}, 1500, "gemma", true}, true
+	case "gemma2":
+		return googleFailover{config.AppConfig.Gemma2Model, []string{"GEMMA2_RPM"}, 15, []string{"GEMMA2_RPD"}, 1500, "gemma2", true}, true
 	}
 	return googleFailover{}, false
 }
 
+// firstEnvValue returns the first non-empty value among the given env vars,
+// supporting both naming conventions (e.g. GEMINI35FLASH_RPM and GEMINI35_RPM).
+func firstEnvValue(names []string) string {
+	for _, name := range names {
+		if v := strings.TrimSpace(os.Getenv(name)); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 // googleFailoverPace returns the post-call pacing for a failover provider,
-// honoring its RPM override env var.
+// honoring its RPM override env vars.
 func googleFailoverPace(f googleFailover) time.Duration {
 	rpm := f.defRPM
-	if v := strings.TrimSpace(os.Getenv(f.rpmEnv)); v != "" {
+	if v := firstEnvValue(f.rpmEnvs); v != "" {
 		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
 			rpm = parsed
 		}
@@ -126,10 +143,10 @@ func googleFailoverPace(f googleFailover) time.Duration {
 }
 
 // googleFailoverDailyLimit returns a failover provider's requests-per-day
-// ceiling from its RPD override env var (<= 0 disables tracking).
+// ceiling from its RPD override env vars (<= 0 disables tracking).
 func googleFailoverDailyLimit(f googleFailover) int {
 	limit := f.defRPD
-	if v := strings.TrimSpace(os.Getenv(f.rpdEnv)); v != "" {
+	if v := firstEnvValue(f.rpdEnvs); v != "" {
 		if parsed, err := strconv.Atoi(v); err == nil {
 			limit = parsed
 		}

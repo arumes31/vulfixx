@@ -86,6 +86,12 @@ pnpm-lock.yaml
 /data/
 /results/
 
+# NimbusRoute runtime state — config.json holds live API keys / VPN credentials,
+# limits.json and debug_req.json/requests.log are runtime artifacts. Never commit;
+# see the *.example.json templates for the expected schema.
+container/nimbusroute/data/*
+!container/nimbusroute/data/*.example.json
+
 # Ignore generated coverage html reports
 coverage_base.html
 coverage*.html

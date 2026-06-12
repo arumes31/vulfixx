@@ -141,12 +141,26 @@ func (w *Worker) fetchFromCISAKEV(ctx context.Context) {
 				return
 			}
 		}
-		// Update cisa_kev_data for each CVE in the batch
+		// Bulk-update cisa_kev_data for the batch in a single statement (unnest
+		// pattern, same as the EPSS sync) instead of one UPDATE per row.
+		kevIDs := make([]string, 0, len(ids))
+		kevJSON := make([]string, 0, len(ids))
 		for _, cveID := range ids {
-			kevData := kevDataMap[cveID]
-			_, err = tx.Exec(ctx, "UPDATE cves SET cisa_kev_data = $1 WHERE cve_id = $2", kevData, cveID)
+			data, err := json.Marshal(kevDataMap[cveID])
 			if err != nil {
-				slog.Error("Worker: [ERROR] Failed to update KEV data for CVE", "cve_id", cveID, "error", err)
+				slog.Error("Worker: [ERROR] Failed to marshal KEV data for CVE", "cve_id", cveID, "error", err)
+				continue
+			}
+			kevIDs = append(kevIDs, cveID)
+			kevJSON = append(kevJSON, string(data))
+		}
+		if len(kevIDs) > 0 {
+			_, err = tx.Exec(ctx, `
+				UPDATE cves SET cisa_kev_data = u.kev_data::jsonb
+				FROM (SELECT unnest($1::text[]) AS cve_id, unnest($2::text[]) AS kev_data) AS u
+				WHERE cves.cve_id = u.cve_id`, kevIDs, kevJSON)
+			if err != nil {
+				slog.Error("Worker: [ERROR] Failed to bulk update KEV data batch", "error", err)
 			}
 		}
 	}

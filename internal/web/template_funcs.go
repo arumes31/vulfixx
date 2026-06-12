@@ -75,10 +75,10 @@ func epssPercentileLabel(score float64) string {
 	if score <= 0 {
 		return "N/A"
 	}
-	// EPSS score is a probability (0-1), convert to percentile interpretation
+	// EPSS score is a probability (0-1); express it as an exploitation probability
 	pct := score * 100
 	if pct >= 50 {
-		return "Top 0.1% — Extremely likely to be exploited"
+		return fmt.Sprintf("%.1f%% probability — Extremely likely to be exploited", pct)
 	}
 	if pct >= 10 {
 		return fmt.Sprintf("%.1f%% probability — Very high exploit likelihood", pct)

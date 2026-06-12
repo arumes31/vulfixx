@@ -315,8 +315,8 @@ func TestEPSSPercentileLabel(t *testing.T) {
 		{0.001, "0.1000% probability — Moderate exploit likelihood"},
 		{0.01, "1.00% probability — High exploit likelihood"},
 		{0.1, "10.0% probability — Very high exploit likelihood"},
-		{0.5, "Top 0.1% — Extremely likely to be exploited"},
-		{0.9, "Top 0.1% — Extremely likely to be exploited"},
+		{0.5, "50.0% probability — Extremely likely to be exploited"},
+		{0.9, "90.0% probability — Extremely likely to be exploited"},
 	}
 
 	for _, tt := range tests {

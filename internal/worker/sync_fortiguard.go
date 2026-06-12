@@ -92,7 +92,7 @@ var cvssVectorRegex = regexp.MustCompile(`CVSS:3\.[01]/[A-Za-z]+:[A-Za-z](?:/[A-
 // fortiGuardShouldRetry handles retry logic for FortiGuard HTTP requests.
 func fortiGuardShouldRetry(resp *http.Response, err error, attempt int) (bool, time.Duration) {
 	if err != nil {
-		return true, time.Duration(float64(time.Duration(attempt+1).Seconds())*1.5) * time.Second
+		return true, time.Duration(float64(attempt+1) * 1.5 * float64(time.Second))
 	}
 	if resp == nil {
 		return false, 0
@@ -107,7 +107,7 @@ func fortiGuardShouldRetry(resp *http.Response, err error, attempt int) (bool, t
 		return true, waitTime
 	}
 	if resp.StatusCode >= 500 {
-		return true, time.Duration(float64(time.Duration(attempt+1).Seconds())*1.5) * time.Second
+		return true, time.Duration(float64(attempt+1) * 1.5 * float64(time.Second))
 	}
 	return false, 0
 }
@@ -635,14 +635,25 @@ func (w *Worker) updateCVEsWithAdvisory(ctx context.Context, advisory *FortiGuar
 		// Set the FortiGuard advisory in vendor_advisories
 		cve.VendorAdvisories[models.VendorFortiGuard] = fortiAdvisory
 
-		// Enrich AffectedProducts with Fortinet products
+		// Enrich AffectedProducts with Fortinet products, skipping entries that
+		// already exist so repeated syncs stay idempotent.
+		existingProducts := make(map[string]bool, len(cve.AffectedProducts))
+		for _, p := range cve.AffectedProducts {
+			existingProducts[fmt.Sprintf("%s|%s|%s|%t", p.Vendor, p.Product, p.Version, p.Unconfirmed)] = true
+		}
 		for _, fgProduct := range advisory.AffectedProducts {
-			cve.AffectedProducts = append(cve.AffectedProducts, models.AffectedProduct{
+			candidate := models.AffectedProduct{
 				Vendor:      "Fortinet",
 				Product:     fgProduct.Name,
 				Version:     fgProduct.VersionRange,
 				Unconfirmed: false,
-			})
+			}
+			key := fmt.Sprintf("%s|%s|%s|%t", candidate.Vendor, candidate.Product, candidate.Version, candidate.Unconfirmed)
+			if existingProducts[key] {
+				continue
+			}
+			existingProducts[key] = true
+			cve.AffectedProducts = append(cve.AffectedProducts, candidate)
 		}
 
 		cvesToUpdate = append(cvesToUpdate, cve)

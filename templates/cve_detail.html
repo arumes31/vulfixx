@@ -14,7 +14,7 @@
         <div class="space-y-4 flex-1">
             <div class="flex items-center gap-4 flex-wrap">
                 <h1 class="text-6xl font-black text-white tracking-tighter">{{.CVE.CVEID}}</h1>
-                {{if .CVE.Priority}}<span class="px-3 py-1 rounded-full {{if eq .CVE.Priority " P0"}}bg-red-600/20
+                {{if .CVE.Priority}}<span class="px-3 py-1 rounded-full {{if eq .CVE.Priority "P0"}}bg-red-600/20
                     text-red-500 border border-red-600/20{{else if eq .CVE.Priority "P1" }}bg-orange-500/20
                     text-orange-400 border border-orange-500/20{{else if eq .CVE.Priority "P2" }}bg-yellow-500/20
                     text-yellow-400 border border-yellow-500/20{{else}}bg-blue-500/20 text-blue-400 border
