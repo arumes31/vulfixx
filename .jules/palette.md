@@ -13,3 +13,7 @@
 ## 2026-05-28 - ARIA attributes for alert/status containers
 **Learning:** Flash messages indicating success or error states need proper ARIA roles to ensure they are immediately announced by screen readers without requiring the user to navigate to them.
 **Action:** Use `role="alert" aria-atomic="true"` for error messages and `role="status" aria-live="polite"` for non-critical information/success messages in template partials.
+
+## 2026-06-12 - Adding focus-visible classes to Tailwind Peer elements
+**Learning:** When using Tailwind CSS `peer` classes to style custom radio buttons or checkboxes (like custom toggle switches where the input is `sr-only`), keyboard navigation accessibility is often lost because the hidden input receives focus but no visible indicator is shown on the styled element.
+**Action:** Always add `peer-focus-visible:ring-*` classes to the visible styled element that corresponds to the hidden input to ensure keyboard users can see which interactive element is currently focused.

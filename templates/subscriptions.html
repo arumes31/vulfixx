@@ -336,7 +336,7 @@
                     <span class="text-xs font-bold text-gray-300">${label}</span>
                 </div>
                 <input type="checkbox" name="${name}" value="true" ${checked ? 'checked' : ''} class="sr-only peer">
-                <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-${color} after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6"></div>
+                <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-${color} after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6 peer-focus-visible:ring-2 peer-focus-visible:ring-${color} peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#10141a]"></div>
             </label>
         `;
     }
