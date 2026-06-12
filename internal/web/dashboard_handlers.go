@@ -508,16 +508,19 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	c := &models.CVE{}
 	err := a.Pool.QueryRow(r.Context(), `
-		SELECT 
-			id, cve_id, description, COALESCE(cvss_score, 0), vector_string, cisa_kev, 
-			published_date, updated_date, 'active' as status, "references", 
-			COALESCE(epss_score, 0), COALESCE(cwe_id, ''), COALESCE(cwe_name, ''), COALESCE(github_poc_count, 0),
-			COALESCE(greynoise_hits, 0), COALESCE(greynoise_classification, ''), osv_data,
-			configurations, COALESCE(vendor, ''), COALESCE(product, ''), COALESCE(affected_products, '[]'),
-			COALESCE(priority, 'P3') as priority
-		FROM cves
-		WHERE cve_id = $1
-	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.Configurations, &c.Vendor, &c.Product, &c.AffectedProducts, &c.Priority)
+	SELECT
+	id, cve_id, description, COALESCE(cvss_score, 0), vector_string, cisa_kev,
+	published_date, updated_date, 'active' as status, "references",
+	COALESCE(epss_score, 0), COALESCE(epss_percentile, 0), COALESCE(cwe_id, ''), COALESCE(cwe_name, ''), COALESCE(github_poc_count, 0),
+	COALESCE(greynoise_hits, 0), COALESCE(greynoise_classification, ''), osv_data, vendor_advisories,
+	configurations, COALESCE(vendor, ''), COALESCE(product, ''), COALESCE(affected_products, '[]'),
+	COALESCE(priority, 'P3') as priority,
+	COALESCE(exploit_available, false), COALESCE(osint_data, '{}'), COALESCE(inthewild_data, '{}'),
+	greynoise_last_updated, osv_last_updated, inthewild_last_updated,
+	COALESCE(cisa_kev_data, '{}'), COALESCE(reference_tags, '{}'), COALESCE(github_poc_repos, '[]')
+	FROM cves
+	WHERE cve_id = $1
+	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.EPSSPercentile, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.VendorAdvisories, &c.Configurations, &c.Vendor, &c.Product, &c.AffectedProducts, &c.Priority, &c.ExploitAvailable, &c.OSINTData, &c.InTheWildData, &c.GreyNoiseLastUpdated, &c.OSVLastUpdated, &c.InTheWildLastUpdated, &c.CISAKEVData, &c.ReferenceTags, &c.GitHubPoCRepos)
 
 	c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
 
@@ -535,7 +538,15 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 	_ = a.Pool.QueryRow(r.Context(), "SELECT cisa_ransomware FROM cves WHERE cve_id = $1", c.CVEID).Scan(&c.CISARansomware)
 
 	// Fetch threat actor and ransomware associations
-	var threatAssociations []models.ThreatAssociation
+	type ThreatAssociation struct {
+		ID         int       `json:"id"`
+		CVEID      string    `json:"cve_id"`
+		EntityName string    `json:"entity_name"`
+		EntityType string    `json:"entity_type"`
+		Source     string    `json:"source"`
+		CreatedAt  time.Time `json:"created_at"`
+	}
+	var threatAssociations []ThreatAssociation
 	taRows, taErr := a.Pool.Query(r.Context(), `
 		SELECT id, cve_id, entity_name, entity_type, source, created_at
 		FROM cve_threat_associations
@@ -545,7 +556,7 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if taErr == nil {
 		defer taRows.Close()
 		for taRows.Next() {
-			var ta models.ThreatAssociation
+			var ta ThreatAssociation
 			if err := taRows.Scan(&ta.ID, &ta.CVEID, &ta.EntityName, &ta.EntityType, &ta.Source, &ta.CreatedAt); err == nil {
 				threatAssociations = append(threatAssociations, ta)
 			}

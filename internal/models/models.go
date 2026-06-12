@@ -9,6 +9,37 @@ import (
 	"time"
 )
 
+const (
+	VendorFortiGuard = "fortiguard"
+	VendorCisco      = "cisco"
+	VendorRedHat     = "redhat"
+)
+
+// JSONBMap represents a JSONB data type in PostgreSQL
+// that is mapped to a Go map[string]interface{}.
+type JSONBMap map[string]interface{}
+
+// Scan implements the sql.Scanner interface for JSONB.
+func (j *JSONBMap) Scan(value interface{}) error {
+	if value == nil {
+		*j = nil
+		return nil
+	}
+	b, ok := value.([]byte)
+	if !ok {
+		return fmt.Errorf("type assertion to []byte failed")
+	}
+	return json.Unmarshal(b, j)
+}
+
+// Value implements the driver.Valuer interface for JSONB.
+func (j JSONBMap) Value() (driver.Value, error) {
+	if j == nil {
+		return nil, nil
+	}
+	return json.Marshal(j)
+}
+
 type User struct {
 	ID                  int       `json:"id"`
 	Email               string    `json:"email"`
@@ -22,6 +53,31 @@ type User struct {
 	CreatedAt           time.Time `json:"created_at"`
 }
 
+type CPEMatch struct {
+	Criteria              string `json:"criteria"`
+	VersionStartIncluding string `json:"versionStartIncluding,omitempty"`
+	VersionStartExcluding string `json:"versionStartExcluding,omitempty"`
+	VersionEndIncluding   string `json:"versionEndIncluding,omitempty"`
+	VersionEndExcluding   string `json:"versionEndExcluding,omitempty"`
+	Vulnerable            bool   `json:"vulnerable"`
+}
+
+type ConfigNode struct {
+	Operator string     `json:"operator,omitempty"`
+	CPEMatch []CPEMatch `json:"cpe_match,omitempty"`
+}
+
+type CVEConfiguration struct {
+	Vulnerable            bool         `json:"vulnerable"`
+	Criteria              string       `json:"criteria"`
+	VersionStartIncluding string       `json:"versionStartIncluding,omitempty"`
+	VersionStartExcluding string       `json:"versionStartExcluding,omitempty"`
+	VersionEndIncluding   string       `json:"versionEndIncluding,omitempty"`
+	VersionEndExcluding   string       `json:"versionEndExcluding,omitempty"`
+	MatchCriteriaID       string       `json:"matchCriteriaId,omitempty"`
+	Nodes                 []ConfigNode `json:"nodes,omitempty"`
+}
+
 type CVE struct {
 	ID                   int               `json:"id"`
 	CVEID                string            `json:"cve_id"`
@@ -30,22 +86,27 @@ type CVE struct {
 	VectorString         string            `json:"vector_string"`
 	CISAKEV              bool              `json:"cisa_kev"`
 	CISARansomware       bool              `json:"cisa_ransomware"`
+	CISAKEVData          JSONBMap          `json:"cisa_kev_data" db:"cisa_kev_data"`
 	EPSSScore            float64           `json:"epss_score"`
+	EPSSPercentile       float64           `json:"epss_percentile" db:"epss_percentile"`
 	CWEID                string            `json:"cwe_id"`
 	CWEName              string            `json:"cwe_name"`
 	GitHubPoCCount       int               `json:"github_poc_count"`
+	GitHubPoCRepos       []GitHubPoCRepo   `json:"github_poc_repos" db:"github_poc_repos"`
 	GreyNoiseHits        int               `json:"greynoise_hits"`
 	GreyNoiseClass       string            `json:"greynoise_classification"`
 	OSVData              JSONBMap          `json:"osv_data"`
-	OSINTData            JSONBMap          `json:"osint_data"`
+	OSINTData            JSONBMap          `json:"osint_data" db:"osint_data"`
 	OSVLastUpdated       *time.Time        `json:"osv_last_updated,omitempty"`
 	GreyNoiseLastUpdated *time.Time        `json:"greynoise_last_updated,omitempty"`
-	InTheWildData        JSONBMap          `json:"inthewild_data"`
-	InTheWildLastUpdated *time.Time        `json:"inthewild_last_updated,omitempty"`
-	ExploitAvailable     bool              `json:"exploit_available"`
+	InTheWildData        JSONBMap          `json:"inthewild_data" db:"inthewild_data"`
+	InTheWildLastUpdated *time.Time        `json:"inthewild_last_updated,omitempty" db:"inthewild_last_updated"`
+	VendorAdvisories     JSONBMap          `json:"vendor_advisories" db:"vendor_advisories"`
+	ExploitAvailable     bool              `json:"exploit_available" db:"exploit_available"`
 	Status               string            `json:"status"`
 	Notes                string            `json:"notes"`
 	References           []string          `json:"references"`
+	ReferenceTags        []string          `json:"reference_tags" db:"reference_tags"` // parallel to References
 	Configurations       CVEConfigurations `json:"configurations"`
 	Vendor               string            `json:"vendor"`
 	Product              string            `json:"product"`
@@ -57,7 +118,70 @@ type CVE struct {
 	Priority      string    `json:"priority"`
 }
 
+// GetVendorAdvisory returns the advisory data for a specific vendor from VendorAdvisories.
+// Returns nil if no advisory exists for the given vendor.
+func (c *CVE) GetVendorAdvisory(vendor string) map[string]interface{} {
+	if c.VendorAdvisories == nil {
+		return nil
+	}
+	data, ok := c.VendorAdvisories[vendor]
+	if !ok {
+		return nil
+	}
+	result, ok := data.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	return result
+}
+
+// SetVendorAdvisory sets the advisory data for a specific vendor in VendorAdvisories.
+func (c *CVE) SetVendorAdvisory(vendor string, advisory map[string]interface{}) {
+	if c.VendorAdvisories == nil {
+		c.VendorAdvisories = make(JSONBMap)
+	}
+	c.VendorAdvisories[vendor] = advisory
+}
+
+// HasVendorAdvisory checks if any vendor advisory data exists.
+func (c *CVE) HasVendorAdvisory() bool {
+	return c.VendorAdvisories != nil && len(c.VendorAdvisories) > 0
+}
+
 type CVEConfigurations []CVEConfiguration
+
+// GitHubPoCRepo represents a GitHub proof-of-concept repository.
+type GitHubPoCRepo struct {
+	URL         string `json:"url"`
+	Name        string `json:"name"`
+	Stars       int    `json:"stars"`
+	Description string `json:"description"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+// GitHubPoCRepos is a slice of GitHubPoCRepo with JSONB scan/value support.
+type GitHubPoCRepos []GitHubPoCRepo
+
+// Scan implements the sql.Scanner interface for JSONB.
+func (g *GitHubPoCRepos) Scan(value interface{}) error {
+	if value == nil {
+		*g = nil
+		return nil
+	}
+	b, ok := value.([]byte)
+	if !ok {
+		return fmt.Errorf("type assertion to []byte failed")
+	}
+	return json.Unmarshal(b, g)
+}
+
+// Value implements the driver.Valuer interface for JSONB.
+func (g GitHubPoCRepos) Value() (driver.Value, error) {
+	if g == nil {
+		return nil, nil
+	}
+	return json.Marshal(g)
+}
 
 type AffectedProduct struct {
 	Vendor      string `json:"vendor"`
@@ -90,32 +214,209 @@ func (a AffectedProducts) Value() (driver.Value, error) {
 	return json.Marshal(a)
 }
 
-// Scan implements the sql.Scanner interface.
-func (c *CVEConfigurations) Scan(value interface{}) error {
-	if value == nil {
-		*c = nil
-		return nil
-	}
-	b, ok := value.([]byte)
-	if !ok {
-		return fmt.Errorf("type assertion to []byte failed")
-	}
-	return json.Unmarshal(b, &c)
+// AssetWithKeywords represents an asset with its associated keywords and team info.
+type AssetWithKeywords struct {
+	ID        int      `json:"id"`
+	Name      string   `json:"name"`
+	Type      string   `json:"type"`
+	Priority  string   `json:"priority"`
+	CreatedAt string   `json:"created_at"`
+	Keywords  []string `json:"keywords"`
+	TeamName  string   `json:"team_name"`
 }
 
-// Value implements the driver.Valuer interface.
-func (c CVEConfigurations) Value() (driver.Value, error) {
-	if c == nil {
-		return nil, nil
-	}
-	return json.Marshal(c)
+// UserSubscription represents a user's CVE alert subscription.
+type UserSubscription struct {
+	ID                int       `json:"id"`
+	UserID            int       `json:"user_id"`
+	Keyword           string    `json:"keyword"`
+	MinSeverity       float64   `json:"min_severity"`
+	WebhookURL        string    `json:"webhook_url"`
+	SlackWebhookURL   string    `json:"slack_webhook_url,omitempty"`
+	TeamsWebhookURL   string    `json:"teams_webhook_url,omitempty"`
+	EnableEmail       bool      `json:"enable_email"`
+	EnableWebhook     bool      `json:"enable_webhook"`
+	EnableSlack       bool      `json:"enable_slack"`
+	EnableTeams       bool      `json:"enable_teams"`
+	EnableBrowserPush bool      `json:"enable_browser_push"`
+	AggregationMode   string    `json:"aggregation_mode"`
+	FilterLogic       string    `json:"filter_logic"`
+	TeamID            *int      `json:"team_id,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
+// UserCVEStatus represents a user's status tracking for a CVE.
+type UserCVEStatus struct {
+	UserID    int       `json:"user_id"`
+	CVEID     int       `json:"cve_id"`
+	Status    string    `json:"status"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// AlertHistory represents a record of an alert sent to a user.
+type AlertHistory struct {
+	ID     int       `json:"id"`
+	UserID int       `json:"user_id"`
+	CVEID  int       `json:"cve_id"`
+	SentAt time.Time `json:"sent_at"`
+}
+
+// GetDetectedProduct attempts to determine the vendor and product from the CVE description
+// or from CPE configuration data.
+func (c *CVE) GetDetectedProduct() (vendor, product string) {
+	// First try CPE configurations
+	if len(c.Configurations) > 0 {
+		for _, config := range c.Configurations {
+			for _, node := range config.Nodes {
+				for _, match := range node.CPEMatch {
+					if match.Criteria != "" && match.Vulnerable {
+						return parseCPEVendorProduct(match.Criteria)
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback to description-based heuristic
+	return detectProductFromDescription(c.Description)
+}
+
+// GetAffectedProducts returns a list of affected products derived from CPE configuration data.
+// Falls back to heuristic detection from vendor/product fields if no structured data exists.
+func (c *CVE) GetAffectedProducts() []AffectedProduct {
+	var products []AffectedProduct
+
+	// Try CPE configurations first
+	if len(c.Configurations) > 0 {
+		for _, config := range c.Configurations {
+			for _, node := range config.Nodes {
+				for _, match := range node.CPEMatch {
+					if match.Criteria == "" {
+						continue
+					}
+					vendor, product := parseCPEVendorProduct(match.Criteria)
+					version := formatVersionRange(match)
+					products = append(products, AffectedProduct{
+						Vendor:  vendor,
+						Product: product,
+						Version: version,
+					})
+				}
+			}
+		}
+	}
+
+	// Fallback to heuristic from vendor/product fields
+	if len(products) == 0 && (c.Vendor != "" || c.Product != "") {
+		products = append(products, AffectedProduct{
+			Vendor:      c.Vendor,
+			Product:     c.Product,
+			Unconfirmed: true,
+		})
+	}
+
+	return products
+}
+
+// parseCPEVendorProduct extracts vendor and product from a CPE 2.3 URI string.
+func parseCPEVendorProduct(cpe string) (string, string) {
+	parts := strings.Split(cpe, ":")
+	if len(parts) < 5 {
+		return "", ""
+	}
+	vendor := strings.Title(parts[3])
+	product := strings.Title(parts[4])
+	return vendor, product
+}
+
+// formatVersionRange builds a human-readable version range string from CPE match data.
+func formatVersionRange(match CPEMatch) string {
+	var parts []string
+	if match.VersionStartIncluding != "" {
+		parts = append(parts, "≥"+match.VersionStartIncluding)
+	}
+	if match.VersionStartExcluding != "" {
+		parts = append(parts, ">"+match.VersionStartExcluding)
+	}
+	if match.VersionEndIncluding != "" {
+		parts = append(parts, "≤"+match.VersionEndIncluding)
+	}
+	if match.VersionEndExcluding != "" {
+		parts = append(parts, "<"+match.VersionEndExcluding)
+	}
+	return strings.Join(parts, " ")
+}
+
+// detectProductFromDescription uses keyword matching to guess vendor/product from a description.
+func detectProductFromDescription(desc string) (string, string) {
+	keywordMap := map[string][]string{
+		"Fortinet":  {"FortiGate", "FortiManager", "FortiAnalyzer", "FortiOS", "FortiProxy", "FortiMail", "FortiWeb", "FortiEDR", "FortiSIEM", "FortiSandbox"},
+		"Cisco":     {"IOS", "IOS XE", "IOS XR", "ASA", "NX-OS", "ACI", "Duo", "Umbrella", "Webex", "AnyConnect"},
+		"Microsoft": {"Windows", "Office", "Exchange", "SharePoint", "Azure", "IIS", "SQL Server", ".NET", "Edge"},
+		"Apache":    {"Tomcat", "HTTP Server", "Kafka", "Struts", "Log4j", "Spark", "Hadoop", "Flink"},
+		"VMware":    {"vCenter", "ESXi", "Workstation", "Fusion", "NSX", "Horizon"},
+		"Linux":     {"Kernel"},
+		"Red Hat":   {"Enterprise Linux", "OpenShift", "JBoss"},
+		"Oracle":    {"Java", "MySQL", "VirtualBox", "WebLogic", "Database"},
+		"Google":    {"Chrome", "Android"},
+		"Apple":     {"iOS", "macOS", "Safari", "Xcode"},
+		"Mozilla":   {"Firefox"},
+		"Grafana":   {"Grafana"},
+	}
+
+	for vendor, products := range keywordMap {
+		for _, product := range products {
+			if strings.Contains(desc, product) {
+				return vendor, product
+			}
+		}
+		if strings.Contains(strings.ToLower(desc), strings.ToLower(vendor)) {
+			return vendor, ""
+		}
+	}
+
+	// Generic heuristic: "in <Vendor> <Product>" pattern
+	for _, word := range strings.Fields(desc) {
+		if len(word) > 2 && word[0] >= 'A' && word[0] <= 'Z' {
+			// Check if next word could be a product
+			idx := strings.Index(desc, word)
+			if idx >= 0 {
+				after := desc[idx+len(word):]
+				after = strings.TrimLeft(after, " ")
+				nextWord := ""
+				if spaceIdx := strings.Index(after, " "); spaceIdx > 0 {
+					nextWord = after[:spaceIdx]
+				} else if len(after) > 0 {
+					nextWord = after
+				}
+				if nextWord != "" && nextWord[0] >= 'A' && nextWord[0] <= 'Z' {
+					return word, nextWord
+				}
+			}
+		}
+	}
+
+	return "", ""
+}
+
+// ThreatAssociation represents a link between a CVE and a threat actor or ransomware group.
+type ThreatAssociation struct {
+	ID         int       `json:"id"`
+	CVEID      string    `json:"cve_id"`
+	EntityName string    `json:"entity_name"`
+	EntityType string    `json:"entity_type"`
+	Source     string    `json:"source"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// AddAffectedProduct appends an AffectedProduct to the CVE's AffectedProducts slice.
+// If a product with the same vendor+product already exists, it updates the version
+// only if the existing version is empty and the new one is not.
 func (c *CVE) AddAffectedProduct(vendor, product, version string, unconfirmed bool) {
-	for i, p := range c.AffectedProducts {
-		if p.Vendor == vendor && p.Product == product {
-			// If we already have a version, don't overwrite it with an empty one
-			if p.Version == "" && version != "" {
+	for i := range c.AffectedProducts {
+		if c.AffectedProducts[i].Vendor == vendor && c.AffectedProducts[i].Product == product {
+			// Only update version if existing is empty and new is not
+			if c.AffectedProducts[i].Version == "" && version != "" {
 				c.AffectedProducts[i].Version = version
 			}
 			return
@@ -125,771 +426,168 @@ func (c *CVE) AddAffectedProduct(vendor, product, version string, unconfirmed bo
 		Vendor:      vendor,
 		Product:     product,
 		Version:     version,
-		Type:        "a",
 		Unconfirmed: unconfirmed,
 	})
 }
 
-type JSONBMap map[string]interface{}
-
-// Scan implements the sql.Scanner interface for JSONB.
-func (m *JSONBMap) Scan(value interface{}) error {
-	if value == nil {
-		*m = nil
-		return nil
-	}
-	b, ok := value.([]byte)
-	if !ok {
-		return fmt.Errorf("type assertion to []byte failed")
-	}
-	return json.Unmarshal(b, m)
+// ActivityLog represents a user activity log entry.
+type ActivityLog struct {
+	ID           int       `json:"id"`
+	ActivityType string    `json:"activity_type"`
+	Description  string    `json:"description"`
+	IPAddress    string    `json:"ip_address"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
-// Value implements the driver.Valuer interface for JSONB.
-func (m JSONBMap) Value() (driver.Value, error) {
-	if m == nil {
-		return nil, nil
-	}
-	return json.Marshal(m)
+// Team represents a team in the system.
+type Team struct {
+	ID         int       `json:"id"`
+	Name       string    `json:"name"`
+	InviteCode string    `json:"invite_code"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
-// descriptionPatterns is a list of compiled regex patterns used to extract vendor/product
-// from CVE descriptions when CPE configuration data is not available. Compiled at init time.
-var descriptionPatterns []*regexp.Regexp
-
-// knownVendorKeywords maps lowercase keywords found in descriptions to (vendor, product) pairs.
-// Used as a last-resort heuristic when neither CPE nor regex patterns match.
-var knownVendorKeywords []struct {
-	keyword string
-	vendor  string
-	product string
-}
-
-func init() {
-	// Pre-compile all description regex patterns for performance
-	patterns := []string{
-		// "vulnerability in Vendor Product"
-		`(?i)(?:vulnerability|flaw|issue|bug|weakness) in (?:the )?([A-Za-z][A-Za-z0-9_\-\.]+) ([A-Za-z][A-Za-z0-9_\-\.]+)`,
-		// "detected in Vendor Product"
-		`(?i)(?:detected|discovered|identified|reported) in (?:the )?([A-Za-z][A-Za-z0-9_\-\.]+) ([A-Za-z][A-Za-z0-9_\-\.]+)`,
-		// "affects Vendor Product"
-		`(?i)(?:affects?|impacts?) (?:the )?([A-Za-z][A-Za-z0-9_\-\.]+) ([A-Za-z][A-Za-z0-9_\-\.]+)`,
-		// "found in Vendor Product"
-		`(?i)found in (?:the )?([A-Za-z][A-Za-z0-9_\-\.]+) ([A-Za-z][A-Za-z0-9_\-\.]+)`,
-		// "Vendor Product before/prior to version"
-		`(?i)([A-Za-z][A-Za-z0-9_\-\.]+) ([A-Za-z][A-Za-z0-9_\-\.]+) (?:before|prior to|through|up to) (?:version )?[\d]`,
-		// "in Vendor Product version/before"
-		`(?i) in ([A-Za-z][A-Za-z0-9_\-\.]+) ([A-Za-z][A-Za-z0-9_\-\.]+) (?:version|v\.?|before|prior|through|up to) `,
-		// "Vendor Product versions X through Y"
-		`(?i)([A-Za-z][A-Za-z0-9_\-\.]+) ([A-Za-z][A-Za-z0-9_\-\.]+) versions? `,
-		// "XSS/SQLi/RCE/etc in Vendor Product"
-		`(?i)(?:XSS|SQL injection|remote code execution|buffer overflow|path traversal|SSRF|CSRF|RCE|directory traversal|code injection|command injection) (?:in|via) (?:the )?([A-Za-z][A-Za-z0-9_\-\.]+) ([A-Za-z][A-Za-z0-9_\-\.]+)`,
-		// "allows ... via Vendor Product"
-		`(?i)allows? .{0,80}via (?:the )?([A-Za-z][A-Za-z0-9_\-\.]+) ([A-Za-z][A-Za-z0-9_\-\.]+)`,
-		// "Vendor's Product"
-		`(?i)([A-Za-z][A-Za-z0-9_\-\.]+)'s ([A-Za-z][A-Za-z0-9_\-\.]+)`,
-	}
-	for _, p := range patterns {
-		descriptionPatterns = append(descriptionPatterns, regexp.MustCompile(p))
-	}
-
-	// Known vendor keyword pairs for last-resort description scanning
-	knownVendorKeywords = []struct {
-		keyword string
-		vendor  string
-		product string
-	}{
-		{"microsoft windows", "Microsoft", "Windows"},
-		{"microsoft office", "Microsoft", "Office"},
-		{"microsoft exchange", "Microsoft", "Exchange Server"},
-		{"microsoft edge", "Microsoft", "Edge"},
-		{"microsoft .net", "Microsoft", ".NET Framework"},
-		{"microsoft sharepoint", "Microsoft", "SharePoint"},
-		{"microsoft outlook", "Microsoft", "Outlook"},
-		{"microsoft teams", "Microsoft", "Teams"},
-		{"microsoft azure", "Microsoft", "Azure"},
-		{"active directory", "Microsoft", "Active Directory"},
-		{"internet explorer", "Microsoft", "Internet Explorer"},
-		{"google chrome", "Google", "Chrome"},
-		{"google android", "Google", "Android"},
-		{"google kubernetes", "Google", "Kubernetes Engine"},
-		{"mozilla firefox", "Mozilla", "Firefox"},
-		{"mozilla thunderbird", "Mozilla", "Thunderbird"},
-		{"apple safari", "Apple", "Safari"},
-		{"apple macos", "Apple", "macOS"},
-		{"apple ios", "Apple", "iOS"},
-		{"apple ipados", "Apple", "iPadOS"},
-		{"apple watchos", "Apple", "watchOS"},
-		{"apple tvos", "Apple", "tvOS"},
-		{"apple xcode", "Apple", "Xcode"},
-		{"linux kernel", "Linux", "Kernel"},
-		{"apache http", "Apache", "HTTP Server"},
-		{"apache tomcat", "Apache", "Tomcat"},
-		{"apache struts", "Apache", "Struts"},
-		{"apache log4j", "Apache", "Log4j"},
-		{"apache kafka", "Apache", "Kafka"},
-		{"apache solr", "Apache", "Solr"},
-		{"apache activemq", "Apache", "ActiveMQ"},
-		{"apache camel", "Apache", "Camel"},
-		{"apache airflow", "Apache", "Airflow"},
-		{"apache superset", "Apache", "Superset"},
-		{"nginx", "Nginx", "Nginx"},
-		{"wordpress", "WordPress", "WordPress"},
-		{"drupal", "Drupal", "Drupal"},
-		{"joomla", "Joomla", "Joomla"},
-		{"jenkins", "Jenkins", "Jenkins"},
-		{"gitlab", "GitLab", "GitLab"},
-		{"grafana", "Grafana", "Grafana"},
-		{"elasticsearch", "Elastic", "Elasticsearch"},
-		{"kibana", "Elastic", "Kibana"},
-		{"logstash", "Elastic", "Logstash"},
-		{"docker", "Docker", "Docker"},
-		{"kubernetes", "Kubernetes", "Kubernetes"},
-		{"vmware vcenter", "VMware", "vCenter Server"},
-		{"vmware esxi", "VMware", "ESXi"},
-		{"vmware workstation", "VMware", "Workstation"},
-		{"vmware fusion", "VMware", "Fusion"},
-		{"vmware horizon", "VMware", "Horizon"},
-		{"vmware nsx", "VMware", "NSX"},
-		{"vmware aria", "VMware", "Aria"},
-		{"fortinet fortigate", "Fortinet", "FortiGate"},
-		{"fortinet fortios", "Fortinet", "FortiOS"},
-		{"fortinet fortimanager", "Fortinet", "FortiManager"},
-		{"fortinet fortianalyzer", "Fortinet", "FortiAnalyzer"},
-		{"fortinet forticlient", "Fortinet", "FortiClient"},
-		{"fortinet fortiweb", "Fortinet", "FortiWeb"},
-		{"fortinet fortimail", "Fortinet", "FortiMail"},
-		{"fortinet fortisiem", "Fortinet", "FortiSIEM"},
-		{"fortinet fortiproxy", "Fortinet", "FortiProxy"},
-		{"fortinet fortiswitch", "Fortinet", "FortiSwitch"},
-		{"fortinet fortiap", "Fortinet", "FortiAP"},
-		{"palo alto pan-os", "Palo Alto Networks", "PAN-OS"},
-		{"palo alto panorama", "Palo Alto Networks", "Panorama"},
-		{"palo alto cortex", "Palo Alto Networks", "Cortex"},
-		{"palo alto globalprotect", "Palo Alto Networks", "GlobalProtect"},
-		{"cisco ios xe", "Cisco", "IOS XE"},
-		{"cisco ios xr", "Cisco", "IOS XR"},
-		{"cisco ios", "Cisco", "IOS"},
-		{"cisco nexus", "Cisco", "Nexus"},
-		{"cisco asa", "Cisco", "ASA"},
-		{"cisco firepower", "Cisco", "Firepower"},
-		{"cisco webex", "Cisco", "WebEx"},
-		{"cisco meraki", "Cisco", "Meraki"},
-		{"cisco anyconnect", "Cisco", "AnyConnect"},
-		{"cisco umbrella", "Cisco", "Umbrella"},
-		{"cisco duo", "Cisco", "Duo"},
-		{"citrix netscaler", "Citrix", "NetScaler"},
-		{"citrix adc", "Citrix", "ADC"},
-		{"citrix xenserver", "Citrix", "XenServer"},
-		{"citrix xenapp", "Citrix", "XenApp"},
-		{"citrix virtual apps", "Citrix", "Virtual Apps and Desktops"},
-		{"sophos", "Sophos", "Sophos"},
-		{"juniper junos", "Juniper", "Junos OS"},
-		{"juniper srx", "Juniper", "SRX"},
-		{"oracle java", "Oracle", "Java"},
-		{"oracle weblogic", "Oracle", "WebLogic Server"},
-		{"oracle mysql", "Oracle", "MySQL"},
-		{"oracle database", "Oracle", "Database"},
-		{"oracle peoplesoft", "Oracle", "PeopleSoft"},
-		{"oracle e-business", "Oracle", "E-Business Suite"},
-		{"sap netweaver", "SAP", "NetWeaver"},
-		{"sap hana", "SAP", "HANA"},
-		{"sap business", "SAP", "Business Suite"},
-		{"ibm websphere", "IBM", "WebSphere"},
-		{"ibm db2", "IBM", "Db2"},
-		{"ibm cognos", "IBM", "Cognos"},
-		{"ibm qradar", "IBM", "QRadar"},
-		{"ibm mq", "IBM", "MQ"},
-		{"dell idrac", "Dell", "iDRAC"},
-		{"dell emc", "Dell", "EMC"},
-		{"dell powerstore", "Dell", "PowerStore"},
-		{"hp ilo", "HP", "iLO"},
-		{"hpe ilo", "HPE", "iLO"},
-		{"synology", "Synology", "DiskStation Manager"},
-		{"qnap", "QNAP", "QTS"},
-		{"sonicwall", "SonicWall", "SonicOS"},
-		{"zyxel", "Zyxel", "Zyxel"},
-		{"zoom", "Zoom", "Zoom"},
-		{"slack", "Salesforce", "Slack"},
-		{"redis", "Redis", "Redis"},
-		{"postgresql", "PostgreSQL", "PostgreSQL"},
-		{"mongodb", "MongoDB", "MongoDB"},
-		{"openssl", "OpenSSL", "OpenSSL"},
-		{"node.js", "Node.js", "Node.js"},
-		{"python", "Python", "Python"},
-		{"php", "PHP", "PHP"},
-		{"spring framework", "VMware", "Spring Framework"},
-		{"spring boot", "VMware", "Spring Boot"},
-		{"next.js", "Vercel", "Next.js"},
-		{"react", "Meta", "React"},
-		{"tensorflow", "Google", "TensorFlow"},
-		{"pytorch", "Meta", "PyTorch"},
-		{"veeam", "Veeam", "Veeam"},
-		{"ivanti", "Ivanti", "Ivanti"},
-		{"atlassian confluence", "Atlassian", "Confluence"},
-		{"atlassian jira", "Atlassian", "Jira"},
-		{"atlassian bitbucket", "Atlassian", "Bitbucket"},
-		{"hashicorp vault", "HashiCorp", "Vault"},
-		{"hashicorp terraform", "HashiCorp", "Terraform"},
-		{"hashicorp consul", "HashiCorp", "Consul"},
-		{"mattermost", "Mattermost", "Mattermost"},
-		{"nextcloud", "Nextcloud", "Nextcloud"},
-		{"typo3", "TYPO3", "TYPO3"},
-		{"roundcube", "Roundcube", "Roundcube"},
-		{"keycloak", "Red Hat", "Keycloak"},
-		{"traefik", "Traefik Labs", "Traefik"},
-		{"aruba", "HPE Aruba", "ArubaOS"},
-		{"tp-link", "TP-Link", "TP-Link"},
-		{"d-link", "D-Link", "D-Link"},
-		{"netgear", "NETGEAR", "NETGEAR"},
-		{"hikvision", "Hikvision", "Hikvision"},
-		{"dahua", "Dahua", "Dahua"},
-	}
-}
-
-// noiseWords are words that should never match as vendor or product from regex.
-var noiseWords = map[string]bool{
-	"the": true, "this": true, "that": true, "and": true, "with": true,
-	"from": true, "for": true, "not": true, "are": true, "was": true,
-	"were": true, "been": true, "being": true, "have": true, "has": true,
-	"had": true, "does": true, "did": true, "will": true, "would": true,
-	"could": true, "should": true, "may": true, "might": true, "can": true,
-	"via": true, "due": true, "which": true, "where": true, "when": true,
-	"how": true, "its": true, "certain": true, "some": true, "any": true,
-	"all": true, "each": true, "other": true, "such": true, "remote": true,
-	"local": true, "allow": true, "allows": true, "attacker": true,
-	"attackers": true, "user": true, "users": true, "malicious": true,
-	"crafted": true, "specially": true, "arbitrary": true, "code": true,
-	"execute": true, "execution": true, "denial": true, "service": true,
-	"cross-site": true, "scripting": true, "injection": true, "overflow": true,
-	"buffer": true, "stack": true, "heap": true, "null": true, "pointer": true,
-	"multiple": true, "several": true, "various": true, "version": true,
-	"versions": true, "before": true, "after": true, "prior": true,
-	"through": true, "unauthenticated": true, "authenticated": true,
-	"unauthorized": true, "improper": true, "insufficient": true,
-	"incorrect": true, "unspecified": true, "unknown": true, "exist": true,
-	"exists": true, "leading": true, "resulting": true, "cause": true,
-	"causes": true, "caused": true, "request": true, "data": true,
-}
-
-func (c *CVE) GetDetectedProduct() (vendor, product string) {
-	// 1. Primary: extract from CPE configuration data (highest confidence)
-	products := c.GetAffectedProducts()
-	if len(products) > 0 {
-		return products[0].Vendor, products[0].Product
-	}
-
-	// 2. Secondary: Check if we already have stored values (populated by LLM or manual entry)
-	if c.Vendor != "" && c.Product != "" {
-		return c.Vendor, c.Product
-	}
-
-	desc := c.Description
-
-	// 3. Tertiary: known vendor keyword matching on description (high confidence)
-	descLower := strings.ToLower(desc)
-	for _, kw := range knownVendorKeywords {
-		if strings.Contains(descLower, kw.keyword) {
-			return kw.vendor, kw.product
-		}
-	}
-
-	// 4. Quaternary: regex pattern matching on description (medium confidence)
-	for _, re := range descriptionPatterns {
-		matches := re.FindStringSubmatch(desc)
-		if len(matches) >= 3 {
-			v := strings.TrimRight(matches[1], ".'\"")
-			p := strings.TrimRight(matches[2], ".'\"")
-			if len(v) < 2 || len(p) < 2 {
-				continue
-			}
-			if noiseWords[strings.ToLower(v)] || noiseWords[strings.ToLower(p)] {
-				continue
-			}
-			return NormalizeName(v), NormalizeName(p)
-		}
-	}
-
-	return "", ""
-}
-
-func (c *CVE) GetCPEs() []string {
-	var cpes []string
+// GetLineage extracts related CVE IDs from the description, references, and OSINT data.
+func (c *CVE) GetLineage() []string {
 	seen := make(map[string]bool)
-	for _, config := range c.Configurations {
-		for _, node := range config.Nodes {
-			for _, match := range node.CPEMatch {
-				if match.Criteria != "" && !seen[match.Criteria] {
-					seen[match.Criteria] = true
-					cpes = append(cpes, match.Criteria)
-				}
+	var result []string
+
+	// Don't include self
+	seen[c.CVEID] = true
+
+	// Extract CVE IDs from description
+	cveRegex := regexp.MustCompile(`CVE-\d{4}-\d+`)
+	for _, match := range cveRegex.FindAllString(c.Description, -1) {
+		upper := strings.ToUpper(match)
+		if !seen[upper] {
+			seen[upper] = true
+			result = append(result, upper)
+		}
+	}
+
+	// Extract CVE IDs from references
+	for _, ref := range c.References {
+		for _, match := range cveRegex.FindAllString(ref, -1) {
+			upper := strings.ToUpper(match)
+			if !seen[upper] {
+				seen[upper] = true
+				result = append(result, upper)
 			}
 		}
 	}
-	return cpes
-}
 
-func (c *CVE) GetAffectedProducts() []AffectedProduct {
-	var products []AffectedProduct
-	seen := make(map[string]bool)
-	for _, config := range c.Configurations {
-		for _, node := range config.Nodes {
-			for _, match := range node.CPEMatch {
-				if match.Criteria != "" {
-					v, p, v_ver, t := ParseCPE(match.Criteria)
-					if v != "" && p != "" {
-						key := fmt.Sprintf("%s:%s:%s", v, p, t)
-						if !seen[key] {
-							seen[key] = true
-							versionStr := ""
-							if match.VersionStartIncluding != "" || match.VersionEndIncluding != "" || match.VersionStartExcluding != "" || match.VersionEndExcluding != "" {
-								var parts []string
-								if match.VersionStartIncluding != "" {
-									parts = append(parts, "≥"+match.VersionStartIncluding)
-								}
-								if match.VersionStartExcluding != "" {
-									parts = append(parts, ">"+match.VersionStartExcluding)
-								}
-								if match.VersionEndIncluding != "" {
-									parts = append(parts, "≤"+match.VersionEndIncluding)
-								}
-								if match.VersionEndExcluding != "" {
-									parts = append(parts, "<"+match.VersionEndExcluding)
-								}
-								versionStr = strings.Join(parts, " ")
-							} else if v_ver != "" && v_ver != "*" && v_ver != "-" {
-								versionStr = v_ver
-							}
-
-							products = append(products, AffectedProduct{
-								Vendor:  v,
-								Product: p,
-								Version: versionStr,
-								Type:    t,
-							})
+	// Extract from OSINT data related_cves
+	if c.OSINTData != nil {
+		if rc, ok := c.OSINTData["related_cves"]; ok {
+			if arr, ok := rc.([]interface{}); ok {
+				for _, item := range arr {
+					if s, ok := item.(string); ok {
+						upper := strings.ToUpper(s)
+						if !seen[upper] {
+							seen[upper] = true
+							result = append(result, upper)
 						}
 					}
 				}
 			}
 		}
 	}
-	if len(products) == 0 && c.Vendor != "" && c.Product != "" {
-		products = append(products, AffectedProduct{
-			Vendor:      c.Vendor,
-			Product:     c.Product,
-			Unconfirmed: true,
-			Type:        "a", // Default to application for heuristic matches
-		})
-	}
 
-	return products
+	return result
 }
 
-func ParseCPE(cpe string) (vendor, product, version, part string) {
-	if !strings.HasPrefix(cpe, "cpe:2.3:") {
+// ParseCPE parses a CPE 2.3 URI string and returns vendor, product, version, and type.
+// Vendor and product are capitalized and underscores replaced with spaces.
+func ParseCPE(cpe string) (vendor, product, version, cpeType string) {
+	parts := strings.Split(cpe, ":")
+	if len(parts) < 5 {
 		return "", "", "", ""
 	}
-	parts := strings.Split(cpe, ":")
-	if len(parts) >= 6 {
-		// cpe:2.3:part:vendor:product:version:...
-		t := parts[2]
-		v := parts[3]
-		p := parts[4]
-		ver := parts[5]
-		if ver == "*" || ver == "-" {
-			ver = ""
+	vendor = capitalize(strings.ReplaceAll(parts[3], "_", " "))
+	product = capitalize(strings.ReplaceAll(parts[4], "_", " "))
+	if len(parts) > 5 {
+		version = parts[5]
+		if version == "-" || version == "*" {
+			version = ""
 		}
-		return NormalizeName(v), NormalizeName(p), ver, t
 	}
-	if len(parts) >= 5 {
-		t := parts[2]
-		v := parts[3]
-		p := parts[4]
-		return NormalizeName(v), NormalizeName(p), "", t
+	if len(parts) > 6 {
+		cpeType = parts[6]
 	}
-	return "", "", "", ""
+	return vendor, product, version, cpeType
 }
 
-var nameAliases = map[string]string{
-	// Microsoft
-	"microsoft":             "Microsoft",
-	"microsoft_corp":        "Microsoft",
-	"microsoft_corporation": "Microsoft",
-	// Apple
-	"apple":      "Apple",
-	"apple_inc":  "Apple",
-	"apple_inc.": "Apple",
-	// Google
-	"google":      "Google",
-	"google_inc":  "Google",
-	"google_inc.": "Google",
-	"google_llc":  "Google",
-	"alphabet":    "Google",
-	// Linux
-	"linux":        "Linux",
-	"linux_kernel": "Linux Kernel",
-	"torvalds":     "Linux",
-	// Apache
-	"apache":                     "Apache",
-	"apache_software_foundation": "Apache",
-	// Red Hat / Fedora
-	"redhat":        "Red Hat",
-	"red_hat":       "Red Hat",
-	"fedoraproject": "Fedora",
-	// Debian / Ubuntu
-	"debian":        "Debian",
-	"debian_linux":  "Debian",
-	"canonical":     "Ubuntu",
-	"canonical_ltd": "Ubuntu",
-	// Oracle
-	"oracle":             "Oracle",
-	"oracle_corp":        "Oracle",
-	"oracle_corporation": "Oracle",
-	// IBM
-	"ibm":             "IBM",
-	"ibm_corporation": "IBM",
-	// Cisco
-	"cisco":             "Cisco",
-	"cisco_systems":     "Cisco",
-	"cisco_systems_inc": "Cisco",
-	// VMware / Broadcom
-	"vmware":     "VMware",
-	"vmware_inc": "VMware",
-	"broadcom":   "Broadcom",
-	// Fortinet
-	"fortinet":     "Fortinet",
-	"fortinet_inc": "Fortinet",
-	// Palo Alto Networks
-	"paloaltonetworks":   "Palo Alto Networks",
-	"palo_alto_networks": "Palo Alto Networks",
-	// Juniper
-	"juniper":          "Juniper",
-	"juniper_networks": "Juniper",
-	// Citrix
-	"citrix":         "Citrix",
-	"citrix_systems": "Citrix",
-	// Dell / HP / HPE
-	"dell":                       "Dell",
-	"dell_inc":                   "Dell",
-	"hp":                         "HP",
-	"hp_inc":                     "HP",
-	"hewlett_packard_enterprise": "HPE",
-	"hpe":                        "HPE",
-	// SAP
-	"sap":    "SAP",
-	"sap_se": "SAP",
-	// Mozilla
-	"mozilla":            "Mozilla",
-	"mozilla_foundation": "Mozilla",
-	// Samsung / Huawei
-	"samsung": "Samsung",
-	"huawei":  "Huawei",
-	// Atlassian
-	"atlassian":     "Atlassian",
-	"atlassian_pty": "Atlassian",
-	// F5
-	"f5":          "F5",
-	"f5_networks": "F5",
-	// SonicWall
-	"sonicwall":     "SonicWall",
-	"sonicwall_inc": "SonicWall",
-	// Sophos
-	"sophos":     "Sophos",
-	"sophos_ltd": "Sophos",
-	// Zyxel
-	"zyxel":                "Zyxel",
-	"zyxel_communications": "Zyxel",
-	// Network gear
-	"netgear": "NETGEAR",
-	"tp-link": "TP-Link",
-	"d-link":  "D-Link",
-	"dlink":   "D-Link",
-	// NAS / IoT
-	"synology":     "Synology",
-	"qnap":         "QNAP",
-	"qnap_systems": "QNAP",
-	"hikvision":    "Hikvision",
-	"dahua":        "Dahua",
-	// Cloud / DevOps
-	"hashicorp":     "HashiCorp",
-	"docker":        "Docker",
-	"docker_inc":    "Docker",
-	"gitlab":        "GitLab",
-	"github":        "GitHub",
-	"elastic":       "Elastic",
-	"elasticsearch": "Elastic",
-	"grafana":       "Grafana",
-	"jenkins":       "Jenkins",
-	// Security vendors
-	"ivanti":      "Ivanti",
-	"ivanti_inc":  "Ivanti",
-	"veeam":       "Veeam",
-	"trendmicro":  "Trend Micro",
-	"trend_micro": "Trend Micro",
-	"mcafee":      "McAfee",
-	"kaspersky":   "Kaspersky",
-	"crowdstrike": "CrowdStrike",
-	"symantec":    "Symantec",
-	// CMS
-	"wordpress":  "WordPress",
-	"automattic": "WordPress",
-	"drupal":     "Drupal",
-	"joomla":     "Joomla",
-	"typo3":      "TYPO3",
-	// Databases
-	"postgresql":  "PostgreSQL",
-	"mongodb":     "MongoDB",
-	"mongodb_inc": "MongoDB",
-	"redis":       "Redis",
-	"redis_ltd":   "Redis",
-	// Other
-	"openssl":                    "OpenSSL",
-	"openssl_project":            "OpenSSL",
-	"nodejs":                     "Node.js",
-	"node.js":                    "Node.js",
-	"python":                     "Python",
-	"python_software_foundation": "Python",
-	"php":                        "PHP",
-	"php_group":                  "PHP",
-	"zoom":                       "Zoom",
-	"zoom_video_communications":  "Zoom",
-	"mattermost":                 "Mattermost",
-	"nextcloud":                  "Nextcloud",
-	"roundcube":                  "Roundcube",
-	"nginx":                      "Nginx",
-}
-
-// acronyms contains words that should be preserved as-is (all uppercase or special casing).
-var acronyms = map[string]string{
-	"ibm": "IBM", "sap": "SAP", "hp": "HP", "hpe": "HPE",
-	"aws": "AWS", "gcp": "GCP", "api": "API", "ssl": "SSL", "tls": "TLS",
-	"ssh": "SSH", "dns": "DNS", "tcp": "TCP", "udp": "UDP", "ftp": "FTP",
-	"rce": "RCE", "xss": "XSS", "csrf": "CSRF", "ssrf": "SSRF", "sql": "SQL",
-	"nsx": "NSX", "asa": "ASA", "ios": "IOS", "adc": "ADC",
-	"pan-os": "PAN-OS", "esxi": "ESXi", "idrac": "iDRAC", "ilo": "iLO",
-	"vmware": "VMware", "macos": "macOS", "ipados": "iPadOS",
-	"webex": "WebEx", "gitlab": "GitLab", "github": "GitHub",
-	"wordpress": "WordPress", "javascript": "JavaScript", "typescript": "TypeScript",
-	"postgresql": "PostgreSQL", "mongodb": "MongoDB", "openssl": "OpenSSL",
-	"activemq": "ActiveMQ", "netweaver": "NetWeaver", "qradar": "QRadar",
-	"fortios": "FortiOS", "fortigate": "FortiGate", "fortimanager": "FortiManager",
-	"fortianalyzer": "FortiAnalyzer", "forticlient": "FortiClient",
-	"fortiweb": "FortiWeb", "fortimail": "FortiMail", "fortisiem": "FortiSIEM",
-	"fortiproxy": "FortiProxy", "fortiswitch": "FortiSwitch", "fortiap": "FortiAP",
-	"sonicwall": "SonicWall", "netscaler": "NetScaler",
-	"log4j": "Log4j", "vcenter": "vCenter",
-	"qnap": "QNAP", "netgear": "NETGEAR",
-}
-
-func NormalizeName(name string) string {
-	low := strings.ToLower(name)
-	if alias, ok := nameAliases[low]; ok {
-		return alias
-	}
-	// Also check with underscores replaced
-	lowFlat := strings.ToLower(strings.ReplaceAll(name, "_", " "))
-	lowFlat = strings.TrimSpace(lowFlat)
-	if alias, ok := nameAliases[strings.ReplaceAll(lowFlat, " ", "_")]; ok {
-		return alias
-	}
-	return capitalize(strings.ReplaceAll(name, "_", " "))
-}
-
+// capitalize capitalizes the first letter of each word in the string.
 func capitalize(s string) string {
 	if s == "" {
 		return ""
 	}
 	words := strings.Fields(s)
-	for i, w := range words {
-		low := strings.ToLower(w)
-		// Check if the word is a known acronym or special-cased word
-		if acr, ok := acronyms[low]; ok {
-			words[i] = acr
-		} else if len(w) > 0 {
-			words[i] = strings.ToUpper(w[0:1]) + strings.ToLower(w[1:])
+	for i, word := range words {
+		if len(word) > 0 {
+			words[i] = strings.ToUpper(word[:1]) + strings.ToLower(word[1:])
 		}
 	}
 	return strings.Join(words, " ")
 }
 
-func (c *CVE) GetLineage() []string {
-	re := regexp.MustCompile(`(?i)CVE-\d{4}-\d{4,}`)
-	unique := make(map[string]bool)
-	var lineage []string
-
-	process := func(text string) {
-		matches := re.FindAllString(text, -1)
-		for _, m := range matches {
-			m = strings.ToUpper(m)
-			if m != strings.ToUpper(c.CVEID) && !unique[m] {
-				unique[m] = true
-				lineage = append(lineage, m)
-			}
-		}
-	}
-
-	process(c.Description)
-	for _, ref := range c.References {
-		process(ref)
-	}
-
-	// Check OSINT data if available
-	if c.OSINTData != nil {
-		if related, ok := c.OSINTData["related_cves"].([]interface{}); ok {
-			for _, r := range related {
-				if s, ok := r.(string); ok {
-					process(s)
+// GetCPEs returns a deduplicated list of CPE criteria strings from the CVE configurations.
+func (c *CVE) GetCPEs() []string {
+	seen := make(map[string]bool)
+	var result []string
+	for _, config := range c.Configurations {
+		for _, node := range config.Nodes {
+			for _, match := range node.CPEMatch {
+				if match.Criteria != "" && !seen[match.Criteria] {
+					seen[match.Criteria] = true
+					result = append(result, match.Criteria)
 				}
 			}
 		}
 	}
-
-	return lineage
+	return result
 }
 
-type CVEConfiguration struct {
-	Nodes []ConfigNode `json:"nodes"`
-}
-
-type ConfigNode struct {
-	Operator string     `json:"operator"`
-	Negate   bool       `json:"negate"`
-	CPEMatch []CPEMatch `json:"cpeMatch"`
-}
-
-type CPEMatch struct {
-	Vulnerable            bool   `json:"vulnerable"`
-	Criteria              string `json:"criteria"`
-	MatchCriteriaID       string `json:"matchCriteriaId"`
-	VersionStartIncluding string `json:"versionStartIncluding"`
-	VersionStartExcluding string `json:"versionStartExcluding"`
-	VersionEndIncluding   string `json:"versionEndIncluding"`
-	VersionEndExcluding   string `json:"versionEndExcluding"`
-}
-
-type Team struct {
-	ID         int       `json:"id"`
-	Name       string    `json:"name"`
-	InviteCode string    `json:"-"`
-	CreatedAt  time.Time `json:"created_at"`
-}
-
+// TeamWithInviteCode is a Team that includes the invite code in JSON output.
 type TeamWithInviteCode struct {
-	Team
+	ID         int    `json:"id"`
+	Name       string `json:"name"`
 	InviteCode string `json:"invite_code"`
+	CreatedAt  string `json:"created_at,omitempty"`
 }
 
-func NewTeamWithInviteCode(team Team) TeamWithInviteCode {
-	return TeamWithInviteCode{Team: team, InviteCode: team.InviteCode}
+// NewTeamWithInviteCode creates a TeamWithInviteCode from a Team.
+func NewTeamWithInviteCode(t Team) TeamWithInviteCode {
+	return TeamWithInviteCode{
+		ID:         t.ID,
+		Name:       t.Name,
+		InviteCode: t.InviteCode,
+		CreatedAt:  t.CreatedAt.Format(time.RFC3339),
+	}
 }
 
-type TeamMember struct {
-	TeamID   int       `json:"team_id"`
-	UserID   int       `json:"user_id"`
-	Role     string    `json:"role"` // owner, admin, member
-	JoinedAt time.Time `json:"joined_at"`
+// NormalizeName normalizes a name string by trimming whitespace and capitalizing words.
+func NormalizeName(name string) string {
+	return capitalize(strings.TrimSpace(name))
 }
 
-type UserSubscription struct {
-	ID                int       `json:"id"`
-	UserID            int       `json:"user_id"`
-	TeamID            *int      `json:"team_id"`
-	Keyword           string    `json:"keyword"`
-	MinSeverity       float64   `json:"min_severity"`
-	WebhookURL        string    `json:"-"`
-	SlackWebhookURL   string    `json:"-"`
-	TeamsWebhookURL   string    `json:"-"`
-	EnableEmail       bool      `json:"enable_email"`
-	EnableWebhook     bool      `json:"enable_webhook"`
-	EnableSlack       bool      `json:"enable_slack"`
-	EnableTeams       bool      `json:"enable_teams"`
-	EnableBrowserPush bool      `json:"enable_browser_push"`
-	FilterLogic       string    `json:"filter_logic"`
-	AggregationMode   string    `json:"aggregation_mode"` // instant, hourly, daily
-	CreatedAt         time.Time `json:"created_at"`
+// Scan implements the sql.Scanner interface for CVEConfigurations JSONB.
+func (c *CVEConfigurations) Scan(value interface{}) error {
+	if value == nil {
+		*c = nil
+		return nil
+	}
+	b, ok := value.([]byte)
+	if !ok {
+		return fmt.Errorf("type assertion to []byte failed")
+	}
+	return json.Unmarshal(b, c)
 }
 
-type BrowserPushSubscription struct {
-	ID        int       `json:"id"`
-	UserID    int       `json:"user_id"`
-	Endpoint  string    `json:"endpoint"`
-	P256dh    string    `json:"p256dh"`
-	Auth      string    `json:"auth"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-type NotificationDeliveryLog struct {
-	ID             int       `json:"id"`
-	UserID         int       `json:"user_id"`
-	SubscriptionID int       `json:"subscription_id"`
-	CVEID          int       `json:"cve_id"`
-	Channel        string    `json:"channel"` // email, webhook, slack, teams, browser
-	Status         string    `json:"status"`  // success, failure
-	ErrorMessage   string    `json:"-"`
-	DeliveryTime   time.Time `json:"delivery_time"`
-}
-
-type UserCVEStatus struct {
-	UserID    int       `json:"user_id"`
-	TeamID    *int      `json:"team_id"`
-	CVEID     int       `json:"cve_id"`
-	Status    string    `json:"status"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-type AlertHistory struct {
-	ID     int       `json:"id"`
-	UserID int       `json:"user_id"`
-	CVEID  int       `json:"cve_id"`
-	SentAt time.Time `json:"sent_at"`
-}
-
-type Asset struct {
-	ID        int       `json:"id"`
-	UserID    int       `json:"user_id"`
-	TeamID    *int      `json:"team_id"`
-	Name      string    `json:"name"`
-	Type      string    `json:"type"` // e.g., 'Server', 'Software', 'Network'
-	Priority  string    `json:"priority"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-type AssetKeyword struct {
-	ID      int    `json:"id"`
-	AssetID int    `json:"asset_id"`
-	Keyword string `json:"keyword"`
-}
-
-type CVENote struct {
-	UserID    int       `json:"user_id"`
-	TeamID    *int      `json:"team_id"`
-	CVEID     int       `json:"cve_id"`
-	Notes     string    `json:"notes"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-type ActivityLog struct {
-	ID                 int        `json:"id"`
-	UserID             int        `json:"user_id"`
-	ActivityType       string     `json:"activity_type"`
-	Description        string     `json:"description"`
-	IPAddress          string     `json:"-"`
-	UserAgent          string     `json:"-"`
-	CreatedAt          time.Time  `json:"created_at"`
-	RetentionExpiresAt *time.Time `json:"retention_expires_at,omitempty"`
-	DeletedAt          *time.Time `json:"deleted_at,omitempty"`
-}
-
-type ThreatAssociation struct {
-	ID         int       `json:"id"`
-	CVEID      string    `json:"cve_id"`
-	EntityName string    `json:"entity_name"`
-	EntityType string    `json:"entity_type"` // "threat_actor" or "ransomware"
-	Source     string    `json:"source"`
-	CreatedAt  time.Time `json:"created_at"`
-}
-type AssetWithKeywords struct {
-	Asset
-	Keywords []string `json:"keywords"`
-	TeamName string   `json:"team_name"`
+// Value implements the driver.Valuer interface for CVEConfigurations JSONB.
+func (c CVEConfigurations) Value() (driver.Value, error) {
+	if c == nil {
+		return nil, nil
+	}
+	return json.Marshal(c)
 }

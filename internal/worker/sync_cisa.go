@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"cve-tracker/internal/models"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -16,7 +17,14 @@ var defaultCISAKEVURL = "https://www.cisa.gov/sites/default/files/feeds/known_ex
 type CISAKEVResponse struct {
 	Vulnerabilities []struct {
 		CVEID                      string `json:"cveID"`
+		VulnerabilityName          string `json:"vulnerabilityName"`
+		DateAdded                  string `json:"dateAdded"`
+		ShortDescription           string `json:"shortDescription"`
+		RequiredAction             string `json:"requiredAction"`
+		DueDate                    string `json:"dueDate"`
 		KnownRansomwareCampaignUse string `json:"knownRansomwareCampaignUse"`
+		VendorProject              string `json:"vendorProject"`
+		Product                    string `json:"product"`
 	} `json:"vulnerabilities"`
 }
 
@@ -104,10 +112,21 @@ func (w *Worker) fetchFromCISAKEV(ctx context.Context) {
 		}
 		ids := make([]string, 0, end-i)
 		ransomIds := make([]string, 0)
+		kevDataMap := make(map[string]models.JSONBMap, end-i)
 		for _, v := range kevResp.Vulnerabilities[i:end] {
 			ids = append(ids, v.CVEID)
 			if strings.EqualFold(v.KnownRansomwareCampaignUse, "known") {
 				ransomIds = append(ransomIds, v.CVEID)
+			}
+			kevDataMap[v.CVEID] = models.JSONBMap{
+				"vulnerability_name": v.VulnerabilityName,
+				"date_added":         v.DateAdded,
+				"short_description":  v.ShortDescription,
+				"required_action":    v.RequiredAction,
+				"due_date":           v.DueDate,
+				"known_ransomware":   v.KnownRansomwareCampaignUse,
+				"vendor_project":     v.VendorProject,
+				"product":            v.Product,
 			}
 		}
 		_, err := tx.Exec(ctx, "UPDATE cves SET cisa_kev = true WHERE cve_id = ANY($1)", ids)
@@ -120,6 +139,14 @@ func (w *Worker) fetchFromCISAKEV(ctx context.Context) {
 			if err != nil {
 				slog.Error("Worker: [ERROR] Failed to update Ransomware batch", "error", err)
 				return
+			}
+		}
+		// Update cisa_kev_data for each CVE in the batch
+		for _, cveID := range ids {
+			kevData := kevDataMap[cveID]
+			_, err = tx.Exec(ctx, "UPDATE cves SET cisa_kev_data = $1 WHERE cve_id = $2", kevData, cveID)
+			if err != nil {
+				slog.Error("Worker: [ERROR] Failed to update KEV data for CVE", "cve_id", cveID, "error", err)
 			}
 		}
 	}

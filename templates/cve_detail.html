@@ -12,25 +12,38 @@
     <!-- Header Section -->
     <header class="flex flex-col md:flex-row justify-between gap-8 items-start">
         <div class="space-y-4 flex-1">
-            <div class="flex items-center gap-4">
+            <div class="flex items-center gap-4 flex-wrap">
                 <h1 class="text-6xl font-black text-white tracking-tighter">{{.CVE.CVEID}}</h1>
+                {{if .CVE.Priority}}<span class="px-3 py-1 rounded-full {{if eq .CVE.Priority " P0"}}bg-red-600/20
+                    text-red-500 border border-red-600/20{{else if eq .CVE.Priority "P1" }}bg-orange-500/20
+                    text-orange-400 border border-orange-500/20{{else if eq .CVE.Priority "P2" }}bg-yellow-500/20
+                    text-yellow-400 border border-yellow-500/20{{else}}bg-blue-500/20 text-blue-400 border
+                    border-blue-500/20{{end}} text-[10px] font-black uppercase
+                    tracking-widest">{{.CVE.Priority}}</span>{{end}}
                 {{if .CVE.Vendor}}
-                <span class="px-3 py-1 rounded-full bg-tertiary/20 text-tertiary border border-tertiary/20 text-[10px] font-black uppercase tracking-widest">{{.CVE.Vendor}}</span>
+                <span
+                    class="px-3 py-1 rounded-full bg-tertiary/20 text-tertiary border border-tertiary/20 text-[10px] font-black uppercase tracking-widest">{{.CVE.Vendor}}</span>
                 {{end}}
                 {{if .CVE.CISAKEV}}
-                <span class="px-3 py-1 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/20 text-[10px] font-black uppercase tracking-widest animate-pulse">CISA KEV</span>
+                <span
+                    class="px-3 py-1 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/20 text-[10px] font-black uppercase tracking-widest animate-pulse">CISA
+                    KEV</span>
                 {{end}}
                 {{if .CVE.CISARansomware}}
-                <span class="px-3 py-1 rounded-full bg-red-600/20 text-red-500 border border-red-600/20 text-[10px] font-black uppercase tracking-widest animate-pulse flex items-center gap-1.5 shadow-[0_0_15px_rgba(220,38,38,0.2)]">
+                <span
+                    class="px-3 py-1 rounded-full bg-red-600/20 text-red-500 border border-red-600/20 text-[10px] font-black uppercase tracking-widest animate-pulse flex items-center gap-1.5 shadow-[0_0_15px_rgba(220,38,38,0.2)]">
                     <span class="material-symbols-outlined text-[14px]" aria-hidden="true">dangerous</span>
                     Ransomware Active
                 </span>
                 {{end}}
                 {{if gt .CVE.GreyNoiseHits 0}}
-                <span class="px-3 py-1 rounded-full bg-red-500/20 text-red-400 border border-red-500/20 text-[10px] font-black uppercase tracking-widest animate-bounce">Active Exploitation</span>
+                <span
+                    class="px-3 py-1 rounded-full bg-red-500/20 text-red-400 border border-red-500/20 text-[10px] font-black uppercase tracking-widest animate-bounce">Active
+                    Exploitation</span>
                 {{end}}
                 {{if .CVE.ExploitAvailable}}
-                <span class="px-3 py-1 rounded-full bg-red-600/20 text-red-500 border border-red-600/20 text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-[0_0_15px_rgba(220,38,38,0.2)]">
+                <span
+                    class="px-3 py-1 rounded-full bg-red-600/20 text-red-500 border border-red-600/20 text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-[0_0_15px_rgba(220,38,38,0.2)]">
                     <span class="material-symbols-outlined text-[14px]" aria-hidden="true">bug_report</span>
                     Exploit Available
                 </span>
@@ -39,20 +52,56 @@
             <p class="text-xl text-gray-400 leading-relaxed max-w-3xl">
                 {{.CVE.Description}}
             </p>
+            <div
+                class="flex flex-wrap items-center gap-3 text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                <span>{{exploitationSummary .CVE.CISAKEV .CVE.CISARansomware .CVE.ExploitAvailable .CVE.GreyNoiseHits
+                    .CVE.GitHubPoCCount}}</span>
+            </div>
+            <div
+                class="flex flex-wrap items-center gap-4 text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                {{if not .CVE.PublishedDate.IsZero}}<span class="flex items-center gap-1.5"><span
+                        class="material-symbols-outlined text-[12px]" aria-hidden="true">schedule</span>Published
+                    {{daysSince .CVE.PublishedDate}}</span>{{end}}
+                {{if not .CVE.UpdatedDate.IsZero}}<span class="flex items-center gap-1.5"><span
+                        class="material-symbols-outlined text-[12px]" aria-hidden="true">update</span>Updated
+                    {{daysSince .CVE.UpdatedDate}}</span>{{end}}
+            </div>
         </div>
-        <div class="glass p-8 rounded-[2.5rem] border border-white/10 flex flex-col items-center justify-center min-w-[200px] text-center space-y-2">
+        <div
+            class="glass p-8 rounded-[2.5rem] border border-white/10 flex flex-col items-center justify-center min-w-[200px] text-center space-y-2">
             <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">CVSS Score</span>
             <div class="text-6xl font-black {{severityColor .CVE.CVSSScore}} tracking-tighter">
                 {{printf "%.1f" .CVE.CVSSScore}}
+                <span
+                    class="text-[10px] font-black uppercase tracking-widest {{if ge .CVE.CVSSScore 9.0}}text-red-400{{else if ge .CVE.CVSSScore 7.0}}text-orange-400{{else if ge .CVE.CVSSScore 4.0}}text-yellow-400{{else}}text-blue-400{{end}}">{{cvssSeverityLabel
+                    .CVE.CVSSScore}}</span>
             </div>
-            <div id="cvss-vector" class="flex flex-wrap justify-center gap-1.5 mt-2" data-vector="{{.CVE.VectorString}}">
+            <div id="cvss-vector" class="flex flex-wrap justify-center gap-1.5 mt-2"
+                data-vector="{{.CVE.VectorString}}">
                 <!-- Populated by JS -->
-                <div class="text-[9px] font-mono text-gray-500 bg-white/5 px-3 py-1 rounded-full animate-pulse">Parsing Vector...</div>
+                <div class="text-[9px] font-mono text-gray-500 bg-white/5 px-3 py-1 rounded-full animate-pulse">Parsing
+                    Vector...</div>
             </div>
             <!-- Tactical Path Visual -->
-            <div id="tactical-path" class="flex items-center justify-center gap-1 mt-4 opacity-0 transition-opacity duration-500"></div>
+            <div id="tactical-path"
+                class="flex items-center justify-center gap-1 mt-4 opacity-0 transition-opacity duration-500"></div>
         </div>
     </header>
+
+    <!-- CISA KEV Details -->
+    {{if .CVE.CISAKEV}}{{if .CVE.CISAKEVData}}
+    <div class="mt-3 p-3 bg-red-500/5 rounded border border-red-500/20 text-sm">
+        {{with index .CVE.CISAKEVData "vulnerability_name"}}<div class="font-semibold text-red-300 mb-1">{{.}}</div>
+        {{end}}
+        {{with index .CVE.CISAKEVData "date_added"}}<div class="text-gray-400">Added to KEV: <span
+                class="text-white">{{.}}</span></div>{{end}}
+        {{with index .CVE.CISAKEVData "required_action"}}<div class="text-gray-400 mt-1">Required Action: <span
+                class="text-amber-300">{{.}}</span></div>{{end}}
+        {{with index .CVE.CISAKEVData "due_date"}}<div class="text-gray-400 mt-1">Compliance Deadline: <span
+                class="text-red-300 font-semibold">{{.}}</span></div>{{end}}
+        {{with index .CVE.CISAKEVData "short_description"}}<div class="text-gray-400 mt-2 italic">{{.}}</div>{{end}}
+    </div>
+    {{end}}{{end}}
 
     <!-- Vendor Advisories -->
     {{$vlinks := vendorLinks .CVE.CVEID .CVE.Description}}
@@ -64,10 +113,13 @@
         </h2>
         <div class="flex flex-wrap gap-4">
             {{range $vlinks}}
-            <a href="{{.url}}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-3 px-6 py-4 glass border border-white/5 rounded-2xl hover:border-primary/50 hover:bg-white/[0.02] transition-all group">
-                <span class="material-symbols-outlined text-primary group-hover:scale-110 transition-transform" aria-hidden="true">{{.icon}}</span>
+            <a href="{{.url}}" target="_blank" rel="noopener noreferrer"
+                class="flex items-center gap-3 px-6 py-4 glass border border-white/5 rounded-2xl hover:border-primary/50 hover:bg-white/[0.02] transition-all group">
+                <span class="material-symbols-outlined text-primary group-hover:scale-110 transition-transform"
+                    aria-hidden="true">{{.icon}}</span>
                 <div class="flex flex-col">
-                    <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Official Resource</span>
+                    <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Official
+                        Resource</span>
                     <span class="text-sm font-bold text-white">{{.name}}</span>
                 </div>
                 <span class="material-symbols-outlined text-xs text-gray-600 ml-4" aria-hidden="true">open_in_new</span>
@@ -89,8 +141,13 @@
                     <span class="text-[10px] font-bold text-gray-500 uppercase">EPSS Score</span>
                     <span class="text-sm font-mono text-white">{{printf "%.4f" .CVE.EPSSScore}}</span>
                 </div>
-                <div class="w-full h-1 bg-white/5 rounded-full overflow-hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{round (multiply .CVE.EPSSScore 100)}}">
-                    <div class="h-full bg-primary epss-bar" data-width="{{printf "%.2f" (multiply .CVE.EPSSScore 100.0)}}"></div>
+                <div class="text-[9px] text-gray-500 mt-1">{{epssPercentileLabel .CVE.EPSSScore}}</div>
+                {{if gt .CVE.EPSSPercentile 0.0}}<div class="text-xs text-gray-400 mt-1">{{epssPercentileLabel
+                    .CVE.EPSSScore}} · Percentile: {{printf "%.1f" .CVE.EPSSPercentile}}%</div>{{end}}
+                <div class="w-full h-1 bg-white/5 rounded-full overflow-hidden" role="progressbar" aria-valuemin="0"
+                    aria-valuemax="100" aria-valuenow="{{round (multiply .CVE.EPSSScore 100)}}">
+                    <div class="h-full bg-primary epss-bar" data-width="{{printf " %.2f" (multiply .CVE.EPSSScore
+                        100.0)}}"></div>
                     <span class="sr-only">EPSS score: {{round (multiply .CVE.EPSSScore 100)}}%</span>
                 </div>
             </div>
@@ -114,8 +171,20 @@
             </div>
             <div class="flex items-center gap-4">
                 <div class="text-4xl font-black text-white">{{.CVE.GitHubPoCCount}}</div>
-                <div class="text-[10px] font-bold text-gray-500 uppercase leading-none">Known PoC Repositories on GitHub</div>
+                <div class="text-[10px] font-bold text-gray-500 uppercase leading-none">Known PoC Repositories on GitHub
+                </div>
             </div>
+            {{if .CVE.GitHubPoCRepos}}
+            <div class="mt-2 space-y-1">
+                {{range .CVE.GitHubPoCRepos}}
+                <a href="{{.URL}}" target="_blank" rel="noopener"
+                    class="block text-sm text-blue-400 hover:text-blue-300">
+                    <span class="material-symbols-outlined text-sm align-middle">code</span>
+                    {{.Name}} <span class="text-gray-500 text-xs">★ {{.Stars}}</span> ↗
+                </a>
+                {{end}}
+            </div>
+            {{end}}
         </div>
 
         <div class="glass p-8 rounded-3xl border border-white/10 space-y-4">
@@ -125,10 +194,84 @@
             </div>
             <div class="flex items-center gap-4">
                 <div class="text-4xl font-black text-white">{{.CVE.GreyNoiseHits}}</div>
-                <div class="text-[10px] font-bold text-gray-500 uppercase leading-none">Unique IPs scanning via GreyNoise</div>
+                <div class="text-[10px] font-bold text-gray-500 uppercase leading-none">Unique IPs scanning via
+                    GreyNoise</div>
             </div>
+            {{if .CVE.GreyNoiseClass}}<div class="mt-2"><span class="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest {{if eq .CVE.GreyNoiseClass "malicious"}}bg-red-500/20 text-red-400 border border-red-500/20{{else if eq .CVE.GreyNoiseClass "benign"}}bg-green-500/20 text-green-400 border border-green-500/20{{else}}bg-gray-500/20 text-gray-400 border border-gray-500/20{{end}}">{{.CVE.GreyNoiseClass}}</span>{{if not (isTimeZero .CVE.GreyNoiseLastUpdated)}}<span class="text-[8px] text-gray-600 ml-1.5">{{daysSince .CVE.GreyNoiseLastUpdated}}</span>{{end}}</div>{{end}}
         </div>
     </div>
+
+    <!-- OSINT / Community Intelligence -->
+    {{if .CVE.OSINTData}}
+    <section class="space-y-6">
+        <h2 class="text-2xl font-black text-white flex items-center gap-3">
+            <span class="material-symbols-outlined text-primary" aria-hidden="true">forum</span>
+            Community Intelligence
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {{if isset .CVE.OSINTData "hn_mentions"}}<div
+                class="glass p-6 rounded-2xl border border-white/10 space-y-2">
+                <div class="flex items-center gap-2 text-orange-400"><span class="material-symbols-outlined text-[16px]"
+                        aria-hidden="true">newspaper</span><span
+                        class="text-[10px] font-black uppercase tracking-widest">Hacker News</span></div>
+                <div class="text-3xl font-black text-white">{{index .CVE.OSINTData "hn_mentions"}}</div>
+                <div class="text-[10px] text-gray-500">Mentions</div>
+            </div>{{end}}
+            {{if isset .CVE.OSINTData "reddit_mentions"}}<div
+                class="glass p-6 rounded-2xl border border-white/10 space-y-2">
+                <div class="flex items-center gap-2 text-sky-400"><span class="material-symbols-outlined text-[16px]"
+                        aria-hidden="true">chat</span><span
+                        class="text-[10px] font-black uppercase tracking-widest">Reddit</span></div>
+                <div class="text-3xl font-black text-white">{{index .CVE.OSINTData "reddit_mentions"}}</div>
+                <div class="text-[10px] text-gray-500">Mentions</div>
+            </div>{{end}}
+            {{if isset .CVE.OSINTData "heat_score"}}<div class="glass p-6 rounded-2xl border border-white/10 space-y-2">
+                <div class="flex items-center gap-2 text-red-400"><span class="material-symbols-outlined text-[16px]"
+                        aria-hidden="true">local_fire_department</span><span
+                        class="text-[10px] font-black uppercase tracking-widest">Heat Score</span></div>
+                <div class="text-3xl font-black text-white">{{printf "%.0f" (toFloat (index .CVE.OSINTData
+                    "heat_score"))}}</div>
+                <div class="w-full h-1 bg-white/5 rounded-full overflow-hidden mt-1">
+                    <div class="h-full bg-gradient-to-r from-yellow-500 to-red-500 rounded-full"
+                        style="width: {{printf " %.0f" (toFloat (index .CVE.OSINTData "heat_score" ))}}%"></div>
+                </div>
+            </div>{{end}}
+        </div>
+        {{if isset .CVE.OSINTData "similar_threats"}}
+        {{$similar := index .CVE.OSINTData "similar_threats"}}
+        {{if $similar}}
+        <div class="mt-4">
+            <h3 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-3 flex items-center gap-2"><span
+                    class="material-symbols-outlined text-[14px]" aria-hidden="true">link</span>Similar Threats</h3>
+            <div class="flex flex-wrap gap-2">{{$list := $similar}}{{range $list}}<a href="/cve/{{.}}"
+                    class="px-3 py-1.5 glass border border-white/5 rounded-lg text-xs font-mono text-gray-400 hover:text-primary hover:border-primary/30 transition-all">{{.}}</a>{{end}}
+            </div>
+        </div>
+        {{end}}
+        {{end}}
+    </section>
+    {{end}}
+
+    <!-- InTheWild Exploitation Data -->
+    {{if .CVE.InTheWildData}}
+    <section class="space-y-6">
+        <h2 class="text-2xl font-black text-white flex items-center gap-3">
+            <span class="material-symbols-outlined text-red-400" aria-hidden="true">crisis_alert</span>
+            InTheWild Exploitation Data
+            {{if not (isTimeZero .CVE.InTheWildLastUpdated)}}<span
+                class="text-[9px] font-bold text-gray-500 normal-case tracking-normal">last updated {{daysSince
+                .CVE.InTheWildLastUpdated}}</span>{{end}}
+        </h2>
+        <div class="glass p-6 rounded-2xl border border-white/10">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {{range $key, $val := .CVE.InTheWildData}}<div class="text-center p-3 bg-white/5 rounded-xl">
+                    <div class="text-lg font-black text-white">{{printf "%v" $val}}</div>
+                    <div class="text-[9px] font-bold text-gray-500 uppercase tracking-wider mt-1">{{$key}}</div>
+                </div>{{end}}
+            </div>
+        </div>
+    </section>
+    {{end}}
 
     <!-- Threat Actors & Ransomware Campaigns Section -->
     {{if .ThreatAssociations}}
@@ -147,24 +290,29 @@
                 <div class="space-y-3">
                     {{$hasActors := false}}
                     {{range .ThreatAssociations}}
-                        {{if eq .EntityType "threat_actor"}}
-                            {{$hasActors = true}}
-                            <div class="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5 hover:border-primary/30 transition-all">
-                                <div class="flex items-center gap-3">
-                                    <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                                        <span class="material-symbols-outlined" aria-hidden="true">person_pin</span>
-                                    </div>
-                                    <div>
-                                        <div class="text-sm font-bold text-white">{{.EntityName}}</div>
-                                        <div class="text-[9px] font-black uppercase tracking-widest text-gray-500">Threat Actor Group</div>
-                                    </div>
-                                </div>
-                                <span class="px-2.5 py-1 rounded bg-white/5 border border-white/10 text-[9px] font-mono text-gray-400">{{.Source}}</span>
+                    {{if eq .EntityType "threat_actor"}}
+                    {{$hasActors = true}}
+                    <div
+                        class="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5 hover:border-primary/30 transition-all">
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                                <span class="material-symbols-outlined" aria-hidden="true">person_pin</span>
                             </div>
-                        {{end}}
+                            <div>
+                                <div class="text-sm font-bold text-white">{{.EntityName}}</div>
+                                <div class="text-[9px] font-black uppercase tracking-widest text-gray-500">Threat Actor
+                                    Group</div>
+                            </div>
+                        </div>
+                        <span
+                            class="px-2.5 py-1 rounded bg-white/5 border border-white/10 text-[9px] font-mono text-gray-400">{{.Source}}</span>
+                    </div>
+                    {{end}}
                     {{end}}
                     {{if not $hasActors}}
-                        <p class="text-xs text-gray-500 italic">No specific threat actor groups associated via OSINT yet.</p>
+                    <p class="text-xs text-gray-500 italic">No specific threat actor groups associated via OSINT yet.
+                    </p>
                     {{end}}
                 </div>
             </div>
@@ -178,24 +326,28 @@
                 <div class="space-y-3">
                     {{$hasRansom := false}}
                     {{range .ThreatAssociations}}
-                        {{if eq .EntityType "ransomware"}}
-                            {{$hasRansom = true}}
-                            <div class="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5 hover:border-red-500/30 transition-all">
-                                <div class="flex items-center gap-3">
-                                    <div class="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-500">
-                                        <span class="material-symbols-outlined" aria-hidden="true">enhanced_encryption</span>
-                                    </div>
-                                    <div>
-                                        <div class="text-sm font-bold text-white">{{.EntityName}}</div>
-                                        <div class="text-[9px] font-black uppercase tracking-widest text-gray-500">Ransomware Strain</div>
-                                    </div>
-                                </div>
-                                <span class="px-2.5 py-1 rounded bg-white/5 border border-white/10 text-[9px] font-mono text-gray-400">{{.Source}}</span>
+                    {{if eq .EntityType "ransomware"}}
+                    {{$hasRansom = true}}
+                    <div
+                        class="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5 hover:border-red-500/30 transition-all">
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-500">
+                                <span class="material-symbols-outlined" aria-hidden="true">enhanced_encryption</span>
                             </div>
-                        {{end}}
+                            <div>
+                                <div class="text-sm font-bold text-white">{{.EntityName}}</div>
+                                <div class="text-[9px] font-black uppercase tracking-widest text-gray-500">Ransomware
+                                    Strain</div>
+                            </div>
+                        </div>
+                        <span
+                            class="px-2.5 py-1 rounded bg-white/5 border border-white/10 text-[9px] font-mono text-gray-400">{{.Source}}</span>
+                    </div>
+                    {{end}}
                     {{end}}
                     {{if not $hasRansom}}
-                        <p class="text-xs text-gray-500 italic">No specific ransomware strains associated via OSINT yet.</p>
+                    <p class="text-xs text-gray-500 italic">No specific ransomware strains associated via OSINT yet.</p>
                     {{end}}
                 </div>
             </div>
@@ -211,29 +363,43 @@
                 Intelligence Sources
             </h2>
             <div class="flex gap-2">
-                <a href="https://www.exploit-db.com/search?cve={{.CVE.CVEID}}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 px-3 py-1.5 glass border border-white/5 rounded-lg hover:border-red-500/30 transition-all group">
-                    <span class="material-symbols-outlined text-[14px] text-red-400 group-hover:scale-110 transition-transform" aria-hidden="true">bug_report</span>
+                <a href="https://www.exploit-db.com/search?cve={{.CVE.CVEID}}" target="_blank" rel="noopener noreferrer"
+                    class="flex items-center gap-2 px-3 py-1.5 glass border border-white/5 rounded-lg hover:border-red-500/30 transition-all group">
+                    <span
+                        class="material-symbols-outlined text-[14px] text-red-400 group-hover:scale-110 transition-transform"
+                        aria-hidden="true">bug_report</span>
                     <span class="text-[9px] font-black uppercase tracking-widest text-gray-400">Search Exploit-DB</span>
                 </a>
-                <a href="https://github.com/rapid7/metasploit-framework/search?q={{.CVE.CVEID}}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 px-3 py-1.5 glass border border-white/5 rounded-lg hover:border-primary/30 transition-all group">
-                    <span class="material-symbols-outlined text-[14px] text-primary group-hover:scale-110 transition-transform" aria-hidden="true">terminal</span>
+                <a href="https://github.com/rapid7/metasploit-framework/search?q={{.CVE.CVEID}}" target="_blank"
+                    rel="noopener noreferrer"
+                    class="flex items-center gap-2 px-3 py-1.5 glass border border-white/5 rounded-lg hover:border-primary/30 transition-all group">
+                    <span
+                        class="material-symbols-outlined text-[14px] text-primary group-hover:scale-110 transition-transform"
+                        aria-hidden="true">terminal</span>
                     <span class="text-[9px] font-black uppercase tracking-widest text-gray-400">Search Metasploit</span>
                 </a>
             </div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {{range .CVE.References}}
-            <a href="{{. | safeURL}}" target="_blank" rel="noopener noreferrer" class="reference-card glass p-4 rounded-xl border border-white/5 hover:border-primary/30 hover:bg-white/[0.02] transition-all flex items-center justify-between group" data-url="{{.}}">
+            {{range $i, $ref := .CVE.References}}
+            <a href="{{$ref | safeURL}}" target="_blank" rel="noopener noreferrer"
+                class="reference-card glass p-4 rounded-xl border border-white/5 hover:border-primary/30 hover:bg-white/[0.02] transition-all flex items-center justify-between group"
+                data-url="{{$ref}}">
                 <div class="flex items-center gap-3 overflow-hidden">
-                    <div class="source-icon w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-500 group-hover:text-primary transition-colors">
+                    <div
+                        class="source-icon w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-500 group-hover:text-primary transition-colors">
                         <span class="material-symbols-outlined text-[18px]" aria-hidden="true">link</span>
                     </div>
                     <div class="flex flex-col overflow-hidden">
-                        <span class="source-label text-[8px] font-black uppercase tracking-widest text-gray-600">External Source</span>
-                        <span class="text-xs text-gray-400 truncate font-mono">{{.}}</span>
+                        <span
+                            class="source-label text-[8px] font-black uppercase tracking-widest text-gray-600">External
+                            Source</span>
+                        <span class="text-xs text-gray-400 truncate font-mono">{{$ref}}</span>
+                        {{with indexSafe $.CVE.ReferenceTags $i}}{{if ne . ""}}<span class="ml-1 mt-0.5 flex flex-wrap gap-0.5">{{range $tag := split . ","}}<span class="px-1 py-0.5 rounded text-[10px] {{if eq $tag "Exploit"}}bg-red-500/20 text-red-400{{else if eq $tag "Patch"}}bg-green-500/20 text-green-400{{else if eq $tag "Vendor Advisory"}}bg-blue-500/20 text-blue-400{{else if eq $tag "Third Party Advisory"}}bg-purple-500/20 text-purple-400{{else if eq $tag "US Government Resource"}}bg-amber-500/20 text-amber-400{{else}}bg-gray-500/20 text-gray-400{{end}}">{{$tag}}</span>{{end}}</span>{{end}}{{end}}
                     </div>
                 </div>
-                <span class="material-symbols-outlined text-[16px] text-gray-600 group-hover:text-primary" aria-hidden="true">open_in_new</span>
+                <span class="material-symbols-outlined text-[16px] text-gray-600 group-hover:text-primary"
+                    aria-hidden="true">open_in_new</span>
             </a>
             {{end}}
         </div>
@@ -245,9 +411,11 @@
             <div class="space-y-1">
                 <h2 class="text-2xl font-black text-white flex items-center gap-3">
                     <span class="material-symbols-outlined text-tertiary" aria-hidden="true">inventory_2</span>
-                    {{if .CVE.Configurations}}Known Affected Software Configurations{{else}}Affected Product Details{{end}}
+                    {{if .CVE.Configurations}}Known Affected Software Configurations{{else}}Affected Product
+                    Details{{end}}
                 </h2>
-                <p class="text-[10px] text-gray-500 font-bold uppercase tracking-[0.1em]">Structured vulnerability data and affected ranges</p>
+                <p class="text-[10px] text-gray-500 font-bold uppercase tracking-[0.1em]">Structured vulnerability data
+                    and affected ranges</p>
             </div>
 
             {{if .CVE.OSVData}}
@@ -257,13 +425,21 @@
                         <span class="material-symbols-outlined" aria-hidden="true">package</span>
                     </div>
                     <div>
-                        <div class="text-[8px] font-black uppercase tracking-widest text-gray-500">OSV / GitHub Advisory</div>
+                        <div class="text-[8px] font-black uppercase tracking-widest text-gray-500">OSV / GitHub Advisory
+                        </div>
                         <div class="text-xs font-black text-white">{{index .CVE.OSVData "id"}}</div>
+                        {{if isset .CVE.OSVData "affected"}}<div class="flex flex-wrap gap-1.5 mt-2">{{$affected :=
+                            index .CVE.OSVData "affected"}}{{range $affected}}{{$pkg := index . "package"}}{{if
+                            $pkg}}<span
+                                class="px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20">{{if
+                                isset $pkg "ecosystem"}}{{index $pkg "ecosystem"}}{{end}}</span><span
+                                class="px-2 py-0.5 rounded text-[8px] font-mono text-gray-400 bg-white/5 border border-white/10">{{if
+                                isset $pkg "name"}}{{index $pkg "name"}}{{end}}</span>{{end}}{{end}}</div>{{end}}
                     </div>
                 </div>
             </div>
             {{end}}
-            
+
             <!-- Dynamic Vendors Badge List -->
             <div id="vendor-list" class="flex flex-wrap gap-2 justify-end">
                 <!-- Badges moved to summary cards below -->
@@ -276,49 +452,64 @@
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {{range $products}}
             <div class="glass p-6 rounded-[2rem] border {{if .Unconfirmed}}border-dashed border-orange-500/30{{else}}border-white/10{{end}} flex items-center gap-6 hover:border-primary/40 transition-all group/card relative overflow-hidden summary-product-card"
-                 data-vendor="{{.Vendor}}" data-product="{{.Product}}">
-                <div class="absolute top-0 right-0 p-4 opacity-[0.03] group-hover/card:opacity-[0.07] transition-opacity">
+                data-vendor="{{.Vendor}}" data-product="{{.Product}}">
+                <div
+                    class="absolute top-0 right-0 p-4 opacity-[0.03] group-hover/card:opacity-[0.07] transition-opacity">
                     <span class="material-symbols-outlined text-6xl" aria-hidden="true">
-                        {{if eq .Type "a"}}apps{{else if eq .Type "o"}}settings_input_antenna{{else if eq .Type "h"}}memory{{else}}inventory_2{{end}}
+                        {{if eq .Type "a"}}apps{{else if eq .Type "o"}}settings_input_antenna{{else if eq .Type
+                        "h"}}memory{{else}}inventory_2{{end}}
                     </span>
                 </div>
                 <div class="w-16 h-16 rounded-2xl flex items-center justify-center relative z-10
-                    {{if eq .Type "a"}}bg-blue-500/10 text-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.1)]
-                    {{else if eq .Type "o"}}bg-green-500/10 text-green-400 shadow-[0_0_20px_rgba(34,197,94,0.1)]
-                    {{else if eq .Type "h"}}bg-orange-500/10 text-orange-400 shadow-[0_0_20px_rgba(249,115,22,0.1)]
-                    {{else}}bg-tertiary/10 text-tertiary shadow-[0_0_20px_rgba(var(--tertiary-rgb),0.1)]{{end}}">
+{{if eq .Type " a"}}bg-blue-500/10 text-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.1)] {{else if eq .Type "o"
+                    }}bg-green-500/10 text-green-400 shadow-[0_0_20px_rgba(34,197,94,0.1)] {{else if eq .Type "h"
+                    }}bg-orange-500/10 text-orange-400 shadow-[0_0_20px_rgba(249,115,22,0.1)] {{else}}bg-tertiary/10
+                    text-tertiary shadow-[0_0_20px_rgba(var(--tertiary-rgb),0.1)]{{end}}">
                     <span class="material-symbols-outlined text-3xl" aria-hidden="true">
-                        {{if eq .Type "a"}}apps{{else if eq .Type "o"}}settings_input_antenna{{else if eq .Type "h"}}memory{{else}}inventory_2{{end}}
+                        {{if eq .Type "a"}}apps{{else if eq .Type "o"}}settings_input_antenna{{else if eq .Type
+                        "h"}}memory{{else}}inventory_2{{end}}
                     </span>
                 </div>
                 <div class="flex-1 relative z-10">
                     <div class="flex items-center gap-2 mb-1">
-                        <div class="text-[9px] font-black uppercase tracking-[0.2em] text-gray-500">{{if eq .Type "a"}}Application{{else if eq .Type "o"}}Operating System{{else if eq .Type "h"}}Hardware / IoT{{else}}Product{{end}}</div>
+                        <div class="text-[9px] font-black uppercase tracking-[0.2em] text-gray-500">{{if eq .Type
+                            "a"}}Application{{else if eq .Type "o"}}Operating System{{else if eq .Type "h"}}Hardware /
+                            IoT{{else}}Product{{end}}</div>
                         {{if .Unconfirmed}}
                         <div class="tooltip-trigger">
-                            <span class="material-symbols-outlined text-[12px] text-orange-400 animate-pulse" aria-hidden="true">help</span>
+                            <span class="material-symbols-outlined text-[12px] text-orange-400 animate-pulse"
+                                aria-hidden="true">help</span>
                             <div class="tooltip">Heuristic match based on description (Unconfirmed by NVD/OSV)</div>
                         </div>
                         {{end}}
                         <div class="product-match-status"></div>
                     </div>
-                    <div class="text-lg font-black text-white group-hover/card:text-primary transition-colors leading-tight">{{.Vendor}}</div>
+                    <div
+                        class="text-lg font-black text-white group-hover/card:text-primary transition-colors leading-tight">
+                        {{.Vendor}}</div>
                     <div class="text-sm font-bold text-gray-400 mb-3">{{.Product}}</div>
-                    
+
                     {{if .Version}}
-                    <div class="inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5">
-                        <span class="material-symbols-outlined text-[12px] text-gray-600" aria-hidden="true">history</span>
+                    <div
+                        class="inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5">
+                        <span class="material-symbols-outlined text-[12px] text-gray-600"
+                            aria-hidden="true">history</span>
                         <span class="text-[11px] font-mono font-bold text-gray-400">{{.Version}}</span>
                     </div>
                     {{else}}
-                    <div class="inline-flex items-center gap-2 bg-primary/5 border border-primary/10 rounded-lg px-3 py-1.5">
-                        <span class="material-symbols-outlined text-[12px] text-primary" aria-hidden="true">all_inclusive</span>
-                        <span class="text-[11px] font-black uppercase tracking-tighter text-primary">All Versions Affected</span>
+                    <div
+                        class="inline-flex items-center gap-2 bg-primary/5 border border-primary/10 rounded-lg px-3 py-1.5">
+                        <span class="material-symbols-outlined text-[12px] text-primary"
+                            aria-hidden="true">all_inclusive</span>
+                        <span class="text-[11px] font-black uppercase tracking-tighter text-primary">All Versions
+                            Affected</span>
                     </div>
                     {{end}}
                 </div>
-                <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center opacity-0 group-hover/card:opacity-100 transition-all translate-x-4 group-hover/card:translate-x-0">
-                    <span class="material-symbols-outlined text-gray-500 text-[20px]" aria-hidden="true">chevron_right</span>
+                <div
+                    class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center opacity-0 group-hover/card:opacity-100 transition-all translate-x-4 group-hover/card:translate-x-0">
+                    <span class="material-symbols-outlined text-gray-500 text-[20px]"
+                        aria-hidden="true">chevron_right</span>
                 </div>
             </div>
             {{end}}
@@ -331,77 +522,96 @@
                 <span class="material-symbols-outlined text-[14px]" aria-hidden="true">settings</span>
                 Technical Configuration Details (CPE)
             </h3>
-        <div class="glass rounded-[2rem] border border-white/10 overflow-hidden">
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-white/5 border-b border-white/10">
-                            <th class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Vulnerable</th>
-                            <th class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Platform / Software (CPE)</th>
-                            <th class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500 text-right">Version Range</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-white/5">
-                        {{range .CVE.Configurations}}
+            <div class="glass rounded-[2rem] border border-white/10 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-white/5 border-b border-white/10">
+                                <th class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">
+                                    Vulnerable</th>
+                                <th class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Platform
+                                    / Software (CPE)</th>
+                                <th
+                                    class="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500 text-right">
+                                    Version Range</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-white/5">
+                            {{range .CVE.Configurations}}
                             {{range .Nodes}}
-                                {{range .CPEMatch}}
-                                {{$cpeData := parseCPE .Criteria}}
-                                <tr class="hover:bg-white/[0.02] transition-colors group/row config-row" 
-                                    data-vendor="{{$cpeData.vendor}}" 
-                                    data-product="{{$cpeData.product}}"
-                                    data-vstart-inc="{{.VersionStartIncluding}}"
-                                    data-vstart-exc="{{.VersionStartExcluding}}"
-                                    data-vend-inc="{{.VersionEndIncluding}}"
-                                    data-vend-exc="{{.VersionEndExcluding}}"
-                                    data-direct-version="{{$cpeData.version}}">
-                                    <td class="p-6">
-                                        {{if .Vulnerable}}
-                                        <span class="flex items-center gap-1.5 text-red-400 font-black text-[10px] uppercase tracking-wider">
-                                            <span class="w-2 h-2 rounded-full bg-red-400 animate-pulse shadow-[0_0_8px_rgba(248,113,113,0.5)]"></span>
-                                            Affected
-                                        </span>
-                                        {{else}}
-                                        <span class="text-gray-600 font-bold text-[10px] uppercase">Excluded</span>
-                                        {{end}}
-                                    </td>
-                                    <td class="p-6">
-                                        <div class="flex flex-col gap-1.5">
-                                            <div class="flex items-center gap-2">
-                                                <span class="text-sm font-black text-white group-hover/row:text-primary transition-colors">{{$cpeData.vendor}}</span>
-                                                <span class="text-sm font-bold text-gray-500">{{$cpeData.product}}</span>
-                                            </div>
-                                            <span class="text-[9px] font-mono text-gray-600 truncate max-w-md opacity-40 group-hover/row:opacity-100 transition-opacity">{{.Criteria}}</span>
+                            {{range .CPEMatch}}
+                            {{$cpeData := parseCPE .Criteria}}
+                            <tr class="hover:bg-white/[0.02] transition-colors group/row config-row"
+                                data-vendor="{{$cpeData.vendor}}" data-product="{{$cpeData.product}}"
+                                data-vstart-inc="{{.VersionStartIncluding}}"
+                                data-vstart-exc="{{.VersionStartExcluding}}" data-vend-inc="{{.VersionEndIncluding}}"
+                                data-vend-exc="{{.VersionEndExcluding}}" data-direct-version="{{$cpeData.version}}">
+                                <td class="p-6">
+                                    {{if .Vulnerable}}
+                                    <span
+                                        class="flex items-center gap-1.5 text-red-400 font-black text-[10px] uppercase tracking-wider">
+                                        <span
+                                            class="w-2 h-2 rounded-full bg-red-400 animate-pulse shadow-[0_0_8px_rgba(248,113,113,0.5)]"></span>
+                                        Affected
+                                    </span>
+                                    {{else}}
+                                    <span class="text-gray-600 font-bold text-[10px] uppercase">Excluded</span>
+                                    {{end}}
+                                </td>
+                                <td class="p-6">
+                                    <div class="flex flex-col gap-1.5">
+                                        <div class="flex items-center gap-2">
+                                            <span
+                                                class="text-sm font-black text-white group-hover/row:text-primary transition-colors">{{$cpeData.vendor}}</span>
+                                            <span class="text-sm font-bold text-gray-500">{{$cpeData.product}}</span>
                                         </div>
-                                    </td>
-                                    <td class="p-6 text-right">
-                                        <div class="flex items-center justify-end gap-1.5">
-                                            {{if or .VersionStartIncluding .VersionStartExcluding .VersionEndIncluding .VersionEndExcluding}}
-                                                {{if .VersionStartIncluding}}<span class="bg-white/5 text-gray-400 px-2 py-1 rounded-md text-[10px] font-mono border border-white/5">≥ {{.VersionStartIncluding}}</span>{{end}}
-                                                {{if .VersionStartExcluding}}<span class="bg-white/5 text-gray-400 px-2 py-1 rounded-md text-[10px] font-mono border border-white/5">> {{.VersionStartExcluding}}</span>{{end}}
-                                                <span class="material-symbols-outlined text-gray-800 text-xs" aria-hidden="true">arrow_forward</span>
-                                                {{if .VersionEndIncluding}}<span class="bg-white/5 text-gray-400 px-2 py-1 rounded-md text-[10px] font-mono border border-white/5">≤ {{.VersionEndIncluding}}</span>{{end}}
-                                                {{if .VersionEndExcluding}}<span class="bg-white/5 text-gray-400 px-2 py-1 rounded-md text-[10px] font-mono border border-white/5">< {{.VersionEndExcluding}}</span>{{end}}
-                                            {{else if $cpeData.version}}
-                                                <span class="bg-tertiary/10 text-tertiary px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-tertiary/20">Exactly {{$cpeData.version}}</span>
-                                            {{else}}
-                                                <span class="italic text-[10px] text-gray-600 font-medium">All Versions</span>
-                                            {{end}}
-                                        </div>
-                                    </td>
-                                </tr>
-                                {{end}}
+                                        <span
+                                            class="text-[9px] font-mono text-gray-600 truncate max-w-md opacity-40 group-hover/row:opacity-100 transition-opacity">{{.Criteria}}</span>
+                                    </div>
+                                </td>
+                                <td class="p-6 text-right">
+                                    <div class="flex items-center justify-end gap-1.5">
+                                        {{if or .VersionStartIncluding .VersionStartExcluding .VersionEndIncluding
+                                        .VersionEndExcluding}}
+                                        {{if .VersionStartIncluding}}<span
+                                            class="bg-white/5 text-gray-400 px-2 py-1 rounded-md text-[10px] font-mono border border-white/5">≥
+                                            {{.VersionStartIncluding}}</span>{{end}}
+                                        {{if .VersionStartExcluding}}<span
+                                            class="bg-white/5 text-gray-400 px-2 py-1 rounded-md text-[10px] font-mono border border-white/5">>
+                                            {{.VersionStartExcluding}}</span>{{end}}
+                                        <span class="material-symbols-outlined text-gray-800 text-xs"
+                                            aria-hidden="true">arrow_forward</span>
+                                        {{if .VersionEndIncluding}}<span
+                                            class="bg-white/5 text-gray-400 px-2 py-1 rounded-md text-[10px] font-mono border border-white/5">≤
+                                            {{.VersionEndIncluding}}</span>{{end}}
+                                        {{if .VersionEndExcluding}}<span
+                                            class="bg-white/5 text-gray-400 px-2 py-1 rounded-md text-[10px] font-mono border border-white/5">
+                                            < {{.VersionEndExcluding}}</span>{{end}}
+                                                {{else if $cpeData.version}}
+                                                <span
+                                                    class="bg-tertiary/10 text-tertiary px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-tertiary/20">Exactly
+                                                    {{$cpeData.version}}</span>
+                                                {{else}}
+                                                <span class="italic text-[10px] text-gray-600 font-medium">All
+                                                    Versions</span>
+                                                {{end}}
+                                    </div>
+                                </td>
+                            </tr>
                             {{end}}
-                        {{end}}
-                    </tbody>
-                </table>
+                            {{end}}
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </div>
-        {{else if not $products}}
+            {{else if not $products}}
             <div class="glass p-12 rounded-3xl border border-white/5 bg-white/[0.01] text-center">
                 <span class="material-symbols-outlined text-gray-700 text-4xl mb-4" aria-hidden="true">search_off</span>
-                <p class="text-gray-500 text-sm italic">No structured software configurations or products were explicitly identified for this vulnerability.</p>
+                <p class="text-gray-500 text-sm italic">No structured software configurations or products were
+                    explicitly identified for this vulnerability.</p>
             </div>
-        {{end}}
+            {{end}}
 
     </section>
 
@@ -409,40 +619,52 @@
     {{$lineage := getLineage .CVE}}
     {{if $lineage}}
     {{$lowDesc := lower .CVE.Description}}
-    {{$isZombie := or (contains $lowDesc "bypass") (contains $lowDesc "incomplete") (contains $lowDesc "regression") (contains $lowDesc "broken patch") (contains $lowDesc "failed fix")}}
+    {{$isZombie := or (contains $lowDesc "bypass") (contains $lowDesc "incomplete") (contains $lowDesc "regression")
+    (contains $lowDesc "broken patch") (contains $lowDesc "failed fix")}}
     <section class="space-y-6">
         <div class="flex items-center justify-between">
             <h2 class="text-2xl font-black text-white flex items-center gap-3">
-                <span class="material-symbols-outlined text-purple-400 animate-pulse" aria-hidden="true">account_tree</span>
+                <span class="material-symbols-outlined text-purple-400 animate-pulse"
+                    aria-hidden="true">account_tree</span>
                 Vulnerability Lineage
                 {{if $isZombie}}
-                <div class="px-3 py-1 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 text-[8px] font-black uppercase tracking-[0.2em] shadow-lg shadow-red-500/10 ml-4">
+                <div
+                    class="px-3 py-1 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 text-[8px] font-black uppercase tracking-[0.2em] shadow-lg shadow-red-500/10 ml-4">
                     Zombie CVE
                 </div>
                 {{end}}
             </h2>
-            <div class="text-[10px] font-black uppercase tracking-widest text-purple-400/50 bg-purple-400/5 px-3 py-1 rounded-full border border-purple-400/10">
+            <div
+                class="text-[10px] font-black uppercase tracking-widest text-purple-400/50 bg-purple-400/5 px-3 py-1 rounded-full border border-purple-400/10">
                 Lineage Explorer
             </div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 relative">
             {{range $lineage}}
-            <a href="/cve/{{.}}" class="group relative glass p-6 rounded-[2rem] border border-white/5 hover:border-purple-400/40 hover:bg-white/[0.02] transition-all duration-300 flex items-center justify-between overflow-hidden">
+            <a href="/cve/{{.}}"
+                class="group relative glass p-6 rounded-[2rem] border border-white/5 hover:border-purple-400/40 hover:bg-white/[0.02] transition-all duration-300 flex items-center justify-between overflow-hidden">
                 <!-- Hover Glow -->
-                <div class="absolute inset-0 bg-gradient-to-br from-purple-400/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                
+                <div
+                    class="absolute inset-0 bg-gradient-to-br from-purple-400/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                </div>
+
                 <div class="flex items-center gap-5 relative z-10">
-                    <div class="w-14 h-14 rounded-2xl bg-purple-400/10 border border-purple-400/20 flex items-center justify-center text-purple-400 group-hover:rotate-12 transition-transform">
+                    <div
+                        class="w-14 h-14 rounded-2xl bg-purple-400/10 border border-purple-400/20 flex items-center justify-center text-purple-400 group-hover:rotate-12 transition-transform">
                         <span class="material-symbols-outlined text-2xl" aria-hidden="true">bug_report</span>
                     </div>
                     <div>
-                        <div class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1 group-hover:text-purple-400 transition-colors">Associated Identity</div>
+                        <div
+                            class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1 group-hover:text-purple-400 transition-colors">
+                            Associated Identity</div>
                         <div class="text-2xl font-black text-white tracking-tighter">{{.}}</div>
                     </div>
                 </div>
-                
+
                 <div class="flex flex-col items-end gap-2 relative z-10">
-                    <span class="material-symbols-outlined text-gray-700 group-hover:text-purple-400 group-hover:translate-x-1 transition-all" aria-hidden="true">arrow_forward</span>
+                    <span
+                        class="material-symbols-outlined text-gray-700 group-hover:text-purple-400 group-hover:translate-x-1 transition-all"
+                        aria-hidden="true">arrow_forward</span>
                 </div>
             </a>
             {{end}}
@@ -455,16 +677,19 @@
     {{end}}
 
     <!-- Call to Action -->
-    <div class="glass p-12 rounded-[3rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-transparent text-center space-y-6">
+    <div
+        class="glass p-12 rounded-[3rem] border border-primary/20 bg-gradient-to-br from-primary/10 to-transparent text-center space-y-6">
         <h2 class="text-3xl font-black text-white">Protect your infrastructure from this threat.</h2>
         <p class="text-gray-400 max-w-xl mx-auto">
             Get instant alerts when this CVE is detected in your environment or when new exploits are released.
         </p>
         <div class="pt-4 flex flex-col md:flex-row items-center justify-center gap-4">
-            <a href="/register" class="px-8 py-4 bg-primary text-on-primary rounded-2xl font-black uppercase tracking-widest text-sm hover:scale-105 transition-all shadow-xl shadow-primary/30">
+            <a href="/register"
+                class="px-8 py-4 bg-primary text-on-primary rounded-2xl font-black uppercase tracking-widest text-sm hover:scale-105 transition-all shadow-xl shadow-primary/30">
                 Track for Free
             </a>
-            <a href="/login" class="px-8 py-4 bg-white/5 border border-white/10 rounded-2xl font-black text-white hover:bg-white/10 transition-all text-sm uppercase tracking-widest">
+            <a href="/login"
+                class="px-8 py-4 bg-white/5 border border-white/10 rounded-2xl font-black text-white hover:bg-white/10 transition-all text-sm uppercase tracking-widest">
                 Existing Member Login
             </a>
         </div>
@@ -473,8 +698,10 @@
     <!-- Pagination -->
     <div class="flex items-center justify-between mt-12 mb-8">
         {{if .nextID}}
-        <a href="/cve/{{.nextID}}" class="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 rounded-2xl font-black text-white hover:bg-white/10 transition-all text-xs uppercase tracking-widest group">
-            <span class="material-symbols-outlined text-sm group-hover:-translate-x-1 transition-transform" aria-hidden="true">arrow_back</span>
+        <a href="/cve/{{.nextID}}"
+            class="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 rounded-2xl font-black text-white hover:bg-white/10 transition-all text-xs uppercase tracking-widest group">
+            <span class="material-symbols-outlined text-sm group-hover:-translate-x-1 transition-transform"
+                aria-hidden="true">arrow_back</span>
             Older CVE
         </a>
         {{else}}
@@ -482,9 +709,11 @@
         {{end}}
 
         {{if .prevID}}
-        <a href="/cve/{{.prevID}}" class="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 rounded-2xl font-black text-white hover:bg-white/10 transition-all text-xs uppercase tracking-widest group">
+        <a href="/cve/{{.prevID}}"
+            class="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 rounded-2xl font-black text-white hover:bg-white/10 transition-all text-xs uppercase tracking-widest group">
             Newer CVE
-            <span class="material-symbols-outlined text-sm group-hover:translate-x-1 transition-transform" aria-hidden="true">arrow_forward</span>
+            <span class="material-symbols-outlined text-sm group-hover:translate-x-1 transition-transform"
+                aria-hidden="true">arrow_forward</span>
         </a>
         {{else}}
         <div></div>
@@ -493,7 +722,11 @@
 </div>
 
 <style>
-    .tooltip-trigger { position: relative; cursor: help; }
+    .tooltip-trigger {
+        position: relative;
+        cursor: help;
+    }
+
     .tooltip {
         position: absolute;
         bottom: 125%;
@@ -501,7 +734,7 @@
         transform: translateX(-50%);
         padding: 8px 12px;
         background: #1a1a1a;
-        border: 1px solid rgba(255,255,255,0.1);
+        border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 8px;
         color: white;
         font-size: 10px;
@@ -511,25 +744,37 @@
         opacity: 0;
         transition: all 0.2s;
         z-index: 50;
-        box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
     }
-    .tooltip-trigger:hover .tooltip { opacity: 1; transform: translateX(-50%) translateY(-5px); }
+
+    .tooltip-trigger:hover .tooltip {
+        opacity: 1;
+        transform: translateX(-50%) translateY(-5px);
+    }
 
     @keyframes pulse-ring {
-        0% { transform: scale(.33); }
-        80%, 100% { opacity: 0; }
+        0% {
+            transform: scale(.33);
+        }
+
+        80%,
+        100% {
+            opacity: 0;
+        }
     }
-    .asset-match-badge { 
-        background-color: rgba(0, 218, 243, 0.2); 
-        color: #00daf3; 
-        border: 1px solid rgba(0, 218, 243, 0.3); 
-        padding: 2px 4px; 
-        border-radius: 4px; 
-        font-size: 8px; 
-        font-weight: 900; 
-        text-transform: uppercase; 
-        letter-spacing: -0.05em; 
+
+    .asset-match-badge {
+        background-color: rgba(0, 218, 243, 0.2);
+        color: #00daf3;
+        border: 1px solid rgba(0, 218, 243, 0.3);
+        padding: 2px 4px;
+        border-radius: 4px;
+        font-size: 8px;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: -0.05em;
     }
+
     .truncate-3-lines {
         display: -webkit-box;
         -webkit-line-clamp: 3;
@@ -540,169 +785,169 @@
 
 <script id="cve-data" type="application/json" nonce="{{.Nonce}}">
 {
-    "userAssets": {{marshal .UserAssets}}
+"userAssets": {{marshal .UserAssets}}
 }
 </script>
 
 <script nonce="{{.Nonce}}">
-(function() {
+    (function () {
 
-    const initCVEDetail = function() {
-        // CVSS Vector Parsing
-        const vectorContainer = document.getElementById('cvss-vector');
-        if (vectorContainer) {
-            try {
-                const vectorStr = vectorContainer.dataset.vector;
-                const metricMap = {
-                    'AV': { n: 'Attack Vector', v: { N: 'Network', A: 'Adjacent', L: 'Local', P: 'Physical' } },
-                    'AC': { n: 'Complexity', v: { L: 'Low', H: 'High' } },
-                    'PR': { n: 'Privileges', v: { N: 'None', L: 'Low', H: 'High' } },
-                    'UI': { n: 'Interaction', v: { N: 'None', R: 'Required' } },
-                    'S':  { n: 'Scope', v: { U: 'Unchanged', C: 'Changed' } },
-                    'C':  { n: 'Confid.', v: { N: 'None', L: 'Low', H: 'High' } },
-                    'I':  { n: 'Integrity', v: { N: 'None', L: 'Low', H: 'High' } },
-                    'A':  { n: 'Avail.', v: { N: 'None', L: 'Low', H: 'High' } }
-                };
+        const initCVEDetail = function () {
+            // CVSS Vector Parsing
+            const vectorContainer = document.getElementById('cvss-vector');
+            if (vectorContainer) {
+                try {
+                    const vectorStr = vectorContainer.dataset.vector;
+                    const metricMap = {
+                        'AV': { n: 'Attack Vector', v: { N: 'Network', A: 'Adjacent', L: 'Local', P: 'Physical' } },
+                        'AC': { n: 'Complexity', v: { L: 'Low', H: 'High' } },
+                        'PR': { n: 'Privileges', v: { N: 'None', L: 'Low', H: 'High' } },
+                        'UI': { n: 'Interaction', v: { N: 'None', R: 'Required' } },
+                        'S': { n: 'Scope', v: { U: 'Unchanged', C: 'Changed' } },
+                        'C': { n: 'Confid.', v: { N: 'None', L: 'Low', H: 'High' } },
+                        'I': { n: 'Integrity', v: { N: 'None', L: 'Low', H: 'High' } },
+                        'A': { n: 'Avail.', v: { N: 'None', L: 'Low', H: 'High' } }
+                    };
 
-                if (vectorStr && vectorStr.indexOf('/') !== -1) {
-                    const parts = vectorStr.split('/');
-                    const v = {};
-                    vectorContainer.innerHTML = '';
-                    
-                    parts.forEach(function(part) {
-                        const kv = part.split(':');
-                        if (kv.length === 2) {
-                            const key = kv[0];
-                            const val = kv[1];
-                            v[key] = val;
-                            if (metricMap[key]) {
-                                const metric = metricMap[key];
-                                const valName = metric.v[val] || val;
-                                const pill = document.createElement('div');
-                                pill.className = 'tooltip-trigger text-[9px] font-mono text-gray-400 bg-white/5 px-2 py-0.5 rounded-md border border-white/5 hover:bg-white/10 hover:text-white transition-all';
-                                pill.innerHTML = '<span class="text-gray-600 mr-1">' + key + ':</span>' + val +
-                                    '<div class="tooltip">' + metric.n + ': ' + valName + '</div>';
-                                vectorContainer.appendChild(pill);
+                    if (vectorStr && vectorStr.indexOf('/') !== -1) {
+                        const parts = vectorStr.split('/');
+                        const v = {};
+                        vectorContainer.innerHTML = '';
+
+                        parts.forEach(function (part) {
+                            const kv = part.split(':');
+                            if (kv.length === 2) {
+                                const key = kv[0];
+                                const val = kv[1];
+                                v[key] = val;
+                                if (metricMap[key]) {
+                                    const metric = metricMap[key];
+                                    const valName = metric.v[val] || val;
+                                    const pill = document.createElement('div');
+                                    pill.className = 'tooltip-trigger text-[9px] font-mono text-gray-400 bg-white/5 px-2 py-0.5 rounded-md border border-white/5 hover:bg-white/10 hover:text-white transition-all';
+                                    pill.innerHTML = '<span class="text-gray-600 mr-1">' + key + ':</span>' + val +
+                                        '<div class="tooltip">' + metric.n + ': ' + valName + '</div>';
+                                    vectorContainer.appendChild(pill);
+                                }
                             }
-                        }
-                    });
+                        });
 
-                    const tacticalPath = document.getElementById('tactical-path');
-                    if (tacticalPath) {
-                        const steps = [];
-                        if (v.AV) steps.push({ icon: 'lan', label: metricMap.AV.v[v.AV] });
-                        if (v.AC) steps.push({ icon: 'settings_input_component', label: v.AC === 'L' ? 'Low Complexity' : 'High Complexity' });
-                        if (v.PR) steps.push({ icon: 'person_shield', label: v.PR === 'N' ? 'No Auth' : 'Auth Required' });
-                        if (v.UI) steps.push({ icon: 'mouse', label: v.UI === 'N' ? 'No Interaction' : 'Interaction' });
+                        const tacticalPath = document.getElementById('tactical-path');
+                        if (tacticalPath) {
+                            const steps = [];
+                            if (v.AV) steps.push({ icon: 'lan', label: metricMap.AV.v[v.AV] });
+                            if (v.AC) steps.push({ icon: 'settings_input_component', label: v.AC === 'L' ? 'Low Complexity' : 'High Complexity' });
+                            if (v.PR) steps.push({ icon: 'person_shield', label: v.PR === 'N' ? 'No Auth' : 'Auth Required' });
+                            if (v.UI) steps.push({ icon: 'mouse', label: v.UI === 'N' ? 'No Interaction' : 'Interaction' });
 
-                        tacticalPath.innerHTML = steps.map(function(s, i) {
-                            return '<div class="flex items-center gap-1">' +
+                            tacticalPath.innerHTML = steps.map(function (s, i) {
+                                return '<div class="flex items-center gap-1">' +
                                     '<div class="flex flex-col items-center group">' +
-                                        '<span class="material-symbols-outlined text-[14px] text-primary mb-0.5 group-hover:scale-110 transition-transform" aria-hidden="true">' + s.icon + '</span>' +
-                                        '<span class="text-[7px] font-black uppercase tracking-widest text-gray-500">' + s.label + '</span>' +
+                                    '<span class="material-symbols-outlined text-[14px] text-primary mb-0.5 group-hover:scale-110 transition-transform" aria-hidden="true">' + s.icon + '</span>' +
+                                    '<span class="text-[7px] font-black uppercase tracking-widest text-gray-500">' + s.label + '</span>' +
                                     '</div>' +
                                     (i < steps.length - 1 ? '<span class="material-symbols-outlined text-[10px] text-gray-800 mx-0.5 opacity-30" aria-hidden="true">chevron_right</span>' : '') +
-                                '</div>';
-                        }).join('');
-                        setTimeout(function() { tacticalPath.classList.remove('opacity-0'); }, 100);
+                                    '</div>';
+                            }).join('');
+                            setTimeout(function () { tacticalPath.classList.remove('opacity-0'); }, 100);
+                        }
+                    }
+                } catch (e) { console.error('Vector parse error:', e); }
+            }
+
+
+            // EPSS Bar Initialization
+            document.querySelectorAll('.epss-bar').forEach(function (bar) {
+                const width = bar.dataset.width;
+                if (width) bar.style.width = width + '%';
+            });
+
+            // Automatic Asset Matching
+            const cveData = JSON.parse(document.getElementById('cve-data').textContent);
+            const userAssets = cveData.userAssets;
+            if (userAssets && userAssets.length > 0) {
+                const rows = document.querySelectorAll('.config-row');
+                const summaryCards = document.querySelectorAll('.summary-product-card');
+
+                userAssets.forEach(asset => {
+                    const keywords = asset.keywords || [];
+
+                    // Match technical rows
+                    rows.forEach(row => {
+                        const rowVendor = (row.dataset.vendor || '').toLowerCase();
+                        const rowProduct = (row.dataset.product || '').toLowerCase();
+                        keywords.forEach(kw => {
+                            const lowKw = kw.toLowerCase();
+                            if (rowVendor.includes(lowKw) || rowProduct.includes(lowKw)) {
+                                const vendorCell = row.querySelector('td:nth-child(2) .flex.items-center');
+                                if (vendorCell && !vendorCell.querySelector('.asset-match-badge')) {
+                                    const badge = document.createElement('span');
+                                    badge.className = 'asset-match-badge ml-2';
+                                    badge.textContent = 'Matched Asset: ' + asset.name;
+                                    vendorCell.appendChild(badge);
+                                    row.classList.add('bg-primary/[0.03]');
+                                }
+                            }
+                        });
+                    });
+
+                    // Match summary cards
+                    summaryCards.forEach(card => {
+                        const cardVendor = (card.dataset.vendor || '').toLowerCase();
+                        const cardProduct = (card.dataset.product || '').toLowerCase();
+                        keywords.forEach(kw => {
+                            const lowKw = kw.toLowerCase();
+                            if (cardVendor.includes(lowKw) || cardProduct.includes(lowKw)) {
+                                const statusDiv = card.querySelector('.product-match-status');
+                                if (statusDiv && !statusDiv.querySelector('.asset-match-badge')) {
+                                    const badge = document.createElement('span');
+                                    badge.className = 'asset-match-badge scale-[0.8] origin-left';
+                                    badge.textContent = 'Matched: ' + asset.name;
+                                    statusDiv.appendChild(badge);
+                                    card.classList.add('border-primary/50', 'bg-primary/[0.02]');
+                                }
+                            }
+                        });
+                    });
+                });
+            }
+
+            // 3. Enhanced References
+            const sourceIcons = {
+                'github.com': { icon: 'code', label: 'Exploit / Source', color: 'text-purple-400', bgClass: 'bg-purple-500/10' },
+                'nvd.nist.gov': { icon: 'verified_user', label: 'Official NVD', color: 'text-blue-400', bgClass: 'bg-blue-500/10' },
+                'cisa.gov': { icon: 'policy', label: 'CISA Advisory', color: 'text-orange-400', bgClass: 'bg-orange-500/10' },
+                'exploit-db.com': { icon: 'bug_report', label: 'Exploit Database', color: 'text-red-400', bgClass: 'bg-red-500/10' },
+                'mitre.org': { icon: 'security', label: 'MITRE CVE', color: 'text-primary', bgClass: 'bg-primary/10' },
+                'twitter.com': { icon: 'chat', label: 'Social Intel', color: 'text-sky-400', bgClass: 'bg-sky-500/10' },
+                'x.com': { icon: 'chat', label: 'Social Intel', color: 'text-sky-400', bgClass: 'bg-sky-500/10' }
+            };
+
+            const referenceCards = document.querySelectorAll('.reference-card');
+            for (let i = 0; i < referenceCards.length; i++) {
+                const card = referenceCards[i];
+                const url = card.dataset.url;
+                const iconContainer = card.querySelector('.source-icon');
+                const labelContainer = card.querySelector('.source-label');
+                if (!iconContainer || !labelContainer) continue;
+
+                const domains = Object.keys(sourceIcons);
+                for (let j = 0; j < domains.length; j++) {
+                    const domain = domains[j];
+                    if (url.indexOf(domain) !== -1) {
+                        const config = sourceIcons[domain];
+                        iconContainer.innerHTML = '<span class="material-symbols-outlined text-[18px] ' + config.color + '" aria-hidden="true">' + config.icon + '</span>';
+                        iconContainer.className = 'source-icon w-10 h-10 rounded-xl flex items-center justify-center ' + config.bgClass;
+                        labelContainer.textContent = config.label;
+                        labelContainer.className = 'source-label text-[10px] font-black uppercase tracking-widest ' + config.color;
+                        break;
                     }
                 }
-            } catch (e) { console.error('Vector parse error:', e); }
-        }
-
-
-        // EPSS Bar Initialization
-        document.querySelectorAll('.epss-bar').forEach(function(bar) {
-            const width = bar.dataset.width;
-            if (width) bar.style.width = width + '%';
-        });
-
-        // Automatic Asset Matching
-        const cveData = JSON.parse(document.getElementById('cve-data').textContent);
-        const userAssets = cveData.userAssets;
-        if (userAssets && userAssets.length > 0) {
-            const rows = document.querySelectorAll('.config-row');
-            const summaryCards = document.querySelectorAll('.summary-product-card');
-            
-            userAssets.forEach(asset => {
-                const keywords = asset.keywords || [];
-                
-                // Match technical rows
-                rows.forEach(row => {
-                    const rowVendor = (row.dataset.vendor || '').toLowerCase();
-                    const rowProduct = (row.dataset.product || '').toLowerCase();
-                    keywords.forEach(kw => {
-                        const lowKw = kw.toLowerCase();
-                        if (rowVendor.includes(lowKw) || rowProduct.includes(lowKw)) {
-                            const vendorCell = row.querySelector('td:nth-child(2) .flex.items-center');
-                            if (vendorCell && !vendorCell.querySelector('.asset-match-badge')) {
-                                const badge = document.createElement('span');
-                                badge.className = 'asset-match-badge ml-2';
-                                badge.textContent = 'Matched Asset: ' + asset.name;
-                                vendorCell.appendChild(badge);
-                                row.classList.add('bg-primary/[0.03]');
-                            }
-                        }
-                    });
-                });
-
-                // Match summary cards
-                summaryCards.forEach(card => {
-                    const cardVendor = (card.dataset.vendor || '').toLowerCase();
-                    const cardProduct = (card.dataset.product || '').toLowerCase();
-                    keywords.forEach(kw => {
-                        const lowKw = kw.toLowerCase();
-                        if (cardVendor.includes(lowKw) || cardProduct.includes(lowKw)) {
-                            const statusDiv = card.querySelector('.product-match-status');
-                            if (statusDiv && !statusDiv.querySelector('.asset-match-badge')) {
-                                const badge = document.createElement('span');
-                                badge.className = 'asset-match-badge scale-[0.8] origin-left';
-                                badge.textContent = 'Matched: ' + asset.name;
-                                statusDiv.appendChild(badge);
-                                card.classList.add('border-primary/50', 'bg-primary/[0.02]');
-                            }
-                        }
-                    });
-                });
-            });
-        }
-
-        // 3. Enhanced References
-        const sourceIcons = {
-            'github.com': { icon: 'code', label: 'Exploit / Source', color: 'text-purple-400', bgClass: 'bg-purple-500/10' },
-            'nvd.nist.gov': { icon: 'verified_user', label: 'Official NVD', color: 'text-blue-400', bgClass: 'bg-blue-500/10' },
-            'cisa.gov': { icon: 'policy', label: 'CISA Advisory', color: 'text-orange-400', bgClass: 'bg-orange-500/10' },
-            'exploit-db.com': { icon: 'bug_report', label: 'Exploit Database', color: 'text-red-400', bgClass: 'bg-red-500/10' },
-            'mitre.org': { icon: 'security', label: 'MITRE CVE', color: 'text-primary', bgClass: 'bg-primary/10' },
-            'twitter.com': { icon: 'chat', label: 'Social Intel', color: 'text-sky-400', bgClass: 'bg-sky-500/10' },
-            'x.com': { icon: 'chat', label: 'Social Intel', color: 'text-sky-400', bgClass: 'bg-sky-500/10' }
+            }
         };
 
-        const referenceCards = document.querySelectorAll('.reference-card');
-        for (let i = 0; i < referenceCards.length; i++) {
-            const card = referenceCards[i];
-            const url = card.dataset.url;
-            const iconContainer = card.querySelector('.source-icon');
-            const labelContainer = card.querySelector('.source-label');
-            if (!iconContainer || !labelContainer) continue;
-            
-            const domains = Object.keys(sourceIcons);
-            for (let j = 0; j < domains.length; j++) {
-                const domain = domains[j];
-                if (url.indexOf(domain) !== -1) {
-                    const config = sourceIcons[domain];
-                    iconContainer.innerHTML = '<span class="material-symbols-outlined text-[18px] ' + config.color + '" aria-hidden="true">' + config.icon + '</span>';
-                    iconContainer.className = 'source-icon w-10 h-10 rounded-xl flex items-center justify-center ' + config.bgClass;
-                    labelContainer.textContent = config.label;
-                    labelContainer.className = 'source-label text-[10px] font-black uppercase tracking-widest ' + config.color;
-                    break;
-                }
-            }
-        }
-    };
-
-    initCVEDetail();
-})();
+        initCVEDetail();
+    })();
 </script>
 
 <!-- Structured Data (JSON-LD) for SEO -->

@@ -110,8 +110,8 @@ func TestUI_CVEDetailStructure(t *testing.T) {
 	cveID := "CVE-2024-1234"
 	mock.ExpectQuery("(?is)SELECT.*FROM cves WHERE cve_id =").
 		WithArgs(cveID).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "configurations", "vendor", "product", "affected_products", "priority"}).
-			AddRow(1, cveID, "Detailed description", 8.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N", false, time.Now(), time.Now(), "active", []string{"http://ref.com"}, 0.5, "CWE-79", "XSS", 1, 0, "", []byte(`{}`), []byte(`[]`), "V", "P", []byte(`[]`), "P2"))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "published_date", "updated_date", "status", "references", "epss_score", "epss_percentile", "cwe_id", "cwe_name", "github_poc_count", "greynoise_hits", "greynoise_classification", "osv_data", "vendor_advisories", "configurations", "vendor", "product", "affected_products", "priority", "exploit_available", "osint_data", "inthewild_data", "greynoise_last_updated", "osv_last_updated", "inthewild_last_updated", "cisa_kev_data", "reference_tags", "github_poc_repos"}).
+			AddRow(1, cveID, "Detailed description", 8.5, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N", false, time.Now(), time.Now(), "active", []string{"http://ref.com"}, 0.5, 0.0, "CWE-79", "XSS", 1, 0, "", []byte(`{}`), []byte(`{}`), []byte(`[]`), "V", "P", []byte(`[]`), "P2", false, []byte(`{}`), []byte(`{}`), nil, nil, nil, []byte(`{}`), []string{}, []byte(`[]`)))
 
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT cisa_ransomware FROM cves WHERE cve_id = $1")).
 		WithArgs(cveID).

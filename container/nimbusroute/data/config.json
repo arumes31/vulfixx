@@ -1,0 +1,205 @@
+{
+  "settings": {
+    "port": 8080,
+    "default_nim_url": "https://integrate.api.nvidia.com/v1",
+    "log_level": "info",
+    "default_rpm_limit": 40
+  },
+  "api_keys": [
+    {
+      "id": "key-1781254826488746905",
+      "name": "NIM-PrimaryKey",
+      "key": "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",
+      "active": true,
+      "status": "valid",
+      "error_message": "",
+      "last_used": "2026-06-12T14:27:17.442488562Z",
+      "use_count": 139
+    },
+    {
+      "id": "key-1781257517355653410",
+      "name": "NIM-Rivwen",
+      "key": "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",
+      "active": true,
+      "status": "valid",
+      "error_message": "",
+      "last_used": "2026-06-12T15:25:10.941748058Z",
+      "use_count": 258
+    },
+    {
+      "id": "key-1781268309905637669",
+      "name": "NIM-Gerhard",
+      "key": "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",
+      "active": true,
+      "status": "valid",
+      "error_message": "",
+      "last_used": "2026-06-12T15:00:49.734709861Z",
+      "use_count": 73
+    },
+    {
+      "id": "key-1781269484875949100",
+      "name": "NIM-Gustav",
+      "key": "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",
+      "active": true,
+      "status": "valid",
+      "error_message": "",
+      "last_used": "2026-06-12T13:31:36.515002831Z",
+      "use_count": 32
+    }
+  ],
+  "workspaces": [
+    {
+      "id": "no-vpn",
+      "name": "Default",
+      "auth_token": "",
+      "paths": [
+        "C:\\DR\\Nextcloud\\BUILD\\vulfixx",
+        "C:\\DR\\Nextcloud\\BUILD\\Maily"
+      ],
+      "api_key_ids": [
+        "key-1781254826488746905"
+      ],
+      "active": true,
+      "vpn_config": {}
+    },
+    {
+      "id": "vpn-at-1",
+      "name": "vpn-at-1",
+      "auth_token": "",
+      "vpn_ids": [
+        "vpn-at-1"
+      ],
+      "paths": [
+        "C:\\DR\\Nextcloud\\BUILD\\muesli\\tech-news-platform",
+        "C:\\DR\\Nextcloud\\BUILD\\losttalix"
+      ],
+      "api_key_ids": [
+        "key-1781257517355653410"
+      ],
+      "rpm_limit": 40,
+      "failover_workspace_id": "sys-llm7",
+      "active": true,
+      "vpn_config": {}
+    },
+    {
+      "id": "nim-gerhard",
+      "name": "vpn-at-2",
+      "auth_token": "",
+      "vpn_ids": [
+        "nim-gerhard"
+      ],
+      "paths": [
+        "C:\\DR\\Nextcloud\\BUILD\\ts3news"
+      ],
+      "api_key_ids": [
+        "key-1781268309905637669"
+      ],
+      "rpm_limit": 40,
+      "active": true,
+      "vpn_config": {}
+    },
+    {
+      "id": "vpn-de-1",
+      "name": "vpn-de-1",
+      "auth_token": "",
+      "vpn_ids": [
+        "vpn-de-1"
+      ],
+      "paths": [
+        "C:\\DR\\Nextcloud\\BUILD\\image-resizer"
+      ],
+      "api_key_ids": [
+        "key-1781269484875949100"
+      ],
+      "rpm_limit": 40,
+      "active": true,
+      "vpn_config": {}
+    },
+    {
+      "id": "sys-kilo",
+      "name": "Kilo",
+      "auth_token": "",
+      "model_override": "kilo-auto/free",
+      "upstream_url": "https://kilo.ai/api/openrouter",
+      "system": true,
+      "active": false,
+      "vpn_config": {}
+    },
+    {
+      "id": "sys-openrouter",
+      "name": "OpenRouter",
+      "auth_token": "",
+      "model_override": "openrouter/owl-alpha",
+      "upstream_url": "https://openrouter.ai/api/v1",
+      "system": true,
+      "active": false,
+      "vpn_config": {}
+    },
+    {
+      "id": "sys-groq",
+      "name": "Groq",
+      "auth_token": "",
+      "model_override": "llama-3.3-70b-versatile",
+      "upstream_url": "https://api.groq.com/openai/v1",
+      "system": true,
+      "active": false,
+      "vpn_config": {}
+    },
+    {
+      "id": "sys-mistral",
+      "name": "Mistral",
+      "auth_token": "",
+      "model_override": "mistral-large-latest",
+      "upstream_url": "https://api.mistral.ai/v1",
+      "system": true,
+      "active": false,
+      "vpn_config": {}
+    },
+    {
+      "id": "sys-llm7",
+      "name": "LLM7",
+      "auth_token": "",
+      "model_override": "qwen3-235b",
+      "upstream_url": "https://api.llm7.io/v1",
+      "upstream_api_key": "uqQrNaC8hL52HXPVsCdiqMXtqCYqDu9zVodf4qlYcFJBV06Hida5mGjq5Q1fS/dyGmFX1Ye9KFrGTxih9Cvfs3J0lJ8maHtVLcEmIr40KpNqUaErPwaVvw41XScCyGMyqreRHuPnUuokBd4Wig97gkFTf5XpRqw=",
+      "system": true,
+      "active": true,
+      "vpn_config": {}
+    }
+  ],
+  "vpns": [
+    {
+      "id": "vpn-at-1",
+      "name": "vpn-at-1 VPN",
+      "type": "managed-openvpn",
+      "config": {
+        "wireguard_config_raw": "client\ndev tun\nproto udp\nremote austria.privacy.network 1198\nresolv-retry infinite\nnobind\npersist-key\npersist-tun\ncipher aes-128-cbc\nauth sha1\ntls-client\nremote-cert-tls server\n\nauth-user-pass\ncompress\nverb 1\nreneg-sec 0\n\n\u003cca\u003e\n-----BEGIN CERTIFICATE-----\nMIIFqzCCBJOgAwIBAgIJAKZ7D5Yv87qDMA0GCSqGSIb3DQEBDQUAMIHoMQswCQYD\nVQQGEwJVUzELMAkGA1UECBMCQ0ExEzARBgNVBAcTCkxvc0FuZ2VsZXMxIDAeBgNV\nBAoTF1ByaXZhdGUgSW50ZXJuZXQgQWNjZXNzMSAwHgYDVQQLExdQcml2YXRlIElu\ndGVybmV0IEFjY2VzczEgMB4GA1UEAxMXUHJpdmF0ZSBJbnRlcm5ldCBBY2Nlc3Mx\nIDAeBgNVBCkTF1ByaXZhdGUgSW50ZXJuZXQgQWNjZXNzMS8wLQYJKoZIhvcNAQkB\nFiBzZWN1cmVAcHJpdmF0ZWludGVybmV0YWNjZXNzLmNvbTAeFw0xNDA0MTcxNzM1\nMThaFw0zNDA0MTIxNzM1MThaMIHoMQswCQYDVQQGEwJVUzELMAkGA1UECBMCQ0Ex\nEzARBgNVBAcTCkxvc0FuZ2VsZXMxIDAeBgNVBAoTF1ByaXZhdGUgSW50ZXJuZXQg\nQWNjZXNzMSAwHgYDVQQLExdQcml2YXRlIEludGVybmV0IEFjY2VzczEgMB4GA1UE\nAxMXUHJpdmF0ZSBJbnRlcm5ldCBBY2Nlc3MxIDAeBgNVBCkTF1ByaXZhdGUgSW50\nZXJuZXQgQWNjZXNzMS8wLQYJKoZIhvcNAQkBFiBzZWN1cmVAcHJpdmF0ZWludGVy\nbmV0YWNjZXNzLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAPXD\nL1L9tX6DGf36liA7UBTy5I869z0UVo3lImfOs/GSiFKPtInlesP65577nd7UNzzX\nlH/P/CnFPdBWlLp5ze3HRBCc/Avgr5CdMRkEsySL5GHBZsx6w2cayQ2EcRhVTwWp\ncdldeNO+pPr9rIgPrtXqT4SWViTQRBeGM8CDxAyTopTsobjSiYZCF9Ta1gunl0G/\n8Vfp+SXfYCC+ZzWvP+L1pFhPRqzQQ8k+wMZIovObK1s+nlwPaLyayzw9a8sUnvWB\n/5rGPdIYnQWPgoNlLN9HpSmsAcw2z8DXI9pIxbr74cb3/HSfuYGOLkRqrOk6h4RC\nOfuWoTrZup1uEOn+fw8CAwEAAaOCAVQwggFQMB0GA1UdDgQWBBQv63nQ/pJAt5tL\ny8VJcbHe22ZOsjCCAR8GA1UdIwSCARYwggESgBQv63nQ/pJAt5tLy8VJcbHe22ZO\nsqGB7qSB6zCB6DELMAkGA1UEBhMCVVMxCzAJBgNVBAgTAkNBMRMwEQYDVQQHEwpM\nb3NBbmdlbGVzMSAwHgYDVQQKExdQcml2YXRlIEludGVybmV0IEFjY2VzczEgMB4G\nA1UECxMXUHJpdmF0ZSBJbnRlcm5ldCBBY2Nlc3MxIDAeBgNVBAMTF1ByaXZhdGUg\nSW50ZXJuZXQgQWNjZXNzMSAwHgYDVQQpExdQcml2YXRlIEludGVybmV0IEFjY2Vz\nczEvMC0GCSqGSIb3DQEJARYgc2VjdXJlQHByaXZhdGVpbnRlcm5ldGFjY2Vzcy5j\nb22CCQCmew+WL/O6gzAMBgNVHRMEBTADAQH/MA0GCSqGSIb3DQEBDQUAA4IBAQAn\na5PgrtxfwTumD4+3/SYvwoD66cB8IcK//h1mCzAduU8KgUXocLx7QgJWo9lnZ8xU\nryXvWab2usg4fqk7FPi00bED4f4qVQFVfGfPZIH9QQ7/48bPM9RyfzImZWUCenK3\n7pdw4Bvgoys2rHLHbGen7f28knT2j/cbMxd78tQc20TIObGjo8+ISTRclSTRBtyC\nGohseKYpTS9himFERpUgNtefvYHbn70mIOzfOJFTVqfrptf9jXa9N8Mpy3ayfodz\n1wiqdteqFXkTYoSDctgKMiZ6GdocK9nMroQipIQtpnwd4yBDWIyC6Bvlkrq5TQUt\nYDQ8z9v+DMO6iwyIDRiU\n-----END CERTIFICATE-----\n\u003c/ca\u003e\n\ndisable-occ\n",
+        "username": "p4492334",
+        "password": "GQbg2sDHtT"
+      },
+      "active": true
+    },
+    {
+      "id": "nim-gerhard",
+      "name": "vpn-at-2 VPN",
+      "type": "managed-openvpn",
+      "config": {
+        "wireguard_config_raw": "client\ndev tun\nproto udp\nremote vie-c01.vpn.wlvpn.com 1194\nremote vie-c02.vpn.wlvpn.com 1194\nremote vie-c03.vpn.wlvpn.com 1194\nremote vie-c17.vpn.wlvpn.com 1194\nremote vie-c18.vpn.wlvpn.com 1194\nremote vie-c04.vpn.wlvpn.com 1194\nremote vie-c05.vpn.wlvpn.com 1194\nremote vie-c13.vpn.wlvpn.com 1194\nremote vie-c14.vpn.wlvpn.com 1194\nremote vie-c15.vpn.wlvpn.com 1194\nremote vie-c16.vpn.wlvpn.com 1194\nremote vie-c06.vpn.wlvpn.com 1194\nremote vie-c07.vpn.wlvpn.com 1194\nremote vie-c08.vpn.wlvpn.com 1194\nremote vie-c09.vpn.wlvpn.com 1194\nremote vie-c10.vpn.wlvpn.com 1194\nremote vie-c11.vpn.wlvpn.com 1194\nremote vie-c12.vpn.wlvpn.com 1194\nremote-random\nresolv-retry infinite\nnobind\npersist-key\npersist-tun\npersist-remote-ip\n\u003cca\u003e\n-----BEGIN CERTIFICATE-----\nMIIESjCCAzKgAwIBAgIJAKSqvk2CSdJGMA0GCSqGSIb3DQEBDQUAMHUxCzAJBgNV\nBAYTAlVTMQwwCgYDVQQIEwNWUE4xDDAKBgNVBAcTA1ZQTjEMMAoGA1UEChMDVlBO\nMQwwCgYDVQQLEwNWUE4xDDAKBgNVBAMTA1ZQTjEMMAoGA1UEKRMDVlBOMRIwEAYJ\nKoZIhvcNAQkBFgNWUE4wIBcNMjIwNTA5MjA0NTA2WhgPMjA4MjA0MjQyMDQ1MDZa\nMHUxCzAJBgNVBAYTAlVTMQwwCgYDVQQIEwNWUE4xDDAKBgNVBAcTA1ZQTjEMMAoG\nA1UEChMDVlBOMQwwCgYDVQQLEwNWUE4xDDAKBgNVBAMTA1ZQTjEMMAoGA1UEKRMD\nVlBOMRIwEAYJKoZIhvcNAQkBFgNWUE4wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAw\nggEKAoIBAQDJSvYEDPaAcZpeuLqtYykqpy9VNfcg5IsR8FZ/V9vbMLDHT4YUwbbn\nxiQ4KJCGj9g5fnxsmmywYjjY7NmK1KKxNWlc0gF6XMZQ90qDHSpREaANb7t47JIl\ngKfURSdwSUkIe3WyjRJt91CnEDzxVkwf18U4q0tjmoceLR2teb/BnL7NbtN9Xktx\n7Tjq+/Yz0jn8qjjNnlWHqNOjZWsJBHDyChcHk0B1TkPvqVWFYrhnO3jCgjydFbkS\n/cBYTDmhfzmPkHRNj2cSLmPS81gG4zF/8aIs7wzwsIc9fQdgGIsONl6wkK+4be9/\nCcBjkIlCo2O5+macXeK+xoXR0Z6jniRZAgMBAAGjgdowgdcwDAYDVR0TBAUwAwEB\n/zAdBgNVHQ4EFgQUF58B5L6R0n/5TGnCqCrIQHBjNqkwgacGA1UdIwSBnzCBnIAU\nF58B5L6R0n/5TGnCqCrIQHBjNqmheaR3MHUxCzAJBgNVBAYTAlVTMQwwCgYDVQQI\nEwNWUE4xDDAKBgNVBAcTA1ZQTjEMMAoGA1UEChMDVlBOMQwwCgYDVQQLEwNWUE4x\nDDAKBgNVBAMTA1ZQTjEMMAoGA1UEKRMDVlBOMRIwEAYJKoZIhvcNAQkBFgNWUE6C\nCQCkqr5NgknSRjANBgkqhkiG9w0BAQ0FAAOCAQEAMjkx4HQoLkLVMix6j6HVf8Lr\nlKnbDlMx3gYfkD8J5LhTrf8JezB07rSialwiF7lvs3+urvQQdUs5tZCARRDpQANR\nb8XzxbDu3oO4eOOxiDPnHutZv04/rN3Y/s3kSrJEwXxnWDLSzn9IsJtFtV+oHwan\nijRI4jaTBAzaqpFzq1Ffm1O1PrFfhwjb4aEyahMXCU8xRavBGKu7EeXZ78lXJVqg\n0q3hbTISxRXSa63JgwxZnXcHIyeO4V/bZIcJvIei17xlc7dLDHPdnyQtrD07+AEH\nqioNZsFRPJqf8KwmVCEIJq38cM7nSRXrrZ36w9P4sMBRHABQBre2DIqdo9hoeA==\n-----END CERTIFICATE-----\n\u003c/ca\u003e\nverify-x509-name vie-c name-prefix\nremote-cert-tls server\nauth-user-pass\nverb 3\nauth SHA256\ndata-ciphers AES-256-GCM:AES-256-CBC\ndata-ciphers-fallback AES-256-CBC\ntls-cipher TLS-DHE-RSA-WITH-AES-256-CBC-SHA:TLS-DHE-DSS-WITH-AES-256-CBC-SHA:TLS-RSA-WITH-AES-256-CBC-SHA\n",
+        "username": "ncpanytree@namecheap",
+        "password": "fkpWU3N5EA"
+      },
+      "active": true
+    },
+    {
+      "id": "vpn-de-1",
+      "name": "vpn-de-1 VPN",
+      "type": "managed-openvpn",
+      "config": {
+        "wireguard_config_raw": "client\ndev tun\nproto udp\nremote de-frankfurt.privacy.network 1198\nresolv-retry infinite\nnobind\npersist-key\npersist-tun\ncipher aes-128-cbc\nauth sha1\ntls-client\nremote-cert-tls server\n\nauth-user-pass\ncompress\nverb 1\nreneg-sec 0\n\n\u003cca\u003e\n-----BEGIN CERTIFICATE-----\nMIIFqzCCBJOgAwIBAgIJAKZ7D5Yv87qDMA0GCSqGSIb3DQEBDQUAMIHoMQswCQYD\nVQQGEwJVUzELMAkGA1UECBMCQ0ExEzARBgNVBAcTCkxvc0FuZ2VsZXMxIDAeBgNV\nBAoTF1ByaXZhdGUgSW50ZXJuZXQgQWNjZXNzMSAwHgYDVQQLExdQcml2YXRlIElu\ndGVybmV0IEFjY2VzczEgMB4GA1UEAxMXUHJpdmF0ZSBJbnRlcm5ldCBBY2Nlc3Mx\nIDAeBgNVBCkTF1ByaXZhdGUgSW50ZXJuZXQgQWNjZXNzMS8wLQYJKoZIhvcNAQkB\nFiBzZWN1cmVAcHJpdmF0ZWludGVybmV0YWNjZXNzLmNvbTAeFw0xNDA0MTcxNzM1\nMThaFw0zNDA0MTIxNzM1MThaMIHoMQswCQYDVQQGEwJVUzELMAkGA1UECBMCQ0Ex\nEzARBgNVBAcTCkxvc0FuZ2VsZXMxIDAeBgNVBAoTF1ByaXZhdGUgSW50ZXJuZXQg\nQWNjZXNzMSAwHgYDVQQLExdQcml2YXRlIEludGVybmV0IEFjY2VzczEgMB4GA1UE\nAxMXUHJpdmF0ZSBJbnRlcm5ldCBBY2Nlc3MxIDAeBgNVBCkTF1ByaXZhdGUgSW50\nZXJuZXQgQWNjZXNzMS8wLQYJKoZIhvcNAQkBFiBzZWN1cmVAcHJpdmF0ZWludGVy\nbmV0YWNjZXNzLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAPXD\nL1L9tX6DGf36liA7UBTy5I869z0UVo3lImfOs/GSiFKPtInlesP65577nd7UNzzX\nlH/P/CnFPdBWlLp5ze3HRBCc/Avgr5CdMRkEsySL5GHBZsx6w2cayQ2EcRhVTwWp\ncdldeNO+pPr9rIgPrtXqT4SWViTQRBeGM8CDxAyTopTsobjSiYZCF9Ta1gunl0G/\n8Vfp+SXfYCC+ZzWvP+L1pFhPRqzQQ8k+wMZIovObK1s+nlwPaLyayzw9a8sUnvWB\n/5rGPdIYnQWPgoNlLN9HpSmsAcw2z8DXI9pIxbr74cb3/HSfuYGOLkRqrOk6h4RC\nOfuWoTrZup1uEOn+fw8CAwEAAaOCAVQwggFQMB0GA1UdDgQWBBQv63nQ/pJAt5tL\ny8VJcbHe22ZOsjCCAR8GA1UdIwSCARYwggESgBQv63nQ/pJAt5tLy8VJcbHe22ZO\nsqGB7qSB6zCB6DELMAkGA1UEBhMCVVMxCzAJBgNVBAgTAkNBMRMwEQYDVQQHEwpM\nb3NBbmdlbGVzMSAwHgYDVQQKExdQcml2YXRlIEludGVybmV0IEFjY2VzczEgMB4G\nA1UECxMXUHJpdmF0ZSBJbnRlcm5ldCBBY2Nlc3MxIDAeBgNVBAMTF1ByaXZhdGUg\nSW50ZXJuZXQgQWNjZXNzMSAwHgYDVQQpExdQcml2YXRlIEludGVybmV0IEFjY2Vz\nczEvMC0GCSqGSIb3DQEJARYgc2VjdXJlQHByaXZhdGVpbnRlcm5ldGFjY2Vzcy5j\nb22CCQCmew+WL/O6gzAMBgNVHRMEBTADAQH/MA0GCSqGSIb3DQEBDQUAA4IBAQAn\na5PgrtxfwTumD4+3/SYvwoD66cB8IcK//h1mCzAduU8KgUXocLx7QgJWo9lnZ8xU\nryXvWab2usg4fqk7FPi00bED4f4qVQFVfGfPZIH9QQ7/48bPM9RyfzImZWUCenK3\n7pdw4Bvgoys2rHLHbGen7f28knT2j/cbMxd78tQc20TIObGjo8+ISTRclSTRBtyC\nGohseKYpTS9himFERpUgNtefvYHbn70mIOzfOJFTVqfrptf9jXa9N8Mpy3ayfodz\n1wiqdteqFXkTYoSDctgKMiZ6GdocK9nMroQipIQtpnwd4yBDWIyC6Bvlkrq5TQUt\nYDQ8z9v+DMO6iwyIDRiU\n-----END CERTIFICATE-----\n\u003c/ca\u003e\n\ndisable-occ\n",
+        "username": "p4492334",
+        "password": "GQbg2sDHtT"
+      },
+      "active": true
+    }
+  ]
+}

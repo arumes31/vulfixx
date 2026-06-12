@@ -110,7 +110,7 @@ func TestWorkerSync_NVD(t *testing.T) {
 		mock.ExpectBegin()
 
 		mock.ExpectQuery("(?i)INSERT INTO cves").
-			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 7.5, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), true).
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 7.5, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), true).
 			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 
 		mock.ExpectCommit()
@@ -174,9 +174,16 @@ func TestWorkerSync_CISA(t *testing.T) {
 			resp := CISAKEVResponse{
 				Vulnerabilities: []struct {
 					CVEID                      string `json:"cveID"`
+					VulnerabilityName          string `json:"vulnerabilityName"`
+					DateAdded                  string `json:"dateAdded"`
+					ShortDescription           string `json:"shortDescription"`
+					RequiredAction             string `json:"requiredAction"`
+					DueDate                    string `json:"dueDate"`
 					KnownRansomwareCampaignUse string `json:"knownRansomwareCampaignUse"`
+					VendorProject              string `json:"vendorProject"`
+					Product                    string `json:"product"`
 				}{
-					{CVEID: "CVE-2023-1111", KnownRansomwareCampaignUse: "Known"},
+					{CVEID: "CVE-2023-1111", VulnerabilityName: "Test Vuln", DateAdded: "2023-01-01", ShortDescription: "Test desc", RequiredAction: "Apply updates", DueDate: "2023-06-01", KnownRansomwareCampaignUse: "Known", VendorProject: "TestVendor", Product: "TestProduct"},
 				},
 			}
 			_ = json.NewEncoder(rw).Encode(resp)
@@ -195,6 +202,7 @@ func TestWorkerSync_CISA(t *testing.T) {
 		mock.ExpectExec("UPDATE cves SET cisa_ransomware = true WHERE cve_id = ANY").
 			WithArgs([]string{"CVE-2023-1111"}).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("UPDATE cves SET cisa_kev_data").WithArgs(pgxmock.AnyArg(), "CVE-2023-1111").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("cisa_kev_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
@@ -238,8 +246,8 @@ func TestWorkerSync_EPSS(t *testing.T) {
 		defaultEPSSBaseURL = ts.URL
 		defer func() { defaultEPSSBaseURL = oldURL }()
 
-		mock.ExpectExec("UPDATE cves SET epss_score = u.epss_score").
-			WithArgs([]string{"CVE-EPSS-1"}, []float64{0.0123}).
+		mock.ExpectExec("UPDATE cves SET epss_score = u.epss_score, epss_percentile = u.epss_percentile").
+			WithArgs([]string{"CVE-EPSS-1"}, []float64{0.0123}, []float64{0.1234}).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("epss_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
@@ -280,7 +288,7 @@ func TestWorkerSync_GitHub(t *testing.T) {
 		mock.ExpectQuery("SELECT cve_id FROM cves").WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-GH-1"))
 
 		mock.ExpectBegin()
-		mock.ExpectExec("UPDATE cves SET github_poc_count = \\$1 WHERE cve_id = \\$2").WithArgs(42, "CVE-GH-1").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectExec("UPDATE cves SET github_poc_count = \\$1, github_poc_repos = \\$2 WHERE cve_id = \\$3").WithArgs(42, pgxmock.AnyArg(), "CVE-GH-1").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()
 
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("github_buzz_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))

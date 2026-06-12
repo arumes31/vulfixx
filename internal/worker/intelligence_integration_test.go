@@ -42,14 +42,15 @@ func TestWorker_ExploitDetection(t *testing.T) {
 		},
 	}
 
-	// Expect UPSERT with exploit_available = true (arg 13) inside a transaction
+	// Expect UPSERT with 14 arguments (including reference_tags as arg 7 and exploit_available as arg 14)
 	mock.ExpectBegin()
 	mock.ExpectQuery("(?i)INSERT INTO cves").
 		WithArgs(
 			"CVE-EXPLOIT", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
-			true, // ExploitAvailable
+			pgxmock.AnyArg(), // reference_tags (13th argument)
+			true,             // ExploitAvailable (14th argument)
 		).
 		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectCommit()

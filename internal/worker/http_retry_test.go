@@ -205,7 +205,7 @@ func TestWorkerSync_GitHub_RateLimit(t *testing.T) {
 
 	mock.ExpectQuery("SELECT cve_id FROM cves").WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-LIMIT-1"))
 	mock.ExpectBegin()
-	mock.ExpectExec("UPDATE cves SET github_poc_count = \\$1 WHERE cve_id = \\$2").WithArgs(42, "CVE-LIMIT-1").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectExec("UPDATE cves SET github_poc_count = \\$1, github_poc_repos = \\$2 WHERE cve_id = \\$3").WithArgs(42, pgxmock.AnyArg(), "CVE-LIMIT-1").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	mock.ExpectCommit()
 	mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("github_buzz_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 

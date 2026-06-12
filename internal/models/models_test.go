@@ -572,3 +572,111 @@ func TestWebhookEncryption(t *testing.T) {
 		t.Error("expected GCM authentication check failure error, got nil")
 	}
 }
+
+func TestGetVendorAdvisory(t *testing.T) {
+	t.Run("Returns nil when VendorAdvisories is nil", func(t *testing.T) {
+		cve := &CVE{}
+		result := cve.GetVendorAdvisory(VendorFortiGuard)
+		if result != nil {
+			t.Errorf("expected nil, got %v", result)
+		}
+	})
+
+	t.Run("Returns nil for missing vendor", func(t *testing.T) {
+		cve := &CVE{VendorAdvisories: JSONBMap{"cisco": map[string]interface{}{"advisory_id": "CISCO-1"}}}
+		result := cve.GetVendorAdvisory(VendorFortiGuard)
+		if result != nil {
+			t.Errorf("expected nil for missing vendor, got %v", result)
+		}
+	})
+
+	t.Run("Returns advisory data for existing vendor", func(t *testing.T) {
+		fgData := map[string]interface{}{
+			"advisory_id":  "FG-IR-24-388",
+			"advisory_url": "https://www.fortiguard.com/psirt/FG-IR-24-388",
+			"severity":     "Critical",
+		}
+		cve := &CVE{VendorAdvisories: JSONBMap{VendorFortiGuard: fgData}}
+		result := cve.GetVendorAdvisory(VendorFortiGuard)
+		if result == nil {
+			t.Fatal("expected advisory data, got nil")
+		}
+		if result["advisory_id"] != "FG-IR-24-388" {
+			t.Errorf("expected advisory_id FG-IR-24-388, got %v", result["advisory_id"])
+		}
+		if result["severity"] != "Critical" {
+			t.Errorf("expected severity Critical, got %v", result["severity"])
+		}
+	})
+
+	t.Run("Returns nil for non-map value", func(t *testing.T) {
+		cve := &CVE{VendorAdvisories: JSONBMap{VendorFortiGuard: "not-a-map"}}
+		result := cve.GetVendorAdvisory(VendorFortiGuard)
+		if result != nil {
+			t.Errorf("expected nil for non-map value, got %v", result)
+		}
+	})
+}
+
+func TestSetVendorAdvisory(t *testing.T) {
+	t.Run("Initializes VendorAdvisories if nil", func(t *testing.T) {
+		cve := &CVE{}
+		fgData := map[string]interface{}{"advisory_id": "FG-IR-24-388"}
+		cve.SetVendorAdvisory(VendorFortiGuard, fgData)
+		if cve.VendorAdvisories == nil {
+			t.Fatal("expected VendorAdvisories to be initialized")
+		}
+		if cve.VendorAdvisories[VendorFortiGuard] == nil {
+			t.Fatal("expected fortiguard advisory to be set")
+		}
+	})
+
+	t.Run("Overwrites existing vendor advisory", func(t *testing.T) {
+		cve := &CVE{VendorAdvisories: JSONBMap{VendorFortiGuard: map[string]interface{}{"advisory_id": "OLD"}}}
+		newData := map[string]interface{}{"advisory_id": "FG-IR-24-999"}
+		cve.SetVendorAdvisory(VendorFortiGuard, newData)
+		result := cve.GetVendorAdvisory(VendorFortiGuard)
+		if result["advisory_id"] != "FG-IR-24-999" {
+			t.Errorf("expected advisory_id FG-IR-24-999, got %v", result["advisory_id"])
+		}
+	})
+
+	t.Run("Adds new vendor without removing others", func(t *testing.T) {
+		fgData := map[string]interface{}{"advisory_id": "FG-IR-24-388"}
+		cve := &CVE{VendorAdvisories: JSONBMap{VendorFortiGuard: fgData}}
+		ciscoData := map[string]interface{}{"advisory_id": "CISCO-2024-001"}
+		cve.SetVendorAdvisory(VendorCisco, ciscoData)
+		if len(cve.VendorAdvisories) != 2 {
+			t.Errorf("expected 2 vendors, got %d", len(cve.VendorAdvisories))
+		}
+		if cve.GetVendorAdvisory(VendorFortiGuard) == nil {
+			t.Error("expected FortiGuard advisory to still exist")
+		}
+		if cve.GetVendorAdvisory(VendorCisco) == nil {
+			t.Error("expected Cisco advisory to exist")
+		}
+	})
+}
+
+func TestHasVendorAdvisory(t *testing.T) {
+	t.Run("Returns false when VendorAdvisories is nil", func(t *testing.T) {
+		cve := &CVE{}
+		if cve.HasVendorAdvisory() {
+			t.Error("expected false for nil VendorAdvisories")
+		}
+	})
+
+	t.Run("Returns false when VendorAdvisories is empty", func(t *testing.T) {
+		cve := &CVE{VendorAdvisories: JSONBMap{}}
+		if cve.HasVendorAdvisory() {
+			t.Error("expected false for empty VendorAdvisories")
+		}
+	})
+
+	t.Run("Returns true when VendorAdvisories has data", func(t *testing.T) {
+		cve := &CVE{VendorAdvisories: JSONBMap{VendorFortiGuard: map[string]interface{}{"advisory_id": "FG-IR-24-388"}}}
+		if !cve.HasVendorAdvisory() {
+			t.Error("expected true for non-empty VendorAdvisories")
+		}
+	})
+}

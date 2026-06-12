@@ -9,31 +9,32 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"golang.org/x/time/rate"
 	"log/slog"
 	"sync"
 	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/hibiken/asynq"
 )
 
 type Worker struct {
-	Pool               db.DBPool
-	Redis              db.RedisProvider
-	Mailer             EmailSender
-	HTTP               HTTPClient
-	AdminEmail         string
-	WebhookSecret      string
-	alertTimestamps    map[string]time.Time
-	alertMu            sync.Mutex
-	HNLimiter          *rate.Limiter
-	RedditLimiter      *rate.Limiter
-	alertResendBackoff time.Duration
-	enrichmentQueue    chan int
-	AsynqClient        *asynq.Client
-	HNClient           HNClient
-	TickerFactory      func(time.Duration) Ticker
-	TimerFactory       func(time.Duration) Timer
+	Pool                   db.DBPool
+	Redis                  db.RedisProvider
+	Mailer                 EmailSender
+	HTTP                   HTTPClient
+	AdminEmail             string
+	WebhookSecret          string
+	alertTimestamps        map[string]time.Time
+	alertMu                sync.Mutex
+	HNLimiter              *rate.Limiter
+	RedditLimiter          *rate.Limiter
+	alertResendBackoff     time.Duration
+	enrichmentQueue        chan int
+	AsynqClient            *asynq.Client
+	HNClient               HNClient
+	TickerFactory          func(time.Duration) Ticker
+	TimerFactory           func(time.Duration) Timer
 	OnHealthCheckDone      func()
 	OnIntelligenceSyncDone func()
 	OnAdvisoryRSSSyncDone  func()
@@ -114,6 +115,7 @@ func (w *Worker) Start(ctx context.Context) {
 	runTask(w.syncOSVPeriodically)
 	runTask(w.syncInTheWildPeriodically)
 	runTask(w.syncAdvisoryRSSPeriodically)
+	runTask(w.syncFortiguardPeriodically)
 	runTask(w.startHealthCheckPeriodically)
 
 	// Notification & Alert Processing
