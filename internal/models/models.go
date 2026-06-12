@@ -412,22 +412,13 @@ func detectProductFromDescription(desc string) (string, string) {
 	}
 
 	// Pass 4: generic "<Vendor> <Product>" capitalized-pair heuristic.
-	for _, word := range strings.Fields(desc) {
-		if len(word) > 2 && word[0] >= 'A' && word[0] <= 'Z' {
+	fields := strings.Fields(desc)
+	for i, word := range fields {
+		if i+1 < len(fields) && len(word) > 2 && word[0] >= 'A' && word[0] <= 'Z' {
 			// Check if next word could be a product
-			idx := strings.Index(desc, word)
-			if idx >= 0 {
-				after := desc[idx+len(word):]
-				after = strings.TrimLeft(after, " ")
-				nextWord := ""
-				if spaceIdx := strings.Index(after, " "); spaceIdx > 0 {
-					nextWord = after[:spaceIdx]
-				} else if len(after) > 0 {
-					nextWord = after
-				}
-				if nextWord != "" && nextWord[0] >= 'A' && nextWord[0] <= 'Z' {
-					return word, nextWord
-				}
+			nextWord := fields[i+1]
+			if len(nextWord) > 0 && nextWord[0] >= 'A' && nextWord[0] <= 'Z' {
+				return word, nextWord
 			}
 		}
 	}

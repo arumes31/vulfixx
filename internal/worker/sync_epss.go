@@ -82,12 +82,17 @@ func (w *Worker) syncEPSS(ctx context.Context) {
 				}
 				continue
 			}
-			var percentile float64
-			if len(parts) >= 3 {
-				pStr := strings.TrimSpace(parts[2])
-				if p, pErr := strconv.ParseFloat(pStr, 64); pErr == nil {
-					percentile = p
+			if len(parts) < 3 {
+				continue
+			}
+			pStr := strings.TrimSpace(parts[2])
+			percentile, pErr := strconv.ParseFloat(pStr, 64)
+			if pErr != nil {
+				parseErrorCount++
+				if parseErrorCount < 5 {
+					slog.Debug("Worker: [DEBUG] Failed to parse EPSS percentile", "percentile_str", pStr, "cve_id", cveID, "error", pErr)
 				}
+				continue
 			}
 			batchRows = append(batchRows, []interface{}{cveID, score, percentile})
 			totalProcessed++

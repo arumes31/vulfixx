@@ -104,6 +104,10 @@ func fortiGuardShouldRetry(resp *http.Response, err error, attempt int) (bool, t
 				waitTime = time.Duration(seconds) * time.Second
 			}
 		}
+		maxWait := 5 * time.Minute
+		if waitTime > maxWait {
+			waitTime = maxWait
+		}
 		return true, waitTime
 	}
 	if resp.StatusCode >= 500 {
@@ -283,11 +287,16 @@ func (w *Worker) filterRelevantAdvisories(ctx context.Context, advisoryMap map[s
 	defer rows.Close()
 
 	existingCVEIDs := make(map[string]bool)
+	rowIndex := 0
 	for rows.Next() {
 		var cveID string
-		if err := rows.Scan(&cveID); err == nil {
-			existingCVEIDs[cveID] = true
+		if err := rows.Scan(&cveID); err != nil {
+			slog.Error("Worker: [ERROR] Failed to scan CVE ID from database row", "row_index", rowIndex, "error", err)
+			rowIndex++
+			continue
 		}
+		existingCVEIDs[cveID] = true
+		rowIndex++
 	}
 
 	// Find advisories that have at least one CVE in our database
@@ -683,6 +692,8 @@ func (w *Worker) updateCVEsWithAdvisory(ctx context.Context, advisory *FortiGuar
 	for _, cve := range cvesToUpdate {
 		if _, err := tx.Exec(ctx, query, cve.VendorAdvisories, cve.AffectedProducts, cve.ID); err != nil {
 			slog.Error("Worker: [ERROR] Failed to update CVE with FortiGuard data", "error", err, "cve_id", cve.CVEID)
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("failed to update CVE %s with FortiGuard data: %w", cve.CVEID, err)
 		}
 	}
 

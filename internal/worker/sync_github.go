@@ -140,8 +140,9 @@ CVELoop:
 		for j := 0; j < maxRepos; j++ {
 			item := ghResp.Items[j]
 			desc := item.Description
-			if len(desc) > 100 {
-				desc = desc[:100]
+			runes := []rune(desc)
+			if len(runes) > 100 {
+				desc = string(runes[:100])
 			}
 			topRepos = append(topRepos, models.GitHubPoCRepo{
 				URL:         item.HTMLURL,

@@ -161,6 +161,10 @@ func (w *Worker) fetchFromCISAKEV(ctx context.Context) {
 				WHERE cves.cve_id = u.cve_id`, kevIDs, kevJSON)
 			if err != nil {
 				slog.Error("Worker: [ERROR] Failed to bulk update KEV data batch", "error", err)
+				if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
+					slog.Error("Worker: [ERROR] Failed to rollback KEV transaction", "error", rollbackErr)
+				}
+				return
 			}
 		}
 	}

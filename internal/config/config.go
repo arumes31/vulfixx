@@ -53,7 +53,7 @@ type Config struct {
 	Gemini3Model      string // Gemini 3 Flash failover (e.g. gemini-3-flash-preview)
 	GemmaModel        string // Gemma failover on the same Google API key (e.g. gemma-4-31b-it)
 	Gemma2Model       string // second Gemma failover (e.g. gemma-4-26b-a4b-it)
-	LLMProvider       string // "ollama" or "gemini"
+	LLMProvider       string // default priority chain, fallback matches .env.example ("gemini31flashlite,mistral")
 	LLMEndpoint       string // e.g. "http://ollama:11434"
 	LLMModel          string // e.g. "phi3" or "llama3"
 	LLMTimeout        int    // timeout in seconds
@@ -100,7 +100,7 @@ func LoadConfig() error {
 		Gemini3Model:     getEnv("GEMINI3FLASH_MODEL", getEnv("GEMINI3_MODEL", "gemini-3-flash-preview")),
 		GemmaModel:       getEnv("GEMMA_MODEL", "gemma-4-31b-it"),
 		Gemma2Model:      getEnv("GEMMA2_MODEL", "gemma-4-26b-a4b-it"),
-		LLMProvider:      getEnv("LLM_PROVIDER", "gemini35flash,gemini3flash,gemini31flashlite,mistral,ollama"),
+		LLMProvider:      getEnv("LLM_PROVIDER", "gemini31flashlite,mistral"),
 		LLMEndpoint:      getEnv("LLM_ENDPOINT", "http://ollama:11434"),
 		LLMModel:         getEnv("LLM_MODEL", "phi3-vulfixx"),
 		LLMTimeout:       getEnvInt("LLM_TIMEOUT", 600),
