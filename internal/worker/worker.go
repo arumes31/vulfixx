@@ -221,9 +221,23 @@ func (w *Worker) releaseLock(ctx context.Context, taskName string, token string)
 	}
 }
 
+// maxLockLease caps how long a task lock's Redis key lives without a heartbeat.
+// The heartbeat below re-extends the key to this value every maxLockLease/3 while
+// the task is actually running, so legitimate long-running syncs are unaffected.
+// But if an instance crashes mid-sync (no graceful releaseLock), the orphaned lock
+// self-expires within maxLockLease instead of lingering for the full task TTL —
+// fixing slow self-heal without ever stomping a lock held by another live instance.
+const maxLockLease = 90 * time.Second
+
 // runWithLock executes the given sync task within a Redis distributed lock, extending the lock TTL periodically while taskFn runs.
+// ttl is the upper bound on the lease; the actual Redis key TTL is capped at maxLockLease so crashed instances self-heal quickly.
 func (w *Worker) runWithLock(ctx context.Context, taskName string, ttl time.Duration, taskFn func(context.Context)) {
-	token, acquired := w.acquireLock(ctx, taskName, ttl)
+	lease := ttl
+	if lease > maxLockLease {
+		lease = maxLockLease
+	}
+
+	token, acquired := w.acquireLock(ctx, taskName, lease)
 	if !acquired {
 		slog.Info("Worker: Task already running or locked in another instance", "task", taskName)
 		return
@@ -233,7 +247,7 @@ func (w *Worker) runWithLock(ctx context.Context, taskName string, ttl time.Dura
 	defer heartbeatCancel()
 
 	go func() {
-		ticker := time.NewTicker(ttl / 3)
+		ticker := time.NewTicker(lease / 3)
 		defer ticker.Stop()
 		for {
 			select {
@@ -251,7 +265,7 @@ func (w *Worker) runWithLock(ctx context.Context, taskName string, ttl time.Dura
 						return 0
 					end
 				`
-				res, err := w.Redis.Eval(heartbeatCtx, script, []string{key}, token, int(ttl.Seconds())).Result()
+				res, err := w.Redis.Eval(heartbeatCtx, script, []string{key}, token, int(lease.Seconds())).Result()
 				if err != nil {
 					slog.Error("Worker: Failed to extend Redis lock TTL", "task", taskName, "error", err)
 					return
