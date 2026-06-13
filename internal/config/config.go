@@ -186,13 +186,13 @@ func LoadConfig() error {
 	}
 
 	// Validate and decode keys
-	csrfKey, err := decodeKey("CSRFKey", AppConfig.CSRFKey, 32, appEnv)
+	csrfKey, err := decodeKey("CSRFKey", AppConfig.CSRFKey, appEnv)
 	if err != nil {
 		return err
 	}
 	AppConfig.CSRFKey = csrfKey
 
-	sessionKey, err := decodeKey("SessionKey", AppConfig.SessionKey, 32, appEnv)
+	sessionKey, err := decodeKey("SessionKey", AppConfig.SessionKey, appEnv)
 	if err != nil {
 		return err
 	}
@@ -201,7 +201,7 @@ func LoadConfig() error {
 	return nil
 }
 
-func decodeKey(name, val string, expectedLen int, appEnv string) (string, error) {
+func decodeKey(name, val string, appEnv string) (string, error) {
 	if val == "" {
 		return "", nil
 	}
@@ -210,24 +210,24 @@ func decodeKey(name, val string, expectedLen int, appEnv string) (string, error)
 	var err error
 
 	// Try hex first only if length matches
-	if len(val) == expectedLen*2 {
+	if len(val) == 32*2 {
 		decoded, err = hex.DecodeString(val)
-		if err == nil && len(decoded) == expectedLen {
+		if err == nil && len(decoded) == 32 {
 			return string(decoded), nil
 		}
 	}
 
 	// Try base64
 	decoded, err = base64.StdEncoding.DecodeString(val)
-	if err == nil && len(decoded) == expectedLen {
+	if err == nil && len(decoded) == 32 {
 		return string(decoded), nil
 	}
 
 	// Fallback to raw bytes
 	decoded = []byte(val)
 
-	if len(decoded) != expectedLen {
-		msg := fmt.Sprintf("%s must be exactly %d bytes (got %d)", name, expectedLen, len(decoded))
+	if len(decoded) != 32 {
+		msg := fmt.Sprintf("%s must be exactly %d bytes (got %d)", name, 32, len(decoded))
 		if appEnv != "development" {
 			return "", fmt.Errorf("%s", msg)
 		} else {

@@ -138,7 +138,7 @@ func TestLoginHandler(t *testing.T) {
 		}
 		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE").WithArgs("test@example.com").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
-				AddRow(1, "test@example.com", string(hash), true, false, "", false))
+				AddRow(1, "test@example.com", hash, true, false, "", false))
 		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=password"))
@@ -240,7 +240,7 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users WHERE email = \\$1").
 			WithArgs("user@example.com").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
-				AddRow(1, "user@example.com", string(hashedPassword), true, true, "SECRET", false))
+				AddRow(1, "user@example.com", hashedPassword, true, true, "SECRET", false))
 
 		form := url.Values{"email": {"user@example.com"}, "password": {"password"}}
 		req := httptest.NewRequest("POST", "/login", strings.NewReader(form.Encode()))
