@@ -212,13 +212,13 @@ func TestValidateComplexFilter(t *testing.T) {
 		{"cisa = true && severity >= 9", false},
 		{"epss > 0.1 || buzz < 5", false},
 		{"regex: openssl", false},
-		{"epss >", true},                 // truncated term
-		{"unknownvar > 1", true},          // unknown variable
-		{"epss !! 0.5", true},             // bad operator
-		{"epss > 0.1 &&", true},           // dangling operator
-		{"&& epss > 0.1", true},           // leading operator
-		{"epss > 0.1 epss > 0.2", true},   // missing connective
-		{"epss > notanumber", true},       // non-numeric value
+		{"epss >", true},                // truncated term
+		{"unknownvar > 1", true},        // unknown variable
+		{"epss !! 0.5", true},           // bad operator
+		{"epss > 0.1 &&", true},         // dangling operator
+		{"&& epss > 0.1", true},         // leading operator
+		{"epss > 0.1 epss > 0.2", true}, // missing connective
+		{"epss > notanumber", true},     // non-numeric value
 	}
 	for _, c := range cases {
 		err := ValidateComplexFilter(c.logic)

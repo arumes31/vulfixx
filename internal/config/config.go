@@ -12,6 +12,29 @@ import (
 	"strings"
 )
 
+const (
+	DefaultDBHost          = "db"
+	DefaultDBPort          = "5432"
+	DefaultDBUser          = "cveuser"
+	DefaultDBName          = "cvetracker"
+	DefaultRedisURL        = "redis:6379"
+	DefaultBaseURL         = "http://localhost:8080"
+	DefaultSMTPHost        = "smtp.example.com"
+	DefaultSMTPPort        = 587
+	DefaultSMTPUser        = "user@example.com"
+	DefaultAppPort         = "8080"
+	DefaultGeminiModel     = "gemini-3.1-flash-lite"
+	DefaultGeminiAPIVersion= "v1beta"
+	DefaultLLMProvider     = "ollama"
+	DefaultLLMEndpoint     = "http://ollama:11434"
+	DefaultLLMModel        = "phi3-vulfixx"
+	DefaultLLMTimeout      = 600
+	DefaultMistralModel    = "mistral-small-latest"
+	DefaultMistralEndpoint = "https://api.mistral.ai/v1"
+	DefaultGRPCPort        = "9091"
+	DefaultAppEnv          = "production"
+)
+
 func decryptIfEncrypted(val string) string {
 	if strings.HasPrefix(val, "cve-gcm:") {
 		encryptedBase64 := strings.TrimPrefix(val, "cve-gcm:")
@@ -70,45 +93,45 @@ var AppConfig Config
 
 func LoadConfig() error {
 	AppConfig = Config{
-		DBHost:          getEnv("DB_HOST", "db"),
-		DBPort:          getEnv("DB_PORT", "5432"),
-		DBUser:          getEnv("DB_USER", "cveuser"),
+		DBHost:          getEnv("DB_HOST", DefaultDBHost),
+		DBPort:          getEnv("DB_PORT", DefaultDBPort),
+		DBUser:          getEnv("DB_USER", DefaultDBUser),
 		DBPassword:      decryptIfEncrypted(getEnv("DB_PASSWORD", "")),
-		DBName:          getEnv("DB_NAME", "cvetracker"),
-		RedisURL:        getEnv("REDIS_URL", "redis:6379"),
+		DBName:          getEnv("DB_NAME", DefaultDBName),
+		RedisURL:        getEnv("REDIS_URL", DefaultRedisURL),
 		SessionKey:      getEnv("SESSION_KEY", ""),
 		CSRFKey:         getEnv("CSRF_KEY", ""),
-		BaseURL:         getEnv("BASE_URL", "http://localhost:8080"),
-		SMTPHost:        getEnv("SMTP_HOST", "smtp.example.com"),
-		SMTPUser:        getEnv("SMTP_USER", "user@example.com"),
+		BaseURL:         getEnv("BASE_URL", DefaultBaseURL),
+		SMTPHost:        getEnv("SMTP_HOST", DefaultSMTPHost),
+		SMTPUser:        getEnv("SMTP_USER", DefaultSMTPUser),
 		SMTPPass:        decryptIfEncrypted(getEnv("SMTP_PASS", "")),
 		AdminEmail:      getEnv("ADMIN_EMAIL", ""),
 		AdminPassword:   decryptIfEncrypted(getEnv("ADMIN_PASSWORD", "")),
 		AdminTOTPSecret: decryptIfEncrypted(getEnv("ADMIN_TOTP_SECRET", "")),
-		AppPort:         getEnv("PORT", "8080"),
+		AppPort:         getEnv("PORT", DefaultAppPort),
 		SentryDSN:       decryptIfEncrypted(getEnv("SENTRY_DSN", "")),
 		GeminiAPIKey:    decryptIfEncrypted(getEnv("GEMINI_API_KEY", "")),
-		GeminiModel:     getEnv("GEMINI_MODEL", "gemini-3.1-flash-lite"),
+		GeminiModel:     getEnv("GEMINI_MODEL", DefaultGeminiModel),
 		// v1beta is required: the structured-output fields the extractor relies on
 		// (responseMimeType / responseSchema) are rejected by the stable v1 API.
-		GeminiAPIVersion: getEnv("GEMINI_API_VERSION", "v1beta"),
-		LLMProvider:      getEnv("LLM_PROVIDER", "ollama"),
-		LLMEndpoint:      getEnv("LLM_ENDPOINT", "http://ollama:11434"),
-		LLMModel:         getEnv("LLM_MODEL", "phi3-vulfixx"),
-		LLMTimeout:       getEnvInt("LLM_TIMEOUT", 600),
+		GeminiAPIVersion: getEnv("GEMINI_API_VERSION", DefaultGeminiAPIVersion),
+		LLMProvider:      getEnv("LLM_PROVIDER", DefaultLLMProvider),
+		LLMEndpoint:      getEnv("LLM_ENDPOINT", DefaultLLMEndpoint),
+		LLMModel:         getEnv("LLM_MODEL", DefaultLLMModel),
+		LLMTimeout:       getEnvInt("LLM_TIMEOUT", DefaultLLMTimeout),
 		MistralAPIKey:    decryptIfEncrypted(getEnv("MISTRAL_API_KEY", "")),
-		MistralModel:     getEnv("MISTRAL_MODEL", "mistral-small-latest"),
-		MistralEndpoint:  getEnv("MISTRAL_ENDPOINT", "https://api.mistral.ai/v1"),
-		GRPCPort:         getEnv("GRPC_PORT", "9091"),
+		MistralModel:     getEnv("MISTRAL_MODEL", DefaultMistralModel),
+		MistralEndpoint:  getEnv("MISTRAL_ENDPOINT", DefaultMistralEndpoint),
+		GRPCPort:         getEnv("GRPC_PORT", DefaultGRPCPort),
 		GRPCCertFile:     getEnv("GRPC_CERT_FILE", ""),
 		GRPCKeyFile:      getEnv("GRPC_KEY_FILE", ""),
 		WebhookSecret:    getEnv("WEBHOOK_SECRET", ""),
 	}
 
-	port, err := strconv.Atoi(getEnv("SMTP_PORT", "587"))
+	port, err := strconv.Atoi(getEnv("SMTP_PORT", strconv.Itoa(DefaultSMTPPort)))
 	if err != nil {
-		logPrintf("Invalid SMTP_PORT: %v. Defaulting to 587", err)
-		port = 587
+		logPrintf("Invalid SMTP_PORT: %v. Defaulting to %d", err, DefaultSMTPPort)
+		port = DefaultSMTPPort
 	}
 	AppConfig.SMTPPort = port
 
@@ -124,7 +147,7 @@ func LoadConfig() error {
 	}
 	AppConfig.SecureCookie = secureCookie
 
-	appEnv := getEnv("APP_ENV", "production")
+	appEnv := getEnv("APP_ENV", DefaultAppEnv)
 	var missingFields []string
 	if AppConfig.DBPassword == "" {
 		missingFields = append(missingFields, "DBPassword")

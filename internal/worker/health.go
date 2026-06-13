@@ -95,7 +95,7 @@ func (w *Worker) checkWorkerHealth(ctx context.Context) {
 				if canAlert {
 					baseURL := os.Getenv("BASE_URL")
 					if baseURL == "" {
-						baseURL = "http://localhost:8080"
+						baseURL = config.DefaultBaseURL
 						slog.Warn("Worker Health ALERT: BASE_URL environment variable is unset. Falling back to default.", "fallback", baseURL)
 					}
 					contentTmpl := `
