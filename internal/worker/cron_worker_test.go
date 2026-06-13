@@ -47,7 +47,6 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 			pgxmock.NewRows([]string{"id", "cve_id", "description", "configurations", "references"}).
 				AddRow(1, "CVE-123", "test", json.RawMessage(`[]`), []string{}),
 		)
-		mock.ExpectQuery("(?i)SELECT COUNT\\(\\*\\) FROM \\(SELECT id FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' LIMIT 1000\\) sub").WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("intelligence_enrichment").WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 		w.enrichMissingIntelligence(context.Background())
