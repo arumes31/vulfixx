@@ -368,6 +368,12 @@ func TestGetAffectedProducts(t *testing.T) {
 			wantProduct:     "Awesome-cursor-mpc-server", // Normalized
 		},
 		{
+			name:           "Exact Version In CPE",
+			configurations: CVEConfigurations{{Nodes: []ConfigNode{{CPEMatch: []CPEMatch{{Criteria: "cpe:2.3:o:next:next:1.0:*:*:*:*:*:*:*"}}}}}},
+			wantLen:        1,
+			wantVersion:    "1.0",
+		},
+		{
 			name:           "Version Range Including",
 			configurations: CVEConfigurations{{Nodes: []ConfigNode{{CPEMatch: []CPEMatch{{Criteria: "cpe:2.3:a:v:p:*:*:*:*:*:*:*:*", VersionStartIncluding: "1.0", VersionEndExcluding: "2.0"}}}}}},
 			wantLen:        1,
