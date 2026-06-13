@@ -148,8 +148,8 @@ func (w *Worker) enrichMissingIntelligence(ctx context.Context) {
 	rows.Close()
 
 	// Get total for progress tracking
-	var total int
-	_ = w.Pool.QueryRow(ctx, "SELECT COUNT(*) FROM (SELECT id FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' LIMIT 1000) sub").Scan(&total)
+	// Bolt: Optimized redundant COUNT(*) query by using the length of the retrieved slice
+	total := len(cves)
 	if total == 0 {
 		total = 1
 	}

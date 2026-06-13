@@ -44,3 +44,8 @@
 ## 2026-05-30 - Optimized Database Updates in GitHub Buzz Sync
 **Learning:** Performing individual `tx.Exec` calls within a transaction loop in `updateGitHubBatch` for 50 items results in 50 separate database roundtrips, which degrades performance.
 **Action:** Implemented `pgx.Batch` within the transaction to send all update queries in a single database roundtrip, significantly reducing I/O latency, while maintaining a fallback loop for `pgxmock` test compatibility.
+
+## 2026-05-31 - Optimized Intelligence Enrichment N+1 Query
+**Performance Issue:** Executing a redundant `SELECT COUNT(*)` query immediately after fetching the targeted rows via a `SELECT` statement with `LIMIT`.
+**Learning:** Calculating the length of an in-memory slice (e.g., `len(cves)`) is an O(1) operation that completely eliminates the need for a secondary database query to determine the count of the fetched dataset.
+**Action:** Replace redundant `SELECT COUNT(*)` queries that merely count an already fetched subset by utilizing the `len()` of the resulting Go slice.
