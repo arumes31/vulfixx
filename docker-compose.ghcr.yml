@@ -32,22 +32,13 @@ services:
       - GEMINI_RPM=${GEMINI_RPM:-15}
       - GEMINI_RPD=${GEMINI_RPD:-500}
       # Higher-quality, low-quota Gemini failovers tried BEFORE flash-lite when in
-      # LLM_PROVIDER (e.g. LLM_PROVIDER=gemini35flash,gemini3flash,gemini31flashlite,gemma,gemma2,...).
+      # LLM_PROVIDER (e.g. LLM_PROVIDER=gemini35flash,gemini3flash,gemini31flashlite,...).
       - GEMINI35FLASH_MODEL=${GEMINI35FLASH_MODEL:-gemini-3.5-flash}
       - GEMINI35FLASH_RPM=${GEMINI35FLASH_RPM:-5}
       - GEMINI35FLASH_RPD=${GEMINI35FLASH_RPD:-20}
       - GEMINI3FLASH_MODEL=${GEMINI3FLASH_MODEL:-gemini-3-flash-preview}
       - GEMINI3FLASH_RPM=${GEMINI3FLASH_RPM:-5}
       - GEMINI3FLASH_RPD=${GEMINI3FLASH_RPD:-20}
-      # Gemma failover (used when LLM_PROVIDER includes "gemma"): same Google API
-      # key, higher daily quota. Set GEMMA_MODEL to the exact API model id.
-      - GEMMA_MODEL=${GEMMA_MODEL:-gemma-4-31b-it}
-      - GEMMA_RPM=${GEMMA_RPM:-15}
-      - GEMMA_RPD=${GEMMA_RPD:-1500}
-      # Second Gemma failover (LLM_PROVIDER includes "gemma2"); its own daily quota.
-      - GEMMA2_MODEL=${GEMMA2_MODEL:-gemma-4-26b-a4b-it}
-      - GEMMA2_RPM=${GEMMA2_RPM:-15}
-      - GEMMA2_RPD=${GEMMA2_RPD:-1500}
       - LLM_DEBUG=${LLM_DEBUG:-false}
       - MISTRAL_API_KEY=${MISTRAL_API_KEY}
       - MISTRAL_MODEL=${MISTRAL_MODEL:-mistral-small-latest}

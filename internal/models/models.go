@@ -64,7 +64,7 @@ type CPEMatch struct {
 
 type ConfigNode struct {
 	Operator string     `json:"operator,omitempty"`
-	CPEMatch []CPEMatch `json:"cpe_match,omitempty"`
+	CPEMatch []CPEMatch `json:"cpeMatch,omitempty"`
 }
 
 type CVEConfiguration struct {

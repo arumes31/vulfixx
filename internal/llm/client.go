@@ -86,12 +86,10 @@ func geminiDailyLimit() int {
 //	gemini35flash      -> gemini-3.5-flash        15 RPM / 20   RPD (structured)
 //	gemini3flash       -> gemini-3-flash-preview  15 RPM / 20   RPD (structured)
 //	gemini31flashlite  -> gemini-3.1-flash-lite   15 RPM / 500  RPD (structured)
-//	gemma              -> gemma-4-31b-it          15 RPM / 1500 RPD (structured)
-//	gemma2             -> gemma-4-26b-a4b-it      15 RPM / 1500 RPD (structured)
 //
 // A typical quality-first, quota-aware chain:
 //
-//	LLM_PROVIDER=gemini35flash,gemini3flash,gemini31flashlite,gemma,gemma2,mistral,ollama
+//	LLM_PROVIDER=gemini35flash,gemini3flash,gemini31flashlite,mistral,ollama
 type googleFailover struct {
 	model      string   // Google API model id
 	rpmEnvs    []string // override env vars, checked in order (first non-empty wins)
@@ -111,10 +109,6 @@ func googleFailoverFor(provider string) (googleFailover, bool) {
 		return googleFailover{config.AppConfig.Gemini35Model, []string{"GEMINI35FLASH_RPM", "GEMINI35_RPM"}, 5, []string{"GEMINI35FLASH_RPD", "GEMINI35_RPD"}, 20, "gemini35flash", true}, true
 	case "gemini3flash":
 		return googleFailover{config.AppConfig.Gemini3Model, []string{"GEMINI3FLASH_RPM", "GEMINI3_RPM"}, 5, []string{"GEMINI3FLASH_RPD", "GEMINI3_RPD"}, 20, "gemini3flash", true}, true
-	case "gemma":
-		return googleFailover{config.AppConfig.GemmaModel, []string{"GEMMA_RPM"}, 15, []string{"GEMMA_RPD"}, 1500, "gemma", true}, true
-	case "gemma2":
-		return googleFailover{config.AppConfig.Gemma2Model, []string{"GEMMA2_RPM"}, 15, []string{"GEMMA2_RPD"}, 1500, "gemma2", true}, true
 	}
 	return googleFailover{}, false
 }
@@ -302,7 +296,7 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 		// Enforce the Gemini free-tier daily request ceiling (RPD). Once hit,
 		// cool Gemini down until the UTC day rolls over so the rest of this run
 		// falls through to other providers instead of racking up 429s.
-		if p == "gemini31flashlite" && geminiDailyQuotaExceeded(ctx) {
+		if (p == "gemini31flashlite" || p == "gemini") && geminiDailyQuotaExceeded(ctx) {
 			setCooldown(p, durationUntilUTCMidnight())
 			lastErr = fmt.Errorf("%w: gemini31flashlite daily request quota reached", ErrRateLimit)
 			continue
@@ -320,7 +314,7 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 		var err error
 
 		switch {
-		case p == "gemini31flashlite":
+		case p == "gemini31flashlite" || p == "gemini":
 			results, err = extractWithGemini(ctx, config.AppConfig.GeminiAPIKey, config.AppConfig.Gemini31LiteModel, config.AppConfig.GeminiAPIVersion, fullContext)
 		case isFailover && gf.structured:
 			// Gemini-family failover model (same API key): supports structured output.
@@ -329,6 +323,8 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 			results, err = extractWithOllama(ctx, config.AppConfig.LLMEndpoint, config.AppConfig.LLMModel, fullContext)
 		case p == "mistral":
 			results, err = extractWithMistral(ctx, config.AppConfig.MistralAPIKey, config.AppConfig.MistralModel, config.AppConfig.MistralEndpoint, fullContext)
+		case p == "openai":
+			results, err = extractWithOpenAI(ctx, config.AppConfig.OpenAIAPIKey, config.AppConfig.OpenAIModel, config.AppConfig.OpenAIEndpoint, fullContext)
 		default:
 			slog.Warn("LLM: [WARN] Unsupported provider in chain", "provider", p)
 			continue
@@ -338,7 +334,7 @@ func ExtractVendorProduct(ctx context.Context, description string, references []
 			// Proactive rate limiting for the Google free tier. The semaphore is
 			// still held here, so pausing also paces concurrent callers.
 			var pause time.Duration
-			if p == "gemini31flashlite" {
+			if p == "gemini31flashlite" || p == "gemini" {
 				pause = geminiPauseInterval()
 			} else if isFailover {
 				pause = googleFailoverPace(gf)
@@ -694,3 +690,83 @@ func extractWithMistral(ctx context.Context, apiKey, model, endpoint, descriptio
 
 	return nil, lastErr
 }
+
+func extractWithOpenAI(ctx context.Context, apiKey, model, endpoint, description string) ([]ProductResult, error) {
+	systemPrompt := getSystemPrompt()
+
+	if os.Getenv("LLM_DEBUG") == "true" {
+		slog.Debug("LLM: [DEBUG] OpenAI System Prompt", "prompt", systemPrompt)
+		slog.Debug("LLM: [DEBUG] OpenAI Description", "description", description)
+	}
+
+	payload := map[string]interface{}{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "system", "content": systemPrompt},
+			{"role": "user", "content": "Description: " + description},
+		},
+		"temperature":     0,
+		"response_format": map[string]string{"type": "json_object"},
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint+"/chat/completions", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+
+	client := &http.Client{Timeout: time.Duration(config.AppConfig.LLMTimeout) * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("openai request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("openai api error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var chatResp struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+		return nil, err
+	}
+
+	if len(chatResp.Choices) == 0 {
+		return nil, fmt.Errorf("openai returned no choices")
+	}
+
+	content := chatResp.Choices[0].Message.Content
+	if os.Getenv("LLM_DEBUG") == "true" {
+		slog.Debug("LLM: [DEBUG] OpenAI Raw Response", "response", content)
+	}
+
+	// Clean JSON if the model wrapped it in markdown code blocks
+	content = strings.TrimPrefix(content, "```json")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
+	content = strings.TrimSpace(content)
+
+	var res ExtractionResponse
+	if err := json.Unmarshal([]byte(content), &res); err != nil {
+		return nil, fmt.Errorf("failed to parse openai json: %w (content: %s)", err, content)
+	}
+
+	return res.Products, nil
+}
+

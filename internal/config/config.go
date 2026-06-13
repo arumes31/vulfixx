@@ -51,8 +51,6 @@ type Config struct {
 	GeminiAPIVersion  string
 	Gemini35Model     string // higher-quality, low-quota Gemini failover (e.g. gemini-3.5-flash)
 	Gemini3Model      string // Gemini 3 Flash failover (e.g. gemini-3-flash-preview)
-	GemmaModel        string // Gemma failover on the same Google API key (e.g. gemma-4-31b-it)
-	Gemma2Model       string // second Gemma failover (e.g. gemma-4-26b-a4b-it)
 	LLMProvider       string // default priority chain, fallback matches .env.example ("gemini31flashlite,mistral")
 	LLMEndpoint       string // e.g. "http://ollama:11434"
 	LLMModel          string // e.g. "phi3" or "llama3"
@@ -60,6 +58,9 @@ type Config struct {
 	MistralAPIKey     string
 	MistralModel      string
 	MistralEndpoint   string
+	OpenAIAPIKey      string
+	OpenAIModel       string
+	OpenAIEndpoint    string
 	GRPCPort          string
 	GRPCCertFile      string
 	GRPCKeyFile       string
@@ -98,8 +99,6 @@ func LoadConfig() error {
 		GeminiAPIVersion: getEnv("GEMINI_API_VERSION", "v1beta"),
 		Gemini35Model:    getEnv("GEMINI35FLASH_MODEL", getEnv("GEMINI35_MODEL", "gemini-3.5-flash")),
 		Gemini3Model:     getEnv("GEMINI3FLASH_MODEL", getEnv("GEMINI3_MODEL", "gemini-3-flash-preview")),
-		GemmaModel:       getEnv("GEMMA_MODEL", "gemma-4-31b-it"),
-		Gemma2Model:      getEnv("GEMMA2_MODEL", "gemma-4-26b-a4b-it"),
 		LLMProvider:      getEnv("LLM_PROVIDER", "gemini31flashlite,mistral"),
 		LLMEndpoint:      getEnv("LLM_ENDPOINT", "http://ollama:11434"),
 		LLMModel:         getEnv("LLM_MODEL", "phi3-vulfixx"),
@@ -107,6 +106,9 @@ func LoadConfig() error {
 		MistralAPIKey:    decryptIfEncrypted(getEnv("MISTRAL_API_KEY", "")),
 		MistralModel:     getEnv("MISTRAL_MODEL", "mistral-small-latest"),
 		MistralEndpoint:  getEnv("MISTRAL_ENDPOINT", "https://api.mistral.ai/v1"),
+		OpenAIAPIKey:     decryptIfEncrypted(getEnv("OPENAI_API_KEY", "")),
+		OpenAIModel:      getEnv("OPENAI_MODEL", "kilo-auto/free"),
+		OpenAIEndpoint:   getEnv("OPENAI_ENDPOINT", "http://100.115.58.99:18080/workspace/sys-kilo/v1"),
 		GRPCPort:         getEnv("GRPC_PORT", "9091"),
 		GRPCCertFile:     getEnv("GRPC_CERT_FILE", ""),
 		GRPCKeyFile:      getEnv("GRPC_KEY_FILE", ""),

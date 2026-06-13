@@ -453,6 +453,104 @@ func TestExtractWithGemini(t *testing.T) {
 	})
 }
 
+func TestExtractWithOpenAI(t *testing.T) {
+	t.Run("HappyPath", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/chat/completions" {
+				t.Errorf("expected path /chat/completions, got %s", r.URL.Path)
+			}
+			resp := map[string]interface{}{
+				"choices": []map[string]interface{}{
+					{
+						"message": map[string]string{
+							"content": `{"products": [{"vendor": "OpenAI", "product": "GPT-4", "version": "1.0"}]}`,
+						},
+					},
+				},
+			}
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(resp)
+		}))
+		defer server.Close()
+
+		ctx := context.Background()
+		products, err := extractWithOpenAI(ctx, "key", "model", server.URL, "desc")
+		if err != nil {
+			t.Fatalf("extractWithOpenAI failed: %v", err)
+		}
+		if len(products) != 1 || products[0].Vendor != "OpenAI" {
+			t.Fatalf("unexpected results: %+v", products)
+		}
+	})
+
+	t.Run("MarkdownStripHappyPath", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			resp := map[string]interface{}{
+				"choices": []map[string]interface{}{
+					{
+						"message": map[string]string{
+							"content": "```json\n" + `{"products": [{"vendor": "OpenAIMd", "product": "GPT-4", "version": "1.0"}]}` + "\n```",
+						},
+					},
+				},
+			}
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(resp)
+		}))
+		defer server.Close()
+
+		ctx := context.Background()
+		products, err := extractWithOpenAI(ctx, "key", "model", server.URL, "desc")
+		if err != nil {
+			t.Fatalf("extractWithOpenAI failed: %v", err)
+		}
+		if len(products) != 1 || products[0].Vendor != "OpenAIMd" {
+			t.Fatalf("unexpected results: %+v", products)
+		}
+	})
+
+	t.Run("EmptyAPIKeyAuth", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			auth := r.Header.Get("Authorization")
+			if auth != "" {
+				t.Errorf("expected empty Authorization header, got %s", auth)
+			}
+			resp := map[string]interface{}{
+				"choices": []map[string]interface{}{
+					{
+						"message": map[string]string{
+							"content": `{"products": []}`,
+						},
+					},
+				},
+			}
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(resp)
+		}))
+		defer server.Close()
+
+		ctx := context.Background()
+		_, err := extractWithOpenAI(ctx, "", "model", server.URL, "desc")
+		if err != nil {
+			t.Fatalf("extractWithOpenAI failed: %v", err)
+		}
+	})
+
+	t.Run("Non200Status", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("OpenAI Error"))
+		}))
+		defer server.Close()
+
+		ctx := context.Background()
+		_, err := extractWithOpenAI(ctx, "key", "model", server.URL, "desc")
+		if err == nil || !strings.Contains(err.Error(), "openai api error (status 500)") {
+			t.Fatalf("expected 500 error, got %v", err)
+		}
+	})
+}
+
 func TestExtractVendorProduct(t *testing.T) {
 	t.Run("UnsupportedProvider", func(t *testing.T) {
 		config.AppConfig.LLMProvider = "unsupported-vendor-name"
@@ -572,6 +670,36 @@ func TestExtractVendorProduct(t *testing.T) {
 			t.Fatalf("ExtractVendorProduct Gemini path failed: %v", err)
 		}
 		if len(products) != 1 || products[0].Vendor != "GeminiTest" {
+			t.Fatalf("unexpected product results: %+v", products)
+		}
+	})
+
+	t.Run("OpenAIPath", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			resp := map[string]interface{}{
+				"choices": []map[string]interface{}{
+					{
+						"message": map[string]string{
+							"content": `{"products": [{"vendor": "OpenAITest", "product": "P", "version": "1.0"}]}`,
+						},
+					},
+				},
+			}
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(resp)
+		}))
+		defer server.Close()
+
+		config.AppConfig.LLMProvider = "openai"
+		config.AppConfig.OpenAIAPIKey = "dummy-key"
+		config.AppConfig.OpenAIModel = "model"
+		config.AppConfig.OpenAIEndpoint = server.URL
+
+		products, err := ExtractVendorProduct(context.Background(), "desc", []string{})
+		if err != nil {
+			t.Fatalf("ExtractVendorProduct OpenAI path failed: %v", err)
+		}
+		if len(products) != 1 || products[0].Vendor != "OpenAITest" {
 			t.Fatalf("unexpected product results: %+v", products)
 		}
 	})
@@ -734,8 +862,6 @@ func TestGoogleFailover(t *testing.T) {
 		}{
 			{"gemini35flash", true, 5, 20},
 			{"gemini3flash", true, 5, 20},
-			{"gemma", true, 15, 1500},
-			{"gemma2", true, 15, 1500},
 		} {
 			f, ok := googleFailoverFor(tc.provider)
 			if !ok {
