@@ -35,6 +35,7 @@ func (app *App) Routes(cfg *config.Config) (http.Handler, error) {
 	r.Method("POST", "/register", app.RateLimitMiddleware(http.HandlerFunc(app.RegisterHandler)))
 	r.Method("GET", "/resend-verification", app.RateLimitMiddleware(http.HandlerFunc(app.ResendVerificationHandler)))
 	r.Method("POST", "/resend-verification", app.RateLimitMiddleware(http.HandlerFunc(app.ResendVerificationHandler)))
+	r.Method("POST", "/resend-verification-inline", app.RateLimitMiddleware(http.HandlerFunc(app.ResendVerificationInlineHandler)))
 	r.Method("GET", "/captcha", app.RateLimitMiddleware(http.HandlerFunc(app.CaptchaHandler)))
 	r.Method("GET", "/verify-email", app.RateLimitMiddleware(http.HandlerFunc(app.VerifyEmailHandler)))
 	r.Method("GET", "/confirm-email-change", app.RateLimitMiddleware(http.HandlerFunc(app.ConfirmEmailChangeHandler)))

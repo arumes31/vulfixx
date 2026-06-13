@@ -75,15 +75,27 @@ func (w *Worker) syncEPSS(ctx context.Context) {
 			cveID := strings.TrimSpace(parts[0])
 			scoreStr := strings.TrimSpace(parts[1])
 			score, err := strconv.ParseFloat(scoreStr, 64)
-			if err == nil {
-				batchRows = append(batchRows, []interface{}{cveID, score})
-				totalProcessed++
-			} else {
+			if err != nil {
 				parseErrorCount++
 				if parseErrorCount < 5 {
 					slog.Debug("Worker: [DEBUG] Failed to parse EPSS score", "score_str", scoreStr, "cve_id", cveID, "error", err)
 				}
+				continue
 			}
+			if len(parts) < 3 {
+				continue
+			}
+			pStr := strings.TrimSpace(parts[2])
+			percentile, pErr := strconv.ParseFloat(pStr, 64)
+			if pErr != nil {
+				parseErrorCount++
+				if parseErrorCount < 5 {
+					slog.Debug("Worker: [DEBUG] Failed to parse EPSS percentile", "percentile_str", pStr, "cve_id", cveID, "error", pErr)
+				}
+				continue
+			}
+			batchRows = append(batchRows, []interface{}{cveID, score, percentile})
+			totalProcessed++
 		}
 
 		if len(batchRows) >= batchSize {
@@ -113,20 +125,22 @@ func (w *Worker) syncEPSS(ctx context.Context) {
 func (w *Worker) updateEPSSBatch(ctx context.Context, batch [][]interface{}) {
 	cveIDs := make([]string, len(batch))
 	scores := make([]float64, len(batch))
+	percentiles := make([]float64, len(batch))
 
 	for i, row := range batch {
 		cveIDs[i] = row[0].(string)
 		scores[i] = row[1].(float64)
+		percentiles[i] = row[2].(float64)
 	}
 
 	query := `
-		UPDATE cves 
-		SET epss_score = u.epss_score
-		FROM (SELECT unnest($1::text[]) as cve_id, unnest($2::numeric[]) as epss_score) as u
-		WHERE cves.cve_id = u.cve_id 
-		AND cves.epss_score IS DISTINCT FROM u.epss_score
+	UPDATE cves
+	SET epss_score = u.epss_score, epss_percentile = u.epss_percentile
+	FROM (SELECT unnest($1::text[]) as cve_id, unnest($2::numeric[]) as epss_score, unnest($3::numeric[]) as epss_percentile) as u
+	WHERE cves.cve_id = u.cve_id
+	AND (cves.epss_score IS DISTINCT FROM u.epss_score OR cves.epss_percentile IS DISTINCT FROM u.epss_percentile)
 	`
-	_, err := w.Pool.Exec(ctx, query, cveIDs, scores)
+	_, err := w.Pool.Exec(ctx, query, cveIDs, scores, percentiles)
 	if err != nil {
 		slog.Error("Worker: [ERROR] Failed to bulk update EPSS scores", "error", err)
 	}

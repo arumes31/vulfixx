@@ -311,7 +311,6 @@ func ConfirmEmailChange(ctx context.Context, token string) (bool, string, int, e
 	`, token).Scan(&userID, &newEmail, &oldConfirmed, &newConfirmed, &oldEmailToken, &newEmailToken)
 
 	if err != nil {
-		fmt.Println("SCAN ERROR:", err)
 		return false, "", 0, fmt.Errorf("invalid or expired token: %w", err)
 	}
 

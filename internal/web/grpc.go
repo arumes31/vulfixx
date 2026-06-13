@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"time"
 
 	"cve-tracker/internal/db"
 	"cve-tracker/internal/worker/proto"
@@ -33,7 +34,7 @@ func (s *CVEServiceServerImpl) GetCVE(ctx context.Context, req *proto.CVERequest
 	var cveID string
 	var description string
 	var cvssScore float64
-	var publishedDate string
+	var publishedDate time.Time
 
 	err := s.Pool.QueryRow(ctx, `
 		SELECT id, cve_id, description, COALESCE(cvss_score, 0), published_date
@@ -54,7 +55,7 @@ func (s *CVEServiceServerImpl) GetCVE(ctx context.Context, req *proto.CVERequest
 		CveId:         cveID,
 		Description:   description,
 		CvssScore:     cvssScore,
-		PublishedDate: publishedDate,
+		PublishedDate: publishedDate.Format(time.RFC3339),
 	}, nil
 }
 

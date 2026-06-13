@@ -52,7 +52,7 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 - **Vendor Name Normalization**: Centralized alias mapping system that unifies inconsistent vendor names (e.g., `microsoft_corp` → `Microsoft`) for professional-grade reporting.
 - **Intelligence Sync Optimization**: High-throughput synchronization engine with batch processing (200 CVEs/run) and **automated 30-day refresh cycles** for existing records.
 - **OSV & GreyNoise Integration**: Enhanced monitoring for Open Source Vulnerabilities (OSV) and GreyNoise threat intelligence with automated stale-data detection.
-- **LLM-Powered Detection**: Advanced extraction of **Vendor**, **Product**, and **Affected Versions** from complex descriptions using Local LLMs (Ollama) or Cloud APIs (Gemini).
+- **LLM-Powered Detection**: Advanced extraction of **Vendor**, **Product**, and **Affected Versions** from complex descriptions using Local LLMs (Ollama), Cloud APIs (Gemini), or OpenAI Compatible endpoints.
 - **Ransomware & Threat Actor Intel Mapping (Strategy 1 & 3)**: Zero-cost active Ransomware Campaign & Threat Actor matching utilizing CISA KEV `"knownRansomwareCampaignUse"` extraction alongside a dynamic, high-performance OSINT public intelligence feed sync with a curated fallback baseline. Exposes premium "Ransomware Active" badges and multi-actor detail panels without any external paid API requirements.
 - **Production-Grade Security Hardening**: Comprehensive platform-wide hardening, including zero-bypass environment checks, percent-encoded database DSNs, fail-closed rate limiters/session middlewares, closed listener port leaks, buffered response marshalling, scrubbed PII loggers, whitelisted workers, and 100% test-verified conformance.
 
@@ -73,6 +73,11 @@ By default, Vulfixx is configured to use **Ollama** for private, local, and free
 If you prefer higher performance, you can use **Google Gemini**:
 1. Obtain a Gemini API Key from Google AI Studio.
 2. Set `LLM_PROVIDER=gemini` and `GEMINI_API_KEY=your_key` in your environment.
+
+### OpenAI Compatible API Setup
+You can also use custom/local endpoints compatible with the OpenAI Chat Completions API (such as local LLM proxies or custom workspaces):
+1. Configure `LLM_PROVIDER=openai` in your environment.
+2. Set `OPENAI_ENDPOINT` (e.g. `http://100.115.58.99:18080/workspace/sys-kilo/v1`), `OPENAI_MODEL` (e.g. `kilo-auto/free`), and `OPENAI_API_KEY` (optional).
 
 ## 🏗️ Architecture
 The application follows a modular architecture designed to prevent monolithic files and improve domain separation.
@@ -184,7 +189,7 @@ Vulfixx is hardened with enterprise-grade system improvements designed for high-
 | `APP_ENV` | Application environment (`development`, `production`) | `production` |
 | `PORT` | Application server port | `8080` |
 | `SENTRY_DSN` | Sentry DSN for error reporting | `(empty)` |
-| `LLM_PROVIDER`| LLM provider chain, comma-separated (`ollama`, `gemini`, `mistral`) | `ollama` |
+| `LLM_PROVIDER`| LLM provider chain, comma-separated (`ollama`, `gemini`, `mistral`, `openai`) | `ollama` |
 | `LLM_ENDPOINT`| API endpoint for local LLM (Ollama) | `http://ollama:11434` |
 | `LLM_MODEL` | Model name for Ollama (e.g. `phi3-vulfixx`, `llama3`) | `phi3-vulfixx` |
 | `LLM_TIMEOUT` | Intelligence extraction timeout (seconds) | `600` |
@@ -196,6 +201,9 @@ Vulfixx is hardened with enterprise-grade system improvements designed for high-
 | `MISTRAL_API_KEY`| API Key for Mistral AI provider | `(empty)` |
 | `MISTRAL_MODEL` | Mistral model (e.g. `mistral-small-latest`) | `mistral-small-latest` |
 | `MISTRAL_ENDPOINT`| Mistral API base URL | `https://api.mistral.ai/v1` |
+| `OPENAI_API_KEY`| API Key for OpenAI Compatible provider | `(empty)` |
+| `OPENAI_MODEL` | Model name for OpenAI Compatible provider | `kilo-auto/free` |
+| `OPENAI_ENDPOINT`| Endpoint for OpenAI Compatible provider | `http://100.115.58.99:18080/workspace/sys-kilo/v1` |
 | `LLM_DEBUG` | Enable raw LLM prompt/response logging (`true`/`false`) | `false` |
 
 ### Ollama Server Tuning (Ollama container only)

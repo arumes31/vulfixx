@@ -3,6 +3,7 @@ package worker
 import (
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"io"
@@ -13,11 +14,13 @@ import (
 	"time"
 
 	"cve-tracker/internal/models"
+
 	"github.com/jackc/pgx/v5"
 )
 
 var (
-	cveRegex = regexp.MustCompile(`CVE-\d{4}-\d+`)
+	cveRegex          = regexp.MustCompile(`CVE-\d{4}-\d+`)
+	fortiguardIDRegex = regexp.MustCompile(`FG-IR-\d{2}-\d{3}`)
 )
 
 const maxFeedBodySize = 10 << 20 // 10MB
@@ -35,8 +38,8 @@ var advisoryFeeds = []AdvisoryFeed{
 	{Name: "Oracle Security Alerts", URL: "https://www.oracle.com/ocom/groups/public/@otn/documents/webcontent/rss-otn-sec.xml"},
 	{Name: "GitHub Advisory Database", URL: "https://github.com/advisories.atom"},
 	{Name: "CERT-EU Advisories", URL: "https://cert.europa.eu/publications/security-advisories-rss"},
-	{Name: "FortiGuard PSIRT", URL: "https://filestore.fortinet.com/fortiguard/rss/ir.xml"},
 	{Name: "Cisco PSIRT", URL: "https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisory.xml"},
+	{Name: "FortiGuard PSIRT", URL: "https://www.fortiguard.com/rss/psirt.xml"},
 	{Name: "Red Hat Security", URL: "https://access.redhat.com/security/data/metrics/rhsa.rss"},
 	{Name: "Ubuntu Security", URL: "https://ubuntu.com/security/notices/rss.xml"},
 	{Name: "ZDI Advisories", URL: "https://www.zerodayinitiative.com/rss/published/"},
@@ -248,6 +251,37 @@ func (w *Worker) integrateAdvisoryCVE(ctx context.Context, cveID string, item Ge
 	// Check if this reference is already known
 	refExists := slices.Contains(model.References, item.Link)
 
+	// Extract FortiGuard advisory ID from title when processing the FortiGuard PSIRT feed
+	var fortiguardUpdated bool
+	var fortiguardID string
+	if feed.Name == "FortiGuard PSIRT" {
+		fortiguardID = fortiguardIDRegex.FindString(item.Title)
+		if fortiguardID != "" {
+			// Create vendor_advisories structure with fortiguard key
+			fgData := map[string]interface{}{
+				"advisory_id":  fortiguardID,
+				"advisory_url": "https://www.fortiguard.com/psirt/" + fortiguardID,
+			}
+			vendorAdvisory := map[string]interface{}{
+				"fortiguard": fgData,
+			}
+			vendorAdvisoryJSON, marshalErr := json.Marshal(vendorAdvisory)
+			if marshalErr != nil {
+				slog.Error("Worker: [ERROR] Failed to marshal FortiGuard vendor advisory, skipping update", "cve_id", cveID, "fg_id", fortiguardID, "error", marshalErr)
+			} else {
+				_, err = tx.Exec(ctx,
+					"UPDATE cves SET vendor_advisories = COALESCE(vendor_advisories, '{}'::jsonb) || $1::jsonb, updated_at = NOW() WHERE cve_id = $2",
+					vendorAdvisoryJSON, cveID)
+				if err != nil {
+					slog.Error("Worker: [ERROR] Failed to update vendor_advisories for FortiGuard advisory", "cve_id", cveID, "fg_id", fortiguardID, "error", err)
+				} else {
+					fortiguardUpdated = true
+					slog.Info("Worker: [SYNC] Stored FortiGuard advisory in vendor_advisories", "cve_id", cveID, "fg_id", fortiguardID)
+				}
+			}
+		}
+	}
+
 	if !refExists {
 		model.References = append(model.References, item.Link)
 		_, err := tx.Exec(ctx, "UPDATE cves SET \"references\" = $1, updated_at = NOW() WHERE id = $2", model.References, model.ID)
@@ -265,6 +299,11 @@ func (w *Worker) integrateAdvisoryCVE(ctx context.Context, cveID string, item Ge
 		// Enqueue alert for enrichment/update using the updated model
 		if err := w.enqueueAlertsForCVE(ctx, model); err != nil {
 			slog.Error("Worker: [ERROR] Failed to enqueue alerts for CVE", "cve_id", cveID, "error", err)
+		}
+	} else if fortiguardUpdated {
+		// Reference already exists but FortiGuard advisory data was updated — commit that change
+		if err := tx.Commit(ctx); err != nil {
+			slog.Error("Worker: [ERROR] Failed to commit transaction for FortiGuard vendor_advisories update", "cve_id", cveID, "error", err)
 		}
 	}
 }

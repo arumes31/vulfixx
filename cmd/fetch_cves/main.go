@@ -114,7 +114,7 @@ func collectYear(client *http.Client, apiKey string, year, want int) []testCVE {
 	// NVD 2.0 caps the published-date range at 120 days.
 	randMonth := 1 + (time.Now().UnixNano() % 8) // Jan to Aug
 	start := fmt.Sprintf("%d-%02d-01T00:00:00.000", year, randMonth)
-	end := fmt.Sprintf("%d-%02d-28T23:59:59.999", year, randMonth+3)
+	end := fmt.Sprintf("%d-%02d-28T23:59:59.999", year, randMonth+2)
 
 	var result []testCVE
 	multiCount := 0

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"html/template"
 	"os"
 	"strings"
@@ -136,6 +137,36 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 		if len(links) == 0 || links[0]["name"] != "VMware Advisory" {
 			t.Errorf("expected VMware link, got %v", links)
 		}
+
+		// Fortinet / FortiGuard PSIRT link
+		links = f("CVE-2024-388", "Fortinet FortiOS remote code execution")
+		if len(links) == 0 || links[0]["name"] != "FortiGuard PSIRT" {
+			t.Errorf("expected FortiGuard PSIRT link, got %v", links)
+		}
+		if len(links) > 0 && links[0]["url"] != "https://www.fortiguard.com/psirt?cve=CVE-2024-388" {
+			t.Errorf("expected FortiGuard URL, got %s", links[0]["url"])
+		}
+		if len(links) > 0 && links[0]["icon"] != "shield" {
+			t.Errorf("expected shield icon, got %s", links[0]["icon"])
+		}
+
+		// FortiGate keyword should also trigger Fortinet link
+		links = f("CVE-2024-9999", "Vulnerability in FortiGate firewall appliance")
+		if len(links) == 0 || links[0]["name"] != "FortiGuard PSIRT" {
+			t.Errorf("expected FortiGuard PSIRT link for FortiGate, got %v", links)
+		}
+
+		// FortiManager keyword
+		links = f("CVE-2024-5555", "FortiManager authentication bypass")
+		if len(links) == 0 || links[0]["name"] != "FortiGuard PSIRT" {
+			t.Errorf("expected FortiGuard PSIRT link for FortiManager, got %v", links)
+		}
+
+		// No vendor link for unrelated description
+		links = f("CVE-2024-0000", "A generic software vulnerability")
+		if len(links) != 0 {
+			t.Errorf("expected no vendor links for generic description, got %v", links)
+		}
 	})
 
 	t.Run("detectProduct", func(t *testing.T) {
@@ -218,4 +249,111 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 			t.Errorf("expected http://localhost:8080, got %s", f())
 		}
 	})
+}
+
+func TestDaysSince(t *testing.T) {
+	tests := []struct {
+		name string
+		time time.Time
+		want string
+	}{
+		{"just now", time.Now().Add(-30 * time.Minute), "just now"},
+		{"1 hour ago", time.Now().Add(-70 * time.Minute), "1 hour ago"},
+		{"5 hours ago", time.Now().Add(-5 * time.Hour), "5 hours ago"},
+		{"1 day ago", time.Now().Add(-25 * time.Hour), "1 day ago"},
+		{"3 days ago", time.Now().Add(-3 * 24 * time.Hour), "3 days ago"},
+		{"1 month ago", time.Now().Add(-35 * 24 * time.Hour), "1 month ago"},
+		{"6 months ago", time.Now().Add(-180 * 24 * time.Hour), "6 months ago"},
+		{"1 year ago", time.Now().Add(-370 * 24 * time.Hour), "1 year ago"},
+		{"2 years ago", time.Now().Add(-800 * 24 * time.Hour), "2 years ago"},
+		{"future time", time.Now().Add(1 * time.Hour), "just now"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := daysSince(tt.time)
+			if got != tt.want {
+				t.Errorf("daysSince(%v) = %q, want %q", tt.time, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCVSSSeverityLabel(t *testing.T) {
+	tests := []struct {
+		score float64
+		want  string
+	}{
+		{0, "N/A"},
+		{3.9, "Low"},
+		{4.0, "Medium"},
+		{6.9, "Medium"},
+		{7.0, "High"},
+		{8.9, "High"},
+		{9.0, "Critical"},
+		{10.0, "Critical"},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%.1f", tt.score), func(t *testing.T) {
+			got := cvssSeverityLabel(tt.score)
+			if got != tt.want {
+				t.Errorf("cvssSeverityLabel(%.1f) = %q, want %q", tt.score, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEPSSPercentileLabel(t *testing.T) {
+	tests := []struct {
+		score float64
+		want  string
+	}{
+		{0, "N/A"},
+		{-1, "N/A"},
+		{0.0001, "0.0100% probability — Low exploit likelihood"},
+		{0.001, "0.1000% probability — Moderate exploit likelihood"},
+		{0.01, "1.00% probability — High exploit likelihood"},
+		{0.1, "10.0% probability — Very high exploit likelihood"},
+		{0.5, "50.0% probability — Extremely likely to be exploited"},
+		{0.9, "90.0% probability — Extremely likely to be exploited"},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%.4f", tt.score), func(t *testing.T) {
+			got := epssPercentileLabel(tt.score)
+			if got != tt.want {
+				t.Errorf("epssPercentileLabel(%.4f) = %q, want %q", tt.score, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExploitationSummary(t *testing.T) {
+	tests := []struct {
+		name           string
+		cisaKEV        bool
+		cisaRansomware bool
+		exploitAvail   bool
+		greynoiseHits  int
+		githubPocCount int
+		want           string
+	}{
+		{"no evidence", false, false, false, 0, 0, "No known exploitation evidence"},
+		{"cisa kev only", true, false, false, 0, 0, "⚠️ CISA Known Exploited"},
+		{"ransomware only", false, true, false, 0, 0, "⚠️ Ransomware Campaign"},
+		{"greynoise only", false, false, false, 5, 0, "⚠️ Active Internet Scanning"},
+		{"poc only", false, false, false, 0, 3, "⚠️ Public PoC Available"},
+		{"exploit only", false, false, true, 0, 0, "⚠️ Exploit Code Available"},
+		{"multiple indicators", true, true, true, 10, 2, "⚠️ CISA Known Exploited · Ransomware Campaign · Active Internet Scanning · Public PoC Available · Exploit Code Available"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := exploitationSummary(tt.cisaKEV, tt.cisaRansomware, tt.exploitAvail, tt.greynoiseHits, tt.githubPocCount)
+			if got != tt.want {
+				t.Errorf("exploitationSummary() = %q, want %q", got, tt.want)
+			}
+		})
+	}
 }
