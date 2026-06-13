@@ -13,3 +13,7 @@
 ## 2026-05-28 - ARIA attributes for alert/status containers
 **Learning:** Flash messages indicating success or error states need proper ARIA roles to ensure they are immediately announced by screen readers without requiring the user to navigate to them.
 **Action:** Use `role="alert" aria-atomic="true"` for error messages and `role="status" aria-live="polite"` for non-critical information/success messages in template partials.
+
+## 2026-06-07 - Form Input Label Association
+**Learning:** Without explicit `id` attributes on form inputs that match the `for` attribute on corresponding `<label>` elements, screen readers fail to associate the label with the input. Furthermore, using identical IDs in both the primary view and dynamically generated modals causes ID collisions and breaks label resolution.
+**Action:** Always assign a unique `id` to every `<input>` and `<select>` and explicitly link them to `<label for="[id]">`. For dynamic forms inside modals, use a prefix like `edit_` to ensure IDs remain globally unique on the page.

@@ -305,8 +305,14 @@ func (c *CVE) GetAffectedProducts() []AffectedProduct {
 					if match.Criteria == "" {
 						continue
 					}
-					vendor, product := parseCPEVendorProduct(match.Criteria)
+					vendor, product, exactVersion, _ := ParseCPE(match.Criteria)
 					version := formatVersionRange(match)
+					// Fall back to the exact version embedded in the CPE string
+					// (e.g. cpe:2.3:o:next:next:1.0:*) when no range is specified,
+					// otherwise the card wrongly shows "All Versions Affected".
+					if version == "" {
+						version = exactVersion
+					}
 					products = append(products, AffectedProduct{
 						Vendor:  vendor,
 						Product: product,
