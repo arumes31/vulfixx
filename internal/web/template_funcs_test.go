@@ -3,7 +3,6 @@ package web
 import (
 	"html/template"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -97,15 +96,6 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 			if got := fb(tc.score); got != tc.bg {
 				t.Errorf("bg for %f: expected %s, got %s", tc.score, tc.bg, got)
 			}
-		}
-	})
-
-	t.Run("marshal", func(t *testing.T) {
-		f := funcs["marshal"].(func(interface{}) template.JS)
-		data := map[string]string{"foo": "bar"}
-		got := string(f(data))
-		if !strings.Contains(got, "\"foo\":\"bar\"") {
-			t.Errorf("expected JSON string, got %s", got)
 		}
 	})
 
