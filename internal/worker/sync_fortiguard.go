@@ -558,10 +558,15 @@ func parseFortiGuardAdvisory(doc *goquery.Document, url string) (*FortiGuardAdvi
 
 	// Build a set of paragraph elements that are siblings of h3/h4 headings
 	// (Solution/Workaround sections) so we can skip them when looking for description
-	sectionParagraphs := make(map[*goquery.Selection]bool)
+	// Key on the underlying DOM node, not the *goquery.Selection wrapper: goquery
+	// creates a fresh Selection per traversal, so wrappers around the same node
+	// are distinct pointers and would never compare equal.
+	sectionParagraphs := make(map[interface{}]bool)
 	doc.Find("h3, h4").Each(func(i int, s *goquery.Selection) {
 		s.NextUntil("h1, h2, h3, h4").Each(func(j int, p *goquery.Selection) {
-			sectionParagraphs[p] = true
+			if n := p.Get(0); n != nil {
+				sectionParagraphs[n] = true
+			}
 		})
 	})
 
@@ -577,7 +582,7 @@ func parseFortiGuardAdvisory(doc *goquery.Document, url string) (*FortiGuardAdvi
 			return
 		}
 		// Skip paragraphs that are part of Solution/Workaround sections
-		if sectionParagraphs[s] {
+		if n := s.Get(0); n != nil && sectionParagraphs[n] {
 			return
 		}
 		// Take the first substantial paragraph (more than 30 chars to avoid short labels)

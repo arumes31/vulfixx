@@ -108,9 +108,9 @@ type googleFailover struct {
 func googleFailoverFor(provider string) (googleFailover, bool) {
 	switch provider {
 	case "gemini35flash":
-		return googleFailover{config.AppConfig.Gemini35Model, []string{"GEMINI35FLASH_RPM", "GEMINI35_RPM"}, 15, []string{"GEMINI35FLASH_RPD", "GEMINI35_RPD"}, 20, "gemini35flash", true}, true
+		return googleFailover{config.AppConfig.Gemini35Model, []string{"GEMINI35FLASH_RPM", "GEMINI35_RPM"}, 5, []string{"GEMINI35FLASH_RPD", "GEMINI35_RPD"}, 20, "gemini35flash", true}, true
 	case "gemini3flash":
-		return googleFailover{config.AppConfig.Gemini3Model, []string{"GEMINI3FLASH_RPM", "GEMINI3_RPM"}, 15, []string{"GEMINI3FLASH_RPD", "GEMINI3_RPD"}, 20, "gemini3flash", true}, true
+		return googleFailover{config.AppConfig.Gemini3Model, []string{"GEMINI3FLASH_RPM", "GEMINI3_RPM"}, 5, []string{"GEMINI3FLASH_RPD", "GEMINI3_RPD"}, 20, "gemini3flash", true}, true
 	case "gemma":
 		return googleFailover{config.AppConfig.GemmaModel, []string{"GEMMA_RPM"}, 15, []string{"GEMMA_RPD"}, 1500, "gemma", true}, true
 	case "gemma2":

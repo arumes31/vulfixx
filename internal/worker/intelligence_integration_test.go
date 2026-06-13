@@ -42,7 +42,7 @@ func TestWorker_ExploitDetection(t *testing.T) {
 		},
 	}
 
-	// Expect UPSERT with 14 arguments (including reference_tags as arg 7 and exploit_available as arg 14)
+	// Expect UPSERT with 14 arguments (including reference_tags as 13th argument and exploit_available as arg 14)
 	mock.ExpectBegin()
 	mock.ExpectQuery("(?i)INSERT INTO cves").
 		WithArgs(

@@ -137,7 +137,7 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 			}
 		} else {
 			// Fallback for mock drivers
-			for _, c := range cves {
+			for _, c := range processedCVEs {
 				osintData, _ := json.Marshal(c.OSINTData)
 				_, err = tx.Exec(ctx, "UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
 				if err != nil {

@@ -235,9 +235,9 @@ func (w *Worker) integrateAdvisoryCVE(ctx context.Context, cveID string, item Ge
 
 	var model models.CVE
 
-	// Lock the row and fetch required fields for alert processing (including osint_data for FortiGuard enrichment)
-	err = tx.QueryRow(ctx, "SELECT id, cve_id, description, cvss_score, vendor, product, \"references\", epss_score, osint_data FROM cves WHERE cve_id = $1 FOR UPDATE", cveID).
-		Scan(&model.ID, &model.CVEID, &model.Description, &model.CVSSScore, &model.Vendor, &model.Product, &model.References, &model.EPSSScore, &model.OSINTData)
+	// Lock the row and fetch required fields for alert processing
+	err = tx.QueryRow(ctx, "SELECT id, cve_id, description, cvss_score, vendor, product, \"references\", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE", cveID).
+		Scan(&model.ID, &model.CVEID, &model.Description, &model.CVSSScore, &model.Vendor, &model.Product, &model.References, &model.EPSSScore)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

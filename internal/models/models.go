@@ -92,7 +92,7 @@ type CVE struct {
 	CWEID                string            `json:"cwe_id"`
 	CWEName              string            `json:"cwe_name"`
 	GitHubPoCCount       int               `json:"github_poc_count"`
-	GitHubPoCRepos       []GitHubPoCRepo   `json:"github_poc_repos" db:"github_poc_repos"`
+	GitHubPoCRepos       GitHubPoCRepos    `json:"github_poc_repos" db:"github_poc_repos"`
 	GreyNoiseHits        int               `json:"greynoise_hits"`
 	GreyNoiseClass       string            `json:"greynoise_classification"`
 	OSVData              JSONBMap          `json:"osv_data"`

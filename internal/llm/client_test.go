@@ -732,8 +732,8 @@ func TestGoogleFailover(t *testing.T) {
 			defRPM     int
 			defRPD     int
 		}{
-			{"gemini35flash", true, 15, 20},
-			{"gemini3flash", true, 15, 20},
+			{"gemini35flash", true, 5, 20},
+			{"gemini3flash", true, 5, 20},
 			{"gemma", true, 15, 1500},
 			{"gemma2", true, 15, 1500},
 		} {
@@ -759,12 +759,12 @@ func TestGoogleFailover(t *testing.T) {
 	t.Run("pace honors RPM override and default", func(t *testing.T) {
 		f, _ := googleFailoverFor("gemini35flash")
 		t.Setenv("GEMINI35FLASH_RPM", "")
-		if got := googleFailoverPace(f); got != 4*time.Second { // 15 RPM default
-			t.Errorf("default gemini35flash pace = %v, want 4s (15 RPM)", got)
+		if got := googleFailoverPace(f); got != 12*time.Second { // 5 RPM default
+			t.Errorf("default gemini35flash pace = %v, want 12s (5 RPM)", got)
 		}
-		t.Setenv("GEMINI35FLASH_RPM", "5")
-		if got := googleFailoverPace(f); got != 12*time.Second {
-			t.Errorf("gemini35flash pace at 5 RPM = %v, want 12s", got)
+		t.Setenv("GEMINI35FLASH_RPM", "15")
+		if got := googleFailoverPace(f); got != 4*time.Second {
+			t.Errorf("gemini35flash pace at 15 RPM = %v, want 4s", got)
 		}
 		// Short (.env/docker-compose) name works as fallback
 		t.Setenv("GEMINI35FLASH_RPM", "")

@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"testing"
+	"time"
 
 	"cve-tracker/internal/worker/proto"
 
@@ -22,10 +23,11 @@ func TestGRPC_GetCVE_Success(t *testing.T) {
 	server := &CVEServiceServerImpl{Pool: mock}
 
 	cveID := "CVE-2026-12345"
+	publishedAt := time.Date(2026, 5, 22, 0, 0, 0, 0, time.UTC)
 	mock.ExpectQuery(`SELECT id, cve_id, description, COALESCE\(cvss_score, 0\), published_date FROM cves WHERE cve_id = \$1`).
 		WithArgs(cveID).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "published_date"}).
-			AddRow(int32(42), cveID, "Test description", 8.8, "2026-05-22"))
+			AddRow(int32(42), cveID, "Test description", 8.8, publishedAt))
 
 	resp, err := server.GetCVE(context.Background(), &proto.CVERequest{CveId: cveID})
 	if err != nil {
@@ -44,8 +46,8 @@ func TestGRPC_GetCVE_Success(t *testing.T) {
 	if resp.CvssScore != 8.8 {
 		t.Errorf("expected CVSS score 8.8, got %f", resp.CvssScore)
 	}
-	if resp.PublishedDate != "2026-05-22" {
-		t.Errorf("expected published date '2026-05-22', got %s", resp.PublishedDate)
+	if want := publishedAt.Format(time.RFC3339); resp.PublishedDate != want {
+		t.Errorf("expected published date %q, got %s", want, resp.PublishedDate)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
