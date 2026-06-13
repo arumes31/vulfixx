@@ -24,6 +24,18 @@
                 <span>{{.Error}}</span>
             </div>
         {{end}}
+        {{if .Unverified}}
+            <div id="verify-banner" data-email="{{.UnverifiedEmail}}" class="bg-amber-500/10 border border-amber-500/30 text-amber-300 px-4 py-4 rounded-md text-sm mb-6">
+                <div class="flex items-start gap-2 mb-3">
+                    <span class="material-symbols-outlined text-[18px]" aria-hidden="true">mark_email_unread</span>
+                    <span>Your email <strong class="text-white">{{.UnverifiedEmail}}</strong> hasn't been verified yet. Verify it from the link in your inbox to access your dashboard.</span>
+                </div>
+                <button id="resend-btn" type="button" class="w-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 font-label font-bold tracking-widest uppercase py-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                    Resend verification email
+                </button>
+                <p id="resend-status" role="status" aria-live="polite" class="text-xs text-amber-200/70 mt-2 text-center"></p>
+            </div>
+        {{end}}
 
         <form action="/login" method="POST" class="space-y-6">
             {{.csrfField}}
@@ -55,4 +67,78 @@
         </div>
     </div>
 </div>
+
+{{if .Unverified}}
+<script nonce="{{.Nonce}}">
+(function () {
+    const banner = document.getElementById('verify-banner');
+    if (!banner) return;
+    const btn = document.getElementById('resend-btn');
+    const statusEl = document.getElementById('resend-status');
+    const email = banner.dataset.email || '';
+    const COOLDOWN_MS = 5 * 60 * 1000; // 5-minute GUI cooldown
+    const storeKey = 'vulfixx_resend_until:' + email;
+    const defaultLabel = 'Resend verification email';
+    let timerId = null;
+
+    function csrfToken() {
+        const el = document.querySelector('input[name="gorilla.csrf.Token"]');
+        return el ? el.value : '';
+    }
+
+    function tick() {
+        const until = parseInt(localStorage.getItem(storeKey) || '0', 10);
+        const remaining = until - Date.now();
+        if (remaining > 0) {
+            btn.disabled = true;
+            const total = Math.ceil(remaining / 1000);
+            const mins = Math.floor(total / 60);
+            const secs = String(total % 60).padStart(2, '0');
+            btn.textContent = 'Resend available in ' + mins + ':' + secs;
+        } else {
+            btn.disabled = false;
+            btn.textContent = defaultLabel;
+            if (timerId) { clearInterval(timerId); timerId = null; }
+        }
+    }
+
+    function startCountdown() {
+        tick();
+        if (!timerId) timerId = setInterval(tick, 1000);
+    }
+
+    async function resend() {
+        btn.disabled = true;
+        const token = csrfToken();
+        try {
+            const params = new URLSearchParams();
+            params.append('email', email);
+            params.append('gorilla.csrf.Token', token);
+            const resp = await fetch('/resend-verification-inline', {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRF-Token': token
+                },
+                body: params.toString()
+            });
+            let msg = 'If this email is registered and unverified, a new verification link has been sent.';
+            try { const data = await resp.json(); if (data && data.message) msg = data.message; } catch (e) {}
+            if (statusEl) statusEl.textContent = msg;
+        } catch (e) {
+            if (statusEl) statusEl.textContent = 'Could not resend right now. Please try again later.';
+        }
+        // Apply (and persist) the GUI cooldown regardless of outcome so a page
+        // reload does not reset it.
+        localStorage.setItem(storeKey, String(Date.now() + COOLDOWN_MS));
+        startCountdown();
+    }
+
+    btn.addEventListener('click', resend);
+    // Restore any in-progress cooldown after a reload.
+    startCountdown();
+})();
+</script>
+{{end}}
 {{end}}

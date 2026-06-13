@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"cve-tracker/internal/models"
 	"github.com/pashagolub/pgxmock/v3"
 )
 
@@ -401,5 +400,3 @@ func TestDeleteAsset(t *testing.T) {
 	})
 }
 
-// Ensure models package is covered/referenced as well if needed
-var _ = models.Asset{}

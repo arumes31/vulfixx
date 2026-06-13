@@ -2,12 +2,14 @@ package worker
 
 import (
 	"context"
+	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"time"
 
@@ -37,6 +39,20 @@ func (w *Worker) syncGitHubBuzzPeriodically(ctx context.Context) {
 type githubUpdateItem struct {
 	cveID      string
 	totalCount int
+	pocRepos   models.GitHubPoCRepos
+}
+
+// githubSearchResponse represents the full GitHub Search API response.
+type githubSearchResponse struct {
+	TotalCount int `json:"total_count"`
+	Items      []struct {
+		HTMLURL  string `json:"html_url"`
+		FullName string `json:"full_name"`
+		Stars    int    `json:"stargazers_count"`
+		//nolint:tagliatelle // GitHub API uses snake_case
+		Description string `json:"description"`
+		UpdatedAt   string `json:"updated_at"`
+	} `json:"items"`
 }
 
 func (w *Worker) syncGitHubBuzz(ctx context.Context) {
@@ -73,11 +89,9 @@ CVELoop:
 		default:
 		}
 
-		var ghResp struct {
-			TotalCount int `json:"total_count"`
-		}
+		var ghResp githubSearchResponse
 
-		githubURL := fmt.Sprintf("https://api.github.com/search/repositories?q=%s", cveID)
+		githubURL := fmt.Sprintf("https://api.github.com/search/repositories?q=%s&sort=stars&order=desc&per_page=5", cveID)
 		resp, err := DoWithRetry(ctx, w.HTTP, RetryConfig{
 			MaxRetries:  3,
 			MaxWait:     5 * time.Minute,
@@ -117,7 +131,33 @@ CVELoop:
 			continue CVELoop
 		}
 
-		pendingUpdates = append(pendingUpdates, githubUpdateItem{cveID: cveID, totalCount: ghResp.TotalCount})
+		// Extract top 5 PoC repos sorted by stars (API already sorted by stars desc)
+		var topRepos models.GitHubPoCRepos
+		maxRepos := 5
+		if len(ghResp.Items) < maxRepos {
+			maxRepos = len(ghResp.Items)
+		}
+		for j := 0; j < maxRepos; j++ {
+			item := ghResp.Items[j]
+			desc := item.Description
+			runes := []rune(desc)
+			if len(runes) > 100 {
+				desc = string(runes[:100])
+			}
+			topRepos = append(topRepos, models.GitHubPoCRepo{
+				URL:         item.HTMLURL,
+				Name:        item.FullName,
+				Stars:       item.Stars,
+				Description: desc,
+				UpdatedAt:   item.UpdatedAt,
+			})
+		}
+		// Sort by stars descending (should already be, but ensure)
+		sort.Slice(topRepos, func(i, j int) bool {
+			return topRepos[i].Stars > topRepos[j].Stars
+		})
+
+		pendingUpdates = append(pendingUpdates, githubUpdateItem{cveID: cveID, totalCount: ghResp.TotalCount, pocRepos: topRepos})
 		if len(pendingUpdates) >= 50 {
 			w.updateGitHubBatch(ctx, pendingUpdates)
 			pendingUpdates = nil
@@ -151,10 +191,10 @@ func (w *Worker) updateGitHubBatch(ctx context.Context, updates []githubUpdateIt
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	query := "UPDATE cves SET github_poc_count = $1 WHERE cve_id = $2"
+	query := "UPDATE cves SET github_poc_count = $1, github_poc_repos = $2 WHERE cve_id = $3"
 	batch := &pgx.Batch{}
 	for _, up := range updates {
-		batch.Queue(query, up.totalCount, up.cveID)
+		batch.Queue(query, up.totalCount, up.pocRepos, up.cveID)
 	}
 
 	br := tx.SendBatch(ctx, batch)
@@ -168,7 +208,7 @@ func (w *Worker) updateGitHubBatch(ctx context.Context, updates []githubUpdateIt
 	} else {
 		// Fallback for pgxmock test compatibility
 		for _, up := range updates {
-			if _, err := tx.Exec(ctx, query, up.totalCount, up.cveID); err != nil {
+			if _, err := tx.Exec(ctx, query, up.totalCount, up.pocRepos, up.cveID); err != nil {
 				slog.Error("Worker: [ERROR] Failed to update GitHub buzz in DB", "cve_id", up.cveID, "error", err)
 			}
 		}

@@ -152,6 +152,44 @@ func TestLoginHandler(t *testing.T) {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
+
+	t.Run("POST_UnverifiedBlocked", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		hash, err := auth.HashPassword("password")
+		if err != nil {
+			t.Fatalf("failed to hash password: %v", err)
+		}
+		// is_email_verified = false → login must be blocked.
+		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE").WithArgs("test@example.com").
+			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
+				AddRow(1, "test@example.com", string(hash), false, false, "", false))
+		mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		req := httptest.NewRequest("POST", "/login", strings.NewReader("email=test@example.com&password=password"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+		app.LoginHandler(rr, req)
+
+		// Must NOT establish a session/redirect; instead re-render with the banner.
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200 (login page with banner), got %d", rr.Code)
+		}
+		if !strings.Contains(rr.Body.String(), "verify-banner") {
+			t.Errorf("expected unverified banner in response body")
+		}
+		if strings.Contains(rr.Header().Get("Set-Cookie"), "user_id") {
+			t.Errorf("no authenticated session should be set for unverified user")
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
 }
 
 func TestLogoutHandler(t *testing.T) {

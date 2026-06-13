@@ -4,6 +4,7 @@ import (
 	"context"
 	"cve-tracker/internal/models"
 	"fmt"
+	"time"
 )
 
 type AssetRepository interface {
@@ -40,9 +41,11 @@ func (r *assetRepo) ListAssets(ctx context.Context, userID int) ([]models.AssetW
 	var assets []models.AssetWithKeywords
 	for rows.Next() {
 		var as models.AssetWithKeywords
-		if err := rows.Scan(&as.ID, &as.Name, &as.Type, &as.Priority, &as.CreatedAt, &as.Keywords, &as.TeamName); err != nil {
+		var createdAt time.Time
+		if err := rows.Scan(&as.ID, &as.Name, &as.Type, &as.Priority, &createdAt, &as.Keywords, &as.TeamName); err != nil {
 			return nil, err
 		}
+		as.CreatedAt = createdAt.Format(time.RFC3339)
 		assets = append(assets, as)
 	}
 	return assets, rows.Err()

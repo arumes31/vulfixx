@@ -29,6 +29,10 @@ CREATE TABLE IF NOT EXISTS cves (
     cisa_ransomware BOOLEAN DEFAULT FALSE,
     exploit_available BOOLEAN DEFAULT FALSE,
     epss_score NUMERIC(6,5),
+    epss_percentile NUMERIC(5,2) DEFAULT 0,
+    cisa_kev_data JSONB DEFAULT '{}',
+    reference_tags TEXT[] DEFAULT '{}',
+    github_poc_repos JSONB DEFAULT '[]',
     cwe_id VARCHAR(50),
     cwe_name TEXT,
     github_poc_count INTEGER DEFAULT 0,
@@ -40,6 +44,7 @@ CREATE TABLE IF NOT EXISTS cves (
     inthewild_data JSONB DEFAULT '{}',
     inthewild_last_updated TIMESTAMP WITH TIME ZONE,
     osint_data JSONB DEFAULT '{}',
+    vendor_advisories JSONB DEFAULT '{}',
     published_date TIMESTAMP WITH TIME ZONE NOT NULL,
     updated_date TIMESTAMP WITH TIME ZONE,
     "references" TEXT[],
@@ -218,6 +223,7 @@ CREATE INDEX IF NOT EXISTS idx_cves_product ON cves(product);
 CREATE INDEX IF NOT EXISTS idx_cves_affected_products ON cves USING GIN (affected_products);
 CREATE INDEX IF NOT EXISTS idx_cves_osv_last_updated ON cves (osv_last_updated ASC NULLS FIRST);
 CREATE INDEX IF NOT EXISTS idx_cves_greynoise_last_updated ON cves (greynoise_last_updated ASC NULLS FIRST);
+CREATE INDEX IF NOT EXISTS idx_cves_vendor_advisories_gin ON cves USING GIN (vendor_advisories);
 
 
 -- Partial Unique Indexes for status and notes

@@ -1,0 +1,61 @@
+{
+  "settings": {
+    "port": 8080,
+    "default_nim_url": "https://integrate.api.nvidia.com/v1",
+    "log_level": "info",
+    "default_rpm_limit": 40
+  },
+  "api_keys": [
+    {
+      "id": "key-EXAMPLE",
+      "name": "ExampleKey",
+      "key": "nvapi-YOUR-NVIDIA-NIM-API-KEY",
+      "active": true,
+      "status": "valid",
+      "error_message": "",
+      "last_used": "1970-01-01T00:00:00Z",
+      "use_count": 0
+    }
+  ],
+  "workspaces": [
+    {
+      "id": "no-vpn",
+      "name": "Default",
+      "auth_token": "",
+      "paths": [
+        "C:\\path\\to\\project"
+      ],
+      "api_key_ids": [
+        "key-EXAMPLE"
+      ],
+      "active": true,
+      "vpn_config": {}
+    },
+    {
+      "id": "sys-upstream-example",
+      "name": "Example Upstream",
+      "auth_token": "",
+      "model_override": "model-name",
+      "always_model_override": true,
+      "upstream_url": "https://api.example.com/v1",
+      "upstream_api_key": "YOUR-UPSTREAM-API-KEY",
+      "system": true,
+      "active": true,
+      "vpn_config": {}
+    }
+  ],
+  "vpns": [
+    {
+      "id": "vpn-example",
+      "name": "Example VPN",
+      "type": "managed-openvpn",
+      "config": {
+        "wireguard_config_raw": "PASTE-OPENVPN-OR-WIREGUARD-CONFIG-HERE",
+        "username": "YOUR-VPN-USERNAME",
+        "password": "YOUR-VPN-PASSWORD"
+      },
+      "active": true
+    }
+  ],
+  "total_requests": 0
+}

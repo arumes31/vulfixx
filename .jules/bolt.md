@@ -44,3 +44,16 @@
 ## 2026-05-30 - Optimized Database Updates in GitHub Buzz Sync
 **Learning:** Performing individual `tx.Exec` calls within a transaction loop in `updateGitHubBatch` for 50 items results in 50 separate database roundtrips, which degrades performance.
 **Action:** Implemented `pgx.Batch` within the transaction to send all update queries in a single database roundtrip, significantly reducing I/O latency, while maintaining a fallback loop for `pgxmock` test compatibility.
+
+## 2026-06-13 - Optimized Redundant Database COUNT Query
+**Learning:** Running an explicit `SELECT COUNT(*)` query solely to get the length of the results from a preceding identical  statement causes an unnecessary database roundtrip.
+**Action:** Replaced the redundant query with `total := len(slice)` since the slice already contains exactly the bounded subset of rows from the database. Removed the associated unneeded `pgxmock.ExpectQuery` expectation in tests.
+## 2026-06-13 - Optimized Redundant Database COUNT Query
+**Learning:** Running an explicit SELECT COUNT(*) query solely to get the length of the results from a preceding identical SELECT statement causes an unnecessary database roundtrip.
+**Action:** Replaced the redundant query with total := len(slice) since the slice already contains exactly the bounded subset of rows from the database. Removed the associated unneeded pgxmock.ExpectQuery expectation in tests.
+
+## 2026-06-07 - Optimized RenderTemplate Team Fetching Queries
+**Performance Issue:** N+1 Query pattern in `RenderTemplate`.
+**Learning:** Fetching a user's teams sequentially and then executing a fallback query for the `activeTeamID` name creates unnecessary database roundtrips during every template render for authenticated users.
+**Optimization:** Replaced the sequential and fallback logic with a single optimized query using `LEFT JOIN team_members tm ON t.id = tm.team_id AND tm.user_id = $1` and `WHERE tm.user_id = $1 OR t.id = $2`.
+**Impact:** Reduced database queries from 2 to 1 for every authenticated view where an active team needs to be rendered, significantly improving performance per page load.

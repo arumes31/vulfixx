@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"cve-tracker/internal/db"
+	"encoding/json"
 	"io"
 	"net/http"
 	"regexp"
@@ -108,6 +109,12 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 					return &http.Response{
 						StatusCode: http.StatusOK,
 						Body:       io.NopCloser(strings.NewReader(xmlContent)),
+					}, nil
+				} else if strings.Contains(req.URL.String(), "fortiguard") {
+					// FortiGuard feed should not be called anymore, but if it is, return empty
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(`<?xml version="1.0"?><rss><channel></channel></rss>`)),
 					}, nil
 				}
 				return &http.Response{
@@ -375,6 +382,326 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		wErr.syncAdvisoryRSS(ctx)
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+}
+
+func TestFortiGuardIDRegex(t *testing.T) {
+	tests := []struct {
+		input  string
+		want   string
+		wantOK bool
+	}{
+		{"FG-IR-24-388 Multiple Vulnerabilities in FortiOS", "FG-IR-24-388", true},
+		{"FG-IR-25-001 Critical RCE", "FG-IR-25-001", true},
+		{"FG-IR-99-999 High Severity", "FG-IR-99-999", true},
+		{"Some advisory without FG ID", "", false},
+		{"FG-IR-24-388 and FG-IR-24-399", "FG-IR-24-388", true}, // FindString returns first match
+		{"fg-ir-24-388 lowercase", "", false},                   // regex is case-sensitive
+	}
+	for _, tt := range tests {
+		got := fortiguardIDRegex.FindString(tt.input)
+		if (got != "") != tt.wantOK {
+			t.Errorf("fortiguardIDRegex.FindString(%q) = %q, wantOK %v", tt.input, got, tt.wantOK)
+		}
+		if got != tt.want {
+			t.Errorf("fortiguardIDRegex.FindString(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestWorkerSync_FortiGuardAdvisoryID(t *testing.T) {
+	fortiguardXML := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+<item>
+<title>FG-IR-24-388 Multiple Vulnerabilities in FortiOS CVE-2024-1234</title>
+<link>https://www.fortiguard.com/psirt/FG-IR-24-388</link>
+<description>Multiple vulnerabilities in FortiOS CVE-2024-1234</description>
+<pubDate>Thu, 02 May 2024 00:00:00 GMT</pubDate>
+</item>
+</channel>
+</rss>`
+
+	t.Run("FortiGuardAdvisoryIDExtracted", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+
+		mr, err := miniredis.Run()
+		if err != nil {
+			t.Fatalf("failed to setup mock redis: %v", err)
+		}
+		defer mr.Close()
+		rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+		defer rdb.Close()
+
+		httpClient := &MockHTTPClient{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				if strings.Contains(req.URL.String(), "fortiguard") {
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(fortiguardXML)),
+					}, nil
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(`<?xml version="1.0"?><rss><channel></channel></rss>`)),
+				}, nil
+			},
+		}
+		w := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
+
+		// Expect the row lock SELECT
+		mock.ExpectBegin()
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
+			WithArgs("CVE-2024-1234").
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vendor", "product", "references", "epss_score"}).
+				AddRow(1, "CVE-2024-1234", "FortiOS vulnerability", 9.0, "Fortinet", "FortiOS", []string{}, 0.5))
+
+		// Expect vendor_advisories UPDATE with FortiGuard advisory data
+		fgData := map[string]interface{}{
+			"advisory_id":  "FG-IR-24-388",
+			"advisory_url": "https://www.fortiguard.com/psirt/FG-IR-24-388",
+		}
+		vendorAdvisory := map[string]interface{}{
+			"fortiguard": fgData,
+		}
+		vaJSON, _ := json.Marshal(vendorAdvisory)
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE cves SET vendor_advisories = COALESCE(vendor_advisories, '{}'::jsonb) || $1::jsonb, updated_at = NOW() WHERE cve_id = $2`)).
+			WithArgs(vaJSON, "CVE-2024-1234").
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+		// Expect references UPDATE
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE cves SET "references" = $1, updated_at = NOW() WHERE id = $2`)).
+			WithArgs([]string{"https://www.fortiguard.com/psirt/FG-IR-24-388"}, 1).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+		mock.ExpectCommit()
+
+		// Update task stats
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
+			WithArgs("advisory_rss_sync").
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		w.syncAdvisoryRSS(ctx)
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("FortiGuardAdvisoryIDWithExistingOSINTData", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+
+		mr, err := miniredis.Run()
+		if err != nil {
+			t.Fatalf("failed to setup mock redis: %v", err)
+		}
+		defer mr.Close()
+		rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+		defer rdb.Close()
+
+		httpClient := &MockHTTPClient{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				if strings.Contains(req.URL.String(), "fortiguard") {
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(fortiguardXML)),
+					}, nil
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(`<?xml version="1.0"?><rss><channel></channel></rss>`)),
+				}, nil
+			},
+		}
+		w := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
+
+		mock.ExpectBegin()
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
+			WithArgs("CVE-2024-1234").
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vendor", "product", "references", "epss_score"}).
+				AddRow(1, "CVE-2024-1234", "FortiOS vulnerability", 9.0, "Fortinet", "FortiOS", []string{}, 0.5))
+
+		fgData := map[string]interface{}{
+			"advisory_id":  "FG-IR-24-388",
+			"advisory_url": "https://www.fortiguard.com/psirt/FG-IR-24-388",
+		}
+		vendorAdvisory := map[string]interface{}{
+			"fortiguard": fgData,
+		}
+		vaJSON, _ := json.Marshal(vendorAdvisory)
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE cves SET vendor_advisories = COALESCE(vendor_advisories, '{}'::jsonb) || $1::jsonb, updated_at = NOW() WHERE cve_id = $2`)).
+			WithArgs(vaJSON, "CVE-2024-1234").
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE cves SET "references" = $1, updated_at = NOW() WHERE id = $2`)).
+			WithArgs([]string{"https://www.fortiguard.com/psirt/FG-IR-24-388"}, 1).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+		mock.ExpectCommit()
+
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
+			WithArgs("advisory_rss_sync").
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		w.syncAdvisoryRSS(ctx)
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("FortiGuardNoAdvisoryIDInTitle", func(t *testing.T) {
+		// When the FortiGuard RSS item title doesn't contain an FG-IR ID,
+		// no osint_data update should happen — only the reference is added.
+		fortiguardXMLNoID := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+<item>
+<title>Security Update for FortiOS CVE-2024-5678</title>
+<link>https://www.fortiguard.com/psirt/some-other-page</link>
+<description>Security update CVE-2024-5678</description>
+<pubDate>Thu, 02 May 2024 00:00:00 GMT</pubDate>
+</item>
+</channel>
+</rss>`
+
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+
+		mr, err := miniredis.Run()
+		if err != nil {
+			t.Fatalf("failed to setup mock redis: %v", err)
+		}
+		defer mr.Close()
+		rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+		defer rdb.Close()
+
+		httpClient := &MockHTTPClient{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				if strings.Contains(req.URL.String(), "fortiguard") {
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(fortiguardXMLNoID)),
+					}, nil
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(`<?xml version="1.0"?><rss><channel></channel></rss>`)),
+				}, nil
+			},
+		}
+		w := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
+
+		mock.ExpectBegin()
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
+			WithArgs("CVE-2024-5678").
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vendor", "product", "references", "epss_score"}).
+				AddRow(1, "CVE-2024-5678", "FortiOS vuln", 7.5, "Fortinet", "FortiOS", []string{}, 0.2))
+
+		// No osint_data UPDATE expected (no FG-IR ID in title)
+		// Only references UPDATE
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE cves SET "references" = $1, updated_at = NOW() WHERE id = $2`)).
+			WithArgs([]string{"https://www.fortiguard.com/psirt/some-other-page"}, 1).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+		mock.ExpectCommit()
+
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
+			WithArgs("advisory_rss_sync").
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		w.syncAdvisoryRSS(ctx)
+
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
+	t.Run("FortiGuardExistingReferenceWithAdvisoryID", func(t *testing.T) {
+		// When the reference already exists but a new FG-IR ID is found,
+		// the osint_data should still be updated and the transaction committed.
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+
+		mr, err := miniredis.Run()
+		if err != nil {
+			t.Fatalf("failed to setup mock redis: %v", err)
+		}
+		defer mr.Close()
+		rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+		defer rdb.Close()
+
+		httpClient := &MockHTTPClient{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				if strings.Contains(req.URL.String(), "fortiguard") {
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(fortiguardXML)),
+					}, nil
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(`<?xml version="1.0"?><rss><channel></channel></rss>`)),
+				}, nil
+			},
+		}
+		w := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
+
+		// CVE already has the reference URL
+		mock.ExpectBegin()
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
+			WithArgs("CVE-2024-1234").
+			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vendor", "product", "references", "epss_score"}).
+				AddRow(1, "CVE-2024-1234", "FortiOS vuln", 9.0, "Fortinet", "FortiOS",
+					[]string{"https://www.fortiguard.com/psirt/FG-IR-24-388"}, 0.5))
+
+		// vendor_advisories should still be updated with the advisory ID
+		fgData := map[string]interface{}{
+			"advisory_id":  "FG-IR-24-388",
+			"advisory_url": "https://www.fortiguard.com/psirt/FG-IR-24-388",
+		}
+		vendorAdvisory := map[string]interface{}{
+			"fortiguard": fgData,
+		}
+		vaJSON, _ := json.Marshal(vendorAdvisory)
+		mock.ExpectExec(regexp.QuoteMeta(`UPDATE cves SET vendor_advisories = COALESCE(vendor_advisories, '{}'::jsonb) || $1::jsonb, updated_at = NOW() WHERE cve_id = $2`)).
+			WithArgs(vaJSON, "CVE-2024-1234").
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+		// Transaction should be committed (fortiguardUpdated path)
+		mock.ExpectCommit()
+
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
+			WithArgs("advisory_rss_sync").
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		w.syncAdvisoryRSS(ctx)
 
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)

@@ -535,9 +535,9 @@ func TestDashboardNoErrorLeakOnMalformedQuery(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1")).
 		WithArgs(1).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
-	mock.ExpectQuery("(?is)SELECT t.id, t.name FROM teams t").
-		WithArgs(1).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(1, "Team1"))
+	mock.ExpectQuery("(?is)SELECT t.id, t.name, tm.user_id FROM teams t").
+		WithArgs(1, 0).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "name", "user_id"}).AddRow(1, "Team1", 1))
 
 	rr := httptest.NewRecorder()
 	app.DashboardHandler(rr, req)

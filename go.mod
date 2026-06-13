@@ -12,7 +12,7 @@ require (
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/gorilla/sessions v1.4.0
 	github.com/hibiken/asynq v0.26.0
-	github.com/jackc/pgx/v5 v5.9.2
+	github.com/jackc/pgx/v5 v5.10.0
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/pashagolub/pgxmock/v3 v3.4.0
 	github.com/pquerna/otp v1.5.0
@@ -24,7 +24,7 @@ require (
 	golang.org/x/crypto v0.52.0
 	golang.org/x/sync v0.20.0
 	golang.org/x/time v0.15.0
-	google.golang.org/genai v1.58.0
+	google.golang.org/genai v1.59.0
 	google.golang.org/grpc v1.81.1
 	google.golang.org/protobuf v1.36.11
 	rsc.io/qr v0.2.0

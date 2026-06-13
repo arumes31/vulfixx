@@ -308,6 +308,7 @@ func mapNVDEntryToModel(entry NVDCVEEntry) (models.CVE, error) {
 	cweID := getCWEID(cve.Weaknesses)
 
 	var references []string
+	var referenceTags []string
 	exploitAvailable := false
 	for _, ref := range cve.References {
 		u, err := url.Parse(ref.URL)
@@ -336,6 +337,8 @@ func mapNVDEntryToModel(entry NVDCVEEntry) (models.CVE, error) {
 		u.Fragment = ""
 		u.User = nil
 		references = append(references, u.String())
+		// Store tags as comma-separated string, parallel to references
+		referenceTags = append(referenceTags, strings.Join(ref.Tags, ","))
 	}
 
 	pubDate, err := parseNVDDate(cve.Published)
@@ -354,6 +357,7 @@ func mapNVDEntryToModel(entry NVDCVEEntry) (models.CVE, error) {
 		VectorString:     vector,
 		CWEID:            cweID,
 		References:       references,
+		ReferenceTags:    referenceTags,
 		PublishedDate:    pubDate,
 		UpdatedDate:      modDate,
 		Configurations:   cve.Configurations,
@@ -419,26 +423,27 @@ func (w *Worker) executeCVEBatchUpsert(ctx context.Context, modelsToUpsert []mod
 
 	batch := &pgx.Batch{}
 	query := `
-		INSERT INTO cves (cve_id, description, cvss_score, vector_string, cwe_id, "references", configurations, published_date, updated_date, vendor, product, affected_products, exploit_available)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-		ON CONFLICT (cve_id, published_date) DO UPDATE SET
-			description = EXCLUDED.description,
-			cvss_score = EXCLUDED.cvss_score,
-			vector_string = EXCLUDED.vector_string,
-			cwe_id = EXCLUDED.cwe_id,
-			"references" = EXCLUDED."references",
-			configurations = EXCLUDED.configurations,
-			updated_date = EXCLUDED.updated_date,
-			vendor = EXCLUDED.vendor,
-			product = EXCLUDED.product,
-			affected_products = EXCLUDED.affected_products,
-			exploit_available = EXCLUDED.exploit_available,
-			updated_at = CURRENT_TIMESTAMP
-		RETURNING id
+	INSERT INTO cves (cve_id, description, cvss_score, vector_string, cwe_id, "references", reference_tags, configurations, published_date, updated_date, vendor, product, affected_products, exploit_available)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+	ON CONFLICT (cve_id, published_date) DO UPDATE SET
+	description = EXCLUDED.description,
+	cvss_score = EXCLUDED.cvss_score,
+	vector_string = EXCLUDED.vector_string,
+	cwe_id = EXCLUDED.cwe_id,
+	"references" = EXCLUDED."references",
+	reference_tags = EXCLUDED.reference_tags,
+	configurations = EXCLUDED.configurations,
+	updated_date = EXCLUDED.updated_date,
+	vendor = EXCLUDED.vendor,
+	product = EXCLUDED.product,
+	affected_products = EXCLUDED.affected_products,
+	exploit_available = EXCLUDED.exploit_available,
+	updated_at = CURRENT_TIMESTAMP
+	RETURNING id
 	`
 
 	for _, model := range modelsToUpsert {
-		batch.Queue(query, model.CVEID, model.Description, model.CVSSScore, model.VectorString, model.CWEID, model.References, model.Configurations, model.PublishedDate, model.UpdatedDate, model.Vendor, model.Product, model.AffectedProducts, model.ExploitAvailable)
+		batch.Queue(query, model.CVEID, model.Description, model.CVSSScore, model.VectorString, model.CWEID, model.References, model.ReferenceTags, model.Configurations, model.PublishedDate, model.UpdatedDate, model.Vendor, model.Product, model.AffectedProducts, model.ExploitAvailable)
 	}
 
 	br := tx.SendBatch(ctx, batch)
@@ -464,7 +469,7 @@ func (w *Worker) executeCVEBatchUpsert(ctx context.Context, modelsToUpsert []mod
 		slog.Warn("Worker: SendBatch returned nil (likely mock database). Falling back to individual inserts.")
 		for i := range modelsToUpsert {
 			var id int
-			err := tx.QueryRow(ctx, query, modelsToUpsert[i].CVEID, modelsToUpsert[i].Description, modelsToUpsert[i].CVSSScore, modelsToUpsert[i].VectorString, modelsToUpsert[i].CWEID, modelsToUpsert[i].References, modelsToUpsert[i].Configurations, modelsToUpsert[i].PublishedDate, modelsToUpsert[i].UpdatedDate, modelsToUpsert[i].Vendor, modelsToUpsert[i].Product, modelsToUpsert[i].AffectedProducts, modelsToUpsert[i].ExploitAvailable).Scan(&id)
+			err := tx.QueryRow(ctx, query, modelsToUpsert[i].CVEID, modelsToUpsert[i].Description, modelsToUpsert[i].CVSSScore, modelsToUpsert[i].VectorString, modelsToUpsert[i].CWEID, modelsToUpsert[i].References, modelsToUpsert[i].ReferenceTags, modelsToUpsert[i].Configurations, modelsToUpsert[i].PublishedDate, modelsToUpsert[i].UpdatedDate, modelsToUpsert[i].Vendor, modelsToUpsert[i].Product, modelsToUpsert[i].AffectedProducts, modelsToUpsert[i].ExploitAvailable).Scan(&id)
 			if err != nil {
 				slog.Error("Worker: Error upserting CVE in fallback, rolling back transaction", "cve_id", modelsToUpsert[i].CVEID, "error", err)
 				return nil, err

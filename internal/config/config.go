@@ -26,40 +26,45 @@ func decryptIfEncrypted(val string) string {
 }
 
 type Config struct {
-	DBHost           string
-	DBPort           string
-	DBUser           string
-	DBPassword       string
-	DBName           string
-	RedisURL         string
-	SessionKey       string
-	CSRFKey          string
-	BaseURL          string
-	SMTPHost         string
-	SMTPPort         int
-	SMTPUser         string
-	SMTPPass         string
-	SMTPMailFrom     string
-	AdminEmail       string
-	AdminPassword    string
-	AdminTOTPSecret  string
-	SecureCookie     bool
-	AppPort          string
-	SentryDSN        string
-	GeminiAPIKey     string
-	GeminiModel      string
-	GeminiAPIVersion string
-	LLMProvider      string // "ollama" or "gemini"
-	LLMEndpoint      string // e.g. "http://ollama:11434"
-	LLMModel         string // e.g. "phi3" or "llama3"
-	LLMTimeout       int    // timeout in seconds
-	MistralAPIKey    string
-	MistralModel     string
-	MistralEndpoint  string
-	GRPCPort         string
-	GRPCCertFile     string
-	GRPCKeyFile      string
-	WebhookSecret    string
+	DBHost            string
+	DBPort            string
+	DBUser            string
+	DBPassword        string
+	DBName            string
+	RedisURL          string
+	SessionKey        string
+	CSRFKey           string
+	BaseURL           string
+	SMTPHost          string
+	SMTPPort          int
+	SMTPUser          string
+	SMTPPass          string
+	SMTPMailFrom      string
+	AdminEmail        string
+	AdminPassword     string
+	AdminTOTPSecret   string
+	SecureCookie      bool
+	AppPort           string
+	SentryDSN         string
+	GeminiAPIKey      string
+	Gemini31LiteModel string
+	GeminiAPIVersion  string
+	Gemini35Model     string // higher-quality, low-quota Gemini failover (e.g. gemini-3.5-flash)
+	Gemini3Model      string // Gemini 3 Flash failover (e.g. gemini-3-flash-preview)
+	LLMProvider       string // default priority chain, fallback matches .env.example ("gemini31flashlite,mistral")
+	LLMEndpoint       string // e.g. "http://ollama:11434"
+	LLMModel          string // e.g. "phi3" or "llama3"
+	LLMTimeout        int    // timeout in seconds
+	MistralAPIKey     string
+	MistralModel      string
+	MistralEndpoint   string
+	OpenAIAPIKey      string
+	OpenAIModel       string
+	OpenAIEndpoint    string
+	GRPCPort          string
+	GRPCCertFile      string
+	GRPCKeyFile       string
+	WebhookSecret     string
 }
 
 var (
@@ -70,35 +75,40 @@ var AppConfig Config
 
 func LoadConfig() error {
 	AppConfig = Config{
-		DBHost:          getEnv("DB_HOST", "db"),
-		DBPort:          getEnv("DB_PORT", "5432"),
-		DBUser:          getEnv("DB_USER", "cveuser"),
-		DBPassword:      decryptIfEncrypted(getEnv("DB_PASSWORD", "")),
-		DBName:          getEnv("DB_NAME", "cvetracker"),
-		RedisURL:        getEnv("REDIS_URL", "redis:6379"),
-		SessionKey:      getEnv("SESSION_KEY", ""),
-		CSRFKey:         getEnv("CSRF_KEY", ""),
-		BaseURL:         getEnv("BASE_URL", "http://localhost:8080"),
-		SMTPHost:        getEnv("SMTP_HOST", "smtp.example.com"),
-		SMTPUser:        getEnv("SMTP_USER", "user@example.com"),
-		SMTPPass:        decryptIfEncrypted(getEnv("SMTP_PASS", "")),
-		AdminEmail:      getEnv("ADMIN_EMAIL", ""),
-		AdminPassword:   decryptIfEncrypted(getEnv("ADMIN_PASSWORD", "")),
-		AdminTOTPSecret: decryptIfEncrypted(getEnv("ADMIN_TOTP_SECRET", "")),
-		AppPort:         getEnv("PORT", "8080"),
-		SentryDSN:       decryptIfEncrypted(getEnv("SENTRY_DSN", "")),
-		GeminiAPIKey:    decryptIfEncrypted(getEnv("GEMINI_API_KEY", "")),
-		GeminiModel:     getEnv("GEMINI_MODEL", "gemini-3.1-flash-lite"),
+		DBHost:            getEnv("DB_HOST", "db"),
+		DBPort:            getEnv("DB_PORT", "5432"),
+		DBUser:            getEnv("DB_USER", "cveuser"),
+		DBPassword:        decryptIfEncrypted(getEnv("DB_PASSWORD", "")),
+		DBName:            getEnv("DB_NAME", "cvetracker"),
+		RedisURL:          getEnv("REDIS_URL", "redis:6379"),
+		SessionKey:        getEnv("SESSION_KEY", ""),
+		CSRFKey:           getEnv("CSRF_KEY", ""),
+		BaseURL:           getEnv("BASE_URL", "http://localhost:8080"),
+		SMTPHost:          getEnv("SMTP_HOST", "smtp.example.com"),
+		SMTPUser:          getEnv("SMTP_USER", "user@example.com"),
+		SMTPPass:          decryptIfEncrypted(getEnv("SMTP_PASS", "")),
+		AdminEmail:        getEnv("ADMIN_EMAIL", ""),
+		AdminPassword:     decryptIfEncrypted(getEnv("ADMIN_PASSWORD", "")),
+		AdminTOTPSecret:   decryptIfEncrypted(getEnv("ADMIN_TOTP_SECRET", "")),
+		AppPort:           getEnv("PORT", "8080"),
+		SentryDSN:         decryptIfEncrypted(getEnv("SENTRY_DSN", "")),
+		GeminiAPIKey:      decryptIfEncrypted(getEnv("GEMINI_API_KEY", "")),
+		Gemini31LiteModel: getEnv("GEMINI31FLASHLITE_MODEL", getEnv("GEMINI31LITE_MODEL", getEnv("GEMINI_MODEL", "gemini-3.1-flash-lite"))),
 		// v1beta is required: the structured-output fields the extractor relies on
 		// (responseMimeType / responseSchema) are rejected by the stable v1 API.
 		GeminiAPIVersion: getEnv("GEMINI_API_VERSION", "v1beta"),
-		LLMProvider:      getEnv("LLM_PROVIDER", "ollama"),
+		Gemini35Model:    getEnv("GEMINI35FLASH_MODEL", getEnv("GEMINI35_MODEL", "gemini-3.5-flash")),
+		Gemini3Model:     getEnv("GEMINI3FLASH_MODEL", getEnv("GEMINI3_MODEL", "gemini-3-flash-preview")),
+		LLMProvider:      getEnv("LLM_PROVIDER", "gemini31flashlite,mistral"),
 		LLMEndpoint:      getEnv("LLM_ENDPOINT", "http://ollama:11434"),
 		LLMModel:         getEnv("LLM_MODEL", "phi3-vulfixx"),
 		LLMTimeout:       getEnvInt("LLM_TIMEOUT", 600),
 		MistralAPIKey:    decryptIfEncrypted(getEnv("MISTRAL_API_KEY", "")),
 		MistralModel:     getEnv("MISTRAL_MODEL", "mistral-small-latest"),
 		MistralEndpoint:  getEnv("MISTRAL_ENDPOINT", "https://api.mistral.ai/v1"),
+		OpenAIAPIKey:     decryptIfEncrypted(getEnv("OPENAI_API_KEY", "")),
+		OpenAIModel:      getEnv("OPENAI_MODEL", "kilo-auto/free"),
+		OpenAIEndpoint:   getEnv("OPENAI_ENDPOINT", "http://100.115.58.99:18080/workspace/sys-kilo/v1"),
 		GRPCPort:         getEnv("GRPC_PORT", "9091"),
 		GRPCCertFile:     getEnv("GRPC_CERT_FILE", ""),
 		GRPCKeyFile:      getEnv("GRPC_KEY_FILE", ""),

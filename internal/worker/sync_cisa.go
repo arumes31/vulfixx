@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"cve-tracker/internal/models"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -16,7 +17,14 @@ var defaultCISAKEVURL = "https://www.cisa.gov/sites/default/files/feeds/known_ex
 type CISAKEVResponse struct {
 	Vulnerabilities []struct {
 		CVEID                      string `json:"cveID"`
+		VulnerabilityName          string `json:"vulnerabilityName"`
+		DateAdded                  string `json:"dateAdded"`
+		ShortDescription           string `json:"shortDescription"`
+		RequiredAction             string `json:"requiredAction"`
+		DueDate                    string `json:"dueDate"`
 		KnownRansomwareCampaignUse string `json:"knownRansomwareCampaignUse"`
+		VendorProject              string `json:"vendorProject"`
+		Product                    string `json:"product"`
 	} `json:"vulnerabilities"`
 }
 
@@ -104,10 +112,21 @@ func (w *Worker) fetchFromCISAKEV(ctx context.Context) {
 		}
 		ids := make([]string, 0, end-i)
 		ransomIds := make([]string, 0)
+		kevDataMap := make(map[string]models.JSONBMap, end-i)
 		for _, v := range kevResp.Vulnerabilities[i:end] {
 			ids = append(ids, v.CVEID)
 			if strings.EqualFold(v.KnownRansomwareCampaignUse, "known") {
 				ransomIds = append(ransomIds, v.CVEID)
+			}
+			kevDataMap[v.CVEID] = models.JSONBMap{
+				"vulnerability_name": v.VulnerabilityName,
+				"date_added":         v.DateAdded,
+				"short_description":  v.ShortDescription,
+				"required_action":    v.RequiredAction,
+				"due_date":           v.DueDate,
+				"known_ransomware":   v.KnownRansomwareCampaignUse,
+				"vendor_project":     v.VendorProject,
+				"product":            v.Product,
 			}
 		}
 		_, err := tx.Exec(ctx, "UPDATE cves SET cisa_kev = true WHERE cve_id = ANY($1)", ids)
@@ -119,6 +138,32 @@ func (w *Worker) fetchFromCISAKEV(ctx context.Context) {
 			_, err = tx.Exec(ctx, "UPDATE cves SET cisa_ransomware = true WHERE cve_id = ANY($1)", ransomIds)
 			if err != nil {
 				slog.Error("Worker: [ERROR] Failed to update Ransomware batch", "error", err)
+				return
+			}
+		}
+		// Bulk-update cisa_kev_data for the batch in a single statement (unnest
+		// pattern, same as the EPSS sync) instead of one UPDATE per row.
+		kevIDs := make([]string, 0, len(ids))
+		kevJSON := make([]string, 0, len(ids))
+		for _, cveID := range ids {
+			data, err := json.Marshal(kevDataMap[cveID])
+			if err != nil {
+				slog.Error("Worker: [ERROR] Failed to marshal KEV data for CVE", "cve_id", cveID, "error", err)
+				continue
+			}
+			kevIDs = append(kevIDs, cveID)
+			kevJSON = append(kevJSON, string(data))
+		}
+		if len(kevIDs) > 0 {
+			_, err = tx.Exec(ctx, `
+				UPDATE cves SET cisa_kev_data = u.kev_data::jsonb
+				FROM (SELECT unnest($1::text[]) AS cve_id, unnest($2::text[]) AS kev_data) AS u
+				WHERE cves.cve_id = u.cve_id`, kevIDs, kevJSON)
+			if err != nil {
+				slog.Error("Worker: [ERROR] Failed to bulk update KEV data batch", "error", err)
+				if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
+					slog.Error("Worker: [ERROR] Failed to rollback KEV transaction", "error", rollbackErr)
+				}
 				return
 			}
 		}

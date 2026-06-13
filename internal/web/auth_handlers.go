@@ -197,6 +197,18 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Block login for users who have not verified their email. Instead of
+	// establishing a session, re-render the login page with a banner that offers
+	// an inline, rate-limited "resend verification email" action.
+	if !user.IsEmailVerified {
+		a.LogActivity(r.Context(), user.ID, "login_blocked", "Login blocked: email not verified", clientIP, r.UserAgent())
+		a.RenderTemplate(w, r, "login.html", map[string]interface{}{
+			"Unverified":      true,
+			"UnverifiedEmail": email,
+		})
+		return
+	}
+
 	if user.IsTOTPEnabled {
 		session.Values["pre_auth_user_id"] = user.ID
 		session.Values["pre_auth_ts"] = time.Now().Unix()
@@ -392,7 +404,7 @@ func (a *App) ResendVerificationHandler(w http.ResponseWriter, r *http.Request) 
 	captchaAnswer := r.FormValue("captcha")
 
 	session, _ := a.SessionStore.Get(r, "vulfixx-session")
-	expected, _ := session.Values["captcha_answer"].(int)
+	expected, _ := getSessionInt(session.Values["captcha_answer"])
 	actual, _ := strconv.Atoi(captchaAnswer)
 
 	if expected == 0 || actual != expected {
@@ -457,6 +469,87 @@ func (a *App) ResendVerificationHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "If this email is registered and unverified, a new verification link will be sent."})
+}
+
+// ResendVerificationInlineHandler handles AJAX "resend verification" requests
+// triggered from the login-page banner shown to unverified users. Unlike
+// ResendVerificationHandler it does not require a captcha (the user already
+// supplied valid credentials to surface the banner), but it keeps the same
+// per-IP and per-email rate limits and always returns a generic message so it
+// cannot be used to enumerate accounts.
+func (a *App) ResendVerificationInlineHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		a.SendResponse(w, r, false, "", "", "Method not allowed")
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		a.SendResponse(w, r, false, "", "", "Invalid form")
+		return
+	}
+
+	email := strings.TrimSpace(r.FormValue("email"))
+	const genericMsg = "If this email is registered and unverified, a new verification link has been sent."
+
+	// Invalid email: pretend success to avoid leaking anything.
+	if err := Validate.Var(email, "required,email"); err != nil {
+		a.SendResponse(w, r, true, genericMsg, "", "")
+		return
+	}
+
+	// Per-IP rate limit (shared budget with the captcha resend page): 5 / hour.
+	clientIP := a.GetClientIP(r)
+	rlKey := "resend_limit:" + clientIP
+	if count, err := a.Redis.Get(r.Context(), rlKey).Int(); err == nil && count >= 5 {
+		a.SendResponse(w, r, true, genericMsg, "", "")
+		return
+	}
+
+	// Per-email rate limit: 3 / 30 minutes.
+	emailHash := sha256.Sum256([]byte(email))
+	emailRlKey := "resend_email_limit:" + hex.EncodeToString(emailHash[:])
+	if count, err := a.Redis.Get(r.Context(), emailRlKey).Int(); err == nil && count >= 3 {
+		a.SendResponse(w, r, true, genericMsg, "", "")
+		return
+	}
+
+	token, oldToken, oldLastResend, err := auth.ResendVerificationToken(r.Context(), email)
+	if err != nil {
+		// Already verified, unknown email, or still in backoff — generic response.
+		a.SendResponse(w, r, true, genericMsg, "", "")
+		return
+	}
+
+	payload, err := json.Marshal(map[string]string{"email": email, "token": token})
+	if err != nil {
+		_ = auth.RollbackResend(r.Context(), email, oldToken, oldLastResend)
+		a.SendResponse(w, r, true, genericMsg, "", "")
+		return
+	}
+
+	var enqueueErr error
+	if a.AsynqClient != nil {
+		task := asynq.NewTask("task:email_verification", payload)
+		_, enqueueErr = a.AsynqClient.EnqueueContext(r.Context(), task)
+	} else {
+		enqueueErr = a.Redis.LPush(r.Context(), "email_verification_queue", payload).Err()
+	}
+	if enqueueErr != nil {
+		_ = auth.RollbackResend(r.Context(), email, oldToken, oldLastResend)
+		a.SendResponse(w, r, true, genericMsg, "", "")
+		return
+	}
+
+	// Increment rate limits only after a successful enqueue.
+	pipe := a.Redis.Pipeline()
+	pipe.Incr(r.Context(), rlKey)
+	pipe.Expire(r.Context(), rlKey, 1*time.Hour)
+	pipe.Incr(r.Context(), emailRlKey)
+	pipe.Expire(r.Context(), emailRlKey, 30*time.Minute)
+	if _, err := pipe.Exec(r.Context()); err != nil {
+		log.Printf("Redis pipeline error for inline resend limits: %v", err)
+	}
+
+	a.SendResponse(w, r, true, genericMsg, "", "")
 }
 
 func (a *App) LogoutHandler(w http.ResponseWriter, r *http.Request) {

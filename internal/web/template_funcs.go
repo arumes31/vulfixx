@@ -13,6 +13,108 @@ import (
 	"cve-tracker/internal/models"
 )
 
+func daysSince(t interface{}) string {
+	var tv time.Time
+	switch v := t.(type) {
+	case time.Time:
+		tv = v
+	case *time.Time:
+		if v == nil {
+			return ""
+		}
+		tv = *v
+	default:
+		return ""
+	}
+	days := int(time.Since(tv).Hours() / 24)
+	if days < 0 {
+		days = 0
+	}
+	if days == 0 {
+		hours := int(time.Since(tv).Hours())
+		if hours < 1 {
+			return "just now"
+		}
+		return fmt.Sprintf("%d hour%s ago", hours, pluralS(hours))
+	}
+	if days < 30 {
+		return fmt.Sprintf("%d day%s ago", days, pluralS(days))
+	}
+	if days < 365 {
+		months := days / 30
+		return fmt.Sprintf("%d month%s ago", months, pluralS(months))
+	}
+	years := days / 365
+	return fmt.Sprintf("%d year%s ago", years, pluralS(years))
+}
+
+func pluralS(n int) string {
+	if n != 1 {
+		return "s"
+	}
+	return ""
+}
+
+func cvssSeverityLabel(score float64) string {
+	if score >= 9.0 {
+		return "Critical"
+	}
+	if score >= 7.0 {
+		return "High"
+	}
+	if score >= 4.0 {
+		return "Medium"
+	}
+	if score > 0 {
+		return "Low"
+	}
+	return "N/A"
+}
+
+func epssPercentileLabel(score float64) string {
+	if score <= 0 {
+		return "N/A"
+	}
+	// EPSS score is a probability (0-1); express it as an exploitation probability
+	pct := score * 100
+	if pct >= 50 {
+		return fmt.Sprintf("%.1f%% probability — Extremely likely to be exploited", pct)
+	}
+	if pct >= 10 {
+		return fmt.Sprintf("%.1f%% probability — Very high exploit likelihood", pct)
+	}
+	if pct >= 1 {
+		return fmt.Sprintf("%.2f%% probability — High exploit likelihood", pct)
+	}
+	if pct >= 0.1 {
+		return fmt.Sprintf("%.4f%% probability — Moderate exploit likelihood", pct)
+	}
+	return fmt.Sprintf("%.4f%% probability — Low exploit likelihood", pct)
+}
+
+func exploitationSummary(cisaKEV, cisaRansomware, exploitAvailable bool, greynoiseHits int, githubPocCount int) string {
+	indicators := []string{}
+	if cisaKEV {
+		indicators = append(indicators, "CISA Known Exploited")
+	}
+	if cisaRansomware {
+		indicators = append(indicators, "Ransomware Campaign")
+	}
+	if greynoiseHits > 0 {
+		indicators = append(indicators, "Active Internet Scanning")
+	}
+	if githubPocCount > 0 {
+		indicators = append(indicators, "Public PoC Available")
+	}
+	if exploitAvailable {
+		indicators = append(indicators, "Exploit Code Available")
+	}
+	if len(indicators) == 0 {
+		return "No known exploitation evidence"
+	}
+	return "⚠️ " + strings.Join(indicators, " · ")
+}
+
 func (a *App) GetTemplateFuncs() template.FuncMap {
 	return template.FuncMap{
 		"formatDate": func(t time.Time) string {
@@ -123,6 +225,11 @@ func (a *App) GetTemplateFuncs() template.FuncMap {
 			if strings.Contains(desc, "vmware") || strings.Contains(desc, "vcenter") || strings.Contains(desc, "esxi") {
 				links = append(links, map[string]string{"name": "VMware Advisory", "url": fmt.Sprintf("https://www.vmware.com/security/advisories/%s.html", cveID), "icon": "layers"})
 			}
+			if strings.Contains(desc, "fortinet") || strings.Contains(desc, "fortigate") ||
+				strings.Contains(desc, "fortios") || strings.Contains(desc, "fortimanager") ||
+				strings.Contains(desc, "fortianalyzer") || strings.Contains(desc, "forticlient") {
+				links = append(links, map[string]string{"name": "FortiGuard PSIRT", "url": fmt.Sprintf("https://www.fortiguard.com/psirt?cve=%s", cveID), "icon": "shield"})
+			}
 			return links
 		},
 		"detectProduct": func(c models.CVE) map[string]string {
@@ -144,6 +251,57 @@ func (a *App) GetTemplateFuncs() template.FuncMap {
 				return nil
 			}
 			return map[string]string{"vendor": v, "product": p, "version": ver, "type": t}
+		},
+		"daysSince":           daysSince,
+		"cvssSeverityLabel":   cvssSeverityLabel,
+		"epssPercentileLabel": epssPercentileLabel,
+		"exploitationSummary": exploitationSummary,
+		"split": func(s, sep string) []string {
+			if s == "" {
+				return nil
+			}
+			return strings.Split(s, sep)
+		},
+		"indexSafe": func(slice []string, i int) string {
+			if i < 0 || i >= len(slice) {
+				return ""
+			}
+			return slice[i]
+		},
+		"isset": func(m interface{}, key interface{}) bool {
+			if mp, ok := m.(map[string]interface{}); ok {
+				if k, ok := key.(string); ok {
+					_, exists := mp[k]
+					return exists
+				}
+			}
+			return false
+		},
+		"isTimeZero": func(t interface{}) bool {
+			if t == nil {
+				return true
+			}
+			if tp, ok := t.(*time.Time); ok {
+				return tp == nil || tp.IsZero()
+			}
+			if tv, ok := t.(time.Time); ok {
+				return tv.IsZero()
+			}
+			return true
+		},
+		"toFloat": func(v interface{}) float64 {
+			switch n := v.(type) {
+			case float64:
+				return n
+			case float32:
+				return float64(n)
+			case int:
+				return float64(n)
+			case int64:
+				return float64(n)
+			default:
+				return 0
+			}
 		},
 	}
 }

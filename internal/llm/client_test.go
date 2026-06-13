@@ -453,6 +453,104 @@ func TestExtractWithGemini(t *testing.T) {
 	})
 }
 
+func TestExtractWithOpenAI(t *testing.T) {
+	t.Run("HappyPath", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/chat/completions" {
+				t.Errorf("expected path /chat/completions, got %s", r.URL.Path)
+			}
+			resp := map[string]interface{}{
+				"choices": []map[string]interface{}{
+					{
+						"message": map[string]string{
+							"content": `{"products": [{"vendor": "OpenAI", "product": "GPT-4", "version": "1.0"}]}`,
+						},
+					},
+				},
+			}
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(resp)
+		}))
+		defer server.Close()
+
+		ctx := context.Background()
+		products, err := extractWithOpenAI(ctx, "key", "model", server.URL, "desc")
+		if err != nil {
+			t.Fatalf("extractWithOpenAI failed: %v", err)
+		}
+		if len(products) != 1 || products[0].Vendor != "OpenAI" {
+			t.Fatalf("unexpected results: %+v", products)
+		}
+	})
+
+	t.Run("MarkdownStripHappyPath", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			resp := map[string]interface{}{
+				"choices": []map[string]interface{}{
+					{
+						"message": map[string]string{
+							"content": "```json\n" + `{"products": [{"vendor": "OpenAIMd", "product": "GPT-4", "version": "1.0"}]}` + "\n```",
+						},
+					},
+				},
+			}
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(resp)
+		}))
+		defer server.Close()
+
+		ctx := context.Background()
+		products, err := extractWithOpenAI(ctx, "key", "model", server.URL, "desc")
+		if err != nil {
+			t.Fatalf("extractWithOpenAI failed: %v", err)
+		}
+		if len(products) != 1 || products[0].Vendor != "OpenAIMd" {
+			t.Fatalf("unexpected results: %+v", products)
+		}
+	})
+
+	t.Run("EmptyAPIKeyAuth", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			auth := r.Header.Get("Authorization")
+			if auth != "" {
+				t.Errorf("expected empty Authorization header, got %s", auth)
+			}
+			resp := map[string]interface{}{
+				"choices": []map[string]interface{}{
+					{
+						"message": map[string]string{
+							"content": `{"products": []}`,
+						},
+					},
+				},
+			}
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(resp)
+		}))
+		defer server.Close()
+
+		ctx := context.Background()
+		_, err := extractWithOpenAI(ctx, "", "model", server.URL, "desc")
+		if err != nil {
+			t.Fatalf("extractWithOpenAI failed: %v", err)
+		}
+	})
+
+	t.Run("Non200Status", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("OpenAI Error"))
+		}))
+		defer server.Close()
+
+		ctx := context.Background()
+		_, err := extractWithOpenAI(ctx, "key", "model", server.URL, "desc")
+		if err == nil || !strings.Contains(err.Error(), "openai api error (status 500)") {
+			t.Fatalf("expected 500 error, got %v", err)
+		}
+	})
+}
+
 func TestExtractVendorProduct(t *testing.T) {
 	t.Run("UnsupportedProvider", func(t *testing.T) {
 		config.AppConfig.LLMProvider = "unsupported-vendor-name"
@@ -562,9 +660,9 @@ func TestExtractVendorProduct(t *testing.T) {
 			},
 		}
 
-		config.AppConfig.LLMProvider = "gemini"
+		config.AppConfig.LLMProvider = "gemini31flashlite"
 		config.AppConfig.GeminiAPIKey = "dummy-key"
-		config.AppConfig.GeminiModel = "gemini-1.5-flash"
+		config.AppConfig.Gemini31LiteModel = "gemini-1.5-flash"
 		config.AppConfig.GeminiAPIVersion = "v1"
 
 		products, err := ExtractVendorProduct(context.Background(), "desc", []string{})
@@ -572,6 +670,36 @@ func TestExtractVendorProduct(t *testing.T) {
 			t.Fatalf("ExtractVendorProduct Gemini path failed: %v", err)
 		}
 		if len(products) != 1 || products[0].Vendor != "GeminiTest" {
+			t.Fatalf("unexpected product results: %+v", products)
+		}
+	})
+
+	t.Run("OpenAIPath", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			resp := map[string]interface{}{
+				"choices": []map[string]interface{}{
+					{
+						"message": map[string]string{
+							"content": `{"products": [{"vendor": "OpenAITest", "product": "P", "version": "1.0"}]}`,
+						},
+					},
+				},
+			}
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(resp)
+		}))
+		defer server.Close()
+
+		config.AppConfig.LLMProvider = "openai"
+		config.AppConfig.OpenAIAPIKey = "dummy-key"
+		config.AppConfig.OpenAIModel = "model"
+		config.AppConfig.OpenAIEndpoint = server.URL
+
+		products, err := ExtractVendorProduct(context.Background(), "desc", []string{})
+		if err != nil {
+			t.Fatalf("ExtractVendorProduct OpenAI path failed: %v", err)
+		}
+		if len(products) != 1 || products[0].Vendor != "OpenAITest" {
 			t.Fatalf("unexpected product results: %+v", products)
 		}
 	})
@@ -720,6 +848,72 @@ func TestGeminiDailyLimit(t *testing.T) {
 		t.Setenv("GEMINI_RPD", "notanumber")
 		if got := geminiDailyLimit(); got != 500 {
 			t.Errorf("limit = %d, want default 500", got)
+		}
+	})
+}
+
+func TestGoogleFailover(t *testing.T) {
+	t.Run("resolves all failover providers with correct defaults", func(t *testing.T) {
+		for _, tc := range []struct {
+			provider   string
+			structured bool
+			defRPM     int
+			defRPD     int
+		}{
+			{"gemini35flash", true, 5, 20},
+			{"gemini3flash", true, 5, 20},
+		} {
+			f, ok := googleFailoverFor(tc.provider)
+			if !ok {
+				t.Errorf("%s should resolve", tc.provider)
+				continue
+			}
+			if f.structured != tc.structured {
+				t.Errorf("%s structured = %v, want %v", tc.provider, f.structured, tc.structured)
+			}
+			if f.defRPM != tc.defRPM || f.defRPD != tc.defRPD {
+				t.Errorf("%s defaults = %d/%d, want %d/%d", tc.provider, f.defRPM, f.defRPD, tc.defRPM, tc.defRPD)
+			}
+		}
+		if _, ok := googleFailoverFor("gemini31flashlite"); ok {
+			t.Error("primary gemini31flashlite should not be a failover provider")
+		}
+		if _, ok := googleFailoverFor("mistral"); ok {
+			t.Error("mistral should not resolve as a failover")
+		}
+	})
+	t.Run("pace honors RPM override and default", func(t *testing.T) {
+		f, _ := googleFailoverFor("gemini35flash")
+		t.Setenv("GEMINI35FLASH_RPM", "")
+		if got := googleFailoverPace(f); got != 12*time.Second { // 5 RPM default
+			t.Errorf("default gemini35flash pace = %v, want 12s (5 RPM)", got)
+		}
+		t.Setenv("GEMINI35FLASH_RPM", "15")
+		if got := googleFailoverPace(f); got != 4*time.Second {
+			t.Errorf("gemini35flash pace at 15 RPM = %v, want 4s", got)
+		}
+		// Short (.env/docker-compose) name works as fallback
+		t.Setenv("GEMINI35FLASH_RPM", "")
+		t.Setenv("GEMINI35_RPM", "6")
+		if got := googleFailoverPace(f); got != 10*time.Second {
+			t.Errorf("gemini35flash pace via GEMINI35_RPM fallback = %v, want 10s", got)
+		}
+	})
+	t.Run("daily limit honors override, default, and zero", func(t *testing.T) {
+		f, _ := googleFailoverFor("gemini35flash")
+		t.Setenv("GEMINI35FLASH_RPD", "")
+		if got := googleFailoverDailyLimit(f); got != 20 {
+			t.Errorf("default gemini35flash limit = %d, want 20", got)
+		}
+		t.Setenv("GEMINI35FLASH_RPD", "0")
+		if got := googleFailoverDailyLimit(f); got != 0 {
+			t.Errorf("gemini35flash limit = %d, want 0 (disabled)", got)
+		}
+		// Short (.env/docker-compose) name works as fallback
+		t.Setenv("GEMINI35FLASH_RPD", "")
+		t.Setenv("GEMINI35_RPD", "50")
+		if got := googleFailoverDailyLimit(f); got != 50 {
+			t.Errorf("gemini35flash limit via GEMINI35_RPD fallback = %d, want 50", got)
 		}
 	})
 }
