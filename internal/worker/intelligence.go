@@ -225,7 +225,7 @@ func (w *Worker) fetchDuplicatesBatch(ctx context.Context, cves []models.CVE) ma
 	if err != nil {
 		return result
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(ctx) //nolint:errcheck
 
 	br := tx.SendBatch(ctx, batch)
 	if br != nil {
