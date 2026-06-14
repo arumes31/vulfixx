@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -338,21 +339,20 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 		activeTeamID, ok := a.GetActiveTeamID(r)
 		if ok && activeTeamID != 0 {
 			var teamName string
-			var found bool
 
 			// Attempt to find the active team name in the already fetched user teams
-			for _, team := range userTeams {
-				if team["ID"] == activeTeamID {
-					if name, ok := team["Name"].(string); ok {
-						teamName = name
-						found = true
-						break
-					}
+			idx := slices.IndexFunc(userTeams, func(team map[string]interface{}) bool {
+				return team["ID"] == activeTeamID
+			})
+
+			if idx != -1 {
+				if name, ok := userTeams[idx]["Name"].(string); ok {
+					teamName = name
 				}
 			}
 
 			// Fallback to database query if not found in pre-fetched teams
-			if !found {
+			if teamName == "" {
 				err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
 				if err != nil {
 					slog.Error("Error fetching active team name", "error", err)

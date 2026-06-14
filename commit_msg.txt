@@ -1,0 +1,7 @@
+Global codebase modernization for Go 1.21+
+
+- Removed loop variable reassignment to avoid pointer capture issues as it's safe and natively supported in go.mod.
+- Replaced manual slice filtering loops with modern functions from standard 'slices'.
+- Ran 'gofmt -s -w .' and 'go fmt ./...' to ensure uniform syntax standard.
+
+All tests passed successfully locally.

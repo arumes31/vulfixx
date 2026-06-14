@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -482,30 +483,25 @@ type Team struct {
 
 // GetLineage extracts related CVE IDs from the description, references, and OSINT data.
 func (c *CVE) GetLineage() []string {
-	seen := make(map[string]bool)
 	var result []string
 
-	// Don't include self
-	seen[c.CVEID] = true
+	// Helper to add unique IDs
+	addIfUnique := func(id string) {
+		if id != c.CVEID && !slices.Contains(result, id) {
+			result = append(result, id)
+		}
+	}
 
 	// Extract CVE IDs from description
 	cveRegex := regexp.MustCompile(`CVE-\d{4}-\d+`)
 	for _, match := range cveRegex.FindAllString(c.Description, -1) {
-		upper := strings.ToUpper(match)
-		if !seen[upper] {
-			seen[upper] = true
-			result = append(result, upper)
-		}
+		addIfUnique(strings.ToUpper(match))
 	}
 
 	// Extract CVE IDs from references
 	for _, ref := range c.References {
 		for _, match := range cveRegex.FindAllString(ref, -1) {
-			upper := strings.ToUpper(match)
-			if !seen[upper] {
-				seen[upper] = true
-				result = append(result, upper)
-			}
+			addIfUnique(strings.ToUpper(match))
 		}
 	}
 
@@ -515,17 +511,12 @@ func (c *CVE) GetLineage() []string {
 			if arr, ok := rc.([]interface{}); ok {
 				for _, item := range arr {
 					if s, ok := item.(string); ok {
-						upper := strings.ToUpper(s)
-						if !seen[upper] {
-							seen[upper] = true
-							result = append(result, upper)
-						}
+						addIfUnique(strings.ToUpper(s))
 					}
 				}
 			}
 		}
 	}
-
 	return result
 }
 

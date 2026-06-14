@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -135,17 +136,16 @@ func TestApp_ErrorReportHandler_Throttling(t *testing.T) {
 
 	// Verify key exists in Redis and count is 6
 	keys := mr.Keys()
-	found := false
-	for _, k := range keys {
+	if !slices.ContainsFunc(keys, func(k string) bool {
 		if strings.HasPrefix(k, "err_limit:") {
-			found = true
 			val, _ := mr.Get(k)
 			if val != "6" {
 				t.Errorf("expected redis counter to be 6, got %s", val)
 			}
+			return true
 		}
-	}
-	if !found {
+		return false
+	}) {
 		t.Error("expected err_limit key to be stored in Redis")
 	}
 }

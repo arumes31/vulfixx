@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -232,14 +233,9 @@ func TestDeleteAccountHandler(t *testing.T) {
 			t.Errorf("expected redirect to /register, got %d and location %s", rr.Code, rr.Header().Get("Location"))
 		}
 
-		found := false
-		for _, cookie := range rr.Result().Cookies() {
-			if cookie.Name == "vulfixx-session" && cookie.MaxAge < 0 {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !slices.ContainsFunc(rr.Result().Cookies(), func(c *http.Cookie) bool {
+			return c.Name == "vulfixx-session" && c.MaxAge < 0
+		}) {
 			t.Errorf("expected session cookie to be cleared (MaxAge < 0)")
 		}
 
