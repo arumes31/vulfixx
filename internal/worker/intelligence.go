@@ -78,6 +78,9 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		cves = append(cves, c)
 	}
 
+	// Pre-fetch duplicates for all CVEs in a single batch to avoid N+1 query
+	duplicatesMap := w.fetchDuplicatesBatch(ctx, cves)
+
 	limiter := rate.NewLimiter(rate.Every(500*time.Millisecond), 1)
 	g, gCtx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
@@ -95,8 +98,10 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 			// 1. Social Sentiment (Reddit & HN)
 			w.updateSocialSentiment(gCtx, &c)
 
-			// 2. Duplicate Detection (Simplified)
-			w.detectDuplicates(gCtx, &c)
+			// 2. Duplicate Detection (from pre-fetched map)
+			if dups, ok := duplicatesMap[c.ID]; ok {
+				c.OSINTData["similar_threats"] = dups
+			}
 
 			mu.Lock()
 			processedCVEs = append(processedCVEs, c)
@@ -138,7 +143,7 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		} else {
 			// Fallback for mock drivers
 			for _, c := range processedCVEs {
-				osintData, _ := json.Marshal(c.OSINTData)
+				osintData, _ := json.Marshal(c.OSINTData) //nolint:errcheck
 				_, err = tx.Exec(ctx, "UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
 				if err != nil {
 					slog.Error("Worker: Fallback update failed in intelligence sync", "cve_id", c.CVEID, "error", err)
@@ -192,36 +197,81 @@ func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
 	c.OSINTData["heat_score"] = heatScore
 }
 
-func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
-	// Simple duplicate detection: Look for CVEs with similar descriptions published around the same time
-	// or mentions of the same base vulnerability ID in description.
+func (w *Worker) fetchDuplicatesBatch(ctx context.Context, cves []models.CVE) map[int][]string {
+	result := make(map[int][]string)
 
-	if c.CWEID == "" || c.CWEID == "NVD-CWE-noinfo" {
-		return
-	}
+	batch := &pgx.Batch{}
+	var batchCVEs []models.CVE
 
-	var duplicateIDs []string
-	// Match CVSS within 0.5 tolerance and prefer closer scores
-	rows, err := w.Pool.Query(ctx, `
+	for _, c := range cves {
+		if c.CWEID == "" || c.CWEID == "NVD-CWE-noinfo" {
+			continue
+		}
+
+		batchCVEs = append(batchCVEs, c)
+		batch.Queue(`
 		SELECT cve_id FROM cves 
 		WHERE cwe_id = $1 AND id != $2 AND ABS(cvss_score - $3) <= 0.5 AND published_date > $4
 		ORDER BY ABS(cvss_score - $3) ASC
 		LIMIT 5
 	`, c.CWEID, c.ID, c.CVSSScore, c.PublishedDate.AddDate(0, 0, -7))
+	}
 
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var dupID string
-			if err := rows.Scan(&dupID); err == nil {
-				duplicateIDs = append(duplicateIDs, dupID)
+	if batch.Len() == 0 {
+		return result
+	}
+
+	tx, err := w.Pool.Begin(ctx)
+	if err != nil {
+		return result
+	}
+	defer tx.Rollback(ctx)
+
+	br := tx.SendBatch(ctx, batch)
+	if br != nil {
+		defer br.Close()
+		for _, c := range batchCVEs {
+			rows, err := br.Query()
+			if err == nil {
+				var duplicateIDs []string
+				for rows.Next() {
+					var dupID string
+					if err := rows.Scan(&dupID); err == nil {
+						duplicateIDs = append(duplicateIDs, dupID)
+					}
+				}
+				rows.Close()
+				if len(duplicateIDs) > 0 {
+					result[c.ID] = duplicateIDs
+				}
+			}
+		}
+	} else {
+		// Fallback for pgxmock
+		for _, c := range batchCVEs {
+			rows, err := w.Pool.Query(ctx, `
+		SELECT cve_id FROM cves
+		WHERE cwe_id = $1 AND id != $2 AND ABS(cvss_score - $3) <= 0.5 AND published_date > $4
+		ORDER BY ABS(cvss_score - $3) ASC
+		LIMIT 5
+	`, c.CWEID, c.ID, c.CVSSScore, c.PublishedDate.AddDate(0, 0, -7))
+			if err == nil {
+				var duplicateIDs []string
+				for rows.Next() {
+					var dupID string
+					if err := rows.Scan(&dupID); err == nil {
+						duplicateIDs = append(duplicateIDs, dupID)
+					}
+				}
+				rows.Close()
+				if len(duplicateIDs) > 0 {
+					result[c.ID] = duplicateIDs
+				}
 			}
 		}
 	}
 
-	if len(duplicateIDs) > 0 {
-		c.OSINTData["similar_threats"] = duplicateIDs
-	}
+	return result
 }
 
 func (w *Worker) fetchHNMentions(ctx context.Context, cveID string) (int, []map[string]string, error) {
