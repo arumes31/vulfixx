@@ -17,3 +17,6 @@
 ## 2026-06-07 - Form Input Label Association
 **Learning:** Without explicit `id` attributes on form inputs that match the `for` attribute on corresponding `<label>` elements, screen readers fail to associate the label with the input. Furthermore, using identical IDs in both the primary view and dynamically generated modals causes ID collisions and breaks label resolution.
 **Action:** Always assign a unique `id` to every `<input>` and `<select>` and explicitly link them to `<label for="[id]">`. For dynamic forms inside modals, use a prefix like `edit_` to ensure IDs remain globally unique on the page.
+## 2026-05-30 - ARIA labels for abbreviated icon-based mobile navigation
+**Learning:** Adding `aria-label` to navigation links or buttons that contain purely decorative icons alongside heavily abbreviated visible text (e.g., "Dash", "Set") is crucial. While the text is visible, the abbreviated forms lack clarity for screen reader users relying solely on voice output.
+**Action:** Always provide explicit, fully descriptive `aria-label` attributes (e.g., "Dashboard", "Settings") on parent navigation anchor elements to override the abbreviated visible text and provide a superior, semantic experience for assistive technologies.
