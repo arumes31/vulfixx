@@ -276,8 +276,8 @@ func ValidateComplexFilter(logic string) error {
 
 // evalFilterTokens evaluates the token stream as an OR of AND-groups.
 func evalFilterTokens(tokens []string, cve *models.CVE) (bool, bool) {
-	var orResult bool   // accumulated value across completed AND-groups
-	andResult := true   // accumulated value within the current AND-group
+	var orResult bool // accumulated value across completed AND-groups
+	andResult := true // accumulated value within the current AND-group
 	haveTermInAnd := false
 	haveOrResult := false
 
