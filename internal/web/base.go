@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -341,13 +342,13 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 			var found bool
 
 			// Attempt to find the active team name in the already fetched user teams
-			for _, team := range userTeams {
-				if team["ID"] == activeTeamID {
-					if name, ok := team["Name"].(string); ok {
-						teamName = name
-						found = true
-						break
-					}
+			idx := slices.IndexFunc(userTeams, func(team map[string]interface{}) bool {
+				return team["ID"] == activeTeamID
+			})
+			if idx != -1 {
+				if name, ok := userTeams[idx]["Name"].(string); ok {
+					teamName = name
+					found = true
 				}
 			}
 
