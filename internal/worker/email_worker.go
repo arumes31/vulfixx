@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"cve-tracker/internal/config"
 	"cve-tracker/internal/security"
 	"encoding/json"
 	"errors"
@@ -162,10 +163,7 @@ func (w *Worker) processEmailChange(ctx context.Context) {
 
 func (w *Worker) sendEmailChangeNotification(email, token, emailType string) error {
 	subject := "Confirm Your Email Change"
-	baseURL := os.Getenv("BASE_URL")
-	if baseURL == "" {
-		baseURL = "http://localhost:8080"
-	}
+	baseURL := config.AppConfig.BaseURL
 	encodedToken := url.QueryEscape(token)
 	link := fmt.Sprintf("%s/confirm-email-change?token=%s", baseURL, encodedToken)
 
@@ -215,10 +213,7 @@ func (w *Worker) sendEmailChangeNotification(email, token, emailType string) err
 
 func (w *Worker) sendVerificationEmail(email, token string) error {
 	subject := "Verify Your Email Address"
-	baseURL := os.Getenv("BASE_URL")
-	if baseURL == "" {
-		baseURL = "http://localhost:8080"
-	}
+	baseURL := config.AppConfig.BaseURL
 	encodedToken := url.QueryEscape(token)
 	link := fmt.Sprintf("%s/verify-email?token=%s", baseURL, encodedToken)
 
