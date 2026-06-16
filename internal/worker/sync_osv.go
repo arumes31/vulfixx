@@ -17,20 +17,22 @@ import (
 
 const osvConcurrency = 10
 
+type OSVAffected struct {
+	Package struct {
+		Name      string `json:"name"`
+		Ecosystem string `json:"ecosystem"`
+	} `json:"package"`
+	Ranges []struct {
+		Type   string              `json:"type"`
+		Events []map[string]string `json:"events"`
+	} `json:"ranges"`
+	Versions []string `json:"versions"`
+}
+
 type osvResponse struct {
-	ID       string `json:"id"`
-	Modified string `json:"modified"`
-	Affected []struct {
-		Package struct {
-			Name      string `json:"name"`
-			Ecosystem string `json:"ecosystem"`
-		} `json:"package"`
-		Ranges []struct {
-			Type   string              `json:"type"`
-			Events []map[string]string `json:"events"`
-		} `json:"ranges"`
-		Versions []string `json:"versions"`
-	} `json:"affected"`
+	ID       string        `json:"id"`
+	Modified string        `json:"modified"`
+	Affected []OSVAffected `json:"affected"`
 }
 
 func (w *Worker) syncOSVPeriodically(ctx context.Context) {
@@ -60,7 +62,22 @@ type updateItem struct {
 func (w *Worker) syncOSV(ctx context.Context) {
 	slog.Info("Worker: [SYNC] Starting OSV (Open Source Vulnerabilities) synchronization...")
 
-	// Prioritize CVEs that haven't been checked yet, then oldest ones (older than 30 days)
+	cves := w.fetchCVEsForOSVSync(ctx)
+	if len(cves) == 0 {
+		w.updateTaskStats(ctx, "osv_sync")
+		return
+	}
+
+	updates := w.processOSVCVEs(ctx, cves)
+	if len(updates) == 0 {
+		w.updateTaskStats(ctx, "osv_sync")
+		return
+	}
+
+	w.saveOSVUpdates(ctx, updates)
+}
+
+func (w *Worker) fetchCVEsForOSVSync(ctx context.Context) []models.CVE {
 	rows, err := w.Pool.Query(ctx, `
 		SELECT id, cve_id, vendor, product, affected_products FROM cves
 		WHERE osv_last_updated IS NULL OR osv_last_updated < NOW() - INTERVAL '30 days'
@@ -69,7 +86,7 @@ func (w *Worker) syncOSV(ctx context.Context) {
 	`)
 	if err != nil {
 		slog.Error("Worker: [ERROR] Failed to fetch CVEs for OSV sync", "error", err)
-		return
+		return nil
 	}
 	defer rows.Close()
 
@@ -80,18 +97,15 @@ func (w *Worker) syncOSV(ctx context.Context) {
 			cves = append(cves, cve)
 		}
 	}
+	return cves
+}
 
-	if len(cves) == 0 {
-		w.updateTaskStats(ctx, "osv_sync")
-		return
-	}
-
+func (w *Worker) processOSVCVEs(ctx context.Context, cves []models.CVE) []updateItem {
 	var updates []updateItem
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	cveChan := make(chan models.CVE, len(cves))
 
-	// Start workers
 	for i := 0; i < osvConcurrency; i++ {
 		wg.Add(1)
 		go func() {
@@ -111,48 +125,13 @@ func (w *Worker) syncOSV(ctx context.Context) {
 				item := updateItem{cve: cve, osvData: osvData}
 				if osvData != nil {
 					item.hasData = true
-					// Deep Enrichment: Extract products and versions
 					for _, aff := range osvData.Affected {
 						vendor := aff.Package.Ecosystem
 						product := aff.Package.Name
 
-						// Build version string from ranges
-						var versionParts []string
-						for _, r := range aff.Ranges {
-							var start, end string
-							for _, ev := range r.Events {
-								if v, ok := ev["introduced"]; ok && v != "0" {
-									start = "≥" + v
-								}
-								if v, ok := ev["fixed"]; ok {
-									end = "<" + v
-								}
-								if v, ok := ev["last_affected"]; ok {
-									end = "≤" + v
-								}
-							}
-							if start != "" && end != "" {
-								versionParts = append(versionParts, start+" "+end)
-							} else if start != "" {
-								versionParts = append(versionParts, start)
-							} else if end != "" {
-								versionParts = append(versionParts, end)
-							}
-						}
-
-						versionStr := strings.Join(versionParts, ", ")
-						if versionStr == "" && len(aff.Versions) > 0 {
-							// Fallback to first few versions if no ranges
-							if len(aff.Versions) > 3 {
-								versionStr = strings.Join(aff.Versions[:3], ", ") + "..."
-							} else {
-								versionStr = strings.Join(aff.Versions, ", ")
-							}
-						}
-
+						versionStr := buildOSVVersionString(aff)
 						item.cve.AddAffectedProduct(vendor, product, versionStr, false)
 
-						// If primary vendor/product is missing, use OSV as authoritative
 						if item.cve.Vendor == "" {
 							item.cve.Vendor = vendor
 						}
@@ -165,24 +144,56 @@ func (w *Worker) syncOSV(ctx context.Context) {
 				mu.Lock()
 				updates = append(updates, item)
 				mu.Unlock()
-				// Reduced sleep since we are concurrent but still want to be polite
 				time.Sleep(50 * time.Millisecond)
 			}
 		}()
 	}
 
-	// Feed workers
 	for _, cve := range cves {
 		cveChan <- cve
 	}
 	close(cveChan)
 	wg.Wait()
 
-	if len(updates) == 0 {
-		w.updateTaskStats(ctx, "osv_sync")
-		return
+	return updates
+}
+
+func buildOSVVersionString(aff OSVAffected) string {
+	var versionParts []string
+	for _, r := range aff.Ranges {
+		var start, end string
+		for _, ev := range r.Events {
+			if v, ok := ev["introduced"]; ok && v != "0" {
+				start = "≥" + v
+			}
+			if v, ok := ev["fixed"]; ok {
+				end = "<" + v
+			}
+			if v, ok := ev["last_affected"]; ok {
+				end = "≤" + v
+			}
+		}
+		if start != "" && end != "" {
+			versionParts = append(versionParts, start+" "+end)
+		} else if start != "" {
+			versionParts = append(versionParts, start)
+		} else if end != "" {
+			versionParts = append(versionParts, end)
+		}
 	}
 
+	versionStr := strings.Join(versionParts, ", ")
+	if versionStr == "" && len(aff.Versions) > 0 {
+		if len(aff.Versions) > 3 {
+			versionStr = strings.Join(aff.Versions[:3], ", ") + "..."
+		} else {
+			versionStr = strings.Join(aff.Versions, ", ")
+		}
+	}
+	return versionStr
+}
+
+func (w *Worker) saveOSVUpdates(ctx context.Context, updates []updateItem) {
 	tx, err := w.Pool.Begin(ctx)
 	if err != nil {
 		slog.Error("Worker: [ERROR] Failed to begin transaction for OSV updates", "error", err)
@@ -190,6 +201,17 @@ func (w *Worker) syncOSV(ctx context.Context) {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	count := w.executeOSVBatchUpdate(ctx, tx, updates)
+
+	if err := tx.Commit(ctx); err != nil {
+		slog.Error("Worker: [ERROR] Failed to commit OSV updates", "error", err)
+	}
+
+	w.updateTaskStats(ctx, "osv_sync")
+	slog.Info("Worker: [SYNC] OSV synchronization complete.", "updated_count", count)
+}
+
+func (w *Worker) executeOSVBatchUpdate(ctx context.Context, tx pgx.Tx, updates []updateItem) int {
 	count := 0
 	batch := &pgx.Batch{}
 	for _, item := range updates {
@@ -234,13 +256,7 @@ func (w *Worker) syncOSV(ctx context.Context) {
 			}
 		}
 	}
-
-	if err := tx.Commit(ctx); err != nil {
-		slog.Error("Worker: [ERROR] Failed to commit OSV updates", "error", err)
-	}
-
-	w.updateTaskStats(ctx, "osv_sync")
-	slog.Info("Worker: [SYNC] OSV synchronization complete.", "updated_count", count)
+	return count
 }
 
 func (w *Worker) fetchOSVData(ctx context.Context, cveID string) (*osvResponse, error) {
