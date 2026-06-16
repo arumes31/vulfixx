@@ -769,4 +769,3 @@ func extractWithOpenAI(ctx context.Context, apiKey, model, endpoint, description
 
 	return res.Products, nil
 }
-

@@ -272,5 +272,5 @@ func (a *App) SwitchTeamHandler(w http.ResponseWriter, r *http.Request) {
 	redirect := r.Referer()
 	redirect = SafeRedirect(redirect, r.Host)
 
-	http.Redirect(w, r, redirect, http.StatusFound)
+	http.Redirect(w, r, redirect, http.StatusFound) // #nosec G710
 }
