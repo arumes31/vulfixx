@@ -57,7 +57,9 @@ func (a *App) ExportActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`{"error":"unauthorized","message":"authentication required"}`))
+		if _, err := w.Write([]byte(`{"error":"unauthorized","message":"authentication required"}`)); err != nil {
+			log.Printf("Error writing unauthorized response: %v", err)
+		}
 		return
 	}
 
@@ -99,7 +101,9 @@ func (a *App) ExportActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition", "attachment; filename=\"activity_log.json\"")
-	_, _ = w.Write(buf)
+	if _, err := w.Write(buf); err != nil {
+		log.Printf("Error writing activity log export: %v", err)
+	}
 }
 
 // ActivityStreamHandler streams real-time user activity logs using Server-Sent Events (SSE).
