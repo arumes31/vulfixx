@@ -45,12 +45,7 @@ func (w *Worker) fetchCISAKEVPeriodically(ctx context.Context) {
 
 func (w *Worker) fetchFromCISAKEV(ctx context.Context) {
 	slog.Info("Worker: [SYNC] Fetching CISA KEV catalog...")
-	req, err := http.NewRequestWithContext(ctx, "GET", defaultCISAKEVURL, nil)
-	if err != nil {
-		slog.Error("Worker: [ERROR] Failed to create CISA KEV request", "error", err)
-		return
-	}
-	resp, err := w.HTTP.Do(req)
+	resp, err := doSyncRequest(ctx, w.HTTP, defaultCISAKEVURL)
 	if err != nil {
 		slog.Error("Worker: [ERROR] Failed to fetch CISA KEV", "error", err)
 		return

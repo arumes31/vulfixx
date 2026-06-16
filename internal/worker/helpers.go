@@ -1,11 +1,13 @@
 package worker
 
 import (
+	"context"
 	"crypto/tls"
 	"cve-tracker/internal/security"
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"net/mail"
 	"net/smtp"
 	"net/url"
@@ -216,4 +218,15 @@ func isValidRedditPermalink(permalink string) bool {
 		}
 	}
 	return true
+}
+
+// doSyncRequest creates and executes an HTTP GET request with a standard User-Agent header.
+func doSyncRequest(ctx context.Context, client HTTPClient, url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil) // #nosec G704
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Vulfixx-Threat-Intel/2.0")
+
+	return client.Do(req)
 }
