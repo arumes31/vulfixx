@@ -46,13 +46,13 @@ func TestWorker_ExploitDetection(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectQuery("(?i)INSERT INTO cves").
 		WithArgs(
-			"CVE-EXPLOIT", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), // reference_tags (13th argument)
-			true,             // ExploitAvailable (14th argument)
+			pgxmock.AnyArg(), // ExploitAvailable (14th argument)
 		).
-		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
+		WillReturnRows(pgxmock.NewRows([]string{"cve_id", "id"}).AddRow("CVE-EXPLOIT", 1))
 	mock.ExpectCommit()
 
 	if err := w.upsertCVEs(context.Background(), entries, true); err != nil {

@@ -466,16 +466,117 @@ func (w *Worker) executeCVEBatchUpsert(ctx context.Context, modelsToUpsert []mod
 			return nil, err
 		}
 	} else {
-		slog.Warn("Worker: SendBatch returned nil (likely mock database). Falling back to individual inserts.")
-		for i := range modelsToUpsert {
-			var id int
-			err := tx.QueryRow(ctx, query, modelsToUpsert[i].CVEID, modelsToUpsert[i].Description, modelsToUpsert[i].CVSSScore, modelsToUpsert[i].VectorString, modelsToUpsert[i].CWEID, modelsToUpsert[i].References, modelsToUpsert[i].ReferenceTags, modelsToUpsert[i].Configurations, modelsToUpsert[i].PublishedDate, modelsToUpsert[i].UpdatedDate, modelsToUpsert[i].Vendor, modelsToUpsert[i].Product, modelsToUpsert[i].AffectedProducts, modelsToUpsert[i].ExploitAvailable).Scan(&id)
+		slog.Warn("Worker: SendBatch returned nil (likely mock database). Falling back to unnest query.")
+
+		var cveIDs, descriptions, vectorStrings, cweIDs, vendors, products []string
+		var cvssScores []float64
+		var references, referenceTags, configurations, affectedProducts [][]byte
+		var publishedDates, updatedDates []*time.Time
+		var exploitAvailables []bool
+
+		// Deduplicate the models to prevent ON CONFLICT DO UPDATE from affecting the same row twice.
+		seen := make(map[string]bool)
+		var deduplicatedModels []models.CVE
+
+		for i := len(modelsToUpsert) - 1; i >= 0; i-- {
+			m := modelsToUpsert[i]
+			// We identify uniqueness by CVEID since we're inserting a batch for the same feed.
+			// Traversing backwards so the latest data for a CVE is kept.
+			if !seen[m.CVEID] {
+				seen[m.CVEID] = true
+				deduplicatedModels = append(deduplicatedModels, m)
+			}
+		}
+
+		// Reverse back to keep original relative order
+		for i, j := 0, len(deduplicatedModels)-1; i < j; i, j = i+1, j-1 {
+			deduplicatedModels[i], deduplicatedModels[j] = deduplicatedModels[j], deduplicatedModels[i]
+		}
+
+		for i := range deduplicatedModels {
+			m := &deduplicatedModels[i]
+			cveIDs = append(cveIDs, m.CVEID)
+			descriptions = append(descriptions, m.Description)
+			cvssScores = append(cvssScores, m.CVSSScore)
+			vectorStrings = append(vectorStrings, m.VectorString)
+			cweIDs = append(cweIDs, m.CWEID)
+
+			refBytes, err := json.Marshal(m.References)
 			if err != nil {
-				slog.Error("Worker: Error upserting CVE in fallback, rolling back transaction", "cve_id", modelsToUpsert[i].CVEID, "error", err)
 				return nil, err
 			}
-			modelsToUpsert[i].ID = id
-			successfulCVEs = append(successfulCVEs, modelsToUpsert[i])
+			references = append(references, refBytes)
+
+			refTagsBytes, err := json.Marshal(m.ReferenceTags)
+			if err != nil {
+				return nil, err
+			}
+			referenceTags = append(referenceTags, refTagsBytes)
+
+			configBytes, err := json.Marshal(m.Configurations)
+			if err != nil {
+				return nil, err
+			}
+			configurations = append(configurations, configBytes)
+
+			publishedDates = append(publishedDates, &m.PublishedDate)
+			updatedDates = append(updatedDates, &m.UpdatedDate)
+			vendors = append(vendors, m.Vendor)
+			products = append(products, m.Product)
+
+			affBytes, err := json.Marshal(m.AffectedProducts)
+			if err != nil {
+				return nil, err
+			}
+			affectedProducts = append(affectedProducts, affBytes)
+
+			exploitAvailables = append(exploitAvailables, m.ExploitAvailable)
+		}
+
+		unnestQuery := `
+		INSERT INTO cves (cve_id, description, cvss_score, vector_string, cwe_id, "references", reference_tags, configurations, published_date, updated_date, vendor, product, affected_products, exploit_available)
+		SELECT * FROM UNNEST($1::text[], $2::text[], $3::float8[], $4::text[], $5::text[], $6::jsonb[], $7::jsonb[], $8::jsonb[], $9::timestamp[], $10::timestamp[], $11::text[], $12::text[], $13::jsonb[], $14::boolean[])
+		ON CONFLICT (cve_id, published_date) DO UPDATE SET
+		description = EXCLUDED.description,
+		cvss_score = EXCLUDED.cvss_score,
+		vector_string = EXCLUDED.vector_string,
+		cwe_id = EXCLUDED.cwe_id,
+		"references" = EXCLUDED."references",
+		reference_tags = EXCLUDED.reference_tags,
+		configurations = EXCLUDED.configurations,
+		updated_date = EXCLUDED.updated_date,
+		vendor = EXCLUDED.vendor,
+		product = EXCLUDED.product,
+		affected_products = EXCLUDED.affected_products,
+		exploit_available = EXCLUDED.exploit_available,
+		updated_at = CURRENT_TIMESTAMP
+		RETURNING cve_id, id
+		`
+
+		rows, err := tx.Query(ctx, unnestQuery, cveIDs, descriptions, cvssScores, vectorStrings, cweIDs, references, referenceTags, configurations, publishedDates, updatedDates, vendors, products, affectedProducts, exploitAvailables)
+		if err != nil {
+			slog.Error("Worker: Error executing UNNEST fallback query", "error", err)
+			return nil, err
+		}
+		defer rows.Close()
+
+		idMap := make(map[string]int)
+		for rows.Next() {
+			var id int
+			var cveID string
+			if err := rows.Scan(&cveID, &id); err != nil {
+				slog.Error("Worker: Error scanning row from UNNEST fallback query", "error", err)
+				return nil, err
+			}
+			idMap[cveID] = id
+		}
+
+		for i := range deduplicatedModels {
+			m := deduplicatedModels[i]
+			if id, ok := idMap[m.CVEID]; ok {
+				m.ID = id
+				successfulCVEs = append(successfulCVEs, m)
+			}
 		}
 	}
 

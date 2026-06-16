@@ -50,3 +50,6 @@
 ## 2026-06-13 - Optimized Redundant Database COUNT Query
 **Learning:** Running an explicit SELECT COUNT(*) query solely to get the length of the results from a preceding identical SELECT statement causes an unnecessary database roundtrip.
 **Action:** Replaced the redundant query with total := len(slice) since the slice already contains exactly the bounded subset of rows from the database. Removed the associated unneeded pgxmock.ExpectQuery expectation in tests.
+## 2026-06-16 - [Optimize NVD Fallback Query]
+**Learning:** Replacing `tx.QueryRow` loop with a single bulk insert `UNNEST` SQL query eliminates the N+1 query patterns and significantly reduces database roundtrip latencies during bulk updates. To safely implement bulk batch operations via `UNNEST` in Postgres using `ON CONFLICT DO UPDATE`, batches must first be deduplicated before executing, otherwise Postgres will raise `ERROR: ON CONFLICT DO UPDATE command cannot affect row a second time`.
+**Action:** Use an `UNNEST` approach for bulk insert fallbacks, but ensure payloads are deduplicated and ID responses are correlated back to input using `RETURNING [identifier], id`.

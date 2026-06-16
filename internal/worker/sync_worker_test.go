@@ -110,8 +110,8 @@ func TestWorkerSync_NVD(t *testing.T) {
 		mock.ExpectBegin()
 
 		mock.ExpectQuery("(?i)INSERT INTO cves").
-			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 7.5, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), true).
-			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnRows(pgxmock.NewRows([]string{"cve_id", "id"}).AddRow("CVE-2023-0001", 1))
 
 		mock.ExpectCommit()
 
