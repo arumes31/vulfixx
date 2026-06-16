@@ -57,7 +57,9 @@ func (a *App) ExportActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`{"error":"unauthorized","message":"authentication required"}`))
+		if _, err := w.Write([]byte(`{"error":"unauthorized","message":"authentication required"}`)); err != nil {
+			log.Printf("Error writing unauthorized response: %v", err)
+		}
 		return
 	}
 
@@ -99,7 +101,9 @@ func (a *App) ExportActivityLogHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition", "attachment; filename=\"activity_log.json\"")
-	_, _ = w.Write(buf)
+	if _, err := w.Write(buf); err != nil {
+		log.Printf("Error writing activity log export response: %v", err)
+	}
 }
 
 // ActivityStreamHandler streams real-time user activity logs using Server-Sent Events (SSE).
@@ -141,7 +145,10 @@ func (a *App) ActivityStreamHandler(w http.ResponseWriter, r *http.Request) {
 	ch := pubsub.Channel()
 
 	// Send initial comment to establish connection
-	_, _ = fmt.Fprint(w, ": ok\n\n")
+	if _, err := fmt.Fprint(w, ": ok\n\n"); err != nil {
+		log.Printf("Error writing initial SSE comment: %v", err)
+		return
+	}
 	flusher.Flush()
 
 	for {
@@ -164,7 +171,10 @@ func (a *App) ActivityStreamHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Send event
-			_, _ = fmt.Fprintf(w, "data: %s\n\n", msg.Payload)
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", msg.Payload); err != nil {
+				log.Printf("Error writing SSE event: %v", err)
+				return
+			}
 			flusher.Flush()
 		}
 	}
