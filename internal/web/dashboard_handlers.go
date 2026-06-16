@@ -454,10 +454,7 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		metrics.totalItems = 0
 	}
 
-	stats, err := a.fetchPublicDashboardStats(r.Context(), whereClause, args)
-	if err != nil {
-		log.Printf("Public dashboard stats error: %v", err)
-	}
+	stats := a.fetchPublicDashboardStats(r.Context(), whereClause, args)
 
 	renderData := a.preparePublicDashboardRenderData(r, filters, metrics, cves, stats)
 
@@ -1242,7 +1239,7 @@ func (a *App) fetchPublicDashboardCVEs(ctx context.Context, filters publicDashbo
 	return cves, nil
 }
 
-func (a *App) fetchPublicDashboardStats(ctx context.Context, whereClause string, args []any) (publicDashboardStats, error) {
+func (a *App) fetchPublicDashboardStats(ctx context.Context, whereClause string, args []any) publicDashboardStats {
 	var stats publicDashboardStats
 	if whereClause == " WHERE (1=1) " {
 		statsJSON, err := a.getOrRefreshGlobalStats(ctx)
@@ -1250,7 +1247,7 @@ func (a *App) fetchPublicDashboardStats(ctx context.Context, whereClause string,
 			stats.severityCounts = statsJSON.SeverityCounts
 			stats.topCWEs = statsJSON.TopCWEs
 			stats.epssDist = statsJSON.EpssDist
-			return stats, nil
+			return stats
 		}
 		// Fallback to local memory cache if database query fails
 		statsCache.RLock()
@@ -1258,7 +1255,24 @@ func (a *App) fetchPublicDashboardStats(ctx context.Context, whereClause string,
 		stats.topCWEs = statsCache.topCWEs
 		stats.epssDist = statsCache.epssDist
 		statsCache.RUnlock()
-		return stats, nil
+		return stats
+	}
+
+	if a.Redis != nil {
+		cacheKeyStr := fmt.Sprintf("%s|%v", whereClause, args)
+		hash := sha256.Sum256([]byte(cacheKeyStr))
+		cacheKey := fmt.Sprintf("vulfixx:public_stats:%x", hash)
+
+		val, err := a.Redis.Get(ctx, cacheKey).Result()
+		if err == nil && val != "" {
+			var statsJSON GlobalCVEStatsJSON
+			if err := json.Unmarshal([]byte(val), &statsJSON); err == nil {
+				stats.severityCounts = statsJSON.SeverityCounts
+				stats.topCWEs = statsJSON.TopCWEs
+				stats.epssDist = statsJSON.EpssDist
+				return stats
+			}
+		}
 	}
 
 	combinedQuery := "SELECT " +
@@ -1287,7 +1301,22 @@ func (a *App) fetchPublicDashboardStats(ctx context.Context, whereClause string,
 		cweQueryRows.Close()
 	}
 
-	return stats, nil
+	if a.Redis != nil {
+		cacheKeyStr := fmt.Sprintf("%s|%v", whereClause, args)
+		hash := sha256.Sum256([]byte(cacheKeyStr))
+		cacheKey := fmt.Sprintf("vulfixx:public_stats:%x", hash)
+
+		statsJSON := GlobalCVEStatsJSON{
+			SeverityCounts: stats.severityCounts,
+			TopCWEs:        stats.topCWEs,
+			EpssDist:       stats.epssDist,
+		}
+		if b, err := json.Marshal(statsJSON); err == nil {
+			a.Redis.Set(ctx, cacheKey, b, 5*time.Minute)
+		}
+	}
+
+	return stats
 }
 
 func (a *App) tryServePublicDashboardFromCache(w http.ResponseWriter, r *http.Request, isAJAX bool) bool {

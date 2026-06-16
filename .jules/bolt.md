@@ -50,3 +50,6 @@
 ## 2026-06-13 - Optimized Redundant Database COUNT Query
 **Learning:** Running an explicit SELECT COUNT(*) query solely to get the length of the results from a preceding identical SELECT statement causes an unnecessary database roundtrip.
 **Action:** Replaced the redundant query with total := len(slice) since the slice already contains exactly the bounded subset of rows from the database. Removed the associated unneeded pgxmock.ExpectQuery expectation in tests.
+## 2026-06-16 - Cached Heavy Public Dashboard Aggregations
+**Learning:** For public dashboard stats involving heavy aggregations (`COUNT(*) FILTER...`) and grouping on dynamic queries, computing these per request on cache miss for non-default queries significantly impacts latency.
+**Action:** Implemented caching for the dynamic query stats (`epssDist`, `severityCounts`, `topCWEs`) by serializing the query arguments and hashing them to form a cache key.
