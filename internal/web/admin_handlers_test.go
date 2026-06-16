@@ -28,8 +28,8 @@ func TestAdminUserManagementHandler(t *testing.T) {
 						AddRow(2, "user@test.com", true, false, time.Now()))
 
 				// RenderTemplate expectations
-				mock.ExpectQuery("SELECT onboarding_completed FROM users WHERE id = \\$1").WithArgs(1).
-					WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed"}).AddRow(true))
+				mock.ExpectQuery("(?is)SELECT u.onboarding_completed, \\(SELECT COUNT\\(\\*\\) FROM user_subscriptions WHERE user_id = \\$1\\) FROM users u WHERE u.id = \\$1").WithArgs(1).
+					WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed", "count"}).AddRow(true, 1))
 				mock.ExpectQuery("SELECT t.id, t.name").WithArgs(1).
 					WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(1, "Team A"))
 			},

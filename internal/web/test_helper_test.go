@@ -107,13 +107,14 @@ func TestExpectBaseQueries(t *testing.T) {
 	t.Run("Valid User", func(t *testing.T) {
 		expectBaseQueries(mock, 123)
 
-		// Onboarding
+		// Combined base query
 		var completed bool
-		_ = mock.QueryRow(context.Background(), "SELECT onboarding_completed FROM users WHERE id = $1", 123).Scan(&completed)
-
-		// Sub count
 		var count int
-		_ = mock.QueryRow(context.Background(), "SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1", 123).Scan(&count)
+		_ = mock.QueryRow(context.Background(), `
+			SELECT u.onboarding_completed,
+			       (SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1)
+			FROM users u WHERE u.id = $1
+		`, 123).Scan(&completed, &count)
 
 		// Team list
 		_, _ = mock.Query(context.Background(), "SELECT t.id, t.name FROM teams t", 123)

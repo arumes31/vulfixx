@@ -274,13 +274,9 @@ func TestDashboardHandler_TeamView(t *testing.T) {
 			AddRow("CWE-79", "Cross-site Scripting", 1))
 
 	// 5. RenderTemplate queries
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT onboarding_completed FROM users WHERE id = ")).
+	mock.ExpectQuery("(?is)SELECT u.onboarding_completed, \\(SELECT COUNT\\(\\*\\) FROM user_subscriptions WHERE user_id = \\$1\\) FROM users u WHERE u.id = \\$1").
 		WithArgs(userID).
-		WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed"}).AddRow(true))
-
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM user_subscriptions WHERE user_id = ")).
-		WithArgs(userID).
-		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
+		WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed", "count"}).AddRow(true, 1))
 
 	mock.ExpectQuery("(?is)SELECT t.id, t.name FROM teams t").
 		WithArgs(userID).

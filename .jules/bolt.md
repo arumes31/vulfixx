@@ -50,3 +50,7 @@
 ## 2026-06-13 - Optimized Redundant Database COUNT Query
 **Learning:** Running an explicit SELECT COUNT(*) query solely to get the length of the results from a preceding identical SELECT statement causes an unnecessary database roundtrip.
 **Action:** Replaced the redundant query with total := len(slice) since the slice already contains exactly the bounded subset of rows from the database. Removed the associated unneeded pgxmock.ExpectQuery expectation in tests.
+## 2026-06-16 - Combined Base Template Queries
+**Performance Issue:** Execution of multiple single queries for user details and subscription counts on every authenticated page load.
+**Learning:** Calling `QueryRow` multiple times in middleware or base rendering handlers (like `RenderTemplate`) adds significant latency overhead per request due to repeated database roundtrips.
+**Action:** Combine simple row lookups and aggregate scalar values (like counts) for a single entity (e.g., a user) into a single query using subqueries (e.g., `SELECT u.field, (SELECT COUNT(*) FROM related WHERE id = $1) FROM users u WHERE u.id = $1`) to fetch all necessary data in one roundtrip.
