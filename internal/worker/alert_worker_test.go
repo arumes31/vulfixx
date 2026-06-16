@@ -380,3 +380,104 @@ func TestWorkerAlert_ProcessUserBuffer(t *testing.T) {
 		}
 	})
 }
+
+func TestWorker_notifyIfNewWithCache(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create mock pool: %v", err)
+	}
+	defer mock.Close()
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	w := NewWorker(mock, rdb, &EmailSenderMock{}, http.DefaultClient)
+	ctx := context.Background()
+
+	userID := 1
+	email := "user@example.com"
+	assetName := "test-asset"
+	sub := models.UserSubscription{ID: 1, UserID: userID}
+
+	t.Run("cached_already_notified", func(t *testing.T) {
+		cve := &models.CVE{ID: 1, CVEID: "CVE-TEST"}
+		cache := map[int]bool{userID: true}
+		got := w.notifyIfNewWithCache(ctx, userID, cve, sub, email, assetName, cache)
+		if got != false {
+			t.Errorf("expected false, got %v", got)
+		}
+	})
+
+	t.Run("db_already_notified", func(t *testing.T) {
+		cve := &models.CVE{ID: 2, CVEID: "CVE-TEST-2"}
+		mock.ExpectQuery("SELECT EXISTS").WithArgs(userID, cve.ID).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
+
+		got := w.notifyIfNewWithCache(ctx, userID, cve, sub, email, assetName, nil)
+		if got != false {
+			t.Errorf("expected false, got %v", got)
+		}
+	})
+
+	t.Run("flood_protection", func(t *testing.T) {
+		cve := &models.CVE{ID: 3, CVEID: "CVE-TEST-3"}
+		mock.ExpectQuery("SELECT EXISTS").WithArgs(userID, cve.ID).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
+
+		// Simulate flood count = 50, so Incr makes it 51
+		rdb.Set(ctx, fmt.Sprintf("flood_protection:%d", userID), 50, 0)
+
+		got := w.notifyIfNewWithCache(ctx, userID, cve, sub, email, assetName, nil)
+		if got != false {
+			t.Errorf("expected false, got %v", got)
+		}
+	})
+
+	t.Run("fetch_cve_fails", func(t *testing.T) {
+		// Empty CVEID triggers DB fetch
+		cve := &models.CVE{ID: 4, CVEID: ""}
+		mock.ExpectQuery("SELECT EXISTS").WithArgs(userID, cve.ID).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
+
+		// Reset flood count to 0 so it increments to 1
+		rdb.Set(ctx, fmt.Sprintf("flood_protection:%d", userID), 0, 0)
+
+		mock.ExpectQuery("SELECT cve_id, description, cvss_score").WithArgs(cve.ID).WillReturnError(fmt.Errorf("db error"))
+
+		got := w.notifyIfNewWithCache(ctx, userID, cve, sub, email, assetName, nil)
+		if got != false {
+			t.Errorf("expected false, got %v", got)
+		}
+
+		// Ensure flood count was decremented back to 0
+		count, _ := rdb.Get(ctx, fmt.Sprintf("flood_protection:%d", userID)).Int()
+		if count != 0 {
+			t.Errorf("expected flood count 0, got %d", count)
+		}
+	})
+
+	t.Run("success_path", func(t *testing.T) {
+		cve := &models.CVE{ID: 5, CVEID: "CVE-TEST-5"}
+		mock.ExpectQuery("SELECT EXISTS").WithArgs(userID, cve.ID).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
+
+		// Setup for w.bufferAlert to succeed
+		sub.AggregationMode = "instant"
+		sub.EnableEmail = true // Enable email to ensure hasAnySuccess becomes true
+
+		mock.ExpectExec("INSERT INTO notification_delivery_logs").WithArgs(userID, sub.ID, cve.ID, "email", "success", "").WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		mock.ExpectExec("INSERT INTO alert_history").WithArgs(userID, cve.ID).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+		got := w.notifyIfNewWithCache(ctx, userID, cve, sub, email, assetName, nil)
+		if got != true {
+			t.Errorf("expected true, got %v", got)
+		}
+	})
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("there were unfulfilled expectations: %s", err)
+	}
+}
