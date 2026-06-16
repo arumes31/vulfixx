@@ -294,19 +294,16 @@ func getCWEID(weaknesses []struct {
 	return ""
 }
 
-func mapNVDEntryToModel(entry NVDCVEEntry) (models.CVE, error) {
-	cve := entry.CVE
-
-	description := ""
+func getNVDDescription(cve NVDCVE) string {
 	for _, d := range cve.Descriptions {
 		if d.Lang == "en" {
-			description = d.Value
-			break
+			return d.Value
 		}
 	}
-	score, vector := getCVSSMetric(cve)
-	cweID := getCWEID(cve.Weaknesses)
+	return ""
+}
 
+func parseNVDReferences(cve NVDCVE) ([]string, []string, bool) {
 	var references []string
 	var referenceTags []string
 	exploitAvailable := false
@@ -340,14 +337,32 @@ func mapNVDEntryToModel(entry NVDCVEEntry) (models.CVE, error) {
 		// Store tags as comma-separated string, parallel to references
 		referenceTags = append(referenceTags, strings.Join(ref.Tags, ","))
 	}
+	return references, referenceTags, exploitAvailable
+}
 
+func parseNVDDates(cve NVDCVE) (time.Time, time.Time, error) {
 	pubDate, err := parseNVDDate(cve.Published)
 	if err != nil {
-		return models.CVE{}, fmt.Errorf("invalid published date for CVE %s: %w", cve.ID, err)
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid published date for CVE %s: %w", cve.ID, err)
 	}
 	modDate, err := parseNVDDate(cve.LastModified)
 	if err != nil {
-		return models.CVE{}, fmt.Errorf("invalid lastModified date for CVE %s: %w", cve.ID, err)
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid lastModified date for CVE %s: %w", cve.ID, err)
+	}
+	return pubDate, modDate, nil
+}
+
+func mapNVDEntryToModel(entry NVDCVEEntry) (models.CVE, error) {
+	cve := entry.CVE
+
+	description := getNVDDescription(cve)
+	score, vector := getCVSSMetric(cve)
+	cweID := getCWEID(cve.Weaknesses)
+	references, referenceTags, exploitAvailable := parseNVDReferences(cve)
+
+	pubDate, modDate, err := parseNVDDates(cve)
+	if err != nil {
+		return models.CVE{}, err
 	}
 
 	return models.CVE{
