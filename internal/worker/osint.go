@@ -32,7 +32,7 @@ func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) models.JSONB
 	var mu sync.Mutex
 	g, gctx := errgroup.WithContext(ctx)
 
-	// Hacker News
+	// HN Mentions
 	g.Go(func() error {
 		if _, links, err := w.fetchHNMentions(gctx, cveID); err == nil {
 			mu.Lock()
