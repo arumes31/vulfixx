@@ -403,3 +403,37 @@ func TestRenderTemplate(t *testing.T) {
 		}
 	})
 }
+
+func TestSafeRedirect(t *testing.T) {
+	rHost := "example.com"
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"", "/dashboard"},
+		{"/valid/path", "/valid/path"},
+		{"http://example.com/foo", "http://example.com/foo"},
+		{"https://example.com/foo", "https://example.com/foo"},
+		{"http://attacker.com", "/dashboard"},
+		{"https://attacker.com", "/dashboard"},
+		{"//attacker.com", "/dashboard"},
+		{"///attacker.com", "/dashboard"},
+		{"\\\\attacker.com", "/dashboard"},
+		{"/\\attacker.com", "/dashboard"},
+		{"\\/attacker.com", "/dashboard"},
+		{"javascript:alert(1)", "/dashboard"},
+		{"javascript://%250aalert(1)", "/dashboard"},
+		{"http://example.com.attacker.com", "/dashboard"},
+		{"http://example.com@attacker.com", "/dashboard"},
+		{"http://attacker.com\\example.com", "/dashboard"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := SafeRedirect(tt.input, rHost)
+			if result != tt.expected {
+				t.Errorf("SafeRedirect(%q) = %q, expected %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
