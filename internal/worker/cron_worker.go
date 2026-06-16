@@ -216,10 +216,9 @@ func (w *Worker) processEnrichmentRows(ctx context.Context, cves []models.CVE, t
 		affected := c.GetAffectedProducts()
 		// If we extracted products via LLM, add them to affected_products
 		for _, p := range extractedProducts {
-			found := slices.ContainsFunc(affected, func(ap models.AffectedProduct) bool {
+			if !slices.ContainsFunc(affected, func(ap models.AffectedProduct) bool {
 				return ap.Vendor == p.Vendor && ap.Product == p.Product
-			})
-			if !found {
+			}) {
 				affected = append(affected, models.AffectedProduct{
 					Vendor:      p.Vendor,
 					Product:     p.Product,
