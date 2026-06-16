@@ -351,18 +351,12 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 				}
 			}
 
-			// Fallback to database query if not found in pre-fetched teams
 			if !found {
-				err := a.Pool.QueryRow(r.Context(), "SELECT name FROM teams WHERE id = $1", activeTeamID).Scan(&teamName)
-				if err != nil {
-					slog.Error("Error fetching active team name", "error", err)
-				} else {
-					renderData["ActiveTeamName"] = teamName
-				}
-			} else {
-				renderData["ActiveTeamName"] = teamName
+				// If not found in userTeams (e.g. they were just removed), check session
+				teamName, _ = a.GetActiveTeamName(r)
 			}
 
+			renderData["ActiveTeamName"] = teamName
 			renderData["ActiveTeamID"] = activeTeamID
 		} else {
 			renderData["ActiveTeamID"] = 0
