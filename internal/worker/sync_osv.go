@@ -17,20 +17,24 @@ import (
 
 const osvConcurrency = 10
 
+type osvRange struct {
+	Type   string              `json:"type"`
+	Events []map[string]string `json:"events"`
+}
+
+type osvAffected struct {
+	Package struct {
+		Name      string `json:"name"`
+		Ecosystem string `json:"ecosystem"`
+	} `json:"package"`
+	Ranges   []osvRange `json:"ranges"`
+	Versions []string   `json:"versions"`
+}
+
 type osvResponse struct {
-	ID       string `json:"id"`
-	Modified string `json:"modified"`
-	Affected []struct {
-		Package struct {
-			Name      string `json:"name"`
-			Ecosystem string `json:"ecosystem"`
-		} `json:"package"`
-		Ranges []struct {
-			Type   string              `json:"type"`
-			Events []map[string]string `json:"events"`
-		} `json:"ranges"`
-		Versions []string `json:"versions"`
-	} `json:"affected"`
+	ID       string        `json:"id"`
+	Modified string        `json:"modified"`
+	Affected []osvAffected `json:"affected"`
 }
 
 func (w *Worker) syncOSVPeriodically(ctx context.Context) {
@@ -112,55 +116,7 @@ func (w *Worker) syncOSV(ctx context.Context) {
 				if osvData != nil {
 					item.hasData = true
 					// Deep Enrichment: Extract products and versions
-					for _, aff := range osvData.Affected {
-						vendor := aff.Package.Ecosystem
-						product := aff.Package.Name
-
-						// Build version string from ranges
-						var versionParts []string
-						for _, r := range aff.Ranges {
-							var start, end string
-							for _, ev := range r.Events {
-								if v, ok := ev["introduced"]; ok && v != "0" {
-									start = "≥" + v
-								}
-								if v, ok := ev["fixed"]; ok {
-									end = "<" + v
-								}
-								if v, ok := ev["last_affected"]; ok {
-									end = "≤" + v
-								}
-							}
-							if start != "" && end != "" {
-								versionParts = append(versionParts, start+" "+end)
-							} else if start != "" {
-								versionParts = append(versionParts, start)
-							} else if end != "" {
-								versionParts = append(versionParts, end)
-							}
-						}
-
-						versionStr := strings.Join(versionParts, ", ")
-						if versionStr == "" && len(aff.Versions) > 0 {
-							// Fallback to first few versions if no ranges
-							if len(aff.Versions) > 3 {
-								versionStr = strings.Join(aff.Versions[:3], ", ") + "..."
-							} else {
-								versionStr = strings.Join(aff.Versions, ", ")
-							}
-						}
-
-						item.cve.AddAffectedProduct(vendor, product, versionStr, false)
-
-						// If primary vendor/product is missing, use OSV as authoritative
-						if item.cve.Vendor == "" {
-							item.cve.Vendor = vendor
-						}
-						if item.cve.Product == "" {
-							item.cve.Product = product
-						}
-						item.changed = true
-					}
+					item.changed = enrichCVEWithOSVData(&item.cve, osvData)
 				}
 				mu.Lock()
 				updates = append(updates, item)
@@ -271,4 +227,60 @@ func (w *Worker) fetchOSVData(ctx context.Context, cveID string) (*osvResponse, 
 	}
 
 	return &result, nil
+}
+
+func buildVersionString(ranges []osvRange, versions []string) string {
+	var versionParts []string
+	for _, r := range ranges {
+		var start, end string
+		for _, ev := range r.Events {
+			if v, ok := ev["introduced"]; ok && v != "0" {
+				start = "≥" + v
+			}
+			if v, ok := ev["fixed"]; ok {
+				end = "<" + v
+			}
+			if v, ok := ev["last_affected"]; ok {
+				end = "≤" + v
+			}
+		}
+		if start != "" && end != "" {
+			versionParts = append(versionParts, start+" "+end)
+		} else if start != "" {
+			versionParts = append(versionParts, start)
+		} else if end != "" {
+			versionParts = append(versionParts, end)
+		}
+	}
+
+	versionStr := strings.Join(versionParts, ", ")
+	if versionStr == "" && len(versions) > 0 {
+		if len(versions) > 3 {
+			versionStr = strings.Join(versions[:3], ", ") + "..."
+		} else {
+			versionStr = strings.Join(versions, ", ")
+		}
+	}
+	return versionStr
+}
+
+func enrichCVEWithOSVData(cve *models.CVE, osvData *osvResponse) bool {
+	changed := false
+	for _, aff := range osvData.Affected {
+		vendor := aff.Package.Ecosystem
+		product := aff.Package.Name
+
+		versionStr := buildVersionString(aff.Ranges, aff.Versions)
+
+		cve.AddAffectedProduct(vendor, product, versionStr, false)
+
+		if cve.Vendor == "" {
+			cve.Vendor = vendor
+		}
+		if cve.Product == "" {
+			cve.Product = product
+		}
+		changed = true
+	}
+	return changed
 }
