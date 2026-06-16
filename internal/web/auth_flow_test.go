@@ -178,7 +178,7 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 		mock.ExpectQuery("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE\\(totp_secret, ''\\), is_admin FROM users").
 			WithArgs(email).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
-				AddRow(1, email, string(hash), true, false, "", false))
+				AddRow(1, email, hash, true, false, "", false))
 
 		mock.ExpectExec("INSERT INTO user_activity_logs").
 			WithArgs(1, "login", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
