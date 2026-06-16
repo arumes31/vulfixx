@@ -76,14 +76,9 @@ func expectBaseQueries(mock pgxmock.PgxPoolIface, userID int) {
 		return
 	}
 	// 1. Onboarding status query in RenderTemplate
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT onboarding_completed FROM users WHERE id = $1")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT onboarding_completed, (SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1) FROM users WHERE id = $1")).
 		WithArgs(userID).
-		WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed"}).AddRow(true))
-
-	// 2. Sub count query in RenderTemplate
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1")).
-		WithArgs(userID).
-		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
+		WillReturnRows(pgxmock.NewRows([]string{"onboarding_completed", "count"}).AddRow(true, 1))
 
 	// 3. Team list query in RenderTemplate
 	mock.ExpectQuery("(?is)SELECT t.id, t.name FROM teams t").

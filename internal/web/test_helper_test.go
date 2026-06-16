@@ -109,11 +109,11 @@ func TestExpectBaseQueries(t *testing.T) {
 
 		// Onboarding
 		var completed bool
-		_ = mock.QueryRow(context.Background(), "SELECT onboarding_completed FROM users WHERE id = $1", 123).Scan(&completed)
+		var count int
+		_ = mock.QueryRow(context.Background(), "SELECT onboarding_completed, (SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1) FROM users WHERE id = $1", 123).Scan(&completed, &count)
+		_ = count
 
 		// Sub count
-		var count int
-		_ = mock.QueryRow(context.Background(), "SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1", 123).Scan(&count)
 
 		// Team list
 		_, _ = mock.Query(context.Background(), "SELECT t.id, t.name FROM teams t", 123)

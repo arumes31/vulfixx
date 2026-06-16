@@ -50,3 +50,7 @@
 ## 2026-06-13 - Optimized Redundant Database COUNT Query
 **Learning:** Running an explicit SELECT COUNT(*) query solely to get the length of the results from a preceding identical SELECT statement causes an unnecessary database roundtrip.
 **Action:** Replaced the redundant query with total := len(slice) since the slice already contains exactly the bounded subset of rows from the database. Removed the associated unneeded pgxmock.ExpectQuery expectation in tests.
+
+## 2026-06-16 - Combine Shared Base Render Template Queries
+**Learning:** `RenderTemplate` in `internal/web/base.go` fired two separate sequential queries (`onboarding_completed` and `SELECT COUNT(*) FROM user_subscriptions`) for every authenticated page request, resulting in an extra database round trip.
+**Action:** Used a subquery `SELECT onboarding_completed, (SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1) FROM users WHERE id = $1` to combine both requests into a single database roundtrip. When updating `pgxmock` tests with `ExpectQuery`, wrap strings containing regex characters like `()` or `*` in `regexp.QuoteMeta()` or escape them heavily to prevent unfulfilled expectation errors.

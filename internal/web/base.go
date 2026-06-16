@@ -295,19 +295,16 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 		renderData["UserID"] = userID
 		renderData["IsAdmin"] = a.IsAdmin(r)
 
-		// Onboarding status
+		// Fetch onboarding status and user's subscription count
 		var onboardingCompleted bool
-		err := a.Pool.QueryRow(r.Context(), "SELECT onboarding_completed FROM users WHERE id = $1", userID).Scan(&onboardingCompleted)
+		var subCount int
+		err := a.Pool.QueryRow(r.Context(), "SELECT onboarding_completed, (SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1) FROM users WHERE id = $1", userID).Scan(&onboardingCompleted, &subCount)
 		if err != nil {
-			slog.Error("RenderTemplate onboarding query failed", "user_id", userID, "error", err)
+			slog.Error("RenderTemplate combined query failed", "user_id", userID, "error", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 		renderData["OnboardingCompleted"] = onboardingCompleted
-
-		// Fetch user's subscription count
-		var subCount int
-		_ = a.Pool.QueryRow(r.Context(), "SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1", userID).Scan(&subCount)
 		renderData["SubCount"] = subCount
 
 		// Fetch user's teams
