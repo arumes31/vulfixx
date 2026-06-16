@@ -554,3 +554,27 @@ func TestDashboardNoErrorLeakOnMalformedQuery(t *testing.T) {
 		t.Errorf("unmet expectations: %v", err)
 	}
 }
+
+func TestGenerateNonce(t *testing.T) {
+	nonce1, err := generateNonce()
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if len(nonce1) != 24 {
+		t.Errorf("expected nonce length to be 24, got %d", len(nonce1))
+	}
+
+	nonce2, err := generateNonce()
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if len(nonce2) != 24 {
+		t.Errorf("expected nonce length to be 24, got %d", len(nonce2))
+	}
+
+	if nonce1 == nonce2 {
+		t.Errorf("expected successive calls to generateNonce to return different nonces, got %q and %q", nonce1, nonce2)
+	}
+}
