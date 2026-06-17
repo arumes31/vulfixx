@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -482,18 +483,13 @@ type Team struct {
 
 // GetLineage extracts related CVE IDs from the description, references, and OSINT data.
 func (c *CVE) GetLineage() []string {
-	seen := make(map[string]bool)
 	var result []string
-
-	// Don't include self
-	seen[c.CVEID] = true
 
 	// Extract CVE IDs from description
 	cveRegex := regexp.MustCompile(`CVE-\d{4}-\d+`)
 	for _, match := range cveRegex.FindAllString(c.Description, -1) {
 		upper := strings.ToUpper(match)
-		if !seen[upper] {
-			seen[upper] = true
+		if upper != c.CVEID && !slices.Contains(result, upper) {
 			result = append(result, upper)
 		}
 	}
@@ -502,8 +498,7 @@ func (c *CVE) GetLineage() []string {
 	for _, ref := range c.References {
 		for _, match := range cveRegex.FindAllString(ref, -1) {
 			upper := strings.ToUpper(match)
-			if !seen[upper] {
-				seen[upper] = true
+			if upper != c.CVEID && !slices.Contains(result, upper) {
 				result = append(result, upper)
 			}
 		}
@@ -516,8 +511,7 @@ func (c *CVE) GetLineage() []string {
 				for _, item := range arr {
 					if s, ok := item.(string); ok {
 						upper := strings.ToUpper(s)
-						if !seen[upper] {
-							seen[upper] = true
+						if upper != c.CVEID && !slices.Contains(result, upper) {
 							result = append(result, upper)
 						}
 					}
@@ -574,13 +568,11 @@ func capitalize(s string) string {
 
 // GetCPEs returns a deduplicated list of CPE criteria strings from the CVE configurations.
 func (c *CVE) GetCPEs() []string {
-	seen := make(map[string]bool)
 	var result []string
 	for _, config := range c.Configurations {
 		for _, node := range config.Nodes {
 			for _, match := range node.CPEMatch {
-				if match.Criteria != "" && !seen[match.Criteria] {
-					seen[match.Criteria] = true
+				if match.Criteria != "" && !slices.Contains(result, match.Criteria) {
 					result = append(result, match.Criteria)
 				}
 			}
