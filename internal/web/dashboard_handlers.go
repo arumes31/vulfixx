@@ -509,7 +509,7 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 	c := &models.CVE{}
 	err := a.Pool.QueryRow(r.Context(), `
 	SELECT
-	id, cve_id, description, COALESCE(cvss_score, 0), vector_string, cisa_kev,
+	id, cve_id, description, COALESCE(cvss_score, 0), vector_string, cisa_kev, cisa_ransomware,
 	published_date, updated_date, 'active' as status, "references",
 	COALESCE(epss_score, 0), COALESCE(epss_percentile, 0), COALESCE(cwe_id, ''), COALESCE(cwe_name, ''), COALESCE(github_poc_count, 0),
 	COALESCE(greynoise_hits, 0), COALESCE(greynoise_classification, ''), osv_data, vendor_advisories,
@@ -520,7 +520,7 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 	COALESCE(cisa_kev_data, '{}'), COALESCE(reference_tags, '{}'), COALESCE(github_poc_repos, '[]')
 	FROM cves
 	WHERE cve_id = $1
-	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.EPSSPercentile, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.VendorAdvisories, &c.Configurations, &c.Vendor, &c.Product, &c.AffectedProducts, &c.Priority, &c.ExploitAvailable, &c.OSINTData, &c.InTheWildData, &c.GreyNoiseLastUpdated, &c.OSVLastUpdated, &c.InTheWildLastUpdated, &c.CISAKEVData, &c.ReferenceTags, &c.GitHubPoCRepos)
+	`, cveID).Scan(&c.ID, &c.CVEID, &c.Description, &c.CVSSScore, &c.VectorString, &c.CISAKEV, &c.CISARansomware, &c.PublishedDate, &c.UpdatedDate, &c.Status, &c.References, &c.EPSSScore, &c.EPSSPercentile, &c.CWEID, &c.CWEName, &c.GitHubPoCCount, &c.GreyNoiseHits, &c.GreyNoiseClass, &c.OSVData, &c.VendorAdvisories, &c.Configurations, &c.Vendor, &c.Product, &c.AffectedProducts, &c.Priority, &c.ExploitAvailable, &c.OSINTData, &c.InTheWildData, &c.GreyNoiseLastUpdated, &c.OSVLastUpdated, &c.InTheWildLastUpdated, &c.CISAKEVData, &c.ReferenceTags, &c.GitHubPoCRepos)
 
 	c.CWEName = models.GetCWEName(c.CWEID, c.CWEName)
 
@@ -533,9 +533,6 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-
-	// Fetch cisa_ransomware separately to avoid breaking test mocks of the primary query
-	_ = a.Pool.QueryRow(r.Context(), "SELECT cisa_ransomware FROM cves WHERE cve_id = $1", c.CVEID).Scan(&c.CISARansomware)
 
 	// Fetch threat actor and ransomware associations
 	type ThreatAssociation struct {

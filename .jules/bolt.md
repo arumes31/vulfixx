@@ -50,3 +50,8 @@
 ## 2026-06-13 - Optimized Redundant Database COUNT Query
 **Learning:** Running an explicit SELECT COUNT(*) query solely to get the length of the results from a preceding identical SELECT statement causes an unnecessary database roundtrip.
 **Action:** Replaced the redundant query with total := len(slice) since the slice already contains exactly the bounded subset of rows from the database. Removed the associated unneeded pgxmock.ExpectQuery expectation in tests.
+## 2026-06-17 - Optimized CVEDetailHandler N+1 Query for cisa_ransomware
+**Performance Issue:** Redundant single query for `cisa_ransomware` in `CVEDetailHandler`.
+**Learning:** Fetching `cisa_ransomware` in a separate `QueryRow` immediately after fetching the primary CVE details causes an unnecessary database roundtrip.
+**Optimization:** Modified the primary `SELECT` query in `CVEDetailHandler` to include the `cisa_ransomware` boolean field directly, replacing 2 queries with 1 query. Removed the redundant separate `QueryRow` fetch and updated test expectations to match.
+**Impact:** Eliminated one extra database query per CVE detail page view.
