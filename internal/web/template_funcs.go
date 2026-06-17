@@ -203,9 +203,9 @@ func (a *App) GetTemplateFuncs() template.FuncMap {
 			}
 			return "bg-blue-500"
 		},
-		"marshal": func(v interface{}) template.JS {
+		"marshal": func(v interface{}) string {
 			a, _ := json.Marshal(v)
-			return template.JS(a) // #nosec G203
+			return string(a)
 		},
 		"vendorLinks": func(cveID string, description string) []map[string]string {
 			links := []map[string]string{}
