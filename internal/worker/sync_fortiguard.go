@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -330,7 +331,6 @@ func (w *Worker) processAdvisories(ctx context.Context, advisoryIDs []string) (i
 	g.SetLimit(fortiguardRateLimit) // Only 1 concurrent request
 
 	for _, advisoryID := range advisoryIDs {
-		advisoryID := advisoryID // Create a local copy for the goroutine
 
 		g.Go(func() error {
 			if err := limiter.Wait(gCtx); err != nil {
@@ -482,14 +482,7 @@ func parseFortiGuardAdvisory(doc *goquery.Document, url string) (*FortiGuardAdvi
 		if cveID := cveIDRegex.FindString(s.Text()); cveID != "" {
 			cveID = strings.ToUpper(cveID)
 			// Check if already in slice
-			found := false
-			for _, existing := range advisory.CVEIDs {
-				if existing == cveID {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if !slices.Contains(advisory.CVEIDs, cveID) {
 				advisory.CVEIDs = append(advisory.CVEIDs, cveID)
 			}
 		}
