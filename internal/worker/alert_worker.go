@@ -421,17 +421,6 @@ func compareFloat(actual float64, op string, want float64) (bool, bool) {
 	}
 }
 
-// notifyIfNew checks if the user has already been notified about this CVE.
-// Left for backward compatibility; prefer notifyIfNewWithCache in batch loops.
-func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, sub models.UserSubscription, email, assetName string) bool {
-	var exists bool
-	_ = w.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM alert_history WHERE user_id = $1 AND cve_id = $2)", userID, cve.ID).Scan(&exists)
-	if exists {
-		return false
-	}
-	return w.notifyIfNewWithCache(ctx, userID, cve, sub, email, assetName, nil)
-}
-
 // notifyIfNewWithCache allows bypassing the DB existence check if a pre-fetched cache is available.
 func (w *Worker) notifyIfNewWithCache(ctx context.Context, userID int, cve *models.CVE, sub models.UserSubscription, email, assetName string, notifiedCache map[int]bool) bool {
 	if notifiedCache != nil && notifiedCache[userID] {

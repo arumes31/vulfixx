@@ -67,14 +67,6 @@ func TestWorkerHelpers(t *testing.T) {
 		}
 	})
 
-	t.Run("RedactURL", func(t *testing.T) {
-		url := "https://user:pass@example.com/path?query=1#frag"
-		redacted := redactURL(url)
-		if redacted != "https://example.com/" {
-			t.Errorf("redactURL failed: %s", redacted)
-		}
-	})
-
 	t.Run("SanitizeHeader", func(t *testing.T) {
 		input := "Line 1\r\nLine 2\nLine 3"
 		expected := "Line 1Line 2Line 3"

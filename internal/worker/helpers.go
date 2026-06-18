@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/mail"
 	"net/smtp"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -64,19 +63,6 @@ func sanitizeHeader(s string) string {
 		}
 		return r
 	}, s)
-}
-
-// redactURL redacts a URL for logging by removing Userinfo, Query, and Path.
-func redactURL(u string) string {
-	parsed, err := url.Parse(u)
-	if err != nil {
-		return "[invalid-url]"
-	}
-	parsed.User = nil
-	parsed.RawQuery = ""
-	parsed.Fragment = ""
-	parsed.Path = "/"
-	return parsed.String()
 }
 
 // sendMailWithTimeout is a replacement for smtp.SendMail that supports deadlines.
