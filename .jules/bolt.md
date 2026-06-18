@@ -50,3 +50,7 @@
 ## 2026-06-13 - Optimized Redundant Database COUNT Query
 **Learning:** Running an explicit SELECT COUNT(*) query solely to get the length of the results from a preceding identical SELECT statement causes an unnecessary database roundtrip.
 **Action:** Replaced the redundant query with total := len(slice) since the slice already contains exactly the bounded subset of rows from the database. Removed the associated unneeded pgxmock.ExpectQuery expectation in tests.
+
+## 2026-06-18 - Combine Base Queries in RenderTemplate
+**Learning:** Found an N+1 performance issue in `internal/web/base.go`'s `RenderTemplate` function where `onboarding_completed` and `user_subscriptions` count were fetched using two separate queries on every authenticated page load.
+**Action:** When fetching multiple disconnected user properties or counts for the same user in a single controller or template rendering function, combine them into a single `SELECT` statement (e.g., using subqueries) to avoid unnecessary database roundtrips. Ensure tests are updated to expect the combined query correctly.
