@@ -207,11 +207,14 @@ func TestWorker_DetectDuplicates_Comprehensive(t *testing.T) {
 			OSINTData:     make(models.JSONBMap),
 		}
 
+		mock.ExpectBegin()
 		mock.ExpectQuery("SELECT cve_id FROM cves").
 			WithArgs("CWE-79", 1, 7.5, pgxmock.AnyArg()).
 			WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-2023-0002").AddRow("CVE-2023-0003"))
+		mock.ExpectRollback()
 
-		w.detectDuplicates(context.Background(), cve)
+		duplicatesMap := w.fetchDuplicatesBatch(context.Background(), []models.CVE{*cve})
+		cve.OSINTData["similar_threats"] = duplicatesMap[cve.ID]
 
 		dups, ok := cve.OSINTData["similar_threats"].([]string)
 		if !ok || len(dups) != 2 || dups[0] != "CVE-2023-0002" {
