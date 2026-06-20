@@ -1,6 +1,7 @@
 package models
 
 import (
+	"database/sql/driver"
 	"encoding/base64"
 	"testing"
 	"time"
@@ -685,4 +686,124 @@ func TestHasVendorAdvisory(t *testing.T) {
 			t.Error("expected true for non-empty VendorAdvisories")
 		}
 	})
+}
+
+func TestGitHubPoCRepos_Scan(t *testing.T) {
+	tests := []struct {
+		name      string
+		value     interface{}
+		want      GitHubPoCRepos
+		expectErr bool
+	}{
+		{
+			name: "Valid JSON",
+			value: []byte(`[{"url": "https://github.com/foo/bar", "description": "foo", "updated_at": "2023-01-01T00:00:00Z"}]`),
+			want: GitHubPoCRepos{
+				{
+					URL:         "https://github.com/foo/bar",
+					Description: "foo",
+					UpdatedAt:   "2023-01-01T00:00:00Z",
+				},
+			},
+			expectErr: false,
+		},
+		{
+			name:      "Nil value",
+			value:     nil,
+			want:      nil,
+			expectErr: false,
+		},
+		{
+			name:      "Invalid type",
+			value:     "invalid string",
+			want:      nil,
+			expectErr: true,
+		},
+		{
+			name:      "Invalid JSON array",
+			value:     []byte(`{"invalid": json`),
+			want:      nil,
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var g GitHubPoCRepos
+			err := g.Scan(tt.value)
+			if (err != nil) != tt.expectErr {
+				t.Errorf("GitHubPoCRepos.Scan() error = %v, expectErr %v", err, tt.expectErr)
+				return
+			}
+			if !tt.expectErr {
+				if len(g) != len(tt.want) {
+					t.Errorf("GitHubPoCRepos.Scan() got = %v, want %v", g, tt.want)
+				}
+				for i := range g {
+					if g[i].URL != tt.want[i].URL || g[i].Description != tt.want[i].Description || g[i].UpdatedAt != tt.want[i].UpdatedAt {
+						t.Errorf("GitHubPoCRepos.Scan() got = %v, want %v", g, tt.want)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestGitHubPoCRepos_Value(t *testing.T) {
+	tests := []struct {
+		name      string
+		g         GitHubPoCRepos
+		want      driver.Value
+		expectErr bool
+	}{
+		{
+			name: "Valid GitHubPoCRepos",
+			g: GitHubPoCRepos{
+				{
+					URL:         "https://github.com/foo/bar",
+					Name:        "bar",
+					Stars:       10,
+					Description: "foo",
+					UpdatedAt:   "2023-01-01T00:00:00Z",
+				},
+			},
+			want:      []byte(`[{"url":"https://github.com/foo/bar","name":"bar","stars":10,"description":"foo","updated_at":"2023-01-01T00:00:00Z"}]`),
+			expectErr: false,
+		},
+		{
+			name:      "Nil GitHubPoCRepos",
+			g:         nil,
+			want:      nil,
+			expectErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.g.Value()
+			if (err != nil) != tt.expectErr {
+				t.Errorf("GitHubPoCRepos.Value() error = %v, expectErr %v", err, tt.expectErr)
+				return
+			}
+
+			if tt.want == nil {
+				if got != nil {
+					t.Errorf("GitHubPoCRepos.Value() got = %v, want %v", got, tt.want)
+				}
+				return
+			}
+
+			// got is returned as []byte when marshaled correctly by pgx driver
+			gotBytes, ok := got.([]byte)
+			if !ok {
+				t.Errorf("GitHubPoCRepos.Value() returned driver.Value of type %T, expected []byte", got)
+				return
+			}
+			wantBytes := tt.want.([]byte)
+
+			if string(gotBytes) != string(wantBytes) {
+				t.Errorf("GitHubPoCRepos.Value() got = %s, want %s", string(gotBytes), string(wantBytes))
+			}
+		})
+	}
 }
