@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"reflect"
 	"strings"
 	"sync"
@@ -530,6 +531,9 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 	}
 }
 func (a *App) SendResponse(w http.ResponseWriter, r *http.Request, success bool, message string, redirect string, errMsg string) {
+	if redirect != "" {
+		redirect = SafeRedirect(redirect, r.Host)
+	}
 	statusCode := http.StatusOK
 	if !success {
 		statusCode = http.StatusBadRequest
@@ -578,6 +582,41 @@ func (a *App) SendResponse(w http.ResponseWriter, r *http.Request, success bool,
 		redirect = "/"
 	}
 	http.Redirect(w, r, redirect, http.StatusFound)
+}
+
+func SafeRedirect(redirect string, rHost string) string {
+	if redirect == "" {
+		return "/dashboard"
+	}
+
+	ref, err := url.Parse(redirect)
+	if err != nil {
+		return "/dashboard"
+	}
+
+	// Prevent javascript: or other unexpected schemes
+	if ref.Scheme != "" && ref.Scheme != "http" && ref.Scheme != "https" {
+		return "/dashboard"
+	}
+
+	// Must be an absolute path (but not a protocol-relative absolute URL to an external host) or match the current host.
+	if ref.Host != "" && ref.Host != rHost {
+		return "/dashboard"
+	}
+
+	// Prevent protocol-relative bypasses masquerading as relative paths
+	if ref.Host == "" && (strings.HasPrefix(redirect, "//") || strings.HasPrefix(redirect, "\\\\") || strings.HasPrefix(redirect, "/\\") || strings.HasPrefix(redirect, "\\/")) {
+		return "/dashboard"
+	}
+
+	// Additional sanity check for absolute URLs (handles url.Parse quirks)
+	if strings.HasPrefix(redirect, "http") {
+		if ref.Host != rHost {
+			return "/dashboard"
+		}
+	}
+
+	return redirect
 }
 
 func sanitizeForLog(s string) string {
