@@ -50,3 +50,6 @@
 ## 2026-06-13 - Optimized Redundant Database COUNT Query
 **Learning:** Running an explicit SELECT COUNT(*) query solely to get the length of the results from a preceding identical SELECT statement causes an unnecessary database roundtrip.
 **Action:** Replaced the redundant query with total := len(slice) since the slice already contains exactly the bounded subset of rows from the database. Removed the associated unneeded pgxmock.ExpectQuery expectation in tests.
+## 2026-06-20 - Optimize KEV Bulk Update
+**Learning:** When using PostgreSQL bulk updates via `unnest` for sync workers, updating rows that haven't actually changed creates excessive WAL (Write-Ahead Log) writes and table bloat.
+**Action:** Always append `IS DISTINCT FROM` to the `WHERE` clause in `UPDATE ... FROM (SELECT unnest(...))` queries so only modified rows are updated, reducing I/O and bloat.

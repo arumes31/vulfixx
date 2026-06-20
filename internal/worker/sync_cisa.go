@@ -158,7 +158,7 @@ func (w *Worker) fetchFromCISAKEV(ctx context.Context) {
 			_, err = tx.Exec(ctx, `
 				UPDATE cves SET cisa_kev_data = u.kev_data::jsonb
 				FROM (SELECT unnest($1::text[]) AS cve_id, unnest($2::text[]) AS kev_data) AS u
-				WHERE cves.cve_id = u.cve_id`, kevIDs, kevJSON)
+				WHERE cves.cve_id = u.cve_id AND cves.cisa_kev_data IS DISTINCT FROM u.kev_data::jsonb`, kevIDs, kevJSON)
 			if err != nil {
 				slog.Error("Worker: [ERROR] Failed to bulk update KEV data batch", "error", err)
 				if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
