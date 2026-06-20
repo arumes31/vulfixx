@@ -179,9 +179,15 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 
 		httpClient := &MockHTTPClient{
 			DoFunc: func(req *http.Request) (*http.Response, error) {
+				if strings.Contains(req.URL.String(), "rhsa.rss") {
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(rdfContent)),
+					}, nil
+				}
 				return &http.Response{
 					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(strings.NewReader(rdfContent)),
+					Body:       io.NopCloser(strings.NewReader(`<?xml version="1.0"?><rss><channel></channel></rss>`)),
 				}, nil
 			},
 		}
@@ -319,9 +325,15 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 
 		httpClient := &MockHTTPClient{
 			DoFunc: func(req *http.Request) (*http.Response, error) {
+				if strings.Contains(req.URL.String(), "CiscoSecurityAdvisory.xml") {
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(xmlContentDup)),
+					}, nil
+				}
 				return &http.Response{
 					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(strings.NewReader(xmlContentDup)),
+					Body:       io.NopCloser(strings.NewReader(`<?xml version="1.0"?><rss><channel></channel></rss>`)),
 				}, nil
 			},
 		}

@@ -164,6 +164,12 @@ func (w *Worker) processEmailChange(ctx context.Context) {
 func (w *Worker) sendEmailChangeNotification(email, token, emailType string) error {
 	subject := "Confirm Your Email Change"
 	baseURL := config.AppConfig.BaseURL
+	if baseURL == "" {
+		baseURL = os.Getenv("BASE_URL")
+	}
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
 	encodedToken := url.QueryEscape(token)
 	link := fmt.Sprintf("%s/confirm-email-change?token=%s", baseURL, encodedToken)
 
@@ -214,6 +220,12 @@ func (w *Worker) sendEmailChangeNotification(email, token, emailType string) err
 func (w *Worker) sendVerificationEmail(email, token string) error {
 	subject := "Verify Your Email Address"
 	baseURL := config.AppConfig.BaseURL
+	if baseURL == "" {
+		baseURL = os.Getenv("BASE_URL")
+	}
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
 	encodedToken := url.QueryEscape(token)
 	link := fmt.Sprintf("%s/verify-email?token=%s", baseURL, encodedToken)
 
