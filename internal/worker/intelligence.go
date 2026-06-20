@@ -89,7 +89,6 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 	processedCVEs := make([]models.CVE, 0, len(cves))
 
 	for _, c := range cves {
-		c := c
 		g.Go(func() error {
 			if err := limiter.Wait(gCtx); err != nil {
 				return err
