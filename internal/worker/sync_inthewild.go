@@ -141,29 +141,17 @@ func (w *Worker) fetchInTheWildData(ctx context.Context, cveID string) (map[stri
 		baseURL = envURL
 	}
 	url := fmt.Sprintf("%s/%s", baseURL, cveID)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil) // #nosec G704
+	var result map[string]interface{}
+	status, err := FetchJSON(ctx, w.HTTP, url, &result)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Vulfixx-Threat-Intel/2.0")
 
-	resp, err := w.HTTP.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
+	if status == http.StatusNotFound {
 		return nil, nil
 	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("InTheWild API returned status %d", resp.StatusCode)
-	}
-
-	var result map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("InTheWild API returned status %d", status)
 	}
 
 	// Ensure we only return data if it actually contains exploitation info

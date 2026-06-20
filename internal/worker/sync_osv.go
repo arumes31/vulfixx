@@ -201,29 +201,17 @@ func (w *Worker) syncOSV(ctx context.Context) {
 
 func (w *Worker) fetchOSVData(ctx context.Context, cveID string) (*osvResponse, error) {
 	url := fmt.Sprintf("https://api.osv.dev/v1/vulns/%s", cveID)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	var result osvResponse
+	status, err := FetchJSON(ctx, w.HTTP, url, &result)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Vulfixx-Threat-Intel/2.0")
 
-	resp, err := w.HTTP.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
+	if status == http.StatusNotFound {
 		return nil, nil
 	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OSV API returned status %d", resp.StatusCode)
-	}
-
-	var result osvResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("OSV API returned status %d", status)
 	}
 
 	return &result, nil
