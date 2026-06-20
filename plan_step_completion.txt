@@ -1,0 +1,6 @@
+I have successfully refactored `mapNVDEntryToModel` into smaller helper functions:
+- `getNVDDescription`
+- `parseNVDReferences`
+- `parseNVDDates`
+
+The original `mapNVDEntryToModel` function is now much cleaner and delegates specific mapping concerns to these well-named helper functions.
