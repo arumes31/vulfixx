@@ -2,9 +2,9 @@ package worker
 
 import (
 	"bytes"
+	"cve-tracker/internal/config"
 	"fmt"
 	"html/template"
-	"os"
 	"strings"
 	"time"
 
@@ -159,10 +159,7 @@ func RenderEmailTemplate(title, bodyTmpl string, data interface{}) (string, erro
 		return "", fmt.Errorf("failed to execute inner email template: %w", err)
 	}
 
-	baseURL := os.Getenv("BASE_URL")
-	if baseURL == "" {
-		baseURL = "http://localhost:8080"
-	}
+	baseURL := config.AppConfig.BaseURL
 	baseURL = strings.TrimSuffix(baseURL, "/")
 
 	sanitizedBody := bluemonday.UGCPolicy().Sanitize(bodyBuf.String())
