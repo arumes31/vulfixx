@@ -128,7 +128,7 @@ func TestApp_SessionMethods(t *testing.T) {
 		req, _ := http.NewRequest("GET", "/", nil)
 		rr := httptest.NewRecorder()
 
-		err := app.SetActiveTeamID(rr, req, 789)
+		err := app.SetActiveTeamID(rr, req, 789, "Test Team")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -241,7 +241,7 @@ func TestApp_SessionMethods_Errors(t *testing.T) {
 		req.AddCookie(&http.Cookie{Name: "vulfixx-session", Value: "garbage"})
 		rr := httptest.NewRecorder()
 
-		err := app.SetActiveTeamID(rr, req, 123)
+		err := app.SetActiveTeamID(rr, req, 123, "")
 		if err == nil {
 			t.Error("expected error on SetActiveTeamID with bad session")
 		}
