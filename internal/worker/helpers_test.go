@@ -15,12 +15,14 @@ type EmailSenderMock struct {
 	Count       int
 	LastTo      string
 	LastSubject string
+	LastBody      string
 }
 
 func (m *EmailSenderMock) SendEmail(to, subject, body string) error {
 	m.Count++
 	m.LastTo = to
 	m.LastSubject = subject
+	m.LastBody = body
 	return nil
 }
 
