@@ -75,7 +75,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, email, password_hash, is_email_verified, is_totp_enabled, COALESCE(totp_secret, ''), is_admin FROM users WHERE email = $1")).
 		WithArgs("web_test2@example.com").
 		WillReturnRows(pgxmock.NewRows([]string{"id", "email", "password_hash", "is_email_verified", "is_totp_enabled", "totp_secret", "is_admin"}).
-			AddRow(1, "web_test2@example.com", string(hashedPassword), true, false, "", false))
+			AddRow(1, "web_test2@example.com", hashedPassword, true, false, "", false))
 
 	mock.ExpectExec("INSERT INTO user_activity_logs").WithArgs(1, "login", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
@@ -95,7 +95,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 	}
 	_ = resLogin.Body.Close()
 
-	doAuthReq := func(method, path string, body []byte, extraMocks func(), _ ...int) *http.Response {
+	doAuthReq := func(method, path string, body []byte, extraMocks func(), _ ...int) {
 		isPublic := path == "/" || strings.HasPrefix(path, "/feed") || path == "/login" || path == "/register" || strings.HasPrefix(path, "/verify-email") || strings.HasPrefix(path, "/confirm-email-change") || path == "/logout" || strings.HasPrefix(path, "/cve/") || path == "/robots.txt" || path == "/sitemap.xml"
 
 		if !isPublic {
@@ -123,15 +123,15 @@ func TestWebEndpointsCoverage(t *testing.T) {
 		res, err := client.Do(req)
 		if err != nil {
 			t.Errorf("Request to %s failed: %v", path, err)
-			return nil
+			return
 		}
 		t.Cleanup(func() {
 			if res != nil {
 				_ = res.Body.Close()
 			}
 		})
-		return res
-	}
+		}
+
 
 	// 1. Home
 	doAuthReq("GET", "/", nil, func() {
