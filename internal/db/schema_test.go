@@ -121,6 +121,8 @@ func TestDefaultSchemaWrappers(t *testing.T) {
 		db.Close()
 	}
 
+	_ = gooseSetDialect("invalid")
+
 	// gooseUp will likely return error with nil db, which is fine
 	_ = gooseUp(context.Background(), nil, "invalid")
 }
@@ -138,7 +140,14 @@ func TestMigrate_GooseSetDialectFailure(t *testing.T) {
 	}
 	defer func() { sqlOpener = oldSqlOpener }()
 
-	// Since we cannot easily mock goose.SetDialect (it's a package level function call)
-	// and it's unlikely to fail with "postgres", we've reached the limit of practical mocking
-	// without changing the source code to wrap goose.SetDialect as well.
+	oldGooseSetDialect := gooseSetDialect
+	gooseSetDialect = func(dialect string) error {
+		return fmt.Errorf("forced set dialect failure")
+	}
+	defer func() { gooseSetDialect = oldGooseSetDialect }()
+
+	err = migrate(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "forced set dialect failure") {
+		t.Errorf("expected goose set dialect failure, got: %v", err)
+	}
 }
