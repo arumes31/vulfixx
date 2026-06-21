@@ -107,7 +107,7 @@ func (app *App) Routes(cfg *config.Config) (http.Handler, error) {
 		[]byte(csrfKey),
 		csrf.Secure(cfg.SecureCookie),
 		csrf.HttpOnly(true),
-		csrf.SameSite(csrf.SameSiteLaxMode),
+		csrf.SameSite(csrf.SameSiteStrictMode),
 		csrf.Path("/"),
 		csrf.FieldName("gorilla.csrf.Token"),
 		csrf.RequestHeader("X-CSRF-Token"),

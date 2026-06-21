@@ -23,7 +23,7 @@ func InitSession(key []byte, secure bool) sessions.Store {
 		MaxAge:   86400 * 7,
 		HttpOnly: true,
 		Secure:   secure,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 	}
 	store = s // Keep global for now to avoid breaking everything at once
 	return s
@@ -49,7 +49,7 @@ func InitRedisSession(client db.RedisProvider, key []byte, secure bool) (session
 		MaxAge:   86400 * 7,
 		HttpOnly: true,
 		Secure:   secure,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 	})
 
 	store = rs
