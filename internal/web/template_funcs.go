@@ -1,7 +1,6 @@
 package web
 
 import (
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"net/url"
@@ -202,10 +201,6 @@ func (a *App) GetTemplateFuncs() template.FuncMap {
 				return "bg-yellow-500"
 			}
 			return "bg-blue-500"
-		},
-		"marshal": func(v interface{}) template.JS {
-			a, _ := json.Marshal(v)
-			return template.JS(a) // #nosec G203
 		},
 		"vendorLinks": func(cveID string, description string) []map[string]string {
 			links := []map[string]string{}
