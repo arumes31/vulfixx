@@ -191,7 +191,8 @@ func (w *Worker) updateGitHubBatch(ctx context.Context, updates []githubUpdateIt
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	query := "UPDATE cves SET github_poc_count = $1, github_poc_repos = $2 WHERE cve_id = $3"
+	// ⚡ Bolt: Prevent unnecessary WAL writes and disk I/O when the GitHub PoC data hasn't changed.
+	query := "UPDATE cves SET github_poc_count = $1, github_poc_repos = $2 WHERE cve_id = $3 AND (github_poc_count IS DISTINCT FROM $1 OR github_poc_repos IS DISTINCT FROM $2)"
 	batch := &pgx.Batch{}
 	for _, up := range updates {
 		batch.Queue(query, up.totalCount, up.pocRepos, up.cveID)

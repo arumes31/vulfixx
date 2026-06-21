@@ -50,3 +50,7 @@
 ## 2026-06-13 - Optimized Redundant Database COUNT Query
 **Learning:** Running an explicit SELECT COUNT(*) query solely to get the length of the results from a preceding identical SELECT statement causes an unnecessary database roundtrip.
 **Action:** Replaced the redundant query with total := len(slice) since the slice already contains exactly the bounded subset of rows from the database. Removed the associated unneeded pgxmock.ExpectQuery expectation in tests.
+
+## 2024-06-21 - Optimize GitHub Buzz sync database updates
+**Learning:** In the GitHub Buzz synchronization worker, database updates were executed iteratively via `pgx.Batch`. To prevent unnecessary WAL writes when the data hasn't changed, appending an `IS DISTINCT FROM` clause to the `UPDATE` query provides an excellent and safe performance optimization without sacrificing code readability or introducing complicated unnest logic.
+**Action:** When updating database records sequentially in a batch queue or loop, append `AND (column_a IS DISTINCT FROM $1 OR column_b IS DISTINCT FROM $2)` to the `WHERE` clause to safely prevent empty updates that trigger excessive Write-Ahead Logging (WAL) disk I/O.
