@@ -17,3 +17,6 @@
 ## 2026-06-07 - Form Input Label Association
 **Learning:** Without explicit `id` attributes on form inputs that match the `for` attribute on corresponding `<label>` elements, screen readers fail to associate the label with the input. Furthermore, using identical IDs in both the primary view and dynamically generated modals causes ID collisions and breaks label resolution.
 **Action:** Always assign a unique `id` to every `<input>` and `<select>` and explicitly link them to `<label for="[id]">`. For dynamic forms inside modals, use a prefix like `edit_` to ensure IDs remain globally unique on the page.
+## $(date +%Y-%m-%d) - Added aria-labels to select elements
+**Learning:** Found that \`<select>\` dropdowns lacking an associated \`<label>\` were inaccessible to screen readers in \`templates/dashboard.html\`.
+**Action:** Always ensure that all interactive elements, including \`<select>\` dropdowns, have an associated \`<label>\` or an \`aria-label\` attribute if a visible label is missing or implicit.
