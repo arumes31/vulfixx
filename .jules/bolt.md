@@ -50,3 +50,7 @@
 ## 2026-06-13 - Optimized Redundant Database COUNT Query
 **Learning:** Running an explicit SELECT COUNT(*) query solely to get the length of the results from a preceding identical SELECT statement causes an unnecessary database roundtrip.
 **Action:** Replaced the redundant query with total := len(slice) since the slice already contains exactly the bounded subset of rows from the database. Removed the associated unneeded pgxmock.ExpectQuery expectation in tests.
+## 2026-06-21 - Removed DISTINCT from Public Dashboard Aggregate Counts
+**Performance Issue:** Execution of multiple aggregate `COUNT(DISTINCT ...)` queries on the primary key without `JOIN`s causes forced sorting/hashing across the entire table.
+**Learning:** Using `DISTINCT` inside an aggregate `COUNT` function on a primary key column when the base query has no `JOIN`s that could cause row duplication is entirely redundant and severely degrades database performance, particularly on large tables.
+**Action:** Removed `DISTINCT` from the `COUNT` aggregates in `fetchPublicDashboardMetrics` to skip unnecessary hashing and sorting overhead.

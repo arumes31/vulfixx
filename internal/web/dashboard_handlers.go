@@ -1083,11 +1083,16 @@ func (a *App) fetchPublicDashboardMetrics(ctx context.Context, whereClause strin
 		return metrics, nil
 	}
 
+	// ⚡ Bolt Optimization:
+	// Removed DISTINCT from the COUNT aggregates. Since cves is queried directly
+	// without any JOINs that could duplicate rows, and id is the primary key,
+	// DISTINCT is redundant and causes severe performance degradation due to
+	// forced sorting/hashing across the entire table.
 	metricsQuery := `
 		SELECT
-			COUNT(DISTINCT c.id) as total_cves,
-			COUNT(DISTINCT CASE WHEN c.cisa_kev = true THEN c.id END) as kev_count,
-			COUNT(DISTINCT CASE WHEN c.cvss_score >= 9.0 THEN c.id END) as critical_count
+			COUNT(c.id) as total_cves,
+			COUNT(CASE WHEN c.cisa_kev = true THEN 1 END) as kev_count,
+			COUNT(CASE WHEN c.cvss_score >= 9.0 THEN 1 END) as critical_count
 		FROM cves c` + whereClause
 	err := a.Pool.QueryRow(ctx, metricsQuery, args...).Scan(&metrics.totalItems, &metrics.kevCount, &metrics.critCount)
 	if err != nil {
