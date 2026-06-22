@@ -2,20 +2,21 @@ package worker
 
 import (
 	"context"
+	"cve-tracker/internal/db"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"io"
-	"reflect"
-	"strings"
-	"testing"
-
-	"cve-tracker/internal/db"
-
 	"github.com/PuerkitoBio/goquery"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/pashagolub/pgxmock/v3"
 	"github.com/redis/go-redis/v9"
+	"io"
+	"net/http"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
 )
 
 func TestParseFortiGuardAdvisoryHTML(t *testing.T) {
@@ -601,5 +602,421 @@ func TestFortiGuardCVEUpdate(t *testing.T) {
 				t.Errorf("unmet expectations: %v", err)
 			}
 		})
+	}
+}
+
+
+func TestFortiGuardShouldRetry(t *testing.T) {
+	tests := []struct {
+		name           string
+		resp           *http.Response
+		err            error
+		attempt        int
+		expectedRetry  bool
+		expectedWaitGt time.Duration
+	}{
+		{
+			name:           "error case",
+			resp:           nil,
+			err:            errors.New("network error"),
+			attempt:        0,
+			expectedRetry:  true,
+			expectedWaitGt: time.Second,
+		},
+		{
+			name:           "nil response",
+			resp:           nil,
+			err:            nil,
+			attempt:        0,
+			expectedRetry:  false,
+			expectedWaitGt: 0,
+		},
+		{
+			name: "429 with retry-after header",
+			resp: &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header:     http.Header{"Retry-After": []string{"10"}},
+			},
+			err:            nil,
+			attempt:        0,
+			expectedRetry:  true,
+			expectedWaitGt: 9 * time.Second,
+		},
+		{
+			name: "429 without retry-after header",
+			resp: &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header:     http.Header{},
+			},
+			err:            nil,
+			attempt:        0,
+			expectedRetry:  true,
+			expectedWaitGt: 29 * time.Second,
+		},
+		{
+			name: "429 wait time cap",
+			resp: &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header:     http.Header{"Retry-After": []string{"600"}},
+			},
+			err:            nil,
+			attempt:        0,
+			expectedRetry:  true,
+			expectedWaitGt: 4 * time.Minute, // capped at 5m, wait > 4m
+		},
+		{
+			name: "500 server error",
+			resp: &http.Response{
+				StatusCode: http.StatusInternalServerError,
+			},
+			err:            nil,
+			attempt:        0,
+			expectedRetry:  true,
+			expectedWaitGt: time.Second,
+		},
+		{
+			name: "200 OK",
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+			},
+			err:            nil,
+			attempt:        0,
+			expectedRetry:  false,
+			expectedWaitGt: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			retry, wait := fortiGuardShouldRetry(tt.resp, tt.err, tt.attempt)
+			if retry != tt.expectedRetry {
+				t.Errorf("expected retry %v, got %v", tt.expectedRetry, retry)
+			}
+			if wait < tt.expectedWaitGt {
+				t.Errorf("expected wait > %v, got %v", tt.expectedWaitGt, wait)
+			}
+		})
+	}
+}
+
+func TestSyncFortiguard(t *testing.T) {
+	// Simple test to ensure it runs without panicking
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to setup mock redis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	w := NewWorker(mock, rdb, &EmailSenderMock{}, &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			return nil, errors.New("network error")
+		},
+	})
+
+	ctx := context.Background()
+	w.syncFortiguard(ctx) // should fail to fetch RSS and return
+}
+
+func TestFetchFortiGuardRSS(t *testing.T) {
+	tests := []struct {
+		name          string
+		httpResponse  *http.Response
+		httpError     error
+		expectedCount int
+		expectError   bool
+	}{
+		{
+			name: "success",
+			httpResponse: &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+	<item>
+		<title>FG-IR-24-001 CVE-2024-0001</title>
+		<link>http://example.com</link>
+		<description>test</description>
+	</item>
+</channel>
+</rss>`)),
+			},
+			expectedCount: 1,
+			expectError:   false,
+		},
+		{
+			name:        "http error",
+			httpError:   errors.New("network error"),
+			expectError: true,
+		},
+		{
+			name: "non-200 status",
+			httpResponse: &http.Response{
+				StatusCode: http.StatusInternalServerError,
+				Body:       io.NopCloser(strings.NewReader("")),
+			},
+			expectError: true,
+		},
+		{
+			name: "invalid xml",
+			httpResponse: &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader("invalid xml")),
+			},
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := &Worker{
+				HTTP: &MockHTTPClient{
+					DoFunc: func(req *http.Request) (*http.Response, error) {
+						return tt.httpResponse, tt.httpError
+					},
+				},
+			}
+			ctx := context.Background()
+			res, err := w.fetchFortiGuardRSS(ctx)
+			if (err != nil) != tt.expectError {
+				t.Errorf("expected error %v, got %v", tt.expectError, err)
+			}
+			if err == nil && len(res) != tt.expectedCount {
+				t.Errorf("expected %d items, got %d", tt.expectedCount, len(res))
+			}
+		})
+	}
+}
+
+func TestFilterRelevantAdvisories(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	w := &Worker{Pool: mock}
+	ctx := context.Background()
+
+	// Empty map
+	res, err := w.filterRelevantAdvisories(ctx, map[string]struct {
+		cveIDs []string
+		url    string
+	}{})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(res) != 0 {
+		t.Errorf("expected 0 items, got %d", len(res))
+	}
+
+	advisoryMap := map[string]struct {
+		cveIDs []string
+		url    string
+	}{
+		"FG-IR-24-001": {
+			cveIDs: []string{"CVE-2024-0001"},
+			url:    "",
+		},
+		"FG-IR-24-002": {
+			cveIDs: []string{"CVE-2024-0002"},
+			url:    "",
+		},
+	}
+
+	rows := pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-2024-0001")
+	mock.ExpectQuery(`SELECT cve_id FROM cves WHERE cve_id = ANY`).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(rows)
+
+	res, err = w.filterRelevantAdvisories(ctx, advisoryMap)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(res) != 1 {
+		t.Errorf("expected 1 item, got %d", len(res))
+	}
+	if res[0] != "FG-IR-24-001" {
+		t.Errorf("expected FG-IR-24-001, got %v", res[0])
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
+
+func TestProcessAdvisories(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to setup mock redis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	// Cache one advisory
+	advisory := &FortiGuardAdvisory{
+		AdvisoryID: "FG-IR-24-001",
+		CVEIDs:     []string{"CVE-2024-0001"},
+	}
+	data, _ := json.Marshal(advisory)
+	rdb.Set(context.Background(), "fortiguard:advisory:FG-IR-24-001", data, 0)
+
+	// Scrape another advisory
+	w := NewWorker(mock, rdb, &EmailSenderMock{}, &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			html := `<html><body>
+				<div class="cve-id">CVE-2024-0002</div>
+				<h2 class="title">Test</h2>
+				<div class="severity">Critical</div>
+				<div class="cvss">9.8</div>
+			</body></html>`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(html)),
+			}, nil
+		},
+	})
+
+	// Mock update for both
+	rows1 := pgxmock.NewRows([]string{"id", "cve_id", "affected_products", "vendor_advisories"}).
+		AddRow(1, "CVE-2024-0001", []byte(`[]`), []byte(`{}`))
+	mock.ExpectQuery(`SELECT id, cve_id, affected_products, vendor_advisories FROM cves WHERE cve_id = ANY`).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(rows1)
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE cves`).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectCommit()
+
+	rows2 := pgxmock.NewRows([]string{"id", "cve_id", "affected_products", "vendor_advisories"}).
+		AddRow(2, "CVE-2024-0002", []byte(`[]`), []byte(`{}`))
+	mock.ExpectQuery(`SELECT id, cve_id, affected_products, vendor_advisories FROM cves WHERE cve_id = ANY`).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnRows(rows2)
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE cves`).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectCommit()
+
+	ctx := context.Background()
+	count, err := w.processAdvisories(ctx, []string{"FG-IR-24-001", "FG-IR-24-002"})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if count != 2 {
+		t.Errorf("expected 2 processed, got %d", count)
+	}
+}
+
+func TestScrapeFortiGuardAdvisory(t *testing.T) {
+	tests := []struct {
+		name         string
+		httpResponse *http.Response
+		httpError    error
+		expectError  bool
+	}{
+		{
+			name: "success",
+			httpResponse: &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`<html><body>
+					<div class="cve-id">CVE-2024-0001</div>
+				</body></html>`)),
+			},
+			expectError: false,
+		},
+		{
+			name:        "http error",
+			httpError:   errors.New("network error"),
+			expectError: true,
+		},
+		{
+			name: "non-200 status",
+			httpResponse: &http.Response{
+				StatusCode: http.StatusInternalServerError,
+				Body:       io.NopCloser(strings.NewReader("")),
+			},
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := &Worker{
+				HTTP: &MockHTTPClient{
+					DoFunc: func(req *http.Request) (*http.Response, error) {
+						return tt.httpResponse, tt.httpError
+					},
+				},
+			}
+			ctx := context.Background()
+			res, err := w.scrapeFortiGuardAdvisory(ctx, "http://example.com")
+			if (err != nil) != tt.expectError {
+				t.Errorf("expected error %v, got %v", tt.expectError, err)
+			}
+			if err == nil && res == nil {
+				t.Errorf("expected result, got nil")
+			}
+		})
+	}
+}
+
+func TestFortiGuardCache(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to setup mock redis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	w := &Worker{Redis: rdb}
+	ctx := context.Background()
+
+	// Miss
+	res, err := w.getCachedAdvisory(ctx, "FG-IR-24-001")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if res != nil {
+		t.Errorf("expected nil result, got %v", res)
+	}
+
+	// Cache
+	advisory := &FortiGuardAdvisory{
+		AdvisoryID: "FG-IR-24-001",
+		CVEIDs:     []string{"CVE-2024-0001"},
+	}
+	err = w.cacheAdvisory(ctx, advisory)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	// Hit
+	res, err = w.getCachedAdvisory(ctx, "FG-IR-24-001")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if res == nil {
+		t.Fatalf("expected result, got nil")
+	}
+	if res.AdvisoryID != "FG-IR-24-001" {
+		t.Errorf("expected FG-IR-24-001, got %v", res.AdvisoryID)
 	}
 }
