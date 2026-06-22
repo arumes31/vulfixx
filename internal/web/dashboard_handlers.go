@@ -474,6 +474,18 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) getTrendingCVEs(r *http.Request) []models.CVE {
+	// ⚡ Bolt Optimization: Cache the expensive top-100 trending CVEs query for the public dashboard.
+	// The query uses multiple COALESCE and conditional aggregations. Caching for 15 minutes reduces DB load significantly.
+	cacheKey := "trending_cves"
+	if a.Redis != nil {
+		if val, err := a.Redis.Get(r.Context(), cacheKey).Result(); err == nil {
+			var cachedCVEs []models.CVE
+			if err := json.Unmarshal([]byte(val), &cachedCVEs); err == nil {
+				return cachedCVEs
+			}
+		}
+	}
+
 	rows, err := a.Pool.Query(r.Context(), `
 		SELECT 
 			c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, 
@@ -500,6 +512,14 @@ func (a *App) getTrendingCVEs(r *http.Request) []models.CVE {
 		}
 		cves = append(cves, c)
 	}
+
+	if a.Redis != nil {
+		// ⚡ Cache the result for 15 minutes to reduce database queries.
+		if jsonData, err := json.Marshal(cves); err == nil {
+			_ = a.Redis.Set(r.Context(), cacheKey, jsonData, 15*time.Minute).Err()
+		}
+	}
+
 	return cves
 }
 
