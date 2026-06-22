@@ -155,6 +155,48 @@ func TestCSRFProtection(t *testing.T) {
 		}
 	})
 
+
+	t.Run("EmptyRequestToken", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("csrf_token="))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rr := httptest.NewRecorder()
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["admin_csrf_token"] = "valid"
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("failed to save session: %v", err)
+		}
+
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		if app.ValidateCSRF(req) {
+			t.Errorf("expected CSRF validation to fail due to empty request token")
+		}
+	})
+
+
+	t.Run("EmptyRequestHeaderToken", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "/admin/delete", nil)
+		req.Header.Set("X-CSRF-Token", "")
+
+		rr := httptest.NewRecorder()
+		session, _ := app.SessionStore.Get(req, "vulfixx-session")
+		session.Values["admin_csrf_token"] = "valid"
+		if err := session.Save(req, rr); err != nil {
+			t.Fatalf("failed to save session: %v", err)
+		}
+
+		for _, c := range rr.Result().Cookies() {
+			req.AddCookie(c)
+		}
+
+		if app.ValidateCSRF(req) {
+			t.Errorf("expected CSRF validation to fail due to empty request header token")
+		}
+	})
+
 	t.Run("MissingRequestToken", func(t *testing.T) {
 		req, _ := http.NewRequest("POST", "/admin/delete", strings.NewReader("other_param=value"))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
