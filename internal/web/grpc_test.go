@@ -128,3 +128,36 @@ func TestGRPC_StartServer(t *testing.T) {
 		t.Fatal("expected error starting secure gRPC server with missing cert files")
 	}
 }
+
+func TestGRPC_GetCVE_InternalError(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("failed to create pgxmock pool: %v", err)
+	}
+	defer mock.Close()
+
+	server := &CVEServiceServerImpl{Pool: mock}
+
+	cveID := "CVE-ERROR"
+	mock.ExpectQuery(`SELECT id, cve_id, description, COALESCE\(cvss_score, 0\), published_date FROM cves WHERE cve_id = \$1`).
+		WithArgs(cveID).
+		WillReturnError(context.DeadlineExceeded)
+
+	_, err = server.GetCVE(context.Background(), &proto.CVERequest{CveId: cveID})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got: %v", err)
+	}
+
+	if st.Code() != codes.Internal {
+		t.Errorf("expected status code Internal, got %s", st.Code())
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unfulfilled expectations: %v", err)
+	}
+}
