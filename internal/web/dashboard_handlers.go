@@ -51,6 +51,16 @@ type dashboardMetrics struct {
 	StatIgn    int
 }
 
+type dashboardCVEsQuery struct {
+	statusJoinCond string
+	notesJoinCond  string
+	whereClause    string
+	args           []any
+	argIdx         int
+	pageSize       int
+	offset         int
+}
+
 func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := a.GetUserID(r)
 	if !ok {
@@ -67,7 +77,15 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Dashboard metrics error: %v", err)
 	}
 
-	cves, err := a.fetchDashboardCVEs(r.Context(), statusJoinCond, notesJoinCond, whereClause, args, argIdx, filters.pageSize, filters.offset)
+	cves, err := a.fetchDashboardCVEs(r.Context(), dashboardCVEsQuery{
+		statusJoinCond: statusJoinCond,
+		notesJoinCond:  notesJoinCond,
+		whereClause:    whereClause,
+		args:           args,
+		argIdx:         argIdx,
+		pageSize:       filters.pageSize,
+		offset:         filters.offset,
+	})
 	if err != nil {
 		log.Printf("Dashboard query error: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -1623,17 +1641,17 @@ func (a *App) fetchDashboardMetrics(ctx context.Context, userID int, activeTeamI
 	return metrics, nil
 }
 
-func (a *App) fetchDashboardCVEs(ctx context.Context, statusJoinCond string, notesJoinCond string, whereClause string, args []any, argIdx int, pageSize, offset int) ([]models.CVE, error) {
+func (a *App) fetchDashboardCVEs(ctx context.Context, p dashboardCVEsQuery) ([]models.CVE, error) {
 	query := `
 		SELECT c.id, c.cve_id, c.description, COALESCE(c.cvss_score, 0), c.vector_string, c.cisa_kev, c.published_date, c.updated_date, COALESCE(ucs.status, 'active') as status, COALESCE(c."references", '{}'), ucn.notes,
 		COALESCE(c.epss_score, 0), COALESCE(c.cwe_id, ''), COALESCE(c.cwe_name, ''), COALESCE(c.github_poc_count, 0), COALESCE(c.greynoise_hits, 0), COALESCE(c.greynoise_classification, ''), COALESCE(c.osv_data, '{}'), COALESCE(c.vendor, ''), COALESCE(c.product, ''), COALESCE(c.affected_products, '[]'), COALESCE(c.priority, 'P3') as priority
 		FROM cves c
-		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ` + statusJoinCond + `
-		LEFT JOIN cve_notes ucn ON c.id = ucn.cve_id AND ` + notesJoinCond + `
-		` + whereClause + `
-		ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $` + strconv.Itoa(argIdx) + ` OFFSET $` + strconv.Itoa(argIdx+1)
+		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ` + p.statusJoinCond + `
+		LEFT JOIN cve_notes ucn ON c.id = ucn.cve_id AND ` + p.notesJoinCond + `
+		` + p.whereClause + `
+		ORDER BY c.published_date DESC NULLS LAST, c.id DESC LIMIT $` + strconv.Itoa(p.argIdx) + ` OFFSET $` + strconv.Itoa(p.argIdx+1)
 
-	finalArgs := append(args, pageSize, offset)
+	finalArgs := append(p.args, p.pageSize, p.offset)
 
 	rows, err := a.Pool.Query(ctx, query, finalArgs...)
 	if err != nil {
