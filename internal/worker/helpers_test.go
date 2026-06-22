@@ -95,27 +95,27 @@ func TestWorkerHelpers(t *testing.T) {
 	})
 
 	t.Run("SendMailWithTimeout_Errors", func(t *testing.T) {
-		err := sendMailWithTimeout("localhost", "25", "user", "pass", "bad-email", []string{"to@example.com"}, []byte("msg"))
+		err := sendMailWithTimeout(SMTPConfig{Host: "localhost", Port: "25", User: "user", Password: "pass"}, "bad-email", []string{"to@example.com"}, []byte("msg"))
 		if err == nil {
 			t.Error("expected error for invalid from address")
 		}
 
-		err = sendMailWithTimeout("localhost", "25", "user", "pass", "to@example.com", []string{"bad-email\r\n"}, []byte("msg"))
+		err = sendMailWithTimeout(SMTPConfig{Host: "localhost", Port: "25", User: "user", Password: "pass"}, "to@example.com", []string{"bad-email\r\n"}, []byte("msg"))
 		if err == nil {
 			t.Error("expected error for invalid to address")
 		}
 
-		err = sendMailWithTimeout("localhost", "invalid-port", "user", "pass", "to@example.com", []string{"to@example.com"}, []byte("msg"))
+		err = sendMailWithTimeout(SMTPConfig{Host: "localhost", Port: "invalid-port", User: "user", Password: "pass"}, "to@example.com", []string{"to@example.com"}, []byte("msg"))
 		if err == nil {
 			t.Error("expected error for invalid port format")
 		}
 
-		err = sendMailWithTimeout("localhost", "0", "user", "pass", "to@example.com", []string{"to@example.com"}, []byte("msg"))
+		err = sendMailWithTimeout(SMTPConfig{Host: "localhost", Port: "0", User: "user", Password: "pass"}, "to@example.com", []string{"to@example.com"}, []byte("msg"))
 		if err == nil {
 			t.Error("expected error for port 0")
 		}
 
-		err = sendMailWithTimeout("localhost", "25", "", "", "to@example.com", nil, []byte("msg"))
+		err = sendMailWithTimeout(SMTPConfig{Host: "localhost", Port: "25", User: "", Password: ""}, "to@example.com", nil, []byte("msg"))
 		if err == nil {
 			t.Error("expected error for empty recipients")
 		}
@@ -123,7 +123,7 @@ func TestWorkerHelpers(t *testing.T) {
 
 	t.Run("SendMailWithTimeout_DialFailure", func(t *testing.T) {
 		// Use port 1 which is usually closed/blocked
-		err := sendMailWithTimeout("127.0.0.1", "1", "", "", "from@example.com", []string{"to@example.com"}, []byte("msg"))
+		err := sendMailWithTimeout(SMTPConfig{Host: "127.0.0.1", Port: "1", User: "", Password: ""}, "from@example.com", []string{"to@example.com"}, []byte("msg"))
 		if err == nil {
 			t.Error("expected error for connection failure to closed port")
 		}
@@ -198,7 +198,7 @@ func TestWorkerHelpers(t *testing.T) {
 			errChan <- nil
 		}()
 
-		err = sendMailWithTimeout(host, port, "", "", "from@example.com", []string{"to@example.com"}, []byte("Subject: Test\r\n\r\nBody"))
+		err = sendMailWithTimeout(SMTPConfig{Host: host, Port: port, User: "", Password: ""}, "from@example.com", []string{"to@example.com"}, []byte("Subject: Test\r\n\r\nBody"))
 		if err != nil {
 			t.Errorf("expected sendMailWithTimeout to succeed, got %v", err)
 		}
@@ -247,7 +247,7 @@ func TestWorkerHelpers(t *testing.T) {
 			errChan <- nil
 		}()
 
-		err = sendMailWithTimeout(host, port, "user", "pass", "from@example.com", []string{"to@example.com"}, []byte("Subject: Test\r\n\r\nBody"))
+		err = sendMailWithTimeout(SMTPConfig{Host: host, Port: port, User: "user", Password: "pass"}, "from@example.com", []string{"to@example.com"}, []byte("Subject: Test\r\n\r\nBody"))
 		if err == nil {
 			t.Error("expected error due to auth required but TLS unsupported")
 		} else if !strings.Contains(err.Error(), "TLS is required for authentication") {

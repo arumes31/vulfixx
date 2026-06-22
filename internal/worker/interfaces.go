@@ -85,5 +85,11 @@ func (s *RealEmailSender) SendEmail(toEmail, subject, body string) error {
 	}
 
 	msg := []byte("To: " + cleanTo + "\r\n" + "From: " + cleanFrom + "\r\n" + "Subject: " + cleanSubject + "\r\n" + "Content-Type: text/html; charset=UTF-8\r\n" + "\r\n" + body)
-	return sendMailWithTimeout(s.Host, s.Port, s.User, s.Password, cleanFrom, []string{cleanTo}, msg)
+	cfg := SMTPConfig{
+		Host:     s.Host,
+		Port:     s.Port,
+		User:     s.User,
+		Password: s.Password,
+	}
+	return sendMailWithTimeout(cfg, cleanFrom, []string{cleanTo}, msg)
 }

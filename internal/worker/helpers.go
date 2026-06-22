@@ -79,8 +79,17 @@ func redactURL(u string) string {
 	return parsed.String()
 }
 
+
+// SMTPConfig holds the configuration for the SMTP server.
+type SMTPConfig struct {
+	Host     string
+	Port     string
+	User     string
+	Password string
+}
+
 // sendMailWithTimeout is a replacement for smtp.SendMail that supports deadlines.
-func sendMailWithTimeout(host, port, user, password, from string, to []string, msg []byte) error {
+func sendMailWithTimeout(cfg SMTPConfig, from string, to []string, msg []byte) error {
 	if len(to) == 0 {
 		return fmt.Errorf("no recipients specified")
 	}
@@ -98,11 +107,11 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 		}
 		cleanTo = append(cleanTo, ct)
 	}
-	if p, err := strconv.Atoi(port); err != nil || p < 1 || p > 65535 {
-		return fmt.Errorf("invalid port %q: must be numeric and between 1 and 65535", port)
+	if p, err := strconv.Atoi(cfg.Port); err != nil || p < 1 || p > 65535 {
+		return fmt.Errorf("invalid port %q: must be numeric and between 1 and 65535", cfg.Port)
 	}
-	host = sanitizeHeader(host)
-	addr := net.JoinHostPort(host, port)
+	cfg.Host = sanitizeHeader(cfg.Host)
+	addr := net.JoinHostPort(cfg.Host, cfg.Port)
 	log.Printf("Worker: Dialing SMTP server at %s", addr)
 	// #nosec G704 -- Host and port are from controlled environment variables
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
@@ -116,7 +125,7 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 	}
 
 	// #nosec G402 -- Remote host is controlled via environment variable
-	client, err := smtp.NewClient(conn, host)
+	client, err := smtp.NewClient(conn, cfg.Host)
 	if err != nil {
 		return fmt.Errorf("new client: %w", err)
 	}
@@ -126,7 +135,7 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 	if ok, _ := client.Extension("STARTTLS"); ok {
 		log.Printf("Worker: SMTP STARTTLS supported, starting upgrade")
 		config := &tls.Config{
-			ServerName: host,
+			ServerName: cfg.Host,
 		}
 		if err := client.StartTLS(config); err != nil {
 			return fmt.Errorf("starttls: %w", err)
@@ -139,17 +148,17 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 		log.Printf("Worker: SMTP STARTTLS successful")
 	}
 
-	if user != "" && password != "" {
+	if cfg.User != "" && cfg.Password != "" {
 		if !hasTLS {
-			return fmt.Errorf("TLS is required for authentication but not supported by host %s", host)
+			return fmt.Errorf("TLS is required for authentication but not supported by host %s", cfg.Host)
 		}
-		log.Printf("Worker: Attempting SMTP authentication for user %s", security.MaskEmail(user))
-		auth := smtp.PlainAuth("", user, password, host)
+		log.Printf("Worker: Attempting SMTP authentication for user %s", security.MaskEmail(cfg.User))
+		auth := smtp.PlainAuth("", cfg.User, cfg.Password, cfg.Host)
 		if err := client.Auth(auth); err != nil {
 			return fmt.Errorf("auth: %w", err)
 		}
 		log.Printf("Worker: SMTP authentication successful")
-	} else if user != "" {
+	} else if cfg.User != "" {
 		log.Printf("Worker: SMTP_USER provided but SMTP_PASS is empty, skipping authentication")
 	}
 
