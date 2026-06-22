@@ -236,6 +236,118 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 		}
 	})
 
+
+	t.Run("split", func(t *testing.T) {
+		f := funcs["split"].(func(string, string) []string)
+		if res := f("a,b,c", ","); len(res) != 3 || res[0] != "a" || res[1] != "b" || res[2] != "c" {
+			t.Errorf("expected [a b c], got %v", res)
+		}
+		if res := f("", ","); res != nil {
+			t.Errorf("expected nil for empty string, got %v", res)
+		}
+	})
+
+	t.Run("indexSafe", func(t *testing.T) {
+		f := funcs["indexSafe"].(func([]string, int) string)
+		slice := []string{"zero", "one", "two"}
+		if f(slice, 1) != "one" {
+			t.Errorf("expected 'one', got '%v'", f(slice, 1))
+		}
+		if f(slice, -1) != "" {
+			t.Errorf("expected empty string for negative index, got '%v'", f(slice, -1))
+		}
+		if f(slice, 3) != "" {
+			t.Errorf("expected empty string for out of bounds index, got '%v'", f(slice, 3))
+		}
+		if f(nil, 0) != "" {
+			t.Errorf("expected empty string for nil slice, got '%v'", f(nil, 0))
+		}
+	})
+
+	t.Run("isset", func(t *testing.T) {
+		f := funcs["isset"].(func(interface{}, interface{}) bool)
+		m := map[string]interface{}{
+			"key1": "value1",
+			"key2": nil,
+		}
+		if !f(m, "key1") {
+			t.Errorf("expected true for existing key")
+		}
+		if !f(m, "key2") {
+			t.Errorf("expected true for existing key with nil value")
+		}
+		if f(m, "key3") {
+			t.Errorf("expected false for non-existing key")
+		}
+		if f(m, 123) {
+			t.Errorf("expected false for non-string key type")
+		}
+		if f("not a map", "key1") {
+			t.Errorf("expected false for non-map input")
+		}
+	})
+
+	t.Run("isTimeZero", func(t *testing.T) {
+		f := funcs["isTimeZero"].(func(interface{}) bool)
+		if !f(nil) {
+			t.Errorf("expected true for nil")
+		}
+
+		var timePtr *time.Time
+		if !f(timePtr) {
+			t.Errorf("expected true for nil time pointer")
+		}
+
+		zeroTime := time.Time{}
+		if !f(zeroTime) {
+			t.Errorf("expected true for zero time struct")
+		}
+
+		if !f(&zeroTime) {
+			t.Errorf("expected true for pointer to zero time")
+		}
+
+		now := time.Now()
+		if f(now) {
+			t.Errorf("expected false for current time struct")
+		}
+
+		if f(&now) {
+			t.Errorf("expected false for pointer to current time")
+		}
+
+		if !f("not a time") {
+			t.Errorf("expected true for non-time type")
+		}
+	})
+
+	t.Run("toFloat", func(t *testing.T) {
+		f := funcs["toFloat"].(func(interface{}) float64)
+
+		if got := f(float64(3.14)); got != 3.14 {
+			t.Errorf("expected 3.14 for float64, got %v", got)
+		}
+
+		if got := f(float32(3.14)); got < 3.13 || got > 3.15 {
+			t.Errorf("expected ~3.14 for float32, got %v", got)
+		}
+
+		if got := f(int(42)); got != 42.0 {
+			t.Errorf("expected 42.0 for int, got %v", got)
+		}
+
+		if got := f(int64(42)); got != 42.0 {
+			t.Errorf("expected 42.0 for int64, got %v", got)
+		}
+
+		if got := f("42"); got != 0.0 {
+			t.Errorf("expected 0.0 for string, got %v", got)
+		}
+		if got := f(nil); got != 0.0 {
+			t.Errorf("expected 0.0 for nil, got %v", got)
+		}
+	})
+
 	t.Run("GetBaseURL", func(t *testing.T) {
 		f := funcs["GetBaseURL"].(func() string)
 
