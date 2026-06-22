@@ -50,3 +50,6 @@
 ## 2026-06-13 - Optimized Redundant Database COUNT Query
 **Learning:** Running an explicit SELECT COUNT(*) query solely to get the length of the results from a preceding identical SELECT statement causes an unnecessary database roundtrip.
 **Action:** Replaced the redundant query with total := len(slice) since the slice already contains exactly the bounded subset of rows from the database. Removed the associated unneeded pgxmock.ExpectQuery expectation in tests.
+## 2024-05-18 - Optimize Repeated Unmarshalling in Slack Digest
+**Learning:** Redundant JSON unmarshalling within the same function execution context can introduce unnecessary CPU overhead. By slightly re-organizing data access and combining collection logic, multiple `json.Unmarshal` calls over the exact same bytes can be eliminated.
+**Action:** When working with JSON blobs pulled from message queues or caches, always evaluate if the data is needed multiple times downstream. If so, unmarshal it exactly once and pass the instantiated structs to the relevant handlers instead of parsing the raw bytes repeatedly.

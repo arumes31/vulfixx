@@ -128,6 +128,12 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 	}
 
 	uniqueEmails := make(map[string]bool)
+	type SlackTarget struct {
+		URL   string
+		SubID int
+	}
+	slackTargets := make(map[string]SlackTarget)
+
 	type AlertItem struct {
 		CVEID     string
 		Score     float64
@@ -145,6 +151,9 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 		}
 		if data.Email != "" {
 			uniqueEmails[data.Email] = true
+		}
+		if data.Sub.EnableSlack && data.Sub.SlackWebhookURL != "" {
+			slackTargets[data.Sub.SlackWebhookURL] = SlackTarget{URL: data.Sub.SlackWebhookURL, SubID: data.Sub.ID}
 		}
 		hasOSINT := false
 		if hn, ok := data.CVE.OSINTData["hn"].([]interface{}); ok && len(hn) > 0 {
@@ -278,25 +287,7 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 	}
 
 	// Also send consolidated alerts to other channels if enabled
-	if len(blobs) > 1 {
-		type SlackTarget struct {
-			URL   string
-			SubID int
-		}
-		slackTargets := make(map[string]SlackTarget)
-
-		for _, b := range blobs {
-			var data alertData
-			if err := json.Unmarshal([]byte(b), &data); err != nil {
-				log.Printf("Error unmarshaling alert blob for Slack digest: %v", err)
-				w.logDelivery(userID, 0, 0, "slack", false, err.Error())
-				continue
-			}
-			if data.Sub.EnableSlack && data.Sub.SlackWebhookURL != "" {
-				slackTargets[data.Sub.SlackWebhookURL] = SlackTarget{URL: data.Sub.SlackWebhookURL, SubID: data.Sub.ID}
-			}
-		}
-
+	if len(blobs) > 1 && len(slackTargets) > 0 {
 		for _, target := range slackTargets {
 			msg := fmt.Sprintf("🛡️ *Intelligence Brief: %d New Threats Detected*\n\n", len(items))
 			for _, it := range items {
