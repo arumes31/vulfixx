@@ -40,7 +40,7 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 		}
 	})
 
-	t.Run("ProxyMiddleware_Cloudflare", func(t *testing.T) {
+	t.Run("ProxyMiddleware_Cloudflare_HappyPath", func(t *testing.T) {
 		t.Setenv("ENABLE_CLOUDFLARE_PROXY", "true")
 		t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8")
 
@@ -59,15 +59,74 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 		middleware := app.ProxyMiddleware(next)
 		req, _ := http.NewRequest("GET", "/", nil)
 		req.RemoteAddr = "10.0.0.1:12345"
-		req.Header.Set("CF-Connecting-IP", "1.2.3.4")
+		req.Header.Set("CF-Connecting-IP", "2.3.4.5")
 		rr := httptest.NewRecorder()
 
 		middleware.ServeHTTP(rr, req)
 
-		if capturedIP != "1.2.3.4" {
-			t.Errorf("expected client IP 1.2.3.4, got %s", capturedIP)
+		if capturedIP != "2.3.4.5" {
+			t.Errorf("expected client IP 2.3.4.5, got %s", capturedIP)
 		}
 	})
+
+	t.Run("ProxyMiddleware_Cloudflare_Disabled", func(t *testing.T) {
+		t.Setenv("ENABLE_CLOUDFLARE_PROXY", "false")
+		t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8")
+
+		mock, _ := pgxmock.NewPool()
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		var capturedIP string
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if val := r.Context().Value(clientIPKey); val != nil {
+				capturedIP = val.(string)
+			}
+			w.WriteHeader(http.StatusOK)
+		})
+
+		middleware := app.ProxyMiddleware(next)
+		req, _ := http.NewRequest("GET", "/", nil)
+		req.RemoteAddr = "10.0.0.1:12345"
+		req.Header.Set("CF-Connecting-IP", "2.3.4.5")
+		rr := httptest.NewRecorder()
+
+		middleware.ServeHTTP(rr, req)
+
+		if capturedIP != "10.0.0.1" {
+			t.Errorf("expected client IP 10.0.0.1 (fallback to host), got %s", capturedIP)
+		}
+	})
+
+	t.Run("ProxyMiddleware_Cloudflare_UntrustedProxy", func(t *testing.T) {
+		t.Setenv("ENABLE_CLOUDFLARE_PROXY", "true")
+		t.Setenv("TRUSTED_PROXIES", "127.0.0.1")
+
+		mock, _ := pgxmock.NewPool()
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		var capturedIP string
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if val := r.Context().Value(clientIPKey); val != nil {
+				capturedIP = val.(string)
+			}
+			w.WriteHeader(http.StatusOK)
+		})
+
+		middleware := app.ProxyMiddleware(next)
+		req, _ := http.NewRequest("GET", "/", nil)
+		req.RemoteAddr = "1.1.1.1:12345"
+		req.Header.Set("CF-Connecting-IP", "2.3.4.5")
+		rr := httptest.NewRecorder()
+
+		middleware.ServeHTTP(rr, req)
+
+		if capturedIP != "1.1.1.1" {
+			t.Errorf("expected client IP 1.1.1.1, got %s", capturedIP)
+		}
+	})
+
 
 	t.Run("ProxyMiddleware_TrustedProxy", func(t *testing.T) {
 		t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8")
@@ -124,6 +183,62 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 			t.Errorf("expected client IP 1.1.1.1 (RemoteAddr), got %s", capturedIP)
 		}
 	})
+
+	t.Run("ProxyMiddleware_RemoteAddrWithoutPort", func(t *testing.T) {
+		t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8")
+
+		mock, _ := pgxmock.NewPool()
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		var capturedIP string
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if val := r.Context().Value(clientIPKey); val != nil {
+				capturedIP = val.(string)
+			}
+			w.WriteHeader(http.StatusOK)
+		})
+
+		middleware := app.ProxyMiddleware(next)
+		req, _ := http.NewRequest("GET", "/", nil)
+		req.RemoteAddr = "10.0.0.1"
+		rr := httptest.NewRecorder()
+
+		middleware.ServeHTTP(rr, req)
+
+		if capturedIP != "10.0.0.1" {
+			t.Errorf("expected client IP 10.0.0.1, got %s", capturedIP)
+		}
+	})
+
+	t.Run("ProxyMiddleware_XRealIP", func(t *testing.T) {
+		t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8")
+
+		mock, _ := pgxmock.NewPool()
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		var capturedIP string
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if val := r.Context().Value(clientIPKey); val != nil {
+				capturedIP = val.(string)
+			}
+			w.WriteHeader(http.StatusOK)
+		})
+
+		middleware := app.ProxyMiddleware(next)
+		req, _ := http.NewRequest("GET", "/", nil)
+		req.RemoteAddr = "10.0.0.1:12345"
+		req.Header.Set("X-Real-IP", "9.8.7.6")
+		rr := httptest.NewRecorder()
+
+		middleware.ServeHTTP(rr, req)
+
+		if capturedIP != "9.8.7.6" {
+			t.Errorf("expected client IP 9.8.7.6, got %s", capturedIP)
+		}
+	})
+
 
 	t.Run("RateLimitMiddleware_Trigger", func(t *testing.T) {
 		mock, _ := pgxmock.NewPool()
