@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/pashagolub/pgxmock/v3"
+
+	"cve-tracker/internal/models"
 )
 
 func TestNewAssetRepository(t *testing.T) {
@@ -121,7 +123,7 @@ func TestCreateAsset(t *testing.T) {
 
 		mock.ExpectBegin().WillReturnError(fmt.Errorf("begin error"))
 
-		_, err = repo.CreateAsset(ctx, 42, nil, "Server A", "Server", "High", nil)
+		_, err = repo.CreateAsset(ctx, models.CreateAssetParams{UserID: 42, TeamID: nil, Name: "Server A", AssetType: "Server", Priority: "High", Keywords: nil})
 		if err == nil || err.Error() != "begin error" {
 			t.Errorf("expected 'begin error', got %v", err)
 		}
@@ -145,7 +147,7 @@ func TestCreateAsset(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 		mock.ExpectRollback()
 
-		_, err = repo.CreateAsset(ctx, userID, &teamID, "Server A", "Server", "High", nil)
+		_, err = repo.CreateAsset(ctx, models.CreateAssetParams{UserID: userID, TeamID: &teamID, Name: "Server A", AssetType: "Server", Priority: "High", Keywords: nil})
 		if err == nil || err.Error() != "permission denied" {
 			t.Errorf("expected 'permission denied', got %v", err)
 		}
@@ -169,7 +171,7 @@ func TestCreateAsset(t *testing.T) {
 			WillReturnError(fmt.Errorf("db error"))
 		mock.ExpectRollback()
 
-		_, err = repo.CreateAsset(ctx, userID, &teamID, "Server A", "Server", "High", nil)
+		_, err = repo.CreateAsset(ctx, models.CreateAssetParams{UserID: userID, TeamID: &teamID, Name: "Server A", AssetType: "Server", Priority: "High", Keywords: nil})
 		if err == nil || err.Error() != "db error" {
 			t.Errorf("expected 'db error', got %v", err)
 		}
@@ -202,7 +204,7 @@ func TestCreateAsset(t *testing.T) {
 
 		mock.ExpectRollback()
 
-		_, err = repo.CreateAsset(ctx, userID, &teamID, "Server A", "Server", "High", nil)
+		_, err = repo.CreateAsset(ctx, models.CreateAssetParams{UserID: userID, TeamID: &teamID, Name: "Server A", AssetType: "Server", Priority: "High", Keywords: nil})
 		if err == nil || err.Error() != "maximum of 5 assets allowed for this team" {
 			t.Errorf("expected quota exceeded error, got %v", err)
 		}
@@ -230,7 +232,7 @@ func TestCreateAsset(t *testing.T) {
 
 		mock.ExpectRollback()
 
-		_, err = repo.CreateAsset(ctx, userID, nil, "Server A", "Server", "High", nil)
+		_, err = repo.CreateAsset(ctx, models.CreateAssetParams{UserID: userID, TeamID: nil, Name: "Server A", AssetType: "Server", Priority: "High", Keywords: nil})
 		if err == nil || err.Error() != "maximum of 3 assets allowed for this account" {
 			t.Errorf("expected quota exceeded error, got %v", err)
 		}
@@ -262,7 +264,7 @@ func TestCreateAsset(t *testing.T) {
 
 		mock.ExpectRollback()
 
-		_, err = repo.CreateAsset(ctx, userID, nil, "Server A", "Server", "High", nil)
+		_, err = repo.CreateAsset(ctx, models.CreateAssetParams{UserID: userID, TeamID: nil, Name: "Server A", AssetType: "Server", Priority: "High", Keywords: nil})
 		if err == nil || err.Error() != "insert failed" {
 			t.Errorf("expected 'insert failed', got %v", err)
 		}
@@ -298,7 +300,7 @@ func TestCreateAsset(t *testing.T) {
 
 		mock.ExpectRollback()
 
-		_, err = repo.CreateAsset(ctx, userID, nil, "Server A", "Server", "High", []string{"prod"})
+		_, err = repo.CreateAsset(ctx, models.CreateAssetParams{UserID: userID, TeamID: nil, Name: "Server A", AssetType: "Server", Priority: "High", Keywords: []string{"prod"}})
 		if err == nil || err.Error() != "keyword insert failed" {
 			t.Errorf("expected 'keyword insert failed', got %v", err)
 		}
@@ -339,7 +341,7 @@ func TestCreateAsset(t *testing.T) {
 
 		mock.ExpectCommit()
 
-		assetID, err := repo.CreateAsset(ctx, userID, nil, "Server A", "Server", "High", []string{"prod", "", "web"})
+		assetID, err := repo.CreateAsset(ctx, models.CreateAssetParams{UserID: userID, TeamID: nil, Name: "Server A", AssetType: "Server", Priority: "High", Keywords: []string{"prod", "", "web"}})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}

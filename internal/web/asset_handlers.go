@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"cve-tracker/internal/models"
 )
 
 func (a *App) AssetsHandler(w http.ResponseWriter, r *http.Request) {
@@ -104,7 +106,7 @@ func (a *App) createAsset(w http.ResponseWriter, r *http.Request, userID int) {
 		}
 	}
 
-	_, err := a.AssetRepo.CreateAsset(r.Context(), userID, teamID, name, assetType, priority, kwList)
+	_, err := a.AssetRepo.CreateAsset(r.Context(), models.CreateAssetParams{UserID: userID, TeamID: teamID, Name: name, AssetType: assetType, Priority: priority, Keywords: kwList})
 	if err != nil {
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "permission denied") {

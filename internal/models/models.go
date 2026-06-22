@@ -214,6 +214,16 @@ func (a AffectedProducts) Value() (driver.Value, error) {
 	return json.Marshal(a)
 }
 
+// CreateAssetParams holds the parameters for creating a new asset.
+type CreateAssetParams struct {
+	UserID    int
+	TeamID    *int
+	Name      string
+	AssetType string
+	Priority  string
+	Keywords  []string
+}
+
 // AssetWithKeywords represents an asset with its associated keywords and team info.
 type AssetWithKeywords struct {
 	ID        int      `json:"id"`

@@ -9,7 +9,7 @@ import (
 
 type AssetRepository interface {
 	ListAssets(ctx context.Context, userID int) ([]models.AssetWithKeywords, error)
-	CreateAsset(ctx context.Context, userID int, teamID *int, name, assetType, priority string, keywords []string) (int, error)
+	CreateAsset(ctx context.Context, params models.CreateAssetParams) (int, error)
 	DeleteAsset(ctx context.Context, assetID int, userID int) (int64, error)
 }
 
@@ -51,7 +51,7 @@ func (r *assetRepo) ListAssets(ctx context.Context, userID int) ([]models.AssetW
 	return assets, rows.Err()
 }
 
-func (r *assetRepo) CreateAsset(ctx context.Context, userID int, teamID *int, name, assetType, priority string, keywords []string) (int, error) {
+func (r *assetRepo) CreateAsset(ctx context.Context, params models.CreateAssetParams) (int, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return 0, err
@@ -61,10 +61,10 @@ func (r *assetRepo) CreateAsset(ctx context.Context, userID int, teamID *int, na
 	// Enforce Quota
 	var currentCount int
 	var maxAssets int
-	if teamID != nil {
+	if params.TeamID != nil {
 		// Verify membership inside transaction
 		var exists bool
-		err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", *teamID, userID).Scan(&exists)
+		err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", *params.TeamID, params.UserID).Scan(&exists)
 		if err != nil {
 			return 0, err
 		}
@@ -72,17 +72,17 @@ func (r *assetRepo) CreateAsset(ctx context.Context, userID int, teamID *int, na
 			return 0, fmt.Errorf("permission denied")
 		}
 
-		err = tx.QueryRow(ctx, "SELECT max_assets FROM teams WHERE id = $1 FOR UPDATE", *teamID).Scan(&maxAssets)
+		err = tx.QueryRow(ctx, "SELECT max_assets FROM teams WHERE id = $1 FOR UPDATE", *params.TeamID).Scan(&maxAssets)
 		if err != nil {
 			return 0, err
 		}
-		err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM assets WHERE team_id = $1", *teamID).Scan(&currentCount)
+		err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM assets WHERE team_id = $1", *params.TeamID).Scan(&currentCount)
 	} else {
-		err = tx.QueryRow(ctx, "SELECT max_assets FROM users WHERE id = $1 FOR UPDATE", userID).Scan(&maxAssets)
+		err = tx.QueryRow(ctx, "SELECT max_assets FROM users WHERE id = $1 FOR UPDATE", params.UserID).Scan(&maxAssets)
 		if err != nil {
 			return 0, err
 		}
-		err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM assets WHERE user_id = $1 AND team_id IS NULL", userID).Scan(&currentCount)
+		err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM assets WHERE user_id = $1 AND team_id IS NULL", params.UserID).Scan(&currentCount)
 	}
 	if err != nil {
 		return 0, err
@@ -90,7 +90,7 @@ func (r *assetRepo) CreateAsset(ctx context.Context, userID int, teamID *int, na
 
 	if currentCount >= maxAssets {
 		entity := "account"
-		if teamID != nil {
+		if params.TeamID != nil {
 			entity = "team"
 		}
 		return 0, fmt.Errorf("maximum of %d assets allowed for this %s", maxAssets, entity)
@@ -99,12 +99,12 @@ func (r *assetRepo) CreateAsset(ctx context.Context, userID int, teamID *int, na
 	var assetID int
 	err = tx.QueryRow(ctx, `
 		INSERT INTO assets (user_id, team_id, name, type, priority) VALUES ($1, $2, $3, $4, $5) RETURNING id
-	`, userID, teamID, name, assetType, priority).Scan(&assetID)
+	`, params.UserID, params.TeamID, params.Name, params.AssetType, params.Priority).Scan(&assetID)
 	if err != nil {
 		return 0, err
 	}
 
-	for _, kw := range keywords {
+	for _, kw := range params.Keywords {
 		if kw == "" {
 			continue
 		}
