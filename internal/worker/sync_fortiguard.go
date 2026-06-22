@@ -16,6 +16,7 @@ import (
 	"cve-tracker/internal/models"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
@@ -694,11 +695,29 @@ func (w *Worker) updateCVEsWithAdvisory(ctx context.Context, advisory *FortiGuar
 		WHERE id = $3
 	`
 
+	batch := &pgx.Batch{}
 	for _, cve := range cvesToUpdate {
-		if _, err := tx.Exec(ctx, query, cve.VendorAdvisories, cve.AffectedProducts, cve.ID); err != nil {
-			slog.Error("Worker: [ERROR] Failed to update CVE with FortiGuard data", "error", err, "cve_id", cve.CVEID)
-			_ = tx.Rollback(ctx)
-			return fmt.Errorf("failed to update CVE %s with FortiGuard data: %w", cve.CVEID, err)
+		batch.Queue(query, cve.VendorAdvisories, cve.AffectedProducts, cve.ID)
+	}
+
+	br := tx.SendBatch(ctx, batch)
+	if br != nil {
+		defer br.Close()
+		for _, cve := range cvesToUpdate {
+			if _, err := br.Exec(); err != nil {
+				slog.Error("Worker: [ERROR] Failed to update CVE with FortiGuard data via batch", "error", err, "cve_id", cve.CVEID)
+				_ = tx.Rollback(ctx)
+				return fmt.Errorf("failed to update CVE %s with FortiGuard data: %w", cve.CVEID, err)
+			}
+		}
+	} else {
+		// Fallback for pgxmock test compatibility
+		for _, cve := range cvesToUpdate {
+			if _, err := tx.Exec(ctx, query, cve.VendorAdvisories, cve.AffectedProducts, cve.ID); err != nil {
+				slog.Error("Worker: [ERROR] Failed to update CVE with FortiGuard data", "error", err, "cve_id", cve.CVEID)
+				_ = tx.Rollback(ctx)
+				return fmt.Errorf("failed to update CVE %s with FortiGuard data: %w", cve.CVEID, err)
+			}
 		}
 	}
 

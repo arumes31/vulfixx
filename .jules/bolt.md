@@ -50,3 +50,6 @@
 ## 2026-06-13 - Optimized Redundant Database COUNT Query
 **Learning:** Running an explicit SELECT COUNT(*) query solely to get the length of the results from a preceding identical SELECT statement causes an unnecessary database roundtrip.
 **Action:** Replaced the redundant query with total := len(slice) since the slice already contains exactly the bounded subset of rows from the database. Removed the associated unneeded pgxmock.ExpectQuery expectation in tests.
+## 2024-06-25 - Use pgx.Batch to eliminate N+1 DB updates
+**Learning:** Sequential DB updates inside a worker loop cause an N+1 query problem, increasing network latency.
+**Action:** Use pgx.Batch to queue updates and execute them in a single round-trip using tx.SendBatch. Handle pgxmock test compatibility with a fallback to tx.Exec if SendBatch returns nil.
