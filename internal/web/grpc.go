@@ -41,7 +41,6 @@ func (s *CVEServiceServerImpl) GetCVE(ctx context.Context, req *proto.CVERequest
 		FROM cves
 		WHERE cve_id = $1
 	`, req.GetCveId()).Scan(&id, &cveID, &description, &cvssScore, &publishedDate)
-
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, status.Errorf(codes.NotFound, "CVE %s not found", req.GetCveId())

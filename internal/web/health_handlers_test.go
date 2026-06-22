@@ -1,12 +1,13 @@
 package web
 
 import (
-	"cve-tracker/internal/db"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"cve-tracker/internal/db"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/pashagolub/pgxmock/v3"

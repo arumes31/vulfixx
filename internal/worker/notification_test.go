@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
-	"cve-tracker/internal/models"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -13,6 +12,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"cve-tracker/internal/models"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/pashagolub/pgxmock/v3"
@@ -46,7 +47,7 @@ func TestWorker_FloodProtection(t *testing.T) {
 	mock.ExpectExec("INSERT INTO alert_history").WithArgs(userID, cve.ID).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	// 1. First alert should pass
-	if !w.notifyIfNew(ctx, userID, cve, sub, "test@example.com", "") {
+	if !w.notifyIfNewWithCache(ctx, userID, cve, sub, "test@example.com", "", nil) {
 		t.Errorf("First alert should have passed flood protection")
 	}
 
@@ -57,7 +58,7 @@ func TestWorker_FloodProtection(t *testing.T) {
 	// Expect EXISTS again for second call
 	mock.ExpectQuery("SELECT EXISTS").WithArgs(userID, cve.ID).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 
-	if w.notifyIfNew(ctx, userID, cve, sub, "test@example.com", "") {
+	if w.notifyIfNewWithCache(ctx, userID, cve, sub, "test@example.com", "", nil) {
 		t.Errorf("Alert should have been blocked by flood protection (count=51)")
 	}
 

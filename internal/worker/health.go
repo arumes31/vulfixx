@@ -2,12 +2,13 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/config"
-	"cve-tracker/internal/llm"
 	"fmt"
 	"log/slog"
 	"os"
 	"time"
+
+	"cve-tracker/internal/config"
+	"cve-tracker/internal/llm"
 )
 
 func (w *Worker) startHealthCheckPeriodically(ctx context.Context) {
@@ -144,7 +145,6 @@ func (w *Worker) TestLLMConnectivity(ctx context.Context) {
 	testDescription := "This is a test description for a vulnerability in a hypothetical product called Vulfixx version 1.0.0."
 	start := time.Now()
 	products, err := llm.ExtractVendorProduct(ctx, testDescription, nil)
-
 	if err != nil {
 		slog.Error("Worker: [LLM TEST FAILED]", "error", err, "duration", time.Since(start))
 		return
@@ -163,7 +163,6 @@ func (w *Worker) checkNotificationHealth(ctx context.Context) {
 		SELECT COUNT(*) FROM notification_delivery_logs 
 		WHERE status = 'failure' AND delivery_time > NOW() - INTERVAL '24 hours'
 	`).Scan(&failureCount)
-
 	if err != nil {
 		slog.Error("Worker Health ERROR: notification health query failed", "error", err)
 		return

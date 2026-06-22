@@ -3,7 +3,6 @@ package web
 import (
 	"bytes"
 	"context"
-	"cve-tracker/internal/db"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"cve-tracker/internal/db"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"

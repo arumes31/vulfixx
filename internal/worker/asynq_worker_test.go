@@ -2,11 +2,12 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/models"
 	"encoding/json"
 	"net/http"
 	"testing"
 	"time"
+
+	"cve-tracker/internal/models"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/hibiken/asynq"

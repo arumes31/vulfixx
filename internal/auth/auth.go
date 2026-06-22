@@ -3,16 +3,16 @@ package auth
 import (
 	"context"
 	"crypto/rand"
-	"cve-tracker/internal/db"
-	"cve-tracker/internal/models"
-	"cve-tracker/internal/security"
 	"encoding/hex"
 	"errors"
 	"fmt"
-
 	"log/slog"
 	"strings"
 	"time"
+
+	"cve-tracker/internal/db"
+	"cve-tracker/internal/models"
+	"cve-tracker/internal/security"
 
 	"github.com/pquerna/otp/totp"
 )
@@ -73,6 +73,7 @@ func Register(ctx context.Context, email, password string) (string, error) {
 	}
 	return token, nil
 }
+
 func VerifyEmail(ctx context.Context, token string) error {
 	res, err := db.Pool.Exec(ctx, "UPDATE users SET is_email_verified = TRUE, email_verify_token = NULL WHERE email_verify_token = $1", token)
 	if err != nil {
@@ -309,7 +310,6 @@ func ConfirmEmailChange(ctx context.Context, token string) (bool, string, int, e
 		  AND created_at > NOW() - INTERVAL '24 hours'
 		FOR UPDATE
 	`, token).Scan(&userID, &newEmail, &oldConfirmed, &newConfirmed, &oldEmailToken, &newEmailToken)
-
 	if err != nil {
 		return false, "", 0, fmt.Errorf("invalid or expired token: %w", err)
 	}
@@ -336,7 +336,6 @@ func ConfirmEmailChange(ctx context.Context, token string) (bool, string, int, e
 			return false, "", 0, err
 		}
 		_, err = tx.Exec(ctx, "DELETE FROM email_change_requests WHERE user_id = $1", userID)
-
 		if err != nil {
 			return false, "", 0, err
 		}

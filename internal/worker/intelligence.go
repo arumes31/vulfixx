@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +10,8 @@ import (
 	"net/url"
 	"sync"
 	"time"
+
+	"cve-tracker/internal/models"
 
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/sync/errgroup"

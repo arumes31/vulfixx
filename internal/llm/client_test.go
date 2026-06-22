@@ -9,12 +9,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"cve-tracker/internal/config"
-	"os"
 )
 
 func init() {
@@ -125,7 +125,6 @@ func TestExtractWithOllama(t *testing.T) {
 			t.Fatalf("expected parse error, got %v", err)
 		}
 	})
-
 }
 
 func TestExtractWithMistral(t *testing.T) {

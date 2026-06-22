@@ -2,12 +2,13 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/db"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
 	"testing"
+
+	"cve-tracker/internal/db"
 
 	"github.com/pashagolub/pgxmock/v3"
 )

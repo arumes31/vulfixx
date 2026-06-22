@@ -1,12 +1,13 @@
 package web
 
 import (
-	"cve-tracker/internal/db"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"cve-tracker/internal/db"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"

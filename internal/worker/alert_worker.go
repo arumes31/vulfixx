@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/models"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"cve-tracker/internal/models"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -276,8 +277,8 @@ func ValidateComplexFilter(logic string) error {
 
 // evalFilterTokens evaluates the token stream as an OR of AND-groups.
 func evalFilterTokens(tokens []string, cve *models.CVE) (bool, bool) {
-	var orResult bool   // accumulated value across completed AND-groups
-	andResult := true   // accumulated value within the current AND-group
+	var orResult bool // accumulated value across completed AND-groups
+	andResult := true // accumulated value within the current AND-group
 	haveTermInAnd := false
 	haveOrResult := false
 
@@ -419,17 +420,6 @@ func compareFloat(actual float64, op string, want float64) (bool, bool) {
 	default:
 		return false, false
 	}
-}
-
-// notifyIfNew checks if the user has already been notified about this CVE.
-// Left for backward compatibility; prefer notifyIfNewWithCache in batch loops.
-func (w *Worker) notifyIfNew(ctx context.Context, userID int, cve *models.CVE, sub models.UserSubscription, email, assetName string) bool {
-	var exists bool
-	_ = w.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM alert_history WHERE user_id = $1 AND cve_id = $2)", userID, cve.ID).Scan(&exists)
-	if exists {
-		return false
-	}
-	return w.notifyIfNewWithCache(ctx, userID, cve, sub, email, assetName, nil)
 }
 
 // notifyIfNewWithCache allows bypassing the DB existence check if a pre-fetched cache is available.

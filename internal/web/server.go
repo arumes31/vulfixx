@@ -2,12 +2,13 @@ package web
 
 import (
 	"context"
-	"cve-tracker/internal/config"
-	"cve-tracker/internal/db"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"cve-tracker/internal/config"
+	"cve-tracker/internal/db"
 
 	"google.golang.org/grpc"
 )

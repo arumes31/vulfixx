@@ -2,10 +2,11 @@ package auth
 
 import (
 	"context"
-	"cve-tracker/internal/db"
-	"cve-tracker/internal/security"
 	"testing"
 	"time"
+
+	"cve-tracker/internal/db"
+	"cve-tracker/internal/security"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v3"

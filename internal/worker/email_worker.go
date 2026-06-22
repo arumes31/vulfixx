@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/security"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +11,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"cve-tracker/internal/security"
 
 	"github.com/redis/go-redis/v9"
 )

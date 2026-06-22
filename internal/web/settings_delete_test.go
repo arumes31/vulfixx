@@ -1,14 +1,15 @@
 package web
 
 import (
-	"cve-tracker/internal/auth"
-	"cve-tracker/internal/db"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+
+	"cve-tracker/internal/auth"
+	"cve-tracker/internal/db"
 
 	"github.com/gorilla/sessions"
 	"github.com/pashagolub/pgxmock/v3"

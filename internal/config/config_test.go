@@ -1,11 +1,12 @@
 package config
 
 import (
-	"cve-tracker/internal/security"
 	"encoding/base64"
 	"os"
 	"strings"
 	"testing"
+
+	"cve-tracker/internal/security"
 )
 
 func TestLoadConfig(t *testing.T) {

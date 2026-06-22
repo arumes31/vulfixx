@@ -2,13 +2,14 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/db"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"cve-tracker/internal/db"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/pashagolub/pgxmock/v3"
@@ -45,7 +46,6 @@ func TestDoWithRetry_Success(t *testing.T) {
 	}, func() (*http.Request, error) {
 		return http.NewRequest("GET", "http://example.com", nil)
 	})
-
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
@@ -107,7 +107,6 @@ func TestDoWithRetry_MaxRetries(t *testing.T) {
 	}, func() (*http.Request, error) {
 		return http.NewRequest("GET", "http://example.com", nil)
 	})
-
 	if err != nil {
 		t.Fatalf("expected nil error (returning last response), got %v", err)
 	}

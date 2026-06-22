@@ -28,7 +28,6 @@ func TestAlgoliaHNClient_FetchMentions(t *testing.T) {
 
 		client := NewHNClient(httpClient)
 		count, links, err := client.FetchMentions(context.Background(), "CVE-2024-1234")
-
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

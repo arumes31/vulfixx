@@ -3,8 +3,6 @@ package web
 import (
 	"crypto/rand"
 	"crypto/sha256"
-	"cve-tracker/internal/auth"
-	"cve-tracker/internal/security"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -16,6 +14,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"cve-tracker/internal/auth"
+	"cve-tracker/internal/security"
 
 	"github.com/getsentry/sentry-go"
 	"github.com/hibiken/asynq"

@@ -186,7 +186,8 @@ func (w *Worker) syncFortiguard(ctx context.Context) {
 func (w *Worker) fetchFortiGuardRSS(ctx context.Context) (map[string]struct {
 	cveIDs []string
 	url    string
-}, error) {
+}, error,
+) {
 	advisoryMap := make(map[string]struct {
 		cveIDs []string
 		url    string
@@ -200,7 +201,6 @@ func (w *Worker) fetchFortiGuardRSS(ctx context.Context) (map[string]struct {
 	}, func() (*http.Request, error) {
 		return http.NewRequestWithContext(ctx, "GET", fortiguardRSSURL, nil)
 	})
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch FortiGuard RSS: %w", err)
 	}
@@ -252,7 +252,8 @@ func (w *Worker) fetchFortiGuardRSS(ctx context.Context) (map[string]struct {
 func (w *Worker) filterRelevantAdvisories(ctx context.Context, advisoryMap map[string]struct {
 	cveIDs []string
 	url    string
-}) ([]string, error) {
+},
+) ([]string, error) {
 	// Build a list of all unique CVE IDs from all advisories
 	allCVEIDs := make(map[string]bool)
 	advisoryToCVEMap := make(map[string][]string)
@@ -402,7 +403,6 @@ func (w *Worker) scrapeFortiGuardAdvisory(ctx context.Context, url string) (*For
 		req.Header.Set("User-Agent", "Vulfixx-Threat-Intel/2.0")
 		return req, nil
 	})
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch FortiGuard advisory: %w", err)
 	}

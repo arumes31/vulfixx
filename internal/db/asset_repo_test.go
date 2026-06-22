@@ -399,4 +399,3 @@ func TestDeleteAsset(t *testing.T) {
 		}
 	})
 }
-

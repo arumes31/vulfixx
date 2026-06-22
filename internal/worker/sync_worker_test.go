@@ -3,7 +3,6 @@ package worker
 import (
 	"compress/gzip"
 	"context"
-	"cve-tracker/internal/db"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -12,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"cve-tracker/internal/db"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v3"
@@ -302,6 +303,7 @@ func TestWorkerSync_GitHub(t *testing.T) {
 		}
 	})
 }
+
 func TestWorkerSync_GreyNoise(t *testing.T) {
 	mock, err := db.SetupTestDB()
 	if err != nil {

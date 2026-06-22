@@ -2,11 +2,12 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/db"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
+
+	"cve-tracker/internal/db"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"

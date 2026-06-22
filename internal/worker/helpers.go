@@ -2,17 +2,17 @@ package worker
 
 import (
 	"crypto/tls"
-	"cve-tracker/internal/security"
 	"fmt"
 	"log"
 	"net"
 	"net/mail"
 	"net/smtp"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"cve-tracker/internal/security"
 )
 
 var cveStrictRegex = regexp.MustCompile(`^CVE-\d{4}-\d{4,}$`)
@@ -64,19 +64,6 @@ func sanitizeHeader(s string) string {
 		}
 		return r
 	}, s)
-}
-
-// redactURL redacts a URL for logging by removing Userinfo, Query, and Path.
-func redactURL(u string) string {
-	parsed, err := url.Parse(u)
-	if err != nil {
-		return "[invalid-url]"
-	}
-	parsed.User = nil
-	parsed.RawQuery = ""
-	parsed.Fragment = ""
-	parsed.Path = "/"
-	return parsed.String()
 }
 
 // sendMailWithTimeout is a replacement for smtp.SendMail that supports deadlines.

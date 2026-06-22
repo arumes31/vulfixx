@@ -2,9 +2,6 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/config"
-	"cve-tracker/internal/llm"
-	"cve-tracker/internal/models"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +14,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"cve-tracker/internal/config"
+	"cve-tracker/internal/llm"
+	"cve-tracker/internal/models"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -283,7 +284,8 @@ func getCWEID(weaknesses []struct {
 		Lang  string `json:"lang"`
 		Value string `json:"value"`
 	} `json:"description"`
-}) string {
+},
+) string {
 	for _, weak := range weaknesses {
 		for _, d := range weak.Description {
 			if strings.HasPrefix(d.Value, "CWE-") {
@@ -364,6 +366,7 @@ func mapNVDEntryToModel(entry NVDCVEEntry) (models.CVE, error) {
 		ExploitAvailable: exploitAvailable,
 	}, nil
 }
+
 func (w *Worker) enrichCVEWithVendorProduct(ctx context.Context, model *models.CVE, skipLLM bool) (bool, error) {
 	var vendor, product string
 	llmSuccess := false
@@ -409,6 +412,7 @@ func (w *Worker) enrichCVEWithVendorProduct(ctx context.Context, model *models.C
 
 	return llmSuccess, nil
 }
+
 func (w *Worker) executeCVEBatchUpsert(ctx context.Context, modelsToUpsert []models.CVE) ([]models.CVE, error) {
 	if len(modelsToUpsert) == 0 {
 		return nil, nil

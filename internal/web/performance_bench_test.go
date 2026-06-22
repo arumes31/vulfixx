@@ -2,11 +2,12 @@ package web
 
 import (
 	"context"
-	"cve-tracker/internal/db"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"cve-tracker/internal/db"
 
 	"github.com/pashagolub/pgxmock/v3"
 )

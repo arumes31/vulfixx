@@ -2,11 +2,12 @@ package web
 
 import (
 	"context"
-	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+
+	"cve-tracker/internal/models"
 
 	"github.com/redis/go-redis/v9"
 )

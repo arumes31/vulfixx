@@ -1,10 +1,11 @@
 package web
 
 import (
-	"cve-tracker/internal/config"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"cve-tracker/internal/config"
 
 	"github.com/pashagolub/pgxmock/v3"
 )

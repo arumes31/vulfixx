@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/models"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -10,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"cve-tracker/internal/models"
 )
 
 var defaultCISAKEVURL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"

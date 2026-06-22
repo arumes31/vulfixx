@@ -1,13 +1,14 @@
 package worker
 
 import (
-	"cve-tracker/internal/models"
-	"cve-tracker/internal/security"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
+
+	"cve-tracker/internal/models"
+	"cve-tracker/internal/security"
 )
 
 func TestWebhookSSRF_Vulnerabilities(t *testing.T) {

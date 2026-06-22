@@ -2,15 +2,16 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/config"
-	"cve-tracker/internal/llm"
-	"cve-tracker/internal/models"
 	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
 	"time"
+
+	"cve-tracker/internal/config"
+	"cve-tracker/internal/llm"
+	"cve-tracker/internal/models"
 )
 
 func (w *Worker) runWeeklySummaryWithLock(ctx context.Context) {

@@ -184,7 +184,6 @@ func (w *Worker) fetchGreyNoiseHits(ctx context.Context, cveID string) (int, str
 		req.Header.Set("User-Agent", "Vulfixx-Threat-Intel/2.0")
 		return req, nil
 	})
-
 	if err != nil {
 		return 0, "", err
 	}

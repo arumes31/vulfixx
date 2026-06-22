@@ -4,9 +4,6 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
-	"cve-tracker/internal/auth"
-	"cve-tracker/internal/models"
-	"cve-tracker/internal/security"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -19,6 +16,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"cve-tracker/internal/auth"
+	"cve-tracker/internal/models"
+	"cve-tracker/internal/security"
 )
 
 func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, assetName string) bool {

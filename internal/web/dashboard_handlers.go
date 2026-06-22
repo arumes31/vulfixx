@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"cve-tracker/internal/models"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -16,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"cve-tracker/internal/models"
 
 	csrf "filippo.io/csrf/gorilla"
 	"github.com/go-chi/chi/v5"
@@ -113,6 +114,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"csrfToken":      csrf.Token(r),
 	})
 }
+
 func (a *App) UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

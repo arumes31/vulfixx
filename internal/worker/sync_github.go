@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -13,12 +12,12 @@ import (
 	"strconv"
 	"time"
 
+	"cve-tracker/internal/models"
+
 	"github.com/jackc/pgx/v5"
 )
 
-var (
-	githubSyncDelay = 7 * time.Second
-)
+var githubSyncDelay = 7 * time.Second
 
 func (w *Worker) syncGitHubBuzzPeriodically(ctx context.Context) {
 	w.waitUntilNextRun(ctx, "github_buzz_sync", 4*time.Hour, 1*time.Minute)
@@ -109,7 +108,6 @@ CVELoop:
 			}
 			return req, nil
 		})
-
 		if err != nil {
 			slog.Error("Worker: [ERROR] GitHub request failed after retries", "cve_id", cveID, "error", err)
 			continue CVELoop

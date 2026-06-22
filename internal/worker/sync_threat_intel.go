@@ -2,13 +2,14 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/models"
 	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"slices"
 	"time"
+
+	"cve-tracker/internal/models"
 )
 
 var defaultThreatIntelURL = "https://raw.githubusercontent.com/intel-threat/ransomware-cve-map/main/map.json"

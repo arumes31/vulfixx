@@ -2,13 +2,14 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/models"
-	"cve-tracker/internal/security"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
 	"strings"
+
+	"cve-tracker/internal/models"
+	"cve-tracker/internal/security"
 
 	"github.com/hibiken/asynq"
 )

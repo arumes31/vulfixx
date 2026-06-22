@@ -2,11 +2,12 @@ package web
 
 import (
 	"context"
-	"cve-tracker/internal/db"
 	"net/http"
 	"net/url"
 	"testing"
 	"time"
+
+	"cve-tracker/internal/db"
 
 	"cve-tracker/internal/auth"
 

@@ -2,14 +2,15 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/config"
-	"cve-tracker/internal/models"
 	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"cve-tracker/internal/config"
+	"cve-tracker/internal/models"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v3"

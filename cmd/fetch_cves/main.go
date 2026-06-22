@@ -7,7 +7,6 @@
 package main
 
 import (
-	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,6 +15,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"cve-tracker/internal/models"
 )
 
 const nvdBase = "https://services.nvd.nist.gov/rest/json/cves/2.0"
@@ -92,7 +93,7 @@ func main() {
 	})
 
 	out, _ := json.MarshalIndent(all, "", "  ")
-	if err := os.WriteFile("testset.json", out, 0600); err != nil {
+	if err := os.WriteFile("testset.json", out, 0o600); err != nil {
 		fmt.Printf("write error: %v\n", err)
 		os.Exit(1)
 	}

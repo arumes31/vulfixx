@@ -2,7 +2,6 @@ package web
 
 import (
 	"bytes"
-	"cve-tracker/internal/db"
 	"net/http"
 	"net/url"
 	"os"
@@ -10,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"cve-tracker/internal/db"
 
 	"cve-tracker/internal/auth"
 

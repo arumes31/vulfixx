@@ -4,9 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/subtle"
-	"cve-tracker/internal/config"
-	"cve-tracker/internal/models"
-
 	"encoding/json"
 	"errors"
 	"flag"
@@ -17,6 +14,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"cve-tracker/internal/config"
+	"cve-tracker/internal/models"
 
 	csrf "filippo.io/csrf/gorilla"
 	"github.com/jackc/pgx/v5"
@@ -535,6 +535,7 @@ func (a *App) StartStatsTicker(ctx context.Context) {
 		}
 	}
 }
+
 func (a *App) SendResponse(w http.ResponseWriter, r *http.Request, success bool, message string, redirect string, errMsg string) {
 	statusCode := http.StatusOK
 	if !success {

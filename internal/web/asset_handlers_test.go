@@ -1,7 +1,6 @@
 package web
 
 import (
-	"cve-tracker/internal/db"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -9,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"cve-tracker/internal/db"
 
 	"github.com/pashagolub/pgxmock/v3"
 )

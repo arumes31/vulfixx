@@ -1,8 +1,6 @@
 package web
 
 import (
-	"cve-tracker/internal/auth"
-	"cve-tracker/internal/db"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +8,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"cve-tracker/internal/auth"
+	"cve-tracker/internal/db"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/pashagolub/pgxmock/v3"

@@ -2,11 +2,12 @@ package web
 
 import (
 	"crypto/rand"
-	"cve-tracker/internal/models"
 	"encoding/hex"
 	"log"
 	"net/http"
 	"strconv"
+
+	"cve-tracker/internal/models"
 )
 
 func (a *App) AdminUserManagementHandler(w http.ResponseWriter, r *http.Request) {

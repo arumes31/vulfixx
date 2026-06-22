@@ -1,13 +1,14 @@
 package web
 
 import (
-	"cve-tracker/internal/auth"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"strings"
+
+	"cve-tracker/internal/auth"
 
 	"github.com/hibiken/asynq"
 	"github.com/pquerna/otp/totp"

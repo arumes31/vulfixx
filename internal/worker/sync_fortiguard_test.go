@@ -389,7 +389,8 @@ func TestFortiGuardRSSParsing(t *testing.T) {
 func (w *Worker) parseFortiGuardRSS(r io.Reader) (map[string]struct {
 	cveIDs []string
 	url    string
-}, error) {
+}, error,
+) {
 	advisoryMap := make(map[string]struct {
 		cveIDs []string
 		url    string

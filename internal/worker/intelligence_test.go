@@ -2,14 +2,15 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/db"
-	"cve-tracker/internal/models"
 	"io"
 	"net/http"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
+
+	"cve-tracker/internal/db"
+	"cve-tracker/internal/models"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/pashagolub/pgxmock/v3"

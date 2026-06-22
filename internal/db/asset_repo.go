@@ -2,9 +2,10 @@ package db
 
 import (
 	"context"
-	"cve-tracker/internal/models"
 	"fmt"
 	"time"
+
+	"cve-tracker/internal/models"
 )
 
 type AssetRepository interface {

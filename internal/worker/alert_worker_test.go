@@ -2,8 +2,6 @@ package worker
 
 import (
 	"context"
-	"cve-tracker/internal/db"
-	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +10,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"cve-tracker/internal/db"
+	"cve-tracker/internal/models"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/pashagolub/pgxmock/v3"
@@ -212,13 +213,13 @@ func TestValidateComplexFilter(t *testing.T) {
 		{"cisa = true && severity >= 9", false},
 		{"epss > 0.1 || buzz < 5", false},
 		{"regex: openssl", false},
-		{"epss >", true},                 // truncated term
-		{"unknownvar > 1", true},          // unknown variable
-		{"epss !! 0.5", true},             // bad operator
-		{"epss > 0.1 &&", true},           // dangling operator
-		{"&& epss > 0.1", true},           // leading operator
-		{"epss > 0.1 epss > 0.2", true},   // missing connective
-		{"epss > notanumber", true},       // non-numeric value
+		{"epss >", true},                // truncated term
+		{"unknownvar > 1", true},        // unknown variable
+		{"epss !! 0.5", true},           // bad operator
+		{"epss > 0.1 &&", true},         // dangling operator
+		{"&& epss > 0.1", true},         // leading operator
+		{"epss > 0.1 epss > 0.2", true}, // missing connective
+		{"epss > notanumber", true},     // non-numeric value
 	}
 	for _, c := range cases {
 		err := ValidateComplexFilter(c.logic)
@@ -291,7 +292,8 @@ func TestWorkerAlert_SendAlert(t *testing.T) {
 	t.Run("Email_FullCoverage", func(t *testing.T) {
 		mailer := &EmailSenderMock{}
 		w := &Worker{
-			WebhookSecret: "test_signing_key_123", Pool: mock, Redis: db.RedisClient, Mailer: mailer, HTTP: http.DefaultClient}
+			WebhookSecret: "test_signing_key_123", Pool: mock, Redis: db.RedisClient, Mailer: mailer, HTTP: http.DefaultClient,
+		}
 
 		t.Setenv("BASE_URL", "https://vulfixx.io")
 

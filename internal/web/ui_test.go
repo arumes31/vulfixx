@@ -1,15 +1,15 @@
 package web
 
 import (
-	"cve-tracker/internal/db"
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
-	"context"
-	"regexp"
+	"cve-tracker/internal/db"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/go-chi/chi/v5"

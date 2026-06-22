@@ -1,9 +1,6 @@
 package web
 
 import (
-	"cve-tracker/internal/models"
-	"cve-tracker/internal/security"
-	"cve-tracker/internal/worker"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -14,6 +11,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"cve-tracker/internal/models"
+	"cve-tracker/internal/security"
+	"cve-tracker/internal/worker"
 
 	csrf "filippo.io/csrf/gorilla"
 )

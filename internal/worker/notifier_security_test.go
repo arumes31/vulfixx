@@ -1,11 +1,12 @@
 package worker
 
 import (
-	"cve-tracker/internal/models"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
+
+	"cve-tracker/internal/models"
 )
 
 func TestNotifier_Security(t *testing.T) {

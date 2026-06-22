@@ -2,7 +2,6 @@ package config
 
 import (
 	"crypto/rand"
-	"cve-tracker/internal/security"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -10,6 +9,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"cve-tracker/internal/security"
 )
 
 func decryptIfEncrypted(val string) string {
@@ -67,9 +68,7 @@ type Config struct {
 	WebhookSecret     string
 }
 
-var (
-	logPrintf = log.Printf
-)
+var logPrintf = log.Printf
 
 var AppConfig Config
 

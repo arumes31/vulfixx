@@ -3,15 +3,16 @@ package worker
 import (
 	"context"
 	"crypto/rand"
-	"cve-tracker/internal/config"
-	"cve-tracker/internal/db"
-	"cve-tracker/internal/models"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
 	"time"
+
+	"cve-tracker/internal/config"
+	"cve-tracker/internal/db"
+	"cve-tracker/internal/models"
 
 	"golang.org/x/time/rate"
 

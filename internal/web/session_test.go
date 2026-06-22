@@ -2,10 +2,11 @@ package web
 
 import (
 	"context"
-	"cve-tracker/internal/db"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"cve-tracker/internal/db"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gorilla/sessions"

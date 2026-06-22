@@ -1,14 +1,15 @@
 package web
 
 import (
-	"cve-tracker/internal/db"
 	"html/template"
 	"sync"
+	"time"
+
+	"cve-tracker/internal/db"
 
 	"github.com/gorilla/sessions"
 	"github.com/hibiken/asynq"
 	"github.com/ulule/limiter/v3"
-	"time"
 )
 
 // EmailSender defines the interface for sending emails.

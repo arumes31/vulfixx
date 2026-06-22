@@ -2,12 +2,13 @@ package web
 
 import (
 	"context"
-	"cve-tracker/internal/db"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"time"
+
+	"cve-tracker/internal/db"
 
 	"github.com/gorilla/sessions"
 	"github.com/rbcervilla/redisstore/v9"
