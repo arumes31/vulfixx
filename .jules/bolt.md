@@ -50,3 +50,6 @@
 ## 2026-06-13 - Optimized Redundant Database COUNT Query
 **Learning:** Running an explicit SELECT COUNT(*) query solely to get the length of the results from a preceding identical SELECT statement causes an unnecessary database roundtrip.
 **Action:** Replaced the redundant query with total := len(slice) since the slice already contains exactly the bounded subset of rows from the database. Removed the associated unneeded pgxmock.ExpectQuery expectation in tests.
+## 2024-05-14 - Global Regex Compilation in GetLineage
+**Learning:** Compiling regular expressions repeatedly inside functions or loops is a common source of performance overhead.
+**Action:** Always move `regexp.MustCompile` to global scope (package level variables) so it is only compiled once during initialization, rather than on every function call.
