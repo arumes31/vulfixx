@@ -92,10 +92,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Install Govulncheck
-        run: apk add --no-cache git && go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Install Dependencies
+        run: apk add --no-cache git
       - name: Run Govulncheck
-        run: govulncheck ./...
+        run: GOTOOLCHAIN=go1.26.4 go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
   godep:
     name: Godep (Dependency Scan)
