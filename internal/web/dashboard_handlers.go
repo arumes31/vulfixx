@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"log"
 	"log/slog"
 	"net/http"
@@ -598,9 +597,7 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 	}
-	jsonLDBytes, _ := json.Marshal(jsonLD)
-	// Prevent </script> injection: escape the forward slash so the script tag can't be closed.
-	safeJSONLD := strings.ReplaceAll(string(jsonLDBytes), "</", `<\/`)
+
 
 	// Fetch user assets if logged in for automatic matching
 	var userAssets []map[string]interface{}
@@ -636,8 +633,7 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 		"Canonical":          fmt.Sprintf("/cve/%s", c.CVEID),
 		"UserAssets":         userAssets,
 		"ThreatAssociations": threatAssociations,
-		/* #nosec G203 */
-		"JSONLD": template.JS(safeJSONLD), // safe: JSON-marshaled then </script>-escaped
+		"JSONLD": jsonLD,
 	})
 }
 
