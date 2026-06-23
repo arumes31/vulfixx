@@ -5,16 +5,15 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
+	"github.com/jackc/pgx/v5"
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"sync"
 	"time"
-
-	"github.com/jackc/pgx/v5"
-	"golang.org/x/sync/errgroup"
-	"golang.org/x/time/rate"
 )
 
 func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
@@ -30,10 +29,8 @@ func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
 	if w.OnIntelligenceSyncDone != nil {
 		w.OnIntelligenceSyncDone()
 	}
-
 	ticker := w.TickerFactory(2 * time.Hour)
 	defer ticker.Stop()
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -51,7 +48,6 @@ func (w *Worker) syncIntelligencePeriodically(ctx context.Context) {
 		}
 	}
 }
-
 func (w *Worker) processIntelligence(ctx context.Context) error {
 	// Fetch top 100 recent/critical CVEs to update intelligence for
 	rows, err := w.Pool.Query(ctx, `
@@ -63,7 +59,6 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		return err
 	}
 	defer rows.Close()
-
 	var cves []models.CVE
 	for rows.Next() {
 		var c models.CVE
@@ -77,54 +72,42 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 		}
 		cves = append(cves, c)
 	}
-
 	limiter := rate.NewLimiter(rate.Every(500*time.Millisecond), 1)
 	g, gCtx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
-
 	var mu sync.Mutex
 	processedCVEs := make([]models.CVE, 0, len(cves))
-
 	for _, c := range cves {
-		c := c
 		g.Go(func() error {
 			if err := limiter.Wait(gCtx); err != nil {
 				return err
 			}
-
 			// 1. Social Sentiment (Reddit & HN)
 			w.updateSocialSentiment(gCtx, &c)
-
 			// 2. Duplicate Detection (Simplified)
 			w.detectDuplicates(gCtx, &c)
-
 			mu.Lock()
 			processedCVEs = append(processedCVEs, c)
 			mu.Unlock()
-
 			return nil
 		})
 	}
-
 	if err := g.Wait(); err != nil {
 		slog.Error("Worker: Intelligence sync errgroup failed", "error", err)
 		return fmt.Errorf("intelligence sync failed: %w", err)
 	}
-
 	batch := &pgx.Batch{}
 	for _, c := range processedCVEs {
 		// Queue update
 		osintData, _ := json.Marshal(c.OSINTData)
 		batch.Queue("UPDATE cves SET osint_data = $1 WHERE id = $2", osintData, c.ID)
 	}
-
 	if batch.Len() > 0 {
 		tx, err := w.Pool.Begin(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to begin transaction for intelligence sync: %w", err)
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
-
 		br := tx.SendBatch(ctx, batch)
 		if br != nil {
 			for i := 0; i < batch.Len(); i++ {
@@ -145,22 +128,17 @@ func (w *Worker) processIntelligence(ctx context.Context) error {
 				}
 			}
 		}
-
 		if err := tx.Commit(ctx); err != nil {
 			return fmt.Errorf("failed to commit intelligence sync batch: %w", err)
 		}
 	}
-
 	w.updateTaskStats(ctx, "intelligence_sync")
 	return nil
 }
-
 func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-
 	wg.Add(2)
-
 	// Hacker News Mentions
 	go func() {
 		defer wg.Done()
@@ -170,7 +148,6 @@ func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
 			mu.Unlock()
 		}
 	}()
-
 	// Reddit Mentions
 	go func() {
 		defer wg.Done()
@@ -180,26 +157,20 @@ func (w *Worker) updateSocialSentiment(ctx context.Context, c *models.CVE) {
 			mu.Unlock()
 		}
 	}()
-
 	wg.Wait()
-
 	// Sentiment Score Calculation (Simplified Heat Score)
 	hnCount, _ := c.OSINTData["hn_mentions"].(int)
 	redditCount, _ := c.OSINTData["reddit_mentions"].(int)
 	githubCount := c.GitHubPoCCount
-
 	heatScore := (float64(hnCount) * 2.0) + (float64(redditCount) * 1.5) + (float64(githubCount) * 5.0)
 	c.OSINTData["heat_score"] = heatScore
 }
-
 func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
 	// Simple duplicate detection: Look for CVEs with similar descriptions published around the same time
 	// or mentions of the same base vulnerability ID in description.
-
 	if c.CWEID == "" || c.CWEID == "NVD-CWE-noinfo" {
 		return
 	}
-
 	var duplicateIDs []string
 	// Match CVSS within 0.5 tolerance and prefer closer scores
 	rows, err := w.Pool.Query(ctx, `
@@ -208,7 +179,6 @@ func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
 		ORDER BY ABS(cvss_score - $3) ASC
 		LIMIT 5
 	`, c.CWEID, c.ID, c.CVSSScore, c.PublishedDate.AddDate(0, 0, -7))
-
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -218,12 +188,10 @@ func (w *Worker) detectDuplicates(ctx context.Context, c *models.CVE) {
 			}
 		}
 	}
-
 	if len(duplicateIDs) > 0 {
 		c.OSINTData["similar_threats"] = duplicateIDs
 	}
 }
-
 func (w *Worker) fetchHNMentions(ctx context.Context, cveID string) (int, []map[string]string, error) {
 	if w.HNClient == nil {
 		return 0, nil, fmt.Errorf("HNClient not initialized")
@@ -234,19 +202,16 @@ func (w *Worker) fetchHNMentions(ctx context.Context, cveID string) (int, []map[
 	}
 	return w.HNClient.FetchMentions(ctx, cveID)
 }
-
 func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []map[string]string, error) {
 	if !isValidCVEID(cveID) {
 		return 0, nil, fmt.Errorf("invalid CVE ID: %s", cveID)
 	}
-
 	w.initLimiters()
 	if err := w.RedditLimiter.Wait(ctx); err != nil {
 		return 0, nil, err
 	}
 	encodedID := url.QueryEscape(cveID)
 	redditURL := fmt.Sprintf("https://www.reddit.com/search.json?q=%s&sort=new&limit=10", encodedID)
-
 	resp, err := DoWithRetry(ctx, w.HTTP, RetryConfig{
 		MaxRetries:  3,
 		ShouldRetry: DefaultShouldRetry,
@@ -262,16 +227,13 @@ func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []
 	if err != nil {
 		return 0, nil, err
 	}
-
 	if resp == nil {
 		return 0, nil, fmt.Errorf("Reddit API returned nil response")
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
 		return 0, nil, fmt.Errorf("Reddit API returned status %d", resp.StatusCode)
 	}
-
 	var rResp struct {
 		Data struct {
 			Children []struct {
@@ -282,12 +244,10 @@ func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []
 			} `json:"children"`
 		} `json:"data"`
 	}
-
 	// Limit response size to 1MB to prevent DoS
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1024*1024)).Decode(&rResp); err != nil {
 		return 0, nil, err
 	}
-
 	links := []map[string]string{}
 	for _, child := range rResp.Data.Children {
 		if !isValidRedditPermalink(child.Data.Permalink) {
@@ -296,6 +256,5 @@ func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []
 		redditLink := fmt.Sprintf("https://www.reddit.com%s", child.Data.Permalink)
 		links = append(links, map[string]string{"title": child.Data.Title, "url": redditLink})
 	}
-
 	return len(links), links, nil
 }

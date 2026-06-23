@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -413,12 +414,9 @@ func (w *Worker) parseFortiGuardRSS(r io.Reader) (map[string]struct {
 		}
 
 		// Extract CVE IDs from title
-		var cveIDs []string
-		for _, part := range parts {
-			if strings.HasPrefix(part, "CVE-") {
-				cveIDs = append(cveIDs, part)
-			}
-		}
+		cveIDs := slices.DeleteFunc(slices.Clone(parts), func(part string) bool {
+			return !strings.HasPrefix(part, "CVE-")
+		})
 
 		// Remove duplicate CVE IDs
 		uniqueCVEIDs := make(map[string]bool)

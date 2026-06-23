@@ -2,9 +2,14 @@ package worker
 
 import (
 	"context"
+	"cve-tracker/internal/models"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"github.com/PuerkitoBio/goquery"
+	"github.com/redis/go-redis/v9"
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -12,18 +17,10 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"cve-tracker/internal/models"
-
-	"github.com/PuerkitoBio/goquery"
-	"github.com/redis/go-redis/v9"
-	"golang.org/x/sync/errgroup"
-	"golang.org/x/time/rate"
 )
 
 // Ensure Worker type is properly referenced from worker.go
 // The Worker struct is defined in internal/worker/worker.go
-
 // Constants for FortiGuard sync worker configuration
 const (
 	fortiguardRSSURL        = "https://filestore.fortinet.com/fortiguard/rss/ir.xml"
@@ -120,10 +117,8 @@ func fortiGuardShouldRetry(resp *http.Response, err error, attempt int) (bool, t
 func (w *Worker) syncFortiguardPeriodically(ctx context.Context) {
 	w.waitUntilNextRun(ctx, "fortiguard_sync", fortiguardSyncInterval, 2*time.Minute)
 	w.runWithLock(ctx, "fortiguard_sync", 30*time.Minute, w.syncFortiguard)
-
 	ticker := w.TickerFactory(fortiguardSyncInterval)
 	defer ticker.Stop()
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -137,7 +132,6 @@ func (w *Worker) syncFortiguardPeriodically(ctx context.Context) {
 // syncFortiGuard is the main function that synchronizes FortiGuard advisories.
 func (w *Worker) syncFortiguard(ctx context.Context) {
 	slog.Info("Worker: [SYNC] Starting FortiGuard PSIRT synchronization...")
-
 	// 1. Fetch RSS feed to discover advisories
 	advisoryMap, err := w.fetchFortiGuardRSS(ctx)
 	if err != nil {
@@ -145,13 +139,11 @@ func (w *Worker) syncFortiguard(ctx context.Context) {
 		w.updateTaskStats(ctx, "fortiguard_sync")
 		return
 	}
-
 	if len(advisoryMap) == 0 {
 		slog.Info("Worker: [SYNC] No FortiGuard advisories found in RSS feed")
 		w.updateTaskStats(ctx, "fortiguard_sync")
 		return
 	}
-
 	// 2. Filter to relevant advisories (those with CVEs that exist in our database)
 	advisoriesToProcess, err := w.filterRelevantAdvisories(ctx, advisoryMap)
 	if err != nil {
@@ -159,25 +151,21 @@ func (w *Worker) syncFortiguard(ctx context.Context) {
 		w.updateTaskStats(ctx, "fortiguard_sync")
 		return
 	}
-
 	if len(advisoriesToProcess) == 0 {
 		slog.Info("Worker: [SYNC] No relevant FortiGuard advisories to process")
 		w.updateTaskStats(ctx, "fortiguard_sync")
 		return
 	}
-
 	// Limit the number of advisories to process per cycle
 	if len(advisoriesToProcess) > fortiguardMaxAdvisories {
 		advisoriesToProcess = advisoriesToProcess[:fortiguardMaxAdvisories]
 		slog.Info("Worker: [SYNC] Limiting FortiGuard advisories to process", "count", fortiguardMaxAdvisories)
 	}
-
 	// 3. Process each advisory: check cache, scrape if needed, update CVEs
 	processedCount, err := w.processAdvisories(ctx, advisoriesToProcess)
 	if err != nil {
 		slog.Error("Worker: [ERROR] Failed to process FortiGuard advisories", "error", err)
 	}
-
 	w.updateTaskStats(ctx, "fortiguard_sync")
 	slog.Info("Worker: [SYNC] FortiGuard synchronization complete", "processed_count", processedCount)
 }
@@ -191,7 +179,6 @@ func (w *Worker) fetchFortiGuardRSS(ctx context.Context) (map[string]struct {
 		cveIDs []string
 		url    string
 	})
-
 	resp, err := DoWithRetry(ctx, w.HTTP, RetryConfig{
 		MaxRetries:  3,
 		MaxWait:     30 * time.Second,
@@ -200,34 +187,28 @@ func (w *Worker) fetchFortiGuardRSS(ctx context.Context) (map[string]struct {
 	}, func() (*http.Request, error) {
 		return http.NewRequestWithContext(ctx, "GET", fortiguardRSSURL, nil)
 	})
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch FortiGuard RSS: %w", err)
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("FortiGuard RSS returned status %d", resp.StatusCode)
 	}
-
 	var feed rssFeed
 	if err := xml.NewDecoder(resp.Body).Decode(&feed); err != nil {
 		return nil, fmt.Errorf("failed to decode FortiGuard RSS: %w", err)
 	}
-
 	// Extract advisory IDs and CVE IDs from each item
 	for _, item := range feed.Channel.Items {
 		advisoryID := fortiGuardIDRegex.FindString(item.Title)
 		if advisoryID == "" {
 			continue
 		}
-
 		// Extract CVE IDs from title and description
 		allText := item.Title + " " + item.Description
 		cveMatches := cveIDRegex.FindAllString(allText, -1)
 		var cveIDs []string
 		seenCVE := make(map[string]bool)
-
 		for _, cveID := range cveMatches {
 			cveID = strings.ToUpper(cveID)
 			if !seenCVE[cveID] {
@@ -235,7 +216,6 @@ func (w *Worker) fetchFortiGuardRSS(ctx context.Context) (map[string]struct {
 				cveIDs = append(cveIDs, cveID)
 			}
 		}
-
 		advisoryMap[advisoryID] = struct {
 			cveIDs []string
 			url    string
@@ -244,7 +224,6 @@ func (w *Worker) fetchFortiGuardRSS(ctx context.Context) (map[string]struct {
 			url:    item.Link,
 		}
 	}
-
 	return advisoryMap, nil
 }
 
@@ -256,7 +235,6 @@ func (w *Worker) filterRelevantAdvisories(ctx context.Context, advisoryMap map[s
 	// Build a list of all unique CVE IDs from all advisories
 	allCVEIDs := make(map[string]bool)
 	advisoryToCVEMap := make(map[string][]string)
-
 	for advisoryID, data := range advisoryMap {
 		if len(data.cveIDs) == 0 {
 			continue
@@ -266,17 +244,14 @@ func (w *Worker) filterRelevantAdvisories(ctx context.Context, advisoryMap map[s
 			advisoryToCVEMap[advisoryID] = append(advisoryToCVEMap[advisoryID], cveID)
 		}
 	}
-
 	if len(allCVEIDs) == 0 {
 		return nil, nil
 	}
-
 	// Convert to slice for SQL query
 	cveIDList := make([]string, 0, len(allCVEIDs))
 	for cveID := range allCVEIDs {
 		cveIDList = append(cveIDList, cveID)
 	}
-
 	// Query database to find which CVE IDs exist
 	rows, err := w.Pool.Query(ctx, `
 		SELECT cve_id FROM cves WHERE cve_id = ANY($1)
@@ -285,7 +260,6 @@ func (w *Worker) filterRelevantAdvisories(ctx context.Context, advisoryMap map[s
 		return nil, fmt.Errorf("failed to query CVEs: %w", err)
 	}
 	defer rows.Close()
-
 	existingCVEIDs := make(map[string]bool)
 	rowIndex := 0
 	for rows.Next() {
@@ -298,7 +272,6 @@ func (w *Worker) filterRelevantAdvisories(ctx context.Context, advisoryMap map[s
 		existingCVEIDs[cveID] = true
 		rowIndex++
 	}
-
 	// Find advisories that have at least one CVE in our database
 	relevantAdvisories := make(map[string]bool)
 	for advisoryID, cveIDs := range advisoryToCVEMap {
@@ -309,13 +282,11 @@ func (w *Worker) filterRelevantAdvisories(ctx context.Context, advisoryMap map[s
 			}
 		}
 	}
-
 	// Convert to slice
 	advisoryList := make([]string, 0, len(relevantAdvisories))
 	for advisoryID := range relevantAdvisories {
 		advisoryList = append(advisoryList, advisoryID)
 	}
-
 	return advisoryList, nil
 }
 
@@ -323,27 +294,21 @@ func (w *Worker) filterRelevantAdvisories(ctx context.Context, advisoryMap map[s
 func (w *Worker) processAdvisories(ctx context.Context, advisoryIDs []string) (int, error) {
 	var processedCount int
 	var mu sync.Mutex
-
 	// Rate limiter: 1 request per 4 seconds
 	limiter := rate.NewLimiter(rate.Every(4*time.Second), fortiguardRateBurst)
 	g, gCtx := errgroup.WithContext(ctx)
 	g.SetLimit(fortiguardRateLimit) // Only 1 concurrent request
-
 	for _, advisoryID := range advisoryIDs {
-		advisoryID := advisoryID // Create a local copy for the goroutine
-
 		g.Go(func() error {
 			if err := limiter.Wait(gCtx); err != nil {
 				return err
 			}
-
 			// Check Redis cache first
 			advisory, err := w.getCachedAdvisory(gCtx, advisoryID)
 			if err != nil {
 				slog.Warn("Worker: [WARN] Failed to check FortiGuard cache", "advisory_id", advisoryID, "error", err)
 				return nil // Don't fail the whole batch for cache errors
 			}
-
 			// If not in cache or cache is stale, scrape the advisory page
 			if advisory == nil {
 				advisoryURL := fortiguardBaseURL + advisoryID
@@ -352,7 +317,6 @@ func (w *Worker) processAdvisories(ctx context.Context, advisoryIDs []string) (i
 					slog.Warn("Worker: [WARN] Failed to scrape FortiGuard advisory", "advisory_id", advisoryID, "error", err)
 					return nil // Don't fail the whole batch for scraping errors
 				}
-
 				// Cache the scraped advisory
 				if advisory != nil {
 					if err := w.cacheAdvisory(gCtx, advisory); err != nil {
@@ -360,30 +324,24 @@ func (w *Worker) processAdvisories(ctx context.Context, advisoryIDs []string) (i
 					}
 				}
 			}
-
 			if advisory == nil {
 				return nil // No data to process
 			}
-
 			// Update CVEs with this advisory data
 			if err := w.updateCVEsWithAdvisory(gCtx, advisory); err != nil {
 				slog.Warn("Worker: [WARN] Failed to update CVEs with FortiGuard advisory", "advisory_id", advisory.AdvisoryID, "error", err)
 				return nil // Don't fail the whole batch for DB update errors
 			}
-
 			mu.Lock()
 			processedCount++
 			mu.Unlock()
-
 			return nil
 		})
 	}
-
 	// Wait for all goroutines to complete
 	if err := g.Wait(); err != nil {
 		return processedCount, fmt.Errorf("FortiGuard sync failed: %w", err)
 	}
-
 	return processedCount, nil
 }
 
@@ -402,40 +360,33 @@ func (w *Worker) scrapeFortiGuardAdvisory(ctx context.Context, url string) (*For
 		req.Header.Set("User-Agent", "Vulfixx-Threat-Intel/2.0")
 		return req, nil
 	})
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch FortiGuard advisory: %w", err)
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("FortiGuard advisory returned status %d", resp.StatusCode)
 	}
-
 	// Parse HTML with goquery
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse FortiGuard advisory HTML: %w", err)
 	}
-
 	advisory, err := parseFortiGuardAdvisory(doc, url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse FortiGuard advisory: %w", err)
 	}
-
 	return advisory, nil
 }
 
 // parseFortiGuardAdvisory parses a FortiGuard advisory page using goquery.
 func parseFortiGuardAdvisory(doc *goquery.Document, url string) (*FortiGuardAdvisory, error) {
 	advisory := &FortiGuardAdvisory{URL: url}
-
 	// Check if the document has any content at all
 	bodyText := strings.TrimSpace(doc.Text())
 	if bodyText == "" {
 		return nil, fmt.Errorf("empty or invalid HTML document")
 	}
-
 	// Extract advisory ID from URL
 	if parts := strings.Split(url, "/"); len(parts) > 0 {
 		advisoryID := fortiGuardIDRegex.FindString(parts[len(parts)-1])
@@ -443,7 +394,6 @@ func parseFortiGuardAdvisory(doc *goquery.Document, url string) (*FortiGuardAdvi
 			advisory.AdvisoryID = advisoryID
 		}
 	}
-
 	// Extract title from h1
 	doc.Find("h1").Each(func(i int, s *goquery.Selection) {
 		text := strings.TrimSpace(s.Text())
@@ -456,7 +406,6 @@ func parseFortiGuardAdvisory(doc *goquery.Document, url string) (*FortiGuardAdvi
 			advisory.Title = text
 		}
 	})
-
 	// Extract severity from .severity-badge
 	doc.Find(".severity-badge").Each(func(i int, s *goquery.Selection) {
 		text := strings.TrimSpace(s.Text())
@@ -464,7 +413,6 @@ func parseFortiGuardAdvisory(doc *goquery.Document, url string) (*FortiGuardAdvi
 			advisory.Severity = text
 		}
 	})
-
 	// Extract CVSS score and vector using regex on page text
 	pageText := doc.Text()
 	if scoreMatch := regexp.MustCompile(`CVSS.*?(\d+\.\d+)`).FindStringSubmatch(pageText); len(scoreMatch) > 1 {
@@ -476,7 +424,6 @@ func parseFortiGuardAdvisory(doc *goquery.Document, url string) (*FortiGuardAdvi
 	if vectorMatch := cvssVectorRegex.FindString(pageText); vectorMatch != "" {
 		advisory.CVSSVector = vectorMatch
 	}
-
 	// Extract CVE IDs from links
 	doc.Find("a").Each(func(i int, s *goquery.Selection) {
 		if cveID := cveIDRegex.FindString(s.Text()); cveID != "" {
@@ -494,7 +441,6 @@ func parseFortiGuardAdvisory(doc *goquery.Document, url string) (*FortiGuardAdvi
 			}
 		}
 	})
-
 	// Extract affected products from .affected-products table rows
 	doc.Find(".affected-products table tr").Each(func(i int, s *goquery.Selection) {
 		cells := s.Find("td")
@@ -509,7 +455,6 @@ func parseFortiGuardAdvisory(doc *goquery.Document, url string) (*FortiGuardAdvi
 			}
 		}
 	})
-
 	// Extract impact from <strong>Impact:</strong> pattern
 	doc.Find("strong, b").Each(func(i int, s *goquery.Selection) {
 		text := strings.TrimSpace(s.Text())
@@ -527,7 +472,6 @@ func parseFortiGuardAdvisory(doc *goquery.Document, url string) (*FortiGuardAdvi
 			}
 		}
 	})
-
 	// Extract fix information from h3:contains('Solution') sibling paragraph
 	doc.Find("h3, h4").Each(func(i int, s *goquery.Selection) {
 		text := strings.TrimSpace(s.Text())
@@ -541,7 +485,6 @@ func parseFortiGuardAdvisory(doc *goquery.Document, url string) (*FortiGuardAdvi
 			}
 		}
 	})
-
 	// Extract workaround information from h3:contains('Workaround') sibling paragraph
 	doc.Find("h3, h4").Each(func(i int, s *goquery.Selection) {
 		text := strings.TrimSpace(s.Text())
@@ -555,7 +498,6 @@ func parseFortiGuardAdvisory(doc *goquery.Document, url string) (*FortiGuardAdvi
 			}
 		}
 	})
-
 	// Build a set of paragraph elements that are siblings of h3/h4 headings
 	// (Solution/Workaround sections) so we can skip them when looking for description
 	// Key on the underlying DOM node, not the *goquery.Selection wrapper: goquery
@@ -569,7 +511,6 @@ func parseFortiGuardAdvisory(doc *goquery.Document, url string) (*FortiGuardAdvi
 			}
 		})
 	})
-
 	// Extract description: find the first <p> that is a direct child of <body> and is not
 	// a CVSS line, not inside a Solution/Workaround section, and has substantial text.
 	doc.Find("body > p").Each(func(i int, s *goquery.Selection) {
@@ -590,12 +531,10 @@ func parseFortiGuardAdvisory(doc *goquery.Document, url string) (*FortiGuardAdvi
 			advisory.Description = text
 		}
 	})
-
 	// Set current time as last updated if not available
 	if advisory.LastUpdated == "" {
 		advisory.LastUpdated = time.Now().UTC().Format(time.RFC3339)
 	}
-
 	return advisory, nil
 }
 
@@ -604,7 +543,6 @@ func (w *Worker) updateCVEsWithAdvisory(ctx context.Context, advisory *FortiGuar
 	if len(advisory.CVEIDs) == 0 {
 		return nil
 	}
-
 	// Query all CVEs that match the CVE IDs in this advisory
 	rows, err := w.Pool.Query(ctx, `
 		SELECT id, cve_id, affected_products, vendor_advisories FROM cves WHERE cve_id = ANY($1)
@@ -613,7 +551,6 @@ func (w *Worker) updateCVEsWithAdvisory(ctx context.Context, advisory *FortiGuar
 		return fmt.Errorf("failed to query CVEs for advisory %s: %w", advisory.AdvisoryID, err)
 	}
 	defer rows.Close()
-
 	var cvesToUpdate []models.CVE
 	for rows.Next() {
 		var cve models.CVE
@@ -622,17 +559,14 @@ func (w *Worker) updateCVEsWithAdvisory(ctx context.Context, advisory *FortiGuar
 			slog.Warn("Worker: [WARN] Failed to scan CVE for FortiGuard update", "error", err)
 			continue
 		}
-
 		// Initialize VendorAdvisories if nil from database
 		if vendorAdvisories != nil {
 			cve.VendorAdvisories = vendorAdvisories
 		}
-
 		// Initialize VendorAdvisories if nil
 		if cve.VendorAdvisories == nil {
 			cve.VendorAdvisories = make(models.JSONBMap)
 		}
-
 		// Create the FortiGuard advisory structure for vendor_advisories
 		fortiAdvisory := make(map[string]interface{})
 		fortiAdvisory["advisory_id"] = advisory.AdvisoryID
@@ -645,10 +579,8 @@ func (w *Worker) updateCVEsWithAdvisory(ctx context.Context, advisory *FortiGuar
 		fortiAdvisory["workaround"] = advisory.Workaround
 		fortiAdvisory["affected_products"] = advisory.AffectedProducts
 		fortiAdvisory["last_scraped"] = time.Now().UTC().Format(time.RFC3339)
-
 		// Set the FortiGuard advisory in vendor_advisories
 		cve.VendorAdvisories[models.VendorFortiGuard] = fortiAdvisory
-
 		// Enrich AffectedProducts with Fortinet products, skipping entries that
 		// already exist so repeated syncs stay idempotent.
 		existingProducts := make(map[string]bool, len(cve.AffectedProducts))
@@ -669,22 +601,18 @@ func (w *Worker) updateCVEsWithAdvisory(ctx context.Context, advisory *FortiGuar
 			existingProducts[key] = true
 			cve.AffectedProducts = append(cve.AffectedProducts, candidate)
 		}
-
 		cvesToUpdate = append(cvesToUpdate, cve)
 	}
-
 	// Skip update if no CVEs were found
 	if len(cvesToUpdate) == 0 {
 		return nil
 	}
-
 	// Perform batch update with vendor_advisories and affected_products
 	tx, err := w.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-
 	query := `
 		UPDATE cves
 		SET
@@ -693,7 +621,6 @@ func (w *Worker) updateCVEsWithAdvisory(ctx context.Context, advisory *FortiGuar
 			updated_at = NOW()
 		WHERE id = $3
 	`
-
 	for _, cve := range cvesToUpdate {
 		if _, err := tx.Exec(ctx, query, cve.VendorAdvisories, cve.AffectedProducts, cve.ID); err != nil {
 			slog.Error("Worker: [ERROR] Failed to update CVE with FortiGuard data", "error", err, "cve_id", cve.CVEID)
@@ -701,11 +628,9 @@ func (w *Worker) updateCVEsWithAdvisory(ctx context.Context, advisory *FortiGuar
 			return fmt.Errorf("failed to update CVE %s with FortiGuard data: %w", cve.CVEID, err)
 		}
 	}
-
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
-
 	return nil
 }
 
@@ -719,12 +644,10 @@ func (w *Worker) getCachedAdvisory(ctx context.Context, advisoryID string) (*For
 		}
 		return nil, fmt.Errorf("failed to get FortiGuard advisory from cache: %w", err)
 	}
-
 	var advisory FortiGuardAdvisory
 	if err := json.Unmarshal(cachedData, &advisory); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal cached FortiGuard advisory: %w", err)
 	}
-
 	return &advisory, nil
 }
 
@@ -735,6 +658,5 @@ func (w *Worker) cacheAdvisory(ctx context.Context, advisory *FortiGuardAdvisory
 	if err != nil {
 		return fmt.Errorf("failed to marshal FortiGuard advisory for caching: %w", err)
 	}
-
 	return w.Redis.Set(ctx, cacheKey, advisoryData, fortiguardRedisTTL).Err()
 }

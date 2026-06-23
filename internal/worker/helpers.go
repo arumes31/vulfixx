@@ -10,6 +10,7 @@ import (
 	"net/smtp"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -191,15 +192,15 @@ func classifyVendorAdvisories(references []string) []string {
 		"security-guidance", "fixed", "patch",
 	}
 
-	for _, ref := range references {
+	advisories = slices.DeleteFunc(slices.Clone(references), func(ref string) bool {
 		lower := strings.ToLower(ref)
 		for _, kw := range keywords {
 			if strings.Contains(lower, kw) {
-				advisories = append(advisories, ref)
-				break
+				return false // Keep it
 			}
 		}
-	}
+		return true // Delete it
+	})
 	return advisories
 }
 
