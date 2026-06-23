@@ -87,7 +87,7 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 		middleware := app.ProxyMiddleware(next)
 		req, _ := http.NewRequest("GET", "/", nil)
 		req.RemoteAddr = "10.0.0.1:12345"
-		req.Header.Set("X-Forwarded-For", "5.6.7.8, 10.0.0.1")
+		req.Header.Set("X-Forwarded-For", "spoofed-ip, 5.6.7.8, 10.0.0.1")
 		rr := httptest.NewRecorder()
 
 		middleware.ServeHTTP(rr, req)
