@@ -745,7 +745,7 @@ func TestWorker_CachedAdvisory(t *testing.T) {
 	}
 
 	// Test invalid JSON
-	mr.Set("fortiguard:advisory:FG-IR-00-002", "invalid json")
+	_ = mr.Set("fortiguard:advisory:FG-IR-00-002", "invalid json")
 	_, err = w.getCachedAdvisory(ctx, "FG-IR-00-002")
 	if err == nil {
 		t.Errorf("getCachedAdvisory() expected error on invalid JSON, got nil")
@@ -799,7 +799,7 @@ func TestWorker_FetchFortiGuardRSS(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tt.serverCode)
-				w.Write([]byte(tt.serverBody))
+				_, _ = w.Write([]byte(tt.serverBody))
 			}))
 			defer server.Close()
 
@@ -971,7 +971,7 @@ func TestWorker_ScrapeFortiGuardAdvisory(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tt.serverCode)
-				w.Write([]byte(tt.serverBody))
+				_, _ = w.Write([]byte(tt.serverBody))
 			}))
 			defer server.Close()
 
@@ -1030,7 +1030,7 @@ func TestWorker_ProcessAdvisories(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`
+		_, _ = w.Write([]byte(`
 		<html>
 			<body>
 				<h1>Test Advisory</h1>
@@ -1109,7 +1109,7 @@ func TestWorker_SyncFortiguard(t *testing.T) {
 	// Empty RSS server to avoid complicated parsing and db interactions
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel></channel></rss>`))
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel></channel></rss>`))
 	}))
 	defer server.Close()
 
