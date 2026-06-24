@@ -50,3 +50,7 @@
 ## 2026-06-13 - Optimized Redundant Database COUNT Query
 **Learning:** Running an explicit SELECT COUNT(*) query solely to get the length of the results from a preceding identical SELECT statement causes an unnecessary database roundtrip.
 **Action:** Replaced the redundant query with total := len(slice) since the slice already contains exactly the bounded subset of rows from the database. Removed the associated unneeded pgxmock.ExpectQuery expectation in tests.
+
+## 2024-06-24 - Pre-compile Regexes
+**Learning:** Compiling regular expressions repeatedly inside loops or frequently called functions is a common performance bottleneck in Go.
+**Action:** Always pre-compile regular expressions as package-level variables using `regexp.MustCompile` and reuse them.

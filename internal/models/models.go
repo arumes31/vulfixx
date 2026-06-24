@@ -480,6 +480,8 @@ type Team struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
+var cveLineageRegex = regexp.MustCompile(`CVE-\d{4}-\d+`)
+
 // GetLineage extracts related CVE IDs from the description, references, and OSINT data.
 func (c *CVE) GetLineage() []string {
 	seen := make(map[string]bool)
@@ -489,8 +491,7 @@ func (c *CVE) GetLineage() []string {
 	seen[c.CVEID] = true
 
 	// Extract CVE IDs from description
-	cveRegex := regexp.MustCompile(`CVE-\d{4}-\d+`)
-	for _, match := range cveRegex.FindAllString(c.Description, -1) {
+	for _, match := range cveLineageRegex.FindAllString(c.Description, -1) {
 		upper := strings.ToUpper(match)
 		if !seen[upper] {
 			seen[upper] = true
@@ -500,7 +501,7 @@ func (c *CVE) GetLineage() []string {
 
 	// Extract CVE IDs from references
 	for _, ref := range c.References {
-		for _, match := range cveRegex.FindAllString(ref, -1) {
+		for _, match := range cveLineageRegex.FindAllString(ref, -1) {
 			upper := strings.ToUpper(match)
 			if !seen[upper] {
 				seen[upper] = true
