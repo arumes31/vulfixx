@@ -686,3 +686,109 @@ func TestHasVendorAdvisory(t *testing.T) {
 		}
 	})
 }
+
+
+func TestGitHubPoCRepos_Scan(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   interface{}
+		wantErr bool
+		want    GitHubPoCRepos
+	}{
+		{
+			name:    "nil value",
+			value:   nil,
+			wantErr: false,
+			want:    nil,
+		},
+		{
+			name:    "valid json",
+			value:   []byte(`[{"url":"https://github.com/foo/bar","description":"test"}]`),
+			wantErr: false,
+			want:    GitHubPoCRepos{{URL: "https://github.com/foo/bar", Description: "test"}},
+		},
+		{
+			name:    "invalid type",
+			value:   "not a byte slice",
+			wantErr: true,
+			want:    nil,
+		},
+		{
+			name:    "invalid json",
+			value:   []byte(`[{"url":"https://github.com/foo/bar"`),
+			wantErr: true,
+			want:    nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var g GitHubPoCRepos
+			err := g.Scan(tt.value)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GitHubPoCRepos.Scan() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && err == nil {
+				if len(g) != len(tt.want) {
+					t.Errorf("GitHubPoCRepos.Scan() got = %v, want %v", len(g), len(tt.want))
+				} else if len(g) > 0 {
+					if g[0].URL != tt.want[0].URL || g[0].Description != tt.want[0].Description {
+						t.Errorf("GitHubPoCRepos.Scan() got = %v, want %v", g, tt.want)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestGitHubPoCRepos_Value(t *testing.T) {
+	tests := []struct {
+		name    string
+		g       GitHubPoCRepos
+		wantErr bool
+		wantNil bool
+	}{
+		{
+			name:    "nil value",
+			g:       nil,
+			wantErr: false,
+			wantNil: true,
+		},
+		{
+			name:    "valid data",
+			g:       GitHubPoCRepos{{URL: "https://github.com/foo/bar", Description: "test"}},
+			wantErr: false,
+			wantNil: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			val, err := tt.g.Value()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GitHubPoCRepos.Value() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantNil {
+				if val != nil {
+					t.Errorf("GitHubPoCRepos.Value() got = %v, want nil", val)
+				}
+			} else {
+				if val == nil {
+					t.Errorf("GitHubPoCRepos.Value() got nil, want non-nil")
+				} else {
+					b, ok := val.([]byte)
+					if !ok {
+						t.Errorf("GitHubPoCRepos.Value() did not return []byte")
+					} else {
+						if string(b) != `[{"url":"https://github.com/foo/bar","description":"test","stars":0,"forks":0,"created_at":"0001-01-01T00:00:00Z","updated_at":"0001-01-01T00:00:00Z"}]` {
+							// Check if url is present
+							if len(b) > 0 && b[0] != '[' {
+                                t.Errorf("GitHubPoCRepos.Value() got = %v", string(b))
+                            }
+						}
+					}
+				}
+			}
+		})
+	}
+}

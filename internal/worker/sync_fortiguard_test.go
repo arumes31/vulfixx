@@ -16,7 +16,11 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/pashagolub/pgxmock/v3"
 	"github.com/redis/go-redis/v9"
-)
+
+	"net/http"
+	"time"
+	"net/http/httptest"
+	"crypto/tls")
 
 func TestParseFortiGuardAdvisoryHTML(t *testing.T) {
 	tests := []struct {
@@ -602,4 +606,523 @@ func TestFortiGuardCVEUpdate(t *testing.T) {
 			}
 		})
 	}
+}
+
+
+func TestFortiGuardShouldRetry(t *testing.T) {
+	tests := []struct {
+		name        string
+		resp        *http.Response
+		err         error
+		attempt     int
+		wantRetry   bool
+		wantWaitMax time.Duration
+	}{
+		{
+			name:        "error exists",
+			resp:        nil,
+			err:         errors.New("network error"),
+			attempt:     0,
+			wantRetry:   true,
+			wantWaitMax: time.Second * 2,
+		},
+		{
+			name:        "no response, no error",
+			resp:        nil,
+			err:         nil,
+			attempt:     0,
+			wantRetry:   false,
+			wantWaitMax: 0,
+		},
+		{
+			name: "too many requests with retry-after header",
+			resp: &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header: http.Header{
+					"Retry-After": []string{"10"},
+				},
+			},
+			err:         nil,
+			attempt:     0,
+			wantRetry:   true,
+			wantWaitMax: time.Second * 10,
+		},
+		{
+			name: "too many requests without retry-after header",
+			resp: &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header:     http.Header{},
+			},
+			err:         nil,
+			attempt:     0,
+			wantRetry:   true,
+			wantWaitMax: time.Second * 30,
+		},
+		{
+			name: "server error (500)",
+			resp: &http.Response{
+				StatusCode: http.StatusInternalServerError,
+			},
+			err:         nil,
+			attempt:     1,
+			wantRetry:   true,
+			wantWaitMax: time.Second * 3,
+		},
+		{
+			name: "success (200)",
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+			},
+			err:         nil,
+			attempt:     0,
+			wantRetry:   false,
+			wantWaitMax: 0,
+		},
+		{
+			name: "too many requests, retry-after max limit",
+			resp: &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header: http.Header{
+					"Retry-After": []string{"600"}, // 10 minutes, > 5 minutes max
+				},
+			},
+			err:         nil,
+			attempt:     0,
+			wantRetry:   true,
+			wantWaitMax: 5 * time.Minute,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotRetry, gotWait := fortiGuardShouldRetry(tt.resp, tt.err, tt.attempt)
+			if gotRetry != tt.wantRetry {
+				t.Errorf("fortiGuardShouldRetry() gotRetry = %v, want %v", gotRetry, tt.wantRetry)
+			}
+			if gotWait > tt.wantWaitMax {
+				t.Errorf("fortiGuardShouldRetry() gotWait = %v, want max %v", gotWait, tt.wantWaitMax)
+			}
+		})
+	}
+}
+
+func TestWorker_CachedAdvisory(t *testing.T) {
+	// Setup miniredis
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	w := &Worker{Redis: rdb}
+	ctx := context.Background()
+
+	// Test cache miss
+	advisory, err := w.getCachedAdvisory(ctx, "FG-IR-00-000")
+	if err != nil {
+		t.Errorf("getCachedAdvisory() unexpected error on miss: %v", err)
+	}
+	if advisory != nil {
+		t.Errorf("getCachedAdvisory() expected nil on miss, got %v", advisory)
+	}
+
+	// Test cache hit
+	expectedAdvisory := &FortiGuardAdvisory{
+		AdvisoryID:  "FG-IR-00-001",
+		Title:       "Test Advisory",
+		Description: "Test Description",
+	}
+	err = w.cacheAdvisory(ctx, expectedAdvisory)
+	if err != nil {
+		t.Fatalf("cacheAdvisory() unexpected error: %v", err)
+	}
+
+	advisory, err = w.getCachedAdvisory(ctx, "FG-IR-00-001")
+	if err != nil {
+		t.Errorf("getCachedAdvisory() unexpected error on hit: %v", err)
+	}
+	if advisory == nil {
+		t.Fatalf("getCachedAdvisory() expected advisory, got nil")
+	}
+	if advisory.AdvisoryID != expectedAdvisory.AdvisoryID {
+		t.Errorf("getCachedAdvisory() ID got = %v, want %v", advisory.AdvisoryID, expectedAdvisory.AdvisoryID)
+	}
+
+	// Test invalid JSON
+	mr.Set("fortiguard:advisory:FG-IR-00-002", "invalid json")
+	_, err = w.getCachedAdvisory(ctx, "FG-IR-00-002")
+	if err == nil {
+		t.Errorf("getCachedAdvisory() expected error on invalid JSON, got nil")
+	}
+}
+
+
+
+func TestWorker_FetchFortiGuardRSS(t *testing.T) {
+	tests := []struct {
+		name        string
+		serverBody  string
+		serverCode  int
+		wantCount   int
+		wantErr     bool
+		wantErrType string
+	}{
+		{
+			name:       "valid RSS feed",
+			serverCode: http.StatusOK,
+			serverBody: `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+	<channel>
+		<item>
+			<title>Test Advisory FG-IR-00-001</title>
+			<link>https://fortiguard.com/psirt/FG-IR-00-001</link>
+			<description>Affects: CVE-2023-0001, CVE-2023-0002</description>
+		</item>
+	</channel>
+</rss>`,
+			wantCount: 1,
+			wantErr:   false,
+		},
+		{
+			name:       "server error",
+			serverCode: http.StatusInternalServerError,
+			serverBody: "internal server error",
+			wantCount:  0,
+			wantErr:    true,
+		},
+		{
+			name:       "invalid xml",
+			serverCode: http.StatusOK,
+			serverBody: "invalid xml",
+			wantCount:  0,
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.serverCode)
+				w.Write([]byte(tt.serverBody))
+			}))
+			defer server.Close()
+
+			// Create a new client, wait, Fortiguard URL is hardcoded in the function.
+			// The original fetchFortiGuardRSS has fortiguardRSSURL hardcoded.
+			// I need to intercept it somehow? Wait, DoWithRetry is used.
+			// Let's replace fortiguardRSSURL during the test if possible, wait, it's a constant.
+			// Let's see if we can use a custom HTTP client Transport to mock it.
+
+			w := &Worker{
+				HTTP: &mockFortiGuardClient{server: server},
+			}
+
+
+			ctx := context.Background()
+			advisoryMap, err := w.fetchFortiGuardRSS(ctx)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("fetchFortiGuardRSS() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if len(advisoryMap) != tt.wantCount {
+				t.Errorf("fetchFortiGuardRSS() got %v advisories, want %v", len(advisoryMap), tt.wantCount)
+			}
+		})
+	}
+}
+
+func TestWorker_FilterRelevantAdvisories(t *testing.T) {
+	// Setup DB mock
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer mock.Close()
+
+	w := &Worker{
+		Pool: mock,
+	}
+
+	tests := []struct {
+		name        string
+		advisoryMap map[string]struct {
+			cveIDs []string
+			url    string
+		}
+		mockSetup func()
+		wantIDs   []string
+		wantErr   bool
+	}{
+		{
+			name: "no advisories",
+			advisoryMap: map[string]struct {
+				cveIDs []string
+				url    string
+			}{},
+			mockSetup: func() {},
+			wantIDs:   []string{},
+			wantErr:   false,
+		},
+		{
+			name: "relevant advisories found",
+			advisoryMap: map[string]struct {
+				cveIDs []string
+				url    string
+			}{
+				"FG-IR-00-001": {cveIDs: []string{"CVE-2023-0001"}, url: "http://test1"},
+				"FG-IR-00-002": {cveIDs: []string{"CVE-2023-0002"}, url: "http://test2"},
+			},
+			mockSetup: func() {
+				// The query in filterRelevantAdvisories
+				// "SELECT cve_id FROM cves WHERE cve_id = ANY($1)"
+				mock.ExpectQuery("SELECT cve_id FROM cves WHERE cve_id = ANY").
+					WithArgs(pgxmock.AnyArg()).
+					WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-2023-0001"))
+			},
+			wantIDs: []string{"FG-IR-00-001"},
+			wantErr: false,
+		},
+		{
+			name: "db error",
+			advisoryMap: map[string]struct {
+				cveIDs []string
+				url    string
+			}{
+				"FG-IR-00-001": {cveIDs: []string{"CVE-2023-0001"}, url: "http://test1"},
+			},
+			mockSetup: func() {
+				mock.ExpectQuery("SELECT cve_id FROM cves WHERE cve_id = ANY").
+					WithArgs(pgxmock.AnyArg()).
+					WillReturnError(errors.New("db error"))
+			},
+			wantIDs: nil,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.mockSetup()
+
+			ctx := context.Background()
+			gotIDs, err := w.filterRelevantAdvisories(ctx, tt.advisoryMap)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("filterRelevantAdvisories() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if len(gotIDs) != len(tt.wantIDs) {
+				t.Errorf("filterRelevantAdvisories() got len %v, want %v", len(gotIDs), len(tt.wantIDs))
+			} else {
+				// Check content (order doesn't matter)
+				gotMap := make(map[string]bool)
+				for _, id := range gotIDs {
+					gotMap[id] = true
+				}
+				for _, id := range tt.wantIDs {
+					if !gotMap[id] {
+						t.Errorf("filterRelevantAdvisories() missing ID %v", id)
+					}
+				}
+			}
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
+		})
+	}
+}
+
+func TestWorker_ScrapeFortiGuardAdvisory(t *testing.T) {
+	tests := []struct {
+		name        string
+		serverCode  int
+		serverBody  string
+		wantID      string
+		wantErr     bool
+	}{
+		{
+			name:       "successful scrape",
+			serverCode: http.StatusOK,
+			serverBody: `
+<html>
+	<body>
+		<h1>Test Advisory</h1>
+		<div class="detail-item">
+			<div class="detail-label">IR Number</div>
+			<div class="detail-value">FG-IR-00-001</div>
+		</div>
+		<div class="detail-item">
+			<div class="detail-label">Description</div>
+			<div class="detail-value">Test description</div>
+		</div>
+	</body>
+</html>`,
+			wantID:  "FG-IR-00-001",
+			wantErr: false,
+		},
+		{
+			name:       "server error",
+			serverCode: http.StatusInternalServerError,
+			serverBody: "error",
+			wantID:     "",
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.serverCode)
+				w.Write([]byte(tt.serverBody))
+			}))
+			defer server.Close()
+
+			w := &Worker{
+				HTTP: &mockFortiGuardClient{server: server},
+			}
+
+			ctx := context.Background()
+			advisory, err := w.scrapeFortiGuardAdvisory(ctx, server.URL+"/FG-IR-00-001")
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("scrapeFortiGuardAdvisory() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && advisory != nil {
+				if advisory.AdvisoryID != tt.wantID {
+					t.Errorf("scrapeFortiGuardAdvisory() got ID %v, want %v", advisory.AdvisoryID, tt.wantID)
+				}
+			}
+		})
+	}
+}
+
+
+
+
+type mockFortiGuardClient struct {
+	server *httptest.Server
+}
+
+func (m *mockFortiGuardClient) Do(req *http.Request) (*http.Response, error) {
+	// Rewrite URL to test server
+
+	// Create a new request to the local test server
+	newReq, _ := http.NewRequestWithContext(req.Context(), req.Method, m.server.URL, req.Body)
+	newReq.Header = req.Header
+
+
+	client := m.server.Client()
+	client.Transport = &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	return client.Do(newReq)
+}
+
+func TestWorker_ProcessAdvisories(t *testing.T) {
+	// Setup miniredis
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	// Setup DB mock
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer mock.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`
+		<html>
+			<body>
+				<h1>Test Advisory</h1>
+				<div class="detail-item">
+					<div class="detail-label">IR Number</div>
+					<div class="detail-value">FG-IR-00-001</div>
+				</div>
+			</body>
+		</html>`))
+	}))
+	defer server.Close()
+
+	w := &Worker{
+		Redis: rdb,
+		Pool:  mock,
+		HTTP:  &mockFortiGuardClient{server: server},
+	}
+
+	tests := []struct {
+		name        string
+		advisoryIDs []string
+		mockSetup   func()
+		wantCount   int
+		wantErr     bool
+	}{
+		{
+			name:        "process empty list",
+			advisoryIDs: []string{},
+			mockSetup:   func() {},
+			wantCount:   0,
+			wantErr:     false,
+		},
+		{
+			name:        "process advisory list",
+			advisoryIDs: []string{"FG-IR-00-001"},
+			mockSetup:   func() {
+				// updateCVEsWithAdvisory is called internally
+				// "UPDATE cves SET vendor_advisories = jsonb_set(..."
+				mock.ExpectExec("UPDATE cves SET vendor_advisories").
+					WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+					WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+			},
+			wantCount:   1,
+			wantErr:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.mockSetup()
+			ctx := context.Background()
+			count, err := w.processAdvisories(ctx, tt.advisoryIDs)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("processAdvisories() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if count != tt.wantCount {
+				t.Errorf("processAdvisories() count = %v, want %v", count, tt.wantCount)
+			}
+		})
+	}
+}
+
+func TestWorker_SyncFortiguard(t *testing.T) {
+	// Setup miniredis
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	// Setup DB mock
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer mock.Close()
+
+	// Empty RSS server to avoid complicated parsing and db interactions
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel></channel></rss>`))
+	}))
+	defer server.Close()
+
+	w := &Worker{
+		Redis: rdb,
+		Pool:  mock,
+		HTTP:  &mockFortiGuardClient{server: server},
+	}
+
+	ctx := context.Background()
+	// Mock the DB interaction from updateTaskStats
+	mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs(pgxmock.AnyArg()).WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+	// Should run without errors
+	w.syncFortiguard(ctx)
 }
