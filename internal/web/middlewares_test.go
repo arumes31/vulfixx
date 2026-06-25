@@ -97,6 +97,38 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 		}
 	})
 
+	t.Run("ProxyMiddleware_SpoofedIP", func(t *testing.T) {
+		t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8")
+
+		mock, _ := pgxmock.NewPool()
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		var capturedIP string
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if val := r.Context().Value(clientIPKey); val != nil {
+				capturedIP = val.(string)
+			}
+			w.WriteHeader(http.StatusOK)
+		})
+
+		middleware := app.ProxyMiddleware(next)
+		req, _ := http.NewRequest("GET", "/", nil)
+		// Request comes from trusted proxy
+		req.RemoteAddr = "10.0.0.1:12345"
+		// 1.1.1.1 is the attacker trying to spoof 8.8.8.8
+		// 8.8.8.8 is the attacker's real IP, 10.0.0.2 is another proxy
+		req.Header.Set("X-Forwarded-For", "1.1.1.1, 8.8.8.8, 10.0.0.2")
+		rr := httptest.NewRecorder()
+
+		middleware.ServeHTTP(rr, req)
+
+		// It should correctly identify 8.8.8.8 as the true client IP
+		if capturedIP != "8.8.8.8" {
+			t.Errorf("expected client IP 8.8.8.8, got %s", capturedIP)
+		}
+	})
+
 	t.Run("ProxyMiddleware_UntrustedProxy", func(t *testing.T) {
 		t.Setenv("TRUSTED_PROXIES", "127.0.0.1")
 
