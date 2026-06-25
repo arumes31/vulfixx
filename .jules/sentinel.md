@@ -1,0 +1,4 @@
+## 2025-02-27 - 🛡️ Sentinel: [CRITICAL] Fix template XSS bypass
+**Vulnerability:** XSS vulnerability through unsafe template usage explicitly bypassing `html/template` auto-escaping.
+**Learning:** `template.JS(json.Marshal(v))` and manual JSON stringification for `<script>` contexts are vulnerable to XSS attacks (e.g. `</script><script>alert(1)</script>`). Using `{{ marshal .Field }}` custom template functions wrapping `template.JS` subverts the secure default behavior of `html/template`.
+**Prevention:** Remove custom `marshal` and JSON wrapping functions. Pass native Go structures (maps/structs) directly into templates (e.g., `{{.JSONLD}}` or `{{.SeverityCounts}}`). `html/template` correctly auto-escapes JSON structure into a secure string inside `<script>` contexts without the need for manual marshaling.
