@@ -185,14 +185,14 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 }
 
 func classifyVendorAdvisories(references []string) []string {
-	advisories := []string{}
+
 	keywords := []string{
 		"advisory", "bulletin", "security-advisories", "msrc", "security/notices",
 		"security/advisories", "kb", "security-center", "ghsa", "osv",
 		"security-guidance", "fixed", "patch",
 	}
 
-	advisories = slices.DeleteFunc(slices.Clone(references), func(ref string) bool {
+	advisories := slices.DeleteFunc(slices.Clone(references), func(ref string) bool {
 		lower := strings.ToLower(ref)
 		for _, kw := range keywords {
 			if strings.Contains(lower, kw) {
