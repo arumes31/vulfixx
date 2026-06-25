@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -425,10 +427,7 @@ func (w *Worker) parseFortiGuardRSS(r io.Reader) (map[string]struct {
 		for _, cve := range cveIDs {
 			uniqueCVEIDs[cve] = true
 		}
-		cveIDs = []string{}
-		for cve := range uniqueCVEIDs {
-			cveIDs = append(cveIDs, cve)
-		}
+		cveIDs = slices.Collect(maps.Keys(uniqueCVEIDs))
 
 		advisoryMap[advisoryID] = struct {
 			cveIDs []string
