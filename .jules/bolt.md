@@ -50,3 +50,6 @@
 ## 2026-06-13 - Optimized Redundant Database COUNT Query
 **Learning:** Running an explicit SELECT COUNT(*) query solely to get the length of the results from a preceding identical SELECT statement causes an unnecessary database roundtrip.
 **Action:** Replaced the redundant query with total := len(slice) since the slice already contains exactly the bounded subset of rows from the database. Removed the associated unneeded pgxmock.ExpectQuery expectation in tests.
+## 2025-02-28 - Escaping Backslashes in Python Scripts for Go Code Modification
+**Learning:** When using Python scripts (`cat << 'EOF' > script.py`) to search and replace Go code that contains regular expression patterns with backslashes (like `\d`), the backslashes must be properly double-escaped in Python's normal strings (e.g., `\\d`) or raw strings (e.g., `r'CVE-\d{4}'`) must be used to prevent `SyntaxWarning: invalid escape sequence` errors during script execution.
+**Action:** When creating Python scripts to refactor Go source code with inline regular expressions, ensure string replacement patterns use double backslashes for escaping or raw strings to correctly output the intended Go syntax.

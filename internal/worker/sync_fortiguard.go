@@ -88,6 +88,7 @@ var (
 
 // cvssVectorRegex matches CVSS v3.x vector strings like CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
 var cvssVectorRegex = regexp.MustCompile(`CVSS:3\.[01]/[A-Za-z]+:[A-Za-z](?:/[A-Za-z]+:[A-Za-z])+`)
+var cvssScoreRegex = regexp.MustCompile(`CVSS.*?(\d+\.\d+)`)
 
 // fortiGuardShouldRetry handles retry logic for FortiGuard HTTP requests.
 func fortiGuardShouldRetry(resp *http.Response, err error, attempt int) (bool, time.Duration) {
@@ -467,7 +468,7 @@ func parseFortiGuardAdvisory(doc *goquery.Document, url string) (*FortiGuardAdvi
 
 	// Extract CVSS score and vector using regex on page text
 	pageText := doc.Text()
-	if scoreMatch := regexp.MustCompile(`CVSS.*?(\d+\.\d+)`).FindStringSubmatch(pageText); len(scoreMatch) > 1 {
+	if scoreMatch := cvssScoreRegex.FindStringSubmatch(pageText); len(scoreMatch) > 1 {
 		if score, err := strconv.ParseFloat(scoreMatch[1], 64); err == nil {
 			advisory.CVSSScore = score
 		}
