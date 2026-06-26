@@ -323,6 +323,14 @@ func (c *CVE) GetAffectedProducts() []AffectedProduct {
 		}
 	}
 
+	// Prefer persisted affected products (e.g. LLM/CSAF/vendor-advisory derived)
+	// when no CPE configuration data exists. These carry version ranges and the
+	// full multi-product list that would otherwise be lost, causing the UI to
+	// show a single product as "All Versions Affected".
+	if len(products) == 0 && len(c.AffectedProducts) > 0 {
+		return c.AffectedProducts
+	}
+
 	// Fallback to heuristic from vendor/product fields
 	if len(products) == 0 && (c.Vendor != "" || c.Product != "") {
 		products = append(products, AffectedProduct{

@@ -69,7 +69,7 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 
 		// 1. Check if CVE exists - case where it doesn't
 		mock.ExpectBegin()
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), "references", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-9999").
 			WillReturnError(pgx.ErrNoRows)
 		mock.ExpectRollback()
@@ -127,7 +127,7 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 
 		// 1. Check if CVE exists - case where it DOES exist
 		mock.ExpectBegin()
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), "references", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-9999").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vendor", "product", "references", "epss_score"}).
 				AddRow(1, "CVE-2024-9999", "Existing desc", 7.5, "Cisco", "Cisco Product", []string{}, 0.1))
@@ -194,7 +194,7 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		wRDF := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
 		mock.ExpectBegin()
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), "references", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-5678").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vendor", "product", "references", "epss_score"}).
 				AddRow(1, "CVE-2024-5678", "Existing desc", 8.0, "Red Hat", "RHEL", []string{}, 0.2))
@@ -264,7 +264,7 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 
 		// Expectations for CVE-2024-0001
 		mock.ExpectBegin()
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), "references", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-0001").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vendor", "product", "references", "epss_score"}).
 				AddRow(1, "CVE-2024-0001", "desc1", 5.0, "V", "P", []string{}, 0.1))
@@ -275,7 +275,7 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 
 		// Expectations for CVE-2024-0002
 		mock.ExpectBegin()
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), "references", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-0002").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vendor", "product", "references", "epss_score"}).
 				AddRow(2, "CVE-2024-0002", "desc2", 6.0, "V", "P", []string{}, 0.2))
@@ -340,7 +340,7 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		wDup := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
 		mock.ExpectBegin()
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), "references", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-1111").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vendor", "product", "references", "epss_score"}).
 				AddRow(1, "CVE-2024-1111", "desc", 8.0, "V", "P", []string{"https://example.com/ref/1"}, 0.3))
@@ -471,7 +471,7 @@ func TestWorkerSync_FortiGuardAdvisoryID(t *testing.T) {
 
 		// Expect the row lock SELECT
 		mock.ExpectBegin()
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), "references", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-1234").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vendor", "product", "references", "epss_score"}).
 				AddRow(1, "CVE-2024-1234", "FortiOS vulnerability", 9.0, "Fortinet", "FortiOS", []string{}, 0.5))
@@ -542,7 +542,7 @@ func TestWorkerSync_FortiGuardAdvisoryID(t *testing.T) {
 		w := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
 		mock.ExpectBegin()
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), "references", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-1234").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vendor", "product", "references", "epss_score"}).
 				AddRow(1, "CVE-2024-1234", "FortiOS vulnerability", 9.0, "Fortinet", "FortiOS", []string{}, 0.5))
@@ -624,7 +624,7 @@ func TestWorkerSync_FortiGuardAdvisoryID(t *testing.T) {
 		w := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
 		mock.ExpectBegin()
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), "references", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-5678").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vendor", "product", "references", "epss_score"}).
 				AddRow(1, "CVE-2024-5678", "FortiOS vuln", 7.5, "Fortinet", "FortiOS", []string{}, 0.2))
@@ -685,7 +685,7 @@ func TestWorkerSync_FortiGuardAdvisoryID(t *testing.T) {
 
 		// CVE already has the reference URL
 		mock.ExpectBegin()
-		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, description, cvss_score, vendor, product, "references", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE`)).
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), "references", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-1234").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "vendor", "product", "references", "epss_score"}).
 				AddRow(1, "CVE-2024-1234", "FortiOS vuln", 9.0, "Fortinet", "FortiOS",

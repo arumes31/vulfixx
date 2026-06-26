@@ -445,7 +445,7 @@ func TestWorker_notifyIfNewWithCache(t *testing.T) {
 		// Reset flood count to 0 so it increments to 1
 		rdb.Set(ctx, fmt.Sprintf("flood_protection:%d", userID), 0, 0)
 
-		mock.ExpectQuery("SELECT cve_id, description, cvss_score").WithArgs(cve.ID).WillReturnError(fmt.Errorf("db error"))
+		mock.ExpectQuery("SELECT cve_id, COALESCE\\(description").WithArgs(cve.ID).WillReturnError(fmt.Errorf("db error"))
 
 		got := w.notifyIfNewWithCache(ctx, userID, cve, sub, email, assetName, nil)
 		if got != false {

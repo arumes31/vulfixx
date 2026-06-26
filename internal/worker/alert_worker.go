@@ -454,7 +454,7 @@ func (w *Worker) notifyIfNewWithCache(ctx context.Context, userID int, cve *mode
 	// If the job unmarshaled from Redis has CVEID, we assume it's full.
 	if cve.CVEID == "" {
 		err := w.Pool.QueryRow(ctx, `
-			SELECT cve_id, description, cvss_score, vector_string, cisa_kev, epss_score, cwe_id, github_poc_count, published_date, "references" 
+			SELECT cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vector_string, ''), cisa_kev, COALESCE(epss_score, 0), COALESCE(cwe_id, ''), COALESCE(github_poc_count, 0), published_date, "references"
 			FROM cves WHERE id = $1
 		`, cve.ID).Scan(&cve.CVEID, &cve.Description, &cve.CVSSScore, &cve.VectorString, &cve.CISAKEV, &cve.EPSSScore, &cve.CWEID, &cve.GitHubPoCCount, &cve.PublishedDate, &cve.References)
 		if err != nil {
