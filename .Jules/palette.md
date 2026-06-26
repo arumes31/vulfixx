@@ -17,3 +17,7 @@
 ## 2026-06-07 - Form Input Label Association
 **Learning:** Without explicit `id` attributes on form inputs that match the `for` attribute on corresponding `<label>` elements, screen readers fail to associate the label with the input. Furthermore, using identical IDs in both the primary view and dynamically generated modals causes ID collisions and breaks label resolution.
 **Action:** Always assign a unique `id` to every `<input>` and `<select>` and explicitly link them to `<label for="[id]">`. For dynamic forms inside modals, use a prefix like `edit_` to ensure IDs remain globally unique on the page.
+
+## 2026-06-26 - Add icons to empty state buttons
+**Learning:** Empty state call-to-action buttons lacking icons feel disconnected from the main navigation interface which consistently pairs text with `material-symbols-outlined` icons.
+**Action:** When adding call-to-action buttons in empty states, consistently apply icons that mirror the primary UI patterns, and utilize standard flexbox utility classes (`flex items-center justify-center gap-2`) for precise alignment.
