@@ -120,20 +120,6 @@ func (a *App) GetActiveTeamID(r *http.Request) (int, bool) {
 	return getSessionInt(session.Values["team_id"])
 }
 
-func (a *App) GetActiveTeamName(r *http.Request) (string, bool) {
-	if a.SessionStore == nil {
-		return "", false
-	}
-	session, err := a.SessionStore.Get(r, "vulfixx-session")
-	if err != nil {
-		return "", false
-	}
-	if name, ok := session.Values["team_name"].(string); ok {
-		return name, true
-	}
-	return "", false
-}
-
 func (a *App) SetActiveTeamID(w http.ResponseWriter, r *http.Request, teamID int, teamName string) error {
 	if a.SessionStore == nil {
 		return errors.New("session store not initialized")
