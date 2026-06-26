@@ -1,7 +1,9 @@
 package models
 
 import (
+	"database/sql/driver"
 	"encoding/base64"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -685,4 +687,105 @@ func TestHasVendorAdvisory(t *testing.T) {
 			t.Error("expected true for non-empty VendorAdvisories")
 		}
 	})
+}
+
+func TestGitHubPoCRepos_Scan(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   interface{}
+		want    GitHubPoCRepos
+		wantErr bool
+	}{
+		{
+			name:    "nil value",
+			value:   nil,
+			want:    nil,
+			wantErr: false,
+		},
+		{
+			name:    "valid json bytes",
+			value:   []byte(`[{"url":"https://github.com/test/repo","name":"test/repo","stars":0,"description":"","updated_at":""}]`),
+			want:    GitHubPoCRepos{{Name: "test/repo", URL: "https://github.com/test/repo"}},
+			wantErr: false,
+		},
+		{
+			name:    "invalid type",
+			value:   "not a byte array",
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name:    "invalid json bytes",
+			value:   []byte(`[{"name":"test/repo"`),
+			want:    nil,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var g GitHubPoCRepos
+			err := g.Scan(tt.value)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GitHubPoCRepos.Scan() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && !reflect.DeepEqual(g, tt.want) {
+				t.Errorf("GitHubPoCRepos.Scan() = %v, want %v", g, tt.want)
+			}
+		})
+	}
+}
+
+func TestGitHubPoCRepos_Value(t *testing.T) {
+	tests := []struct {
+		name    string
+		g       GitHubPoCRepos
+		want    driver.Value
+		wantErr bool
+	}{
+		{
+			name:    "nil slice",
+			g:       nil,
+			want:    nil,
+			wantErr: false,
+		},
+		{
+			name:    "valid slice",
+			g:       GitHubPoCRepos{{Name: "test/repo", URL: "https://github.com/test/repo"}},
+			want:    []byte(`[{"url":"https://github.com/test/repo","name":"test/repo","stars":0,"description":"","updated_at":""}]`),
+			wantErr: false,
+		},
+		{
+			name:    "empty slice",
+			g:       GitHubPoCRepos{},
+			want:    []byte(`[]`),
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.g.Value()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GitHubPoCRepos.Value() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr {
+				var gotBytes []byte
+				var wantBytes []byte
+
+				if got != nil {
+					gotBytes = got.([]byte)
+				}
+				if tt.want != nil {
+					wantBytes = tt.want.([]byte)
+				}
+
+				if !reflect.DeepEqual(gotBytes, wantBytes) {
+					t.Errorf("GitHubPoCRepos.Value() = %s, want %s", string(gotBytes), string(wantBytes))
+				}
+			}
+		})
+	}
 }
