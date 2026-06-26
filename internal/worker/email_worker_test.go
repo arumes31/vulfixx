@@ -150,6 +150,7 @@ func TestEmailSender_Coverage(t *testing.T) {
 }
 
 func TestWorker_sendVerificationEmail(t *testing.T) {
+	t.Setenv("BASE_URL", "")
 	mockMailer := &EmailSenderMock{}
 	w := &Worker{
 		Mailer: mockMailer,

@@ -209,7 +209,7 @@ func (a *App) GetTemplateFuncs() template.FuncMap {
 			// literal. json.Marshal escapes <, >, & by default, keeping the
 			// output safe to embed inside a script element.
 			a, _ := json.Marshal(v)
-			return template.JS(a) //nolint:gosec
+			return template.JS(a) // #nosec G203
 		},
 		"vendorLinks": func(cveID string, description string) []map[string]string {
 			links := []map[string]string{}
