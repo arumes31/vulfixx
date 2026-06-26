@@ -79,6 +79,50 @@
 }
 
 @layer components {
+  /* Glassmorphism surface used by cards and panels */
+  .glass {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  /* HUD-style field labels in the filter bar */
+  .hud-label {
+    display: block;
+    margin-bottom: 0.4rem;
+    font-size: 0.6rem;
+    line-height: 1;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: #6b7280;
+  }
+
+  /* Tactical input wrapper: provides the bordered box and the
+     positioning context for absolutely-positioned field icons. */
+  .tactical-input-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.75rem;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+  }
+  .tactical-input-container:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+  .tactical-input-container:focus-within {
+    border-color: rgba(0, 218, 243, 0.5);
+    background: rgba(0, 218, 243, 0.05);
+  }
+
+  /* Checkboxes (KEV / PoC toggles) — tint to match the primary accent
+     since the forms plugin is not loaded. */
+  input[type="checkbox"] {
+    accent-color: #00daf3;
+  }
+
   /* Skeleton Loading */
   @keyframes shimmer {
     0% { background-position: -1000px 0; }
