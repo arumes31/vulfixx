@@ -454,9 +454,6 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stats := a.fetchPublicDashboardStats(r.Context(), whereClause, args)
-	if err != nil {
-		log.Printf("Public dashboard stats error: %v", err)
-	}
 
 	renderData := a.preparePublicDashboardRenderData(r, filters, metrics, cves, stats)
 

@@ -643,7 +643,8 @@ func TestSwitchTeamHandler(t *testing.T) {
 					WithArgs(10, 1).
 					WillReturnError(fmt.Errorf("db error"))
 			},
-			expectedStatus: http.StatusForbidden,
+			// A real DB failure must surface as 500, not be masked as 403.
+			expectedStatus: http.StatusInternalServerError,
 		},
 		{
 			name:   "Invalid Team ID Format",

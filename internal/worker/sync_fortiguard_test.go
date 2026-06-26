@@ -820,6 +820,10 @@ func TestFilterRelevantAdvisories(t *testing.T) {
 	if relevant[0] != "FG-IR-24-388" {
 		t.Errorf("expected FG-IR-24-388 to be relevant, got %s", relevant[0])
 	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
 }
 
 func TestProcessAdvisories(t *testing.T) {
@@ -877,6 +881,10 @@ func TestProcessAdvisories(t *testing.T) {
 
 	if count != 1 {
 		t.Errorf("expected to process 1 advisory, processed %d", count)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
 	}
 }
 

@@ -7,9 +7,16 @@ import (
 )
 
 func TestEncryptDecryptWebhook(t *testing.T) {
-	// Backup original SESSION_KEY
-	originalKey := os.Getenv("SESSION_KEY")
-	defer os.Setenv("SESSION_KEY", originalKey)
+	// Backup original SESSION_KEY, preserving whether it was set at all so
+	// the environment is restored to its exact prior state.
+	originalKey, hadKey := os.LookupEnv("SESSION_KEY")
+	defer func() {
+		if hadKey {
+			os.Setenv("SESSION_KEY", originalKey)
+		} else {
+			os.Unsetenv("SESSION_KEY")
+		}
+	}()
 
 	// Test missing session key
 	os.Setenv("SESSION_KEY", "")
@@ -64,8 +71,14 @@ func TestEncryptDecryptWebhook(t *testing.T) {
 }
 
 func TestDecryptWebhookErrors(t *testing.T) {
-	originalKey := os.Getenv("SESSION_KEY")
-	defer os.Setenv("SESSION_KEY", originalKey)
+	originalKey, hadKey := os.LookupEnv("SESSION_KEY")
+	defer func() {
+		if hadKey {
+			os.Setenv("SESSION_KEY", originalKey)
+		} else {
+			os.Unsetenv("SESSION_KEY")
+		}
+	}()
 	os.Setenv("SESSION_KEY", "super-secret-key-12345")
 
 	t.Run("missing SESSION_KEY", func(t *testing.T) {

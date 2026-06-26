@@ -102,9 +102,9 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 	})
 
 	t.Run("marshal", func(t *testing.T) {
-		f := funcs["marshal"].(func(interface{}) string)
+		f := funcs["marshal"].(func(interface{}) template.JS)
 		data := map[string]string{"foo": "bar"}
-		got := f(data)
+		got := string(f(data))
 		if !strings.Contains(got, "\"foo\":\"bar\"") {
 			t.Errorf("expected JSON string, got %s", got)
 		}

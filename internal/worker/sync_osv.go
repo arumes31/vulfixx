@@ -221,24 +221,40 @@ func buildVersionString(ranges []osvRange, versions []string) string {
 	var versionParts []string
 	for _, r := range ranges {
 		var start, end string
+		// flush emits the current interval (if any) and resets the accumulators
+		// so each introduced→fixed/last_affected segment is preserved in order
+		// instead of being overwritten by later events.
+		flush := func() {
+			if start != "" && end != "" {
+				versionParts = append(versionParts, start+" "+end)
+			} else if start != "" {
+				versionParts = append(versionParts, start)
+			} else if end != "" {
+				versionParts = append(versionParts, end)
+			}
+			start, end = "", ""
+		}
 		for _, ev := range r.Events {
-			if v, ok := ev["introduced"]; ok && v != "0" {
-				start = "≥" + v
+			if v, ok := ev["introduced"]; ok {
+				// A new "introduced" opens a new interval; close the previous one first.
+				if start != "" || end != "" {
+					flush()
+				}
+				if v != "0" {
+					start = "≥" + v
+				}
 			}
 			if v, ok := ev["fixed"]; ok {
 				end = "<" + v
+				flush()
 			}
 			if v, ok := ev["last_affected"]; ok {
 				end = "≤" + v
+				flush()
 			}
 		}
-		if start != "" && end != "" {
-			versionParts = append(versionParts, start+" "+end)
-		} else if start != "" {
-			versionParts = append(versionParts, start)
-		} else if end != "" {
-			versionParts = append(versionParts, end)
-		}
+		// Emit any trailing open interval (introduced without a close event).
+		flush()
 	}
 
 	versionStr := strings.Join(versionParts, ", ")

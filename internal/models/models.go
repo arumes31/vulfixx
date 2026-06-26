@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -328,7 +329,9 @@ func (c *CVE) GetAffectedProducts() []AffectedProduct {
 	// full multi-product list that would otherwise be lost, causing the UI to
 	// show a single product as "All Versions Affected".
 	if len(products) == 0 && len(c.AffectedProducts) > 0 {
-		return c.AffectedProducts
+		// Return a copy so callers can't mutate the model's backing slice
+		// (via sort/filter/append), matching the other branches.
+		return slices.Clone(c.AffectedProducts)
 	}
 
 	// Fallback to heuristic from vendor/product fields

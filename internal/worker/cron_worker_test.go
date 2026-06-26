@@ -107,7 +107,19 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 
 	t.Run("sendWeeklySummaries", func(t *testing.T) {
 		w := NewWorker(nil, nil, &EmailSenderMock{}, http.DefaultClient)
-		w.sendWeeklySummaries(context.Background())
+
+		// Successful delivery must report no error so the caller records the run.
+		if err := w.sendWeeklySummaries(context.Background()); err != nil {
+			t.Errorf("expected nil error on success, got %v", err)
+		}
+
+		// A cancelled context must propagate failure so the run is NOT recorded,
+		// guarding against a silent no-op that always "succeeds".
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		if err := w.sendWeeklySummaries(ctx); err == nil {
+			t.Error("expected error when context is cancelled, got nil")
+		}
 	})
 }
 

@@ -352,13 +352,17 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 				}
 			}
 
-			if !found {
-				// If not found in userTeams (e.g. they were just removed), check session
-				teamName, _ = a.GetActiveTeamName(r)
+			if found {
+				renderData["ActiveTeamName"] = teamName
+				renderData["ActiveTeamID"] = activeTeamID
+			} else {
+				// Active team is no longer in the user's memberships (e.g. they
+				// were just removed). Don't trust the stale session value: reset
+				// to Private Workspace and clear the active-team session state.
+				_ = a.SetActiveTeamID(w, r, 0, "")
+				renderData["ActiveTeamID"] = 0
+				renderData["ActiveTeamName"] = "Private Workspace"
 			}
-
-			renderData["ActiveTeamName"] = teamName
-			renderData["ActiveTeamID"] = activeTeamID
 		} else {
 			renderData["ActiveTeamID"] = 0
 			renderData["ActiveTeamName"] = "Private Workspace"

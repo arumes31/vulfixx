@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"os"
 	"time"
 )
 
@@ -199,6 +200,9 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 	}
 
 	baseURLStr := config.AppConfig.BaseURL
+	if baseURLStr == "" {
+		baseURLStr = os.Getenv("BASE_URL")
+	}
 	parsedBase, err := url.Parse(baseURLStr)
 	if err != nil || (parsedBase.Scheme != "http" && parsedBase.Scheme != "https") {
 		baseURLStr = "http://localhost:8080"

@@ -12,6 +12,7 @@ import (
 
 	"cve-tracker/internal/models"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -230,7 +231,11 @@ func (a *App) LeaveTeamHandler(w http.ResponseWriter, r *http.Request) {
 	// Reset active team if it was the one left
 	activeID, _ := a.GetActiveTeamID(r)
 	if activeID == teamID {
-		_ = a.SetActiveTeamID(w, r, 0, "")
+		if err := a.SetActiveTeamID(w, r, 0, ""); err != nil {
+			log.Printf("LeaveTeamHandler: failed to clear active team: %v", err)
+			a.SendResponse(w, r, false, "", "", "Internal server error")
+			return
+		}
 	}
 
 	a.LogActivity(r.Context(), userID, "team_left", fmt.Sprintf("Left team ID %d", teamID), a.GetClientIP(r), r.UserAgent())
@@ -264,7 +269,12 @@ func (a *App) SwitchTeamHandler(w http.ResponseWriter, r *http.Request) {
 			WHERE tm.team_id = $1 AND tm.user_id = $2
 		`, teamID, userID).Scan(&teamName)
 		if err != nil {
-			http.Error(w, "Forbidden", http.StatusForbidden)
+			if errors.Is(err, pgx.ErrNoRows) {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+			} else {
+				log.Printf("SwitchTeamHandler membership query error: %v", err)
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+			}
 			return
 		}
 	}
