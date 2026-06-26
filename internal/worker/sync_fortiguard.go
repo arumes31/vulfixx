@@ -330,7 +330,6 @@ func (w *Worker) processAdvisories(ctx context.Context, advisoryIDs []string) (i
 	g.SetLimit(fortiguardRateLimit) // Only 1 concurrent request
 
 	for _, advisoryID := range advisoryIDs {
-		advisoryID := advisoryID // Create a local copy for the goroutine
 
 		g.Go(func() error {
 			if err := limiter.Wait(gCtx); err != nil {
