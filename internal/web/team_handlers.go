@@ -7,13 +7,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"strconv"
-	"strings"
 	"unicode/utf8"
 
 	"cve-tracker/internal/models"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -232,7 +231,11 @@ func (a *App) LeaveTeamHandler(w http.ResponseWriter, r *http.Request) {
 	// Reset active team if it was the one left
 	activeID, _ := a.GetActiveTeamID(r)
 	if activeID == teamID {
-		_ = a.SetActiveTeamID(w, r, 0)
+		if err := a.SetActiveTeamID(w, r, 0, ""); err != nil {
+			log.Printf("LeaveTeamHandler: failed to clear active team: %v", err)
+			a.SendResponse(w, r, false, "", "", "Internal server error")
+			return
+		}
 	}
 
 	a.LogActivity(r.Context(), userID, "team_left", fmt.Sprintf("Left team ID %d", teamID), a.GetClientIP(r), r.UserAgent())
@@ -257,45 +260,32 @@ func (a *App) SwitchTeamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var teamName string
 	if teamID != 0 {
-		var exists bool
-		err := a.Pool.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2)", teamID, userID).Scan(&exists)
-		if err != nil || !exists {
-			http.Error(w, "Forbidden", http.StatusForbidden)
+		err := a.Pool.QueryRow(r.Context(), `
+			SELECT t.name
+			FROM teams t
+			JOIN team_members tm ON t.id = tm.team_id
+			WHERE tm.team_id = $1 AND tm.user_id = $2
+		`, teamID, userID).Scan(&teamName)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+			} else {
+				log.Printf("SwitchTeamHandler membership query error: %v", err)
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+			}
 			return
 		}
 	}
 
-	if err := a.SetActiveTeamID(w, r, teamID); err != nil {
+	if err := a.SetActiveTeamID(w, r, teamID, teamName); err != nil {
 		http.Error(w, "Failed to switch workspace", http.StatusInternalServerError)
 		return
 	}
 
 	redirect := r.Referer()
-	if redirect != "" {
-		if ref, err := url.Parse(redirect); err == nil {
-			// Ensure it's either a relative path (empty host) or matches our current host
-			if ref.Host != "" && ref.Host != r.Host {
-				redirect = "/dashboard"
-			} else if ref.Scheme != "" && ref.Scheme != "http" && ref.Scheme != "https" {
-				// Prevent javascript: or other schemes
-				redirect = "/dashboard"
-			}
-		} else {
-			redirect = "/dashboard"
-		}
-	} else {
-		redirect = "/dashboard"
-	}
-
-	// Final safety check: if it still looks like an absolute URL to another domain, force dashboard
-	if strings.HasPrefix(redirect, "http") {
-		if ref, err := url.Parse(redirect); err == nil {
-			if ref.Host != r.Host {
-				redirect = "/dashboard"
-			}
-		}
-	}
+	redirect = SafeRedirect(redirect, r.Host)
 
 	http.Redirect(w, r, redirect, http.StatusFound) // #nosec G710
 }

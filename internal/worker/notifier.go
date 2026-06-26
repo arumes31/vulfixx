@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"cve-tracker/internal/auth"
+	"cve-tracker/internal/config"
 	"cve-tracker/internal/models"
 	"cve-tracker/internal/security"
 	"encoding/hex"
@@ -43,10 +44,7 @@ func (w *Worker) sendAlert(sub models.UserSubscription, cve *models.CVE, email, 
 		return false
 	}
 
-	baseURL := os.Getenv("BASE_URL")
-	if baseURL == "" {
-		baseURL = "http://localhost:8080"
-	}
+	baseURL := config.AppConfig.BaseURL
 
 	var wg sync.WaitGroup
 	results := make(chan bool, 5)

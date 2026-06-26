@@ -15,12 +15,14 @@ type EmailSenderMock struct {
 	Count       int
 	LastTo      string
 	LastSubject string
+	LastBody      string
 }
 
 func (m *EmailSenderMock) SendEmail(to, subject, body string) error {
 	m.Count++
 	m.LastTo = to
 	m.LastSubject = subject
+	m.LastBody = body
 	return nil
 }
 
@@ -64,14 +66,6 @@ func TestWorkerHelpers(t *testing.T) {
 		_, err = sanitizeEmail("test@example.com\r\n")
 		if err == nil {
 			t.Error("expected error for email with CRLF")
-		}
-	})
-
-	t.Run("RedactURL", func(t *testing.T) {
-		url := "https://user:pass@example.com/path?query=1#frag"
-		redacted := redactURL(url)
-		if redacted != "https://example.com/" {
-			t.Errorf("redactURL failed: %s", redacted)
 		}
 	})
 

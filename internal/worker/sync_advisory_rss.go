@@ -236,7 +236,7 @@ func (w *Worker) integrateAdvisoryCVE(ctx context.Context, cveID string, item Ge
 	var model models.CVE
 
 	// Lock the row and fetch required fields for alert processing
-	err = tx.QueryRow(ctx, "SELECT id, cve_id, description, cvss_score, vendor, product, \"references\", epss_score FROM cves WHERE cve_id = $1 FOR UPDATE", cveID).
+	err = tx.QueryRow(ctx, "SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), \"references\", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE", cveID).
 		Scan(&model.ID, &model.CVEID, &model.Description, &model.CVSSScore, &model.Vendor, &model.Product, &model.References, &model.EPSSScore)
 
 	if err != nil {

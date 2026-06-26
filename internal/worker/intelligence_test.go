@@ -151,6 +151,12 @@ func TestWorker_Intelligence(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "description", "cvss_score", "osint_data", "github_poc_count", "cwe_id", "published_date"}).
 				AddRow(1, "CVE-2024-0001", "Description 1", 7.5, []byte(`{}`), 0, "CWE-79", time.Now()))
 
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT cve_id FROM cves").
+			WithArgs("CWE-79", 1, 7.5, pgxmock.AnyArg()).
+			WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-2024-0002"))
+		mock.ExpectRollback()
+
 		// Mock the transaction and batch update
 		mock.ExpectBegin()
 		// Since pgxmock might not perfectly support SendBatch, we handle both SendBatch and the fallback tx.Exec
@@ -181,10 +187,10 @@ func TestWorker_Intelligence(t *testing.T) {
 		w.updateSocialSentiment(context.Background(), &cve)
 	})
 
-	t.Run("detectDuplicates", func(t *testing.T) {
-		cve := models.CVE{CVEID: "CVE-DUP-1", Description: "This is a duplicate of CVE-2023-0001", OSINTData: make(models.JSONBMap)}
+	t.Run("fetchDuplicatesBatch", func(t *testing.T) {
+		cves := []models.CVE{{CVEID: "CVE-DUP-1", Description: "This is a duplicate of CVE-2023-0001", OSINTData: make(models.JSONBMap)}}
 		// Should just run without panicking
-		w.detectDuplicates(context.Background(), &cve)
+		w.fetchDuplicatesBatch(context.Background(), cves)
 	})
 }
 

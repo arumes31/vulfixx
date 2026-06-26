@@ -1,12 +1,15 @@
 package worker
 
 import (
+	"net/http"
+
 	"context"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -413,12 +416,9 @@ func (w *Worker) parseFortiGuardRSS(r io.Reader) (map[string]struct {
 		}
 
 		// Extract CVE IDs from title
-		var cveIDs []string
-		for _, part := range parts {
-			if strings.HasPrefix(part, "CVE-") {
-				cveIDs = append(cveIDs, part)
-			}
-		}
+		cveIDs := slices.DeleteFunc(slices.Clone(parts), func(part string) bool {
+			return !strings.HasPrefix(part, "CVE-")
+		})
 
 		// Remove duplicate CVE IDs
 		uniqueCVEIDs := make(map[string]bool)
@@ -601,5 +601,358 @@ func TestFortiGuardCVEUpdate(t *testing.T) {
 				t.Errorf("unmet expectations: %v", err)
 			}
 		})
+	}
+}
+
+func TestFortiGuardShouldRetry(t *testing.T) {
+	tests := []struct {
+		name     string
+		resp     *http.Response
+		err      error
+		attempt  int
+		expected bool
+	}{
+		{
+			name:     "Error occurred",
+			err:      errors.New("some error"),
+			attempt:  0,
+			expected: true,
+		},
+		{
+			name:     "Nil response",
+			resp:     nil,
+			err:      nil,
+			attempt:  0,
+			expected: false,
+		},
+		{
+			name: "Status Too Many Requests",
+			resp: &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header:     http.Header{"Retry-After": []string{"10"}},
+			},
+			err:      nil,
+			attempt:  0,
+			expected: true,
+		},
+		{
+			name: "Internal Server Error",
+			resp: &http.Response{
+				StatusCode: http.StatusInternalServerError,
+			},
+			err:      nil,
+			attempt:  0,
+			expected: true,
+		},
+		{
+			name: "Status OK",
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+			},
+			err:      nil,
+			attempt:  0,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shouldRetry, _ := fortiGuardShouldRetry(tt.resp, tt.err, tt.attempt)
+			if shouldRetry != tt.expected {
+				t.Errorf("fortiGuardShouldRetry() = %v, want %v", shouldRetry, tt.expected)
+			}
+		})
+	}
+}
+
+func TestSyncFortiguard(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to setup mock redis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	mockHTTP := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			if req.URL.String() == fortiguardRSSURL {
+				rssContent := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+<item>
+<title>FG-IR-24-388 Critical Vulnerability CVE-2024-1234</title>
+<link>https://www.fortiguard.com/psirt/FG-IR-24-388</link>
+<description>Critical vulnerability.</description>
+</item>
+</channel>
+</rss>`
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(rssContent)),
+				}, nil
+			}
+			if strings.Contains(req.URL.String(), "FG-IR-24-388") {
+				htmlContent := `<html>
+<h2 class="title">FG-IR-24-388</h2>
+<h3 class="title">Multiple Vulnerabilities in FortiOS</h3>
+<div class="cves">
+<a href="/cve/CVE-2024-1234">CVE-2024-1234</a>
+</div>
+<div class="summary">
+<p>Severity: Critical</p>
+</div>
+</html>`
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(htmlContent)),
+				}, nil
+			}
+			return nil, errors.New("unexpected URL")
+		},
+	}
+
+	w := NewWorker(mock, rdb, &EmailSenderMock{}, mockHTTP)
+
+	// Mock DB queries for filtering relevant advisories and updating CVEs
+	rows := pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-2024-1234")
+	mock.ExpectQuery(`SELECT cve_id FROM cves WHERE cve_id = ANY`).WithArgs(pgxmock.AnyArg()).WillReturnRows(rows)
+
+	mock.ExpectQuery(`SELECT id, cve_id, affected_products, vendor_advisories FROM cves WHERE cve_id = ANY`).
+		WithArgs([]string{"CVE-2024-1234"}).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "affected_products", "vendor_advisories"}).
+			AddRow(1, "CVE-2024-1234", []byte(`[]`), []byte(`{}`)))
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE cves`).WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 1).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectCommit()
+
+	w.syncFortiguard(context.Background())
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
+
+func TestFetchFortiGuardRSS(t *testing.T) {
+	mockHTTP := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			if req.URL.String() == fortiguardRSSURL {
+				rssContent := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+<item>
+<title>FG-IR-24-388 Critical Vulnerability CVE-2024-1234</title>
+<link>https://www.fortiguard.com/psirt/FG-IR-24-388</link>
+<description>Critical vulnerability.</description>
+</item>
+</channel>
+</rss>`
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(rssContent)),
+				}, nil
+			}
+			return nil, errors.New("unexpected URL")
+		},
+	}
+
+	w := NewWorker(nil, nil, nil, mockHTTP)
+	advisories, err := w.fetchFortiGuardRSS(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(advisories) != 1 {
+		t.Errorf("expected 1 advisory, got %d", len(advisories))
+	}
+
+	if adv, ok := advisories["FG-IR-24-388"]; ok {
+		if len(adv.cveIDs) != 1 || adv.cveIDs[0] != "CVE-2024-1234" {
+			t.Errorf("unexpected CVE IDs: %v", adv.cveIDs)
+		}
+	} else {
+		t.Errorf("advisory FG-IR-24-388 not found")
+	}
+}
+
+func TestFilterRelevantAdvisories(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	w := NewWorker(mock, nil, nil, nil)
+
+	advisoryMap := map[string]struct{
+		cveIDs []string
+		url    string
+	}{
+		"FG-IR-24-388": {
+			cveIDs: []string{"CVE-2024-1234", "CVE-2024-5678"},
+			url:    "https://example.com/1",
+		},
+		"FG-IR-24-389": {
+			cveIDs: []string{"CVE-2024-9999"},
+			url:    "https://example.com/2",
+		},
+	}
+
+	rows := pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-2024-1234")
+	mock.ExpectQuery(`SELECT cve_id FROM cves WHERE cve_id = ANY`).WithArgs(pgxmock.AnyArg()).WillReturnRows(rows)
+
+	relevant, err := w.filterRelevantAdvisories(context.Background(), advisoryMap)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(relevant) != 1 {
+		t.Errorf("expected 1 relevant advisory, got %d", len(relevant))
+	}
+
+	if relevant[0] != "FG-IR-24-388" {
+		t.Errorf("expected FG-IR-24-388 to be relevant, got %s", relevant[0])
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
+
+func TestProcessAdvisories(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to setup mock redis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	mockHTTP := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			if strings.Contains(req.URL.String(), "FG-IR-24-388") {
+				htmlContent := `<html>
+<h2 class="title">FG-IR-24-388</h2>
+<h3 class="title">Multiple Vulnerabilities in FortiOS</h3>
+<div class="cves">
+<a href="/cve/CVE-2024-1234">CVE-2024-1234</a>
+</div>
+<div class="summary">
+<p>Severity: Critical</p>
+</div>
+</html>`
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(htmlContent)),
+				}, nil
+			}
+			return nil, errors.New("unexpected URL")
+		},
+	}
+
+	w := NewWorker(mock, rdb, &EmailSenderMock{}, mockHTTP)
+
+	mock.ExpectQuery(`SELECT id, cve_id, affected_products, vendor_advisories FROM cves WHERE cve_id = ANY`).
+		WithArgs([]string{"CVE-2024-1234"}).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "affected_products", "vendor_advisories"}).
+			AddRow(1, "CVE-2024-1234", []byte(`[]`), []byte(`{}`)))
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE cves`).WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 1).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectCommit()
+
+	count, err := w.processAdvisories(context.Background(), []string{"FG-IR-24-388"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if count != 1 {
+		t.Errorf("expected to process 1 advisory, processed %d", count)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
+
+func TestScrapeFortiGuardAdvisory(t *testing.T) {
+	mockHTTP := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			htmlContent := `<html>
+<h2 class="title">FG-IR-24-388</h2>
+<h3 class="title">Multiple Vulnerabilities in FortiOS</h3>
+<div class="cves">
+<a href="/cve/CVE-2024-1234">CVE-2024-1234</a>
+</div>
+<div class="summary">
+<p>Severity: Critical</p>
+</div>
+</html>`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(htmlContent)),
+			}, nil
+		},
+	}
+
+	w := NewWorker(nil, nil, nil, mockHTTP)
+	advisory, err := w.scrapeFortiGuardAdvisory(context.Background(), "https://example.com/FG-IR-24-388")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if advisory == nil {
+		t.Fatalf("expected advisory to not be nil")
+	}
+
+	if advisory.AdvisoryID != "FG-IR-24-388" {
+		t.Errorf("expected AdvisoryID FG-IR-24-388, got %s", advisory.AdvisoryID)
+	}
+}
+
+func TestCacheAdvisory(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to setup mock redis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+
+	w := NewWorker(nil, rdb, nil, nil)
+	advisory := &FortiGuardAdvisory{
+		AdvisoryID: "FG-IR-24-388",
+		Title:      "Test",
+	}
+
+	err = w.cacheAdvisory(context.Background(), advisory)
+	if err != nil {
+		t.Fatalf("unexpected error caching: %v", err)
+	}
+
+	cached, err := w.getCachedAdvisory(context.Background(), "FG-IR-24-388")
+	if err != nil {
+		t.Fatalf("unexpected error getting cache: %v", err)
+	}
+
+	if cached == nil {
+		t.Fatalf("expected cached advisory not to be nil")
+	}
+
+	if cached.AdvisoryID != "FG-IR-24-388" {
+		t.Errorf("expected AdvisoryID FG-IR-24-388, got %s", cached.AdvisoryID)
 	}
 }

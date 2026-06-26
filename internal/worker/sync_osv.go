@@ -17,20 +17,24 @@ import (
 
 const osvConcurrency = 10
 
+type osvRange struct {
+	Type   string              `json:"type"`
+	Events []map[string]string `json:"events"`
+}
+
+type osvAffected struct {
+	Package struct {
+		Name      string `json:"name"`
+		Ecosystem string `json:"ecosystem"`
+	} `json:"package"`
+	Ranges   []osvRange `json:"ranges"`
+	Versions []string   `json:"versions"`
+}
+
 type osvResponse struct {
-	ID       string `json:"id"`
-	Modified string `json:"modified"`
-	Affected []struct {
-		Package struct {
-			Name      string `json:"name"`
-			Ecosystem string `json:"ecosystem"`
-		} `json:"package"`
-		Ranges []struct {
-			Type   string              `json:"type"`
-			Events []map[string]string `json:"events"`
-		} `json:"ranges"`
-		Versions []string `json:"versions"`
-	} `json:"affected"`
+	ID       string        `json:"id"`
+	Modified string        `json:"modified"`
+	Affected []osvAffected `json:"affected"`
 }
 
 func (w *Worker) syncOSVPeriodically(ctx context.Context) {
@@ -112,55 +116,7 @@ func (w *Worker) syncOSV(ctx context.Context) {
 				if osvData != nil {
 					item.hasData = true
 					// Deep Enrichment: Extract products and versions
-					for _, aff := range osvData.Affected {
-						vendor := aff.Package.Ecosystem
-						product := aff.Package.Name
-
-						// Build version string from ranges
-						var versionParts []string
-						for _, r := range aff.Ranges {
-							var start, end string
-							for _, ev := range r.Events {
-								if v, ok := ev["introduced"]; ok && v != "0" {
-									start = "≥" + v
-								}
-								if v, ok := ev["fixed"]; ok {
-									end = "<" + v
-								}
-								if v, ok := ev["last_affected"]; ok {
-									end = "≤" + v
-								}
-							}
-							if start != "" && end != "" {
-								versionParts = append(versionParts, start+" "+end)
-							} else if start != "" {
-								versionParts = append(versionParts, start)
-							} else if end != "" {
-								versionParts = append(versionParts, end)
-							}
-						}
-
-						versionStr := strings.Join(versionParts, ", ")
-						if versionStr == "" && len(aff.Versions) > 0 {
-							// Fallback to first few versions if no ranges
-							if len(aff.Versions) > 3 {
-								versionStr = strings.Join(aff.Versions[:3], ", ") + "..."
-							} else {
-								versionStr = strings.Join(aff.Versions, ", ")
-							}
-						}
-
-						item.cve.AddAffectedProduct(vendor, product, versionStr, false)
-
-						// If primary vendor/product is missing, use OSV as authoritative
-						if item.cve.Vendor == "" {
-							item.cve.Vendor = vendor
-						}
-						if item.cve.Product == "" {
-							item.cve.Product = product
-						}
-						item.changed = true
-					}
+					item.changed = enrichCVEWithOSVData(&item.cve, osvData)
 				}
 				mu.Lock()
 				updates = append(updates, item)
@@ -245,30 +201,90 @@ func (w *Worker) syncOSV(ctx context.Context) {
 
 func (w *Worker) fetchOSVData(ctx context.Context, cveID string) (*osvResponse, error) {
 	url := fmt.Sprintf("https://api.osv.dev/v1/vulns/%s", cveID)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	var result osvResponse
+	status, err := FetchJSON(ctx, w.HTTP, url, &result)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Vulfixx-Threat-Intel/2.0")
 
-	resp, err := w.HTTP.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
+	if status == http.StatusNotFound {
 		return nil, nil
 	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OSV API returned status %d", resp.StatusCode)
-	}
-
-	var result osvResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("OSV API returned status %d", status)
 	}
 
 	return &result, nil
+}
+
+func buildVersionString(ranges []osvRange, versions []string) string {
+	var versionParts []string
+	for _, r := range ranges {
+		var start, end string
+		// flush emits the current interval (if any) and resets the accumulators
+		// so each introduced→fixed/last_affected segment is preserved in order
+		// instead of being overwritten by later events.
+		flush := func() {
+			if start != "" && end != "" {
+				versionParts = append(versionParts, start+" "+end)
+			} else if start != "" {
+				versionParts = append(versionParts, start)
+			} else if end != "" {
+				versionParts = append(versionParts, end)
+			}
+			start, end = "", ""
+		}
+		for _, ev := range r.Events {
+			if v, ok := ev["introduced"]; ok {
+				// A new "introduced" opens a new interval; close the previous one first.
+				if start != "" || end != "" {
+					flush()
+				}
+				if v != "0" {
+					start = "≥" + v
+				}
+			}
+			if v, ok := ev["fixed"]; ok {
+				end = "<" + v
+				flush()
+			}
+			if v, ok := ev["last_affected"]; ok {
+				end = "≤" + v
+				flush()
+			}
+		}
+		// Emit any trailing open interval (introduced without a close event).
+		flush()
+	}
+
+	versionStr := strings.Join(versionParts, ", ")
+	if versionStr == "" && len(versions) > 0 {
+		if len(versions) > 3 {
+			versionStr = strings.Join(versions[:3], ", ") + "..."
+		} else {
+			versionStr = strings.Join(versions, ", ")
+		}
+	}
+	return versionStr
+}
+
+func enrichCVEWithOSVData(cve *models.CVE, osvData *osvResponse) bool {
+	changed := false
+	for _, aff := range osvData.Affected {
+		vendor := aff.Package.Ecosystem
+		product := aff.Package.Name
+
+		versionStr := buildVersionString(aff.Ranges, aff.Versions)
+
+		cve.AddAffectedProduct(vendor, product, versionStr, false)
+
+		if cve.Vendor == "" {
+			cve.Vendor = vendor
+		}
+		if cve.Product == "" {
+			cve.Product = product
+		}
+		changed = true
+	}
+	return changed
 }

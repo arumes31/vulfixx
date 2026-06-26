@@ -120,7 +120,7 @@ func (a *App) GetActiveTeamID(r *http.Request) (int, bool) {
 	return getSessionInt(session.Values["team_id"])
 }
 
-func (a *App) SetActiveTeamID(w http.ResponseWriter, r *http.Request, teamID int) error {
+func (a *App) SetActiveTeamID(w http.ResponseWriter, r *http.Request, teamID int, teamName string) error {
 	if a.SessionStore == nil {
 		return errors.New("session store not initialized")
 	}
@@ -130,6 +130,7 @@ func (a *App) SetActiveTeamID(w http.ResponseWriter, r *http.Request, teamID int
 		return err
 	}
 	session.Values["team_id"] = teamID
+	session.Values["team_name"] = teamName
 	if err := session.Save(r, w); err != nil {
 		log.Printf("SetActiveTeamID error saving session: %v", err)
 		return err

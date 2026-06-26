@@ -606,9 +606,9 @@ func TestSwitchTeamHandler(t *testing.T) {
 			form:   url.Values{"team_id": {"10"}},
 			userID: 1,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery("SELECT EXISTS").
+				mock.ExpectQuery("SELECT t.name").
 					WithArgs(10, 1).
-					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
+					WillReturnRows(pgxmock.NewRows([]string{"name"}))
 			},
 			expectedStatus: http.StatusForbidden,
 		},
@@ -619,9 +619,9 @@ func TestSwitchTeamHandler(t *testing.T) {
 			userID:  1,
 			referer: "/some-page",
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery("SELECT EXISTS").
+				mock.ExpectQuery("SELECT t.name").
 					WithArgs(10, 1).
-					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
+					WillReturnRows(pgxmock.NewRows([]string{"name"}).AddRow("Test Team"))
 			},
 			expectedStatus: http.StatusFound,
 		},
@@ -639,11 +639,12 @@ func TestSwitchTeamHandler(t *testing.T) {
 			form:   url.Values{"team_id": {"10"}},
 			userID: 1,
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery("SELECT EXISTS").
+				mock.ExpectQuery("SELECT t.name").
 					WithArgs(10, 1).
 					WillReturnError(fmt.Errorf("db error"))
 			},
-			expectedStatus: http.StatusForbidden,
+			// A real DB failure must surface as 500, not be masked as 403.
+			expectedStatus: http.StatusInternalServerError,
 		},
 		{
 			name:   "Invalid Team ID Format",
@@ -661,9 +662,9 @@ func TestSwitchTeamHandler(t *testing.T) {
 			userID:  1,
 			referer: "http://evil.com/malicious",
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery("SELECT EXISTS").
+				mock.ExpectQuery("SELECT t.name").
 					WithArgs(10, 1).
-					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
+					WillReturnRows(pgxmock.NewRows([]string{"name"}).AddRow("Test Team"))
 			},
 			expectedStatus: http.StatusFound, // Should redirect to /dashboard, not evil.com
 		},
@@ -674,9 +675,9 @@ func TestSwitchTeamHandler(t *testing.T) {
 			userID:  1,
 			referer: "javascript:alert(1)",
 			mockExpect: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery("SELECT EXISTS").
+				mock.ExpectQuery("SELECT t.name").
 					WithArgs(10, 1).
-					WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(true))
+					WillReturnRows(pgxmock.NewRows([]string{"name"}).AddRow("Test Team"))
 			},
 			expectedStatus: http.StatusFound, // Should redirect to /dashboard
 		},

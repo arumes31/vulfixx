@@ -19,6 +19,9 @@ var (
 	sqlOpener   = func(driverName, dataSourceName string) (*sql.DB, error) {
 		return sql.Open(driverName, dataSourceName)
 	}
+	gooseSetDialect = func(dialect string) error {
+		return goose.SetDialect(dialect)
+	}
 	gooseUp = func(ctx context.Context, db *sql.DB, dir string) error {
 		return goose.UpContext(ctx, db, dir)
 	}
@@ -59,7 +62,7 @@ func migrate(ctx context.Context) error {
 	defer dbConn.Close()
 
 	goose.SetBaseFS(embedMigrations)
-	if err := goose.SetDialect("postgres"); err != nil {
+	if err := gooseSetDialect("postgres"); err != nil {
 		slog.Error("Database Migration: Goose set dialect failed", "error", err)
 		return fmt.Errorf("goose set dialect failed: %w", err)
 	}

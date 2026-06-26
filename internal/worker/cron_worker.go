@@ -52,20 +52,22 @@ func (w *Worker) runWeeklySummaryWithLock(ctx context.Context) {
 
 	if shouldRun {
 		slog.Info("Worker: [CRON] Executing weekly summary run...")
-		if err := w.sendWeeklySummaries(ctx); err == nil {
-			_, err = tx.Exec(ctx, "INSERT INTO sync_state (key, value, updated_at) VALUES ('weekly_summary_last_run', $1, NOW()) ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()", time.Now().Format(time.RFC3339))
-			if err != nil {
-				slog.Error("Worker: [CRON] Failed to update sync state for weekly summary", "error", err)
-				return
-			}
-			if err := tx.Commit(ctx); err != nil {
-				slog.Error("Worker: [CRON] Failed to commit weekly summary transaction", "error", err)
-				return
-			}
-			slog.Info("Worker: [CRON] Weekly summary run complete.")
-		} else {
-			slog.Error("Worker: [CRON] sendWeeklySummaries failed", "error", err)
+		// Only record the run (and commit) if delivery actually succeeded;
+		// otherwise roll back so the next cycle retries.
+		if err := w.sendWeeklySummaries(ctx); err != nil {
+			slog.Error("Worker: [CRON] Weekly summary delivery failed, not recording run", "error", err)
+			return
 		}
+		_, err = tx.Exec(ctx, "INSERT INTO sync_state (key, value, updated_at) VALUES ('weekly_summary_last_run', $1, NOW()) ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()", time.Now().Format(time.RFC3339))
+		if err != nil {
+			slog.Error("Worker: [CRON] Failed to update sync state for weekly summary", "error", err)
+			return
+		}
+		if err := tx.Commit(ctx); err != nil {
+			slog.Error("Worker: [CRON] Failed to commit weekly summary transaction", "error", err)
+			return
+		}
+		slog.Info("Worker: [CRON] Weekly summary run complete.")
 	}
 }
 
@@ -273,9 +275,14 @@ func (w *Worker) startWeeklySummaryTask(ctx context.Context) {
 	}
 }
 
-func (w *Worker) sendWeeklySummaries(_ context.Context) error {
+func (w *Worker) sendWeeklySummaries(ctx context.Context) error {
 	slog.Info("Worker: [CRON] Starting weekly summaries distribution...")
 	start := time.Now()
+	// Abort (and signal the caller not to record the run) if the context was
+	// cancelled before delivery could happen.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	// Implementation logic for weekly summaries
 	slog.Info("Worker: [CRON] Weekly summaries distribution complete.", "duration", time.Since(start))
 	return nil

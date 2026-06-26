@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"cve-tracker/internal/config"
 	"cve-tracker/internal/models"
 	"cve-tracker/internal/security"
 	"encoding/json"
@@ -198,9 +199,9 @@ func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
 		})
 	}
 
-	baseURLStr := os.Getenv("BASE_URL")
+	baseURLStr := config.AppConfig.BaseURL
 	if baseURLStr == "" {
-		baseURLStr = "http://localhost:8080"
+		baseURLStr = os.Getenv("BASE_URL")
 	}
 	parsedBase, err := url.Parse(baseURLStr)
 	if err != nil || (parsedBase.Scheme != "http" && parsedBase.Scheme != "https") {

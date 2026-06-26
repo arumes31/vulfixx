@@ -429,3 +429,26 @@ func TestWorkerSync_OSV(t *testing.T) {
 		}
 	})
 }
+
+func TestClearBackfillProgress(t *testing.T) {
+	ctx := context.Background()
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	w := &Worker{
+		Pool: mock,
+	}
+
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM sync_state WHERE key = 'nvd_backfill_index'")).
+		WithArgs().
+		WillReturnResult(pgxmock.NewResult("DELETE", 1))
+
+	w.clearBackfillProgress(ctx)
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}

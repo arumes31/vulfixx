@@ -2,6 +2,7 @@ package worker
 
 import (
 	"bytes"
+	"cve-tracker/internal/config"
 	"fmt"
 	"html/template"
 	"os"
@@ -159,7 +160,10 @@ func RenderEmailTemplate(title, bodyTmpl string, data interface{}) (string, erro
 		return "", fmt.Errorf("failed to execute inner email template: %w", err)
 	}
 
-	baseURL := os.Getenv("BASE_URL")
+	baseURL := config.AppConfig.BaseURL
+	if baseURL == "" {
+		baseURL = os.Getenv("BASE_URL")
+	}
 	if baseURL == "" {
 		baseURL = "http://localhost:8080"
 	}

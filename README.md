@@ -55,6 +55,7 @@ A robust Go-based application for tracking and alerting on new Common Vulnerabil
 - **LLM-Powered Detection**: Advanced extraction of **Vendor**, **Product**, and **Affected Versions** from complex descriptions using Local LLMs (Ollama), Cloud APIs (Gemini), or OpenAI Compatible endpoints.
 - **Ransomware & Threat Actor Intel Mapping (Strategy 1 & 3)**: Zero-cost active Ransomware Campaign & Threat Actor matching utilizing CISA KEV `"knownRansomwareCampaignUse"` extraction alongside a dynamic, high-performance OSINT public intelligence feed sync with a curated fallback baseline. Exposes premium "Ransomware Active" badges and multi-actor detail panels without any external paid API requirements.
 - **Production-Grade Security Hardening**: Comprehensive platform-wide hardening, including zero-bypass environment checks, percent-encoded database DSNs, fail-closed rate limiters/session middlewares, closed listener port leaks, buffered response marshalling, scrubbed PII loggers, whitelisted workers, and 100% test-verified conformance.
+- **Release v2.5.6 Consolidation**: Consolidates 75 open Pull Requests, resolving dependency updates, modernizing Go patterns, hardening template security, and fixing unit test regressions across all workers and database mock layers.
 
 ## 🤖 LLM Intelligence (Optional)
 

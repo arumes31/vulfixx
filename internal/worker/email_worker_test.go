@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -144,6 +145,50 @@ func TestEmailSender_Coverage(t *testing.T) {
 		err := sender.SendEmail("invalid\n", "sub", "body")
 		if err == nil {
 			t.Error("expected error")
+		}
+	})
+}
+
+func TestWorker_sendVerificationEmail(t *testing.T) {
+	t.Setenv("BASE_URL", "")
+	mockMailer := &EmailSenderMock{}
+	w := &Worker{
+		Mailer: mockMailer,
+	}
+
+	t.Run("Success", func(t *testing.T) {
+		mockMailer.Count = 0
+		err := w.sendVerificationEmail("test@example.com", "token 123&")
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if mockMailer.Count != 1 {
+			t.Errorf("expected 1 email to be sent, got %d", mockMailer.Count)
+		}
+		if mockMailer.LastTo != "test@example.com" {
+			t.Errorf("expected LastTo to be test@example.com, got %v", mockMailer.LastTo)
+		}
+		if mockMailer.LastSubject != "Verify Your Email Address" {
+			t.Errorf("expected LastSubject to be Verify Your Email Address, got %v", mockMailer.LastSubject)
+		}
+		if !strings.Contains(mockMailer.LastBody, "http://localhost:8080/verify-email?token=token+123%26") {
+			t.Errorf("expected email body to contain correct link, got %v", mockMailer.LastBody)
+		}
+	})
+
+	t.Run("CustomBaseURL", func(t *testing.T) {
+		mockMailer.Count = 0
+		// Set custom base url
+		t.Setenv("BASE_URL", "https://custom.com")
+		err := w.sendVerificationEmail("test3@example.com", "token789")
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if mockMailer.Count != 1 {
+			t.Errorf("expected 1 email to be sent, got %d", mockMailer.Count)
+		}
+		if !strings.Contains(mockMailer.LastBody, "https://custom.com/verify-email?token=token789") {
+			t.Errorf("expected email body to contain custom base url, got %v", mockMailer.LastBody)
 		}
 	})
 }

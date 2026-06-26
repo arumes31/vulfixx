@@ -225,26 +225,26 @@
     <!-- Mobile Bottom Navigation -->
     {{if .UserLoggedIn}}
     <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-[#10141a] border-t border-white/10 flex items-center justify-around py-3 px-2 z-100 backdrop-blur-lg bg-opacity-90">
-        <a href="/dashboard" class="flex flex-col items-center gap-1 text-gray-500 hover:text-primary transition-colors">
+        <a href="/dashboard" aria-label="Dashboard" class="flex flex-col items-center gap-1 text-gray-500 hover:text-primary transition-colors">
             <span class="material-symbols-outlined text-xl" aria-hidden="true">dashboard</span>
             <span class="text-[9px] font-black uppercase tracking-widest">Dash</span>
         </a>
-        <a href="/subscriptions" class="flex flex-col items-center gap-1 text-gray-500 hover:text-primary transition-colors">
+        <a href="/subscriptions" aria-label="Subscriptions" class="flex flex-col items-center gap-1 text-gray-500 hover:text-primary transition-colors">
             <span class="material-symbols-outlined text-xl" aria-hidden="true">star</span>
             <span class="text-[9px] font-black uppercase tracking-widest">Subs</span>
         </a>
-        <a href="/assets" class="flex flex-col items-center gap-1 text-gray-500 hover:text-primary transition-colors">
+        <a href="/assets" aria-label="Assets" class="flex flex-col items-center gap-1 text-gray-500 hover:text-primary transition-colors">
             <span class="material-symbols-outlined text-xl" aria-hidden="true">inventory_2</span>
             <span class="text-[9px] font-black uppercase tracking-widest">Assets</span>
         </a>
-        <a href="/settings" class="flex flex-col items-center gap-1 text-gray-500 hover:text-primary transition-colors">
+        <a href="/settings" aria-label="Settings" class="flex flex-col items-center gap-1 text-gray-500 hover:text-primary transition-colors">
             <span class="material-symbols-outlined text-xl" aria-hidden="true">settings</span>
             <span class="text-[9px] font-black uppercase tracking-widest">Set</span>
         </a>
         <form action="/logout" method="POST" id="mobile-logout-form" class="hidden">
             {{.csrfField}}
         </form>
-        <button id="mobile-logout-btn" class="flex flex-col items-center gap-1 text-gray-500 hover:text-red-400 transition-colors bg-transparent border-none p-0 cursor-pointer">
+        <button id="mobile-logout-btn" aria-label="Logout" class="flex flex-col items-center gap-1 text-gray-500 hover:text-red-400 transition-colors bg-transparent border-none p-0 cursor-pointer">
             <span class="material-symbols-outlined text-xl" aria-hidden="true">logout</span>
             <span class="text-[9px] font-black uppercase tracking-widest">Exit</span>
         </button>

@@ -332,7 +332,7 @@ func TestDecodeKey_Detailed(t *testing.T) {
 
 	t.Run("HexDecode", func(t *testing.T) {
 		hexKey := strings.Repeat("a", 64) // 64 chars = 32 bytes hex
-		decoded, err := decodeKey("Key", hexKey, 32, "production")
+		decoded, err := decodeKey("Key", hexKey, "production")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -343,7 +343,7 @@ func TestDecodeKey_Detailed(t *testing.T) {
 
 	t.Run("Base64Decode", func(t *testing.T) {
 		base64Key := base64.StdEncoding.EncodeToString(make([]byte, 32))
-		decoded, err := decodeKey("Key", base64Key, 32, "production")
+		decoded, err := decodeKey("Key", base64Key, "production")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -353,7 +353,7 @@ func TestDecodeKey_Detailed(t *testing.T) {
 	})
 
 	t.Run("InvalidLen_Production", func(t *testing.T) {
-		_, err := decodeKey("Key", "short", 32, "production")
+		_, err := decodeKey("Key", "short", "production")
 		if err == nil {
 			t.Error("expected error to be returned in production for short key")
 		}
@@ -364,7 +364,7 @@ func TestDecodeKey_Detailed(t *testing.T) {
 		logPrintf = func(format string, v ...interface{}) {
 			warningCalled = true
 		}
-		_, err := decodeKey("Key", "short", 32, "development")
+		_, err := decodeKey("Key", "short", "development")
 		if err != nil {
 			t.Errorf("unexpected error in development: %v", err)
 		}
