@@ -14,7 +14,7 @@
 
 A robust Go-based application for tracking and alerting on new Common Vulnerabilities and Exposures (CVEs) from the NIST NVD database.
 
-## 🚀 V2 Intelligence Features
+## Intelligence Features
 - **Advanced Alert Routing**: Precision delivery of alerts to different channels based on severity or risk profile.
 - **Complex Boolean Alert Filters**: Surgical alert filtering using multi-variable logic (e.g., `severity > 8 && epss > 0.1`).
 - **Dynamic Resource Quotas**: Tiered limits for subscriptions and assets per user/team to optimize performance and resource utilization.
