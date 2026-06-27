@@ -10,6 +10,9 @@ import (
 	"time"
 )
 
+var cveRegex = regexp.MustCompile(`CVE-\d{4}-\d+`)
+
+
 const (
 	VendorFortiGuard = "fortiguard"
 	VendorCisco      = "cisco"
@@ -500,7 +503,6 @@ func (c *CVE) GetLineage() []string {
 	seen[c.CVEID] = true
 
 	// Extract CVE IDs from description
-	cveRegex := regexp.MustCompile(`CVE-\d{4}-\d+`)
 	for _, match := range cveRegex.FindAllString(c.Description, -1) {
 		upper := strings.ToUpper(match)
 		if !seen[upper] {
