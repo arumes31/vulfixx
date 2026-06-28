@@ -130,8 +130,7 @@ func TestWebEndpointsCoverage(t *testing.T) {
 				_ = res.Body.Close()
 			}
 		})
-		}
-
+	}
 
 	// 1. Home
 	doAuthReq("GET", "/", nil, func() {

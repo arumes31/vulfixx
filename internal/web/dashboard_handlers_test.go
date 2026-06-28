@@ -4,7 +4,6 @@ import (
 	"context"
 	"cve-tracker/internal/db"
 	"fmt"
-	"github.com/pashagolub/pgxmock/v3"
 	"html/template"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pashagolub/pgxmock/v3"
 )
 
 func TestDashboardHandler_Unauthenticated(t *testing.T) {

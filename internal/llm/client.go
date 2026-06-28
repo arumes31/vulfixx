@@ -17,6 +17,7 @@ import (
 
 	"cve-tracker/internal/config"
 	"cve-tracker/internal/db"
+
 	"google.golang.org/genai"
 )
 

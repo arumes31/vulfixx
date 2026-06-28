@@ -791,7 +791,7 @@ func TestFilterRelevantAdvisories(t *testing.T) {
 
 	w := NewWorker(mock, nil, nil, nil)
 
-	advisoryMap := map[string]struct{
+	advisoryMap := map[string]struct {
 		cveIDs []string
 		url    string
 	}{

@@ -5,10 +5,11 @@ import (
 	"html/template"
 	"sync"
 
+	"time"
+
 	"github.com/gorilla/sessions"
 	"github.com/hibiken/asynq"
 	"github.com/ulule/limiter/v3"
-	"time"
 )
 
 // EmailSender defines the interface for sending emails.

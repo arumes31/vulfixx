@@ -4,10 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"github.com/pashagolub/pgxmock/v3"
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/pashagolub/pgxmock/v3"
 )
 
 func TestWorker_cronWorker_Coverage(t *testing.T) {

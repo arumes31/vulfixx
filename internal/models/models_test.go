@@ -696,7 +696,7 @@ func TestGitHubPoCRepos_Scan(t *testing.T) {
 		expectErr bool
 	}{
 		{
-			name: "Valid JSON",
+			name:  "Valid JSON",
 			value: []byte(`[{"url": "https://github.com/foo/bar", "description": "foo", "updated_at": "2023-01-01T00:00:00Z"}]`),
 			want: GitHubPoCRepos{
 				{

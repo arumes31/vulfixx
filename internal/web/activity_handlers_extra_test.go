@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"cve-tracker/internal/db"
+
 	"github.com/pashagolub/pgxmock/v3"
 )
 
