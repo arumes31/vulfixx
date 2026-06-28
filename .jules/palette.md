@@ -20,3 +20,6 @@
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+## 2026-06-28 - Material Design Icons Accessibility
+**Learning:** Material Design icons utilize text ligatures (e.g., `code`, `verified`) to render icons visually. If not properly hidden, screen readers will audibly announce this raw ligature text, creating a confusing and degraded experience for users relying on assistive technologies.
+**Action:** Always append `aria-hidden="true"` to purely decorative icon span elements (like those utilizing the `material-symbols-outlined` class) to ensure they are excluded from the accessibility tree, thereby preventing redundant and confusing screen reader output.
