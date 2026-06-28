@@ -216,4 +216,33 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 			t.Errorf("expected 403 Forbidden, got %d", rr2.Code)
 		}
 	})
+
+	t.Run("ProxyMiddleware_SpoofedIP", func(t *testing.T) {
+		t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16")
+
+		mock, _ := pgxmock.NewPool()
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		var capturedIP string
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if val := r.Context().Value(clientIPKey); val != nil {
+				capturedIP = val.(string)
+			}
+			w.WriteHeader(http.StatusOK)
+		})
+
+		middleware := app.ProxyMiddleware(next)
+		req, _ := http.NewRequest("GET", "/", nil)
+		req.RemoteAddr = "10.0.0.1:12345"
+		// The malicious user tries to spoof 1.1.1.1, the real client is 5.6.7.8, and 192.168.1.100 is another trusted proxy in the chain.
+		req.Header.Set("X-Forwarded-For", "1.1.1.1, 5.6.7.8, 192.168.1.100")
+		rr := httptest.NewRecorder()
+
+		middleware.ServeHTTP(rr, req)
+
+		if capturedIP != "5.6.7.8" {
+			t.Errorf("expected client IP 5.6.7.8, got %s", capturedIP)
+		}
+	})
 }
