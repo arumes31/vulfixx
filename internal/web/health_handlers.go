@@ -8,10 +8,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type stattable interface {
-	Stat() *pgxpool.Stat
-}
-
 // HealthzHandler returns a simple 200 OK to indicate the service is running.
 func (a *App) HealthzHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
@@ -49,7 +45,7 @@ func (a *App) ReadyzHandler(w http.ResponseWriter, r *http.Request) {
 				slog.Warn("DB Pool Stats panic recovered", "error", r)
 			}
 		}()
-		if st, ok := a.Pool.(stattable); ok {
+		if st, ok := a.Pool.(*pgxpool.Pool); ok {
 			stat := st.Stat()
 			if stat != nil {
 				status["db_telemetry"] = map[string]interface{}{
