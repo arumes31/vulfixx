@@ -210,7 +210,7 @@ func TestRunMain(t *testing.T) {
 
 			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tt.mockStatus)
-				w.Write([]byte(tt.mockBody))
+				_, _ = w.Write([]byte(tt.mockBody))
 			}))
 			defer ts.Close()
 
@@ -228,8 +228,8 @@ func TestRunMain(t *testing.T) {
 
 			originalWd, _ := os.Getwd()
 			tmpDir := t.TempDir()
-			os.Chdir(tmpDir)
-			defer os.Chdir(originalWd)
+			_ = os.Chdir(tmpDir)
+			defer func() { _ = os.Chdir(originalWd) }()
 
 			err := runMain()
 			if (err != nil) != tt.wantErr {
