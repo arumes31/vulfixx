@@ -1,0 +1,5 @@
+
+## $(date +%Y-%m-%d) - Fix IP spoofing vulnerability in ProxyMiddleware
+**Vulnerability:** The application was extracting the client IP from the `X-Forwarded-For` header by taking the first (leftmost) IP in the list, as long as the direct connecting client (`r.RemoteAddr`) was a trusted proxy. An attacker could trivially spoof their IP by sending a malicious `X-Forwarded-For: <spoofed_ip>, <actual_ip>` header. The proxy would append `<actual_ip>`, resulting in `X-Forwarded-For: <spoofed_ip>, <actual_ip>, <proxy_ip>`. The application would then incorrectly trust `<spoofed_ip>`.
+**Learning:** This vulnerability occurred because `strings.Split(xff, ",")[0]` does not verify the trust chain of intermediate proxies. The leftmost IP is essentially user-provided data if any proxy in the chain allows the client to provide an `X-Forwarded-For` header.
+**Prevention:** Always iterate the comma-separated `X-Forwarded-For` list from right to left (newest to oldest), stopping at the first untrusted proxy. This ensures that only IPs appended by trusted nodes in the network architecture are respected.

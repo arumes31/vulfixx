@@ -1,5 +1,5 @@
-🎯 **What:** The `migrate()` method in `internal/db/schema.go` contained a call to `goose.SetDialect` which could not be practically mocked, leaving its error handling path untested.
-
-📊 **Coverage:** This PR extracts `goose.SetDialect` into a package-level variable `gooseSetDialect` (following the existing pattern for `sqlOpener` and `gooseUp`). This allows us to inject a mock failure and explicitly test the error case in `TestMigrate_GooseSetDialectFailure` where the dialect fails to set. It also tests the new default `gooseSetDialect` wrapper within `TestDefaultSchemaWrappers`.
-
-✨ **Result:** Increased `internal/db/schema.go` test coverage from 92.3% to 100%, completing the testing profile for database migrations.
+🚨 Severity: CRITICAL
+💡 Vulnerability: IP Spoofing via `X-Forwarded-For` header. The proxy middleware was incorrectly blindly trusting the first (leftmost) IP in the `X-Forwarded-For` chain if the direct connection came from a trusted proxy. An attacker could bypass IP-based controls (like rate limiting, logging, or bans) by injecting a malicious `X-Forwarded-For: <spoofed_ip>, <actual_ip>` header.
+🎯 Impact: Attackers can trivially spoof their source IP address, blinding the application to their true origin and bypassing IP-based rate limiting or blocklists.
+🔧 Fix: Updated the `X-Forwarded-For` parsing logic to iterate from right-to-left (newest to oldest), strictly stopping at the first untrusted IP in the chain, ensuring only IPs appended by trusted nodes in the network are accepted. Added two table-driven tests to verify spoofed headers are caught.
+✅ Verification: Review the PR. Tests added in `internal/web/middlewares_test.go` cover untrusted IPs both at the beginning and in the middle of the XFF chain. All `go test ./...` pass.

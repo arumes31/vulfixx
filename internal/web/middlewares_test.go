@@ -97,6 +97,65 @@ func TestMiddlewares_Consolidated(t *testing.T) {
 		}
 	})
 
+	t.Run("ProxyMiddleware_IP_Spoofing_Untrusted_First", func(t *testing.T) {
+		t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8")
+		mock, _ := pgxmock.NewPool()
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		var capturedIP string
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			capturedIP = r.Context().Value(clientIPKey).(string)
+		})
+
+		middleware := app.ProxyMiddleware(next)
+
+		req, _ := http.NewRequest("GET", "/", nil)
+		req.RemoteAddr = "10.0.0.1:12345"
+		// 10.0.0.1 is trusted proxy.
+		// It claims client is 5.6.7.8, but the chain shows 4.3.2.1 before 10.0.0.1
+		// Since 4.3.2.1 is NOT trusted, it should stop there.
+		req.Header.Set("X-Forwarded-For", "5.6.7.8, 4.3.2.1")
+		rr := httptest.NewRecorder()
+
+		middleware.ServeHTTP(rr, req)
+
+		if capturedIP != "4.3.2.1" {
+			t.Errorf("expected client IP 4.3.2.1, got %s", capturedIP)
+		}
+	})
+
+	t.Run("ProxyMiddleware_IP_Spoofing_Untrusted_In_Middle", func(t *testing.T) {
+		t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8")
+		mock, _ := pgxmock.NewPool()
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		var capturedIP string
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			capturedIP = r.Context().Value(clientIPKey).(string)
+		})
+
+		middleware := app.ProxyMiddleware(next)
+
+		req, _ := http.NewRequest("GET", "/", nil)
+		req.RemoteAddr = "10.0.0.1:12345"
+		// The node that connected to us is 10.0.0.1 (trusted).
+		// X-Forwarded-For: 5.6.7.8, 4.3.2.1, 10.0.0.2
+		// 10.0.0.1 says 10.0.0.2 connected to it. We trust 10.0.0.1.
+		// 10.0.0.2 (trusted) says 4.3.2.1 connected to it. We trust 10.0.0.2.
+		// 4.3.2.1 (untrusted) says 5.6.7.8 connected to it. We don't trust 4.3.2.1!
+		// So we stop at 4.3.2.1.
+		req.Header.Set("X-Forwarded-For", "5.6.7.8, 4.3.2.1, 10.0.0.2")
+		rr := httptest.NewRecorder()
+
+		middleware.ServeHTTP(rr, req)
+
+		if capturedIP != "4.3.2.1" {
+			t.Errorf("expected client IP 4.3.2.1, got %s", capturedIP)
+		}
+	})
+
 	t.Run("ProxyMiddleware_UntrustedProxy", func(t *testing.T) {
 		t.Setenv("TRUSTED_PROXIES", "127.0.0.1")
 
