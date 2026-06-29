@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"sort"
@@ -55,7 +56,7 @@ type testCVE struct {
 
 func main() {
 	if err := runMain(); err != nil {
-		os.Exit(1)
+		log.Fatal(err)
 	}
 }
 

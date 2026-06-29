@@ -12,6 +12,11 @@ import (
 )
 
 const (
+	argon2idMemory      = 65536
+	argon2idIterations  = 3
+	argon2idParallelism = 4
+	argon2idKeyLength   = 32
+
 	argon2idPrefix = "$argon2id$"
 	argon2idFormat = "$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s"
 )
@@ -23,12 +28,12 @@ func hashPasswordArgon2id(password string) (string, error) {
 		return "", err
 	}
 
-	hash := argon2.IDKey([]byte(password), salt, 3, 65536, 4, 32)
+	hash := argon2.IDKey([]byte(password), salt, argon2idIterations, argon2idMemory, argon2idParallelism, argon2idKeyLength)
 
 	b64Salt := base64.RawStdEncoding.EncodeToString(salt)
 	b64Hash := base64.RawStdEncoding.EncodeToString(hash)
 
-	return fmt.Sprintf(argon2idFormat, argon2.Version, 65536, 3, 4, b64Salt, b64Hash), nil
+	return fmt.Sprintf(argon2idFormat, argon2.Version, argon2idMemory, argon2idIterations, argon2idParallelism, b64Salt, b64Hash), nil
 }
 
 // verifyPasswordArgon2id verifies the password against a stored Argon2id hash.

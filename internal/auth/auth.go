@@ -33,7 +33,7 @@ func HashPassword(password string) (string, error) {
 // dummyHash is a pre-computed valid argon2id hash of a dummy string.
 // This prevents email enumeration via timing attacks when a user is not found,
 // while avoiding runtime initialization panics.
-var dummyHash = "$argon2id$v=19$m=65536,t=3,p=4$X4fUoUhti1NYpyJWO4K5EQ$eMu2NZT+fjCsjS5+1+DQhG+nJT+wS1ZLXDaZjEvT0d0"
+var dummyHash = fmt.Sprintf("$argon2id$v=19$m=%d,t=%d,p=%d$X4fUoUhti1NYpyJWO4K5EQ$eMu2NZT+fjCsjS5+1+DQhG+nJT+wS1ZLXDaZjEvT0d0", argon2idMemory, argon2idIterations, argon2idParallelism)
 
 func GenerateToken() (string, error) {
 	bytes := make([]byte, 32)
