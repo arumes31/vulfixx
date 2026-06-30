@@ -81,8 +81,16 @@ func (a *App) ProxyMiddleware(next http.Handler) http.Handler {
 		if clientIP == host && isTrustedProxy(host) {
 			if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 				ips := strings.Split(xff, ",")
-				if len(ips) > 0 {
-					clientIP = strings.TrimSpace(ips[0])
+				for i := len(ips) - 1; i >= 0; i-- {
+					ipStr := strings.TrimSpace(ips[i])
+					if ipStr == "" {
+						continue
+					}
+					if isTrustedProxy(clientIP) {
+						clientIP = ipStr
+					} else {
+						break
+					}
 				}
 			} else if xri := r.Header.Get("X-Real-IP"); xri != "" {
 				clientIP = xri
