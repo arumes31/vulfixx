@@ -1,5 +1,4 @@
-🎯 **What:** The `migrate()` method in `internal/db/schema.go` contained a call to `goose.SetDialect` which could not be practically mocked, leaving its error handling path untested.
-
-📊 **Coverage:** This PR extracts `goose.SetDialect` into a package-level variable `gooseSetDialect` (following the existing pattern for `sqlOpener` and `gooseUp`). This allows us to inject a mock failure and explicitly test the error case in `TestMigrate_GooseSetDialectFailure` where the dialect fails to set. It also tests the new default `gooseSetDialect` wrapper within `TestDefaultSchemaWrappers`.
-
-✨ **Result:** Increased `internal/db/schema.go` test coverage from 92.3% to 100%, completing the testing profile for database migrations.
+💡 What: Added a new database migration to create an index (`idx_alert_history_cve_id`) on the `cve_id` column of the `alert_history` table.
+🎯 Why: The `alert_history` table has a multi-column UNIQUE constraint `UNIQUE(user_id, cve_id)`. During batch notification processing (`evaluateSubscriptions`), the application frequently queries the table by `cve_id` only (`SELECT user_id FROM alert_history WHERE cve_id = $1`). Because the primary column of the unique index is `user_id`, this query cannot utilize the index, resulting in a full sequential scan for every new vulnerability being processed. This introduces a severe N+1 database bottleneck.
+📊 Impact: Eliminates sequential scans during alert processing. Reduces the database lookup time per CVE from O(N) (scanning the entire alert history table) to O(log N) (index seek), significantly increasing worker throughput.
+🔬 Measurement: Verify using `EXPLAIN ANALYZE SELECT user_id FROM alert_history WHERE cve_id = $1;` on the production database before and after applying the migration. The query plan should shift from `Seq Scan` to `Index Only Scan` or `Index Scan`.
