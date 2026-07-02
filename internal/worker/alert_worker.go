@@ -464,7 +464,9 @@ func (w *Worker) notifyIfNewWithCache(ctx context.Context, userID int, cve *mode
 		}
 	}
 
-	cve.OSINTData = w.fetchOSINTLinks(ctx, cve.CVEID)
+	if cve.OSINTData == nil {
+		cve.OSINTData = w.fetchOSINTLinks(ctx, cve.CVEID)
+	}
 
 	if !w.bufferAlert(ctx, userID, cve, sub, email, assetName) {
 		w.Redis.Decr(ctx, floodKey)
