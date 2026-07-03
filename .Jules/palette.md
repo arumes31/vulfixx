@@ -20,3 +20,7 @@
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+
+## 2026-07-03 - Add ARIA hidden to decorative icons
+**Learning:** In the CVE details view, decorative material icons used alongside functional links (like GitHub PoC repo links) were being read by screen readers due to missing ARIA attributes, creating redundant noise.
+**Action:** Always add `aria-hidden="true"` to decorative icon span elements (e.g., `material-symbols-outlined` ligatures) to prevent screen readers from reading the internal ligature text out of context.
