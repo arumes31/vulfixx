@@ -969,3 +969,73 @@ func TestDurationUntilUTCMidnight(t *testing.T) {
 		t.Errorf("durationUntilUTCMidnight = %v, want (0, 24h]", d)
 	}
 }
+
+func TestGoogleFailoverQuotaExceeded(t *testing.T) {
+	orig := googleFailoverRPDIncr
+	t.Cleanup(func() { googleFailoverRPDIncr = orig })
+
+	tests := []struct {
+		name          string
+		rpdEnv        string
+		incrResult    int64
+		incrErr       error
+		expectBlocked bool
+	}{
+		{
+			name:          "under limit allows",
+			rpdEnv:        "500",
+			incrResult:    1,
+			expectBlocked: false,
+		},
+		{
+			name:          "at limit allows",
+			rpdEnv:        "500",
+			incrResult:    500,
+			expectBlocked: false,
+		},
+		{
+			name:          "over limit blocks",
+			rpdEnv:        "500",
+			incrResult:    501,
+			expectBlocked: true,
+		},
+		{
+			name:          "redis error fails open",
+			rpdEnv:        "500",
+			incrResult:    0,
+			incrErr:       errors.New("redis down"),
+			expectBlocked: false,
+		},
+		{
+			name:          "disabled never blocks",
+			rpdEnv:        "0",
+			incrResult:    999999,
+			expectBlocked: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("GEMINI35FLASH_RPD", tc.rpdEnv)
+			called := false
+			googleFailoverRPDIncr = func(context.Context, string) (int64, error) {
+				called = true
+				return tc.incrResult, tc.incrErr
+			}
+
+			f, ok := googleFailoverFor("gemini35flash")
+			if !ok {
+				t.Fatalf("failed to get failover configuration for gemini35flash")
+			}
+
+			blocked := googleFailoverQuotaExceeded(context.Background(), f)
+			if blocked != tc.expectBlocked {
+				t.Errorf("expected blocked=%v, got %v", tc.expectBlocked, blocked)
+			}
+
+			if tc.rpdEnv == "0" && called {
+				t.Error("expected no Redis increment when tracking disabled")
+			}
+		})
+	}
+}
