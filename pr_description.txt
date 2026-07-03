@@ -1,5 +1,4 @@
-🎯 **What:** The `migrate()` method in `internal/db/schema.go` contained a call to `goose.SetDialect` which could not be practically mocked, leaving its error handling path untested.
-
-📊 **Coverage:** This PR extracts `goose.SetDialect` into a package-level variable `gooseSetDialect` (following the existing pattern for `sqlOpener` and `gooseUp`). This allows us to inject a mock failure and explicitly test the error case in `TestMigrate_GooseSetDialectFailure` where the dialect fails to set. It also tests the new default `gooseSetDialect` wrapper within `TestDefaultSchemaWrappers`.
-
-✨ **Result:** Increased `internal/db/schema.go` test coverage from 92.3% to 100%, completing the testing profile for database migrations.
+💡 What: Added a new Goose migration to create a database index (`idx_alert_history_cve_id`) on the `cve_id` column of the `alert_history` table.
+🎯 Why: PostgreSQL's `UNIQUE(user_id, cve_id)` composite constraint does not efficiently speed up queries filtering solely by the secondary `cve_id` column. Operations that look up users by CVE (like `SELECT user_id FROM alert_history WHERE cve_id = $1`) were causing sequential scans.
+📊 Impact: Eliminates O(N) sequential scans on the `alert_history` table for CVE-based lookups, bringing lookup complexity down to O(log N). This will significantly improve the performance of the alert worker when determining who has already been notified about a specific CVE.
+🔬 Measurement: Verify using EXPLAIN ANALYZE on `SELECT user_id FROM alert_history WHERE cve_id = 123` to confirm the use of an Index Scan rather than a Sequential Scan.
