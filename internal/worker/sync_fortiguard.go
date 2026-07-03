@@ -6,8 +6,10 @@ import (
 	"encoding/xml"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -273,10 +275,7 @@ func (w *Worker) filterRelevantAdvisories(ctx context.Context, advisoryMap map[s
 	}
 
 	// Convert to slice for SQL query
-	cveIDList := make([]string, 0, len(allCVEIDs))
-	for cveID := range allCVEIDs {
-		cveIDList = append(cveIDList, cveID)
-	}
+	cveIDList := slices.Collect(maps.Keys(allCVEIDs))
 
 	// Query database to find which CVE IDs exist
 	rows, err := w.Pool.Query(ctx, `
@@ -312,10 +311,7 @@ func (w *Worker) filterRelevantAdvisories(ctx context.Context, advisoryMap map[s
 	}
 
 	// Convert to slice
-	advisoryList := make([]string, 0, len(relevantAdvisories))
-	for advisoryID := range relevantAdvisories {
-		advisoryList = append(advisoryList, advisoryID)
-	}
+	advisoryList := slices.Collect(maps.Keys(relevantAdvisories))
 
 	return advisoryList, nil
 }

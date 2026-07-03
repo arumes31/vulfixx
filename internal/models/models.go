@@ -12,7 +12,6 @@ import (
 
 var cveRegex = regexp.MustCompile(`CVE-\d{4}-\d+`)
 
-
 const (
 	VendorFortiGuard = "fortiguard"
 	VendorCisco      = "cisco"
