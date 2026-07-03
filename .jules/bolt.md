@@ -4,3 +4,6 @@
 ## 2024-06-27 - Pre-compile regular expressions
 **Learning:** Compiling regex in tight loops or frequently called functions is a performance anti-pattern. Pre-compiling them at the package level saves CPU overhead.
 **Action:** Always declare regular expressions as package-level variables with `regexp.MustCompile` instead of inside loops.
+## $(date +%Y-%m-%d) - Memoize external fetches in dispatch loops
+**Learning:** In worker notification loops (like iterating over multiple users to alert about the same CVE), executing dynamic fetch operations unconditionally (like fetching OSINT data) introduces redundant external queries.
+**Action:** When data is independent of the recipient being processed in the loop, check if it's already populated on the shared parent object (e.g. `if parent.Data == nil { parent.Data = fetch() }`) to eliminate duplicate API or cache calls.
