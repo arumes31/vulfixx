@@ -9,14 +9,36 @@ import (
 	"errors"
 	"io"
 	"os"
+	"sync"
 
 	"golang.org/x/crypto/hkdf"
+)
+
+var (
+	cipherCacheMutex sync.RWMutex
+	cipherCacheKey   string
+	cipherCacheVal   cipher.AEAD
 )
 
 func getCipher() (cipher.AEAD, error) {
 	rawKey := os.Getenv("SESSION_KEY")
 	if len(rawKey) == 0 {
 		return nil, errors.New("missing SESSION_KEY")
+	}
+
+	cipherCacheMutex.RLock()
+	if cipherCacheKey == rawKey && cipherCacheVal != nil {
+		val := cipherCacheVal
+		cipherCacheMutex.RUnlock()
+		return val, nil
+	}
+	cipherCacheMutex.RUnlock()
+
+	cipherCacheMutex.Lock()
+	defer cipherCacheMutex.Unlock()
+
+	if cipherCacheKey == rawKey && cipherCacheVal != nil {
+		return cipherCacheVal, nil
 	}
 
 	// Derive a 32-byte key using HKDF
@@ -34,7 +56,16 @@ func getCipher() (cipher.AEAD, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cipher.NewGCM(block)
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	cipherCacheKey = rawKey
+	cipherCacheVal = gcm
+
+	return gcm, nil
 }
 
 func EncryptWebhook(plaintext string) (string, error) {

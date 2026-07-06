@@ -4,3 +4,6 @@
 ## 2024-06-27 - Pre-compile regular expressions
 **Learning:** Compiling regex in tight loops or frequently called functions is a performance anti-pattern. Pre-compiling them at the package level saves CPU overhead.
 **Action:** Always declare regular expressions as package-level variables with `regexp.MustCompile` instead of inside loops.
+## 2026-07-06 - Cache cryptographic keys derived via HKDF
+**Learning:** Deriving symmetric keys per-request using HKDF (like in getCipher for webhooks) introduces substantial CPU overhead and increases latency, as HKDF execution is computationally expensive compared to standard GCM operations.
+**Action:** When deriving keys that only change on environment restarts or configuration updates, cache the derived cipher object (e.g., cipher.AEAD) behind a sync.RWMutex based on the raw input key.
