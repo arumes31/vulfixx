@@ -179,7 +179,7 @@
                 {{range .CVE.GitHubPoCRepos}}
                 <a href="{{.URL}}" target="_blank" rel="noopener"
                     class="block text-sm text-blue-400 hover:text-blue-300">
-                    <span class="material-symbols-outlined text-sm align-middle">code</span>
+                    <span aria-hidden="true" class="material-symbols-outlined text-sm align-middle">code</span>
                     {{.Name}} <span class="text-gray-500 text-xs">★ {{.Stars}}</span> ↗
                 </a>
                 {{end}}
