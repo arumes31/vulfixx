@@ -34,6 +34,10 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  button:focus-visible, a:focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-surface-container;
+  }
+
   ::selection {
     background: rgba(0, 218, 243, 0.3);
     color: #dfe2eb;
