@@ -1,9 +1,11 @@
 package web
 
 import (
+	"context"
 	"cve-tracker/internal/auth"
 	"cve-tracker/internal/db"
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -442,6 +444,108 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+}
+
+func TestResendVerificationInlineHandler(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	app := setupTestApp(t, mock)
+
+	oldPool := db.Pool
+	db.Pool = mock
+	defer func() { db.Pool = oldPool }()
+
+	t.Run("MethodNotAllowed", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/resend-verification-inline", nil)
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		rr := httptest.NewRecorder()
+		app.ResendVerificationInlineHandler(rr, req)
+
+		if rr.Code != http.StatusMethodNotAllowed {
+			t.Errorf("expected 405, got %d", rr.Code)
+		}
+		var resp map[string]interface{}
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatal(err)
+		}
+		if resp["success"].(bool) != false || resp["error"].(string) != "Method not allowed" {
+			t.Errorf("unexpected response: %+v", resp)
+		}
+	})
+
+	t.Run("InvalidEmail", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/resend-verification-inline", strings.NewReader("email=invalid"))
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+		app.ResendVerificationInlineHandler(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", rr.Code)
+		}
+		var resp map[string]interface{}
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatal(err)
+		}
+		if resp["success"].(bool) != true || !strings.Contains(resp["message"].(string), "If this email is registered") {
+			t.Errorf("unexpected response: %+v", resp)
+		}
+	})
+
+	t.Run("RateLimitIP", func(t *testing.T) {
+		app.Redis.Set(context.Background(), "resend_limit:192.0.2.1", 5, 0)
+		req := httptest.NewRequest("POST", "/resend-verification-inline", strings.NewReader("email=test@example.com"))
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.RemoteAddr = "192.0.2.1:1234"
+		rr := httptest.NewRecorder()
+		app.ResendVerificationInlineHandler(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", rr.Code)
+		}
+		var resp map[string]interface{}
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatal(err)
+		}
+		if resp["success"].(bool) != true || !strings.Contains(resp["message"].(string), "If this email is registered") {
+			t.Errorf("unexpected response: %+v", resp)
+		}
+		app.Redis.Del(context.Background(), "resend_limit:192.0.2.1")
+	})
+
+	t.Run("Success", func(t *testing.T) {
+		mock.ExpectBegin()
+		mock.ExpectQuery("SELECT id, is_email_verified, email_verify_token, COALESCE").WithArgs("test@example.com").
+			WillReturnRows(pgxmock.NewRows([]string{"id", "is_email_verified", "email_verify_token", "last_verification_sent"}).
+				AddRow(1, false, "old-token", time.Now().Add(-10*time.Minute)))
+
+		mock.ExpectExec("UPDATE users SET email_verify_token = \\$1, last_verification_sent = CURRENT_TIMESTAMP").
+			WithArgs(pgxmock.AnyArg(), 1).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectCommit()
+
+		req := httptest.NewRequest("POST", "/resend-verification-inline", strings.NewReader("email=test@example.com"))
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+		app.ResendVerificationInlineHandler(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", rr.Code)
+		}
+		var resp map[string]interface{}
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatal(err)
+		}
+		if resp["success"].(bool) != true || !strings.Contains(resp["message"].(string), "If this email is registered") {
+			t.Errorf("unexpected response: %+v", resp)
 		}
 	})
 }
