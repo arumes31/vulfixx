@@ -445,3 +445,81 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 		}
 	})
 }
+func TestResendVerificationInlineHandler(t *testing.T) {
+	tests := []struct {
+		name       string
+		method     string
+		email      string
+		mockSetup  func(mock pgxmock.PgxPoolIface)
+		wantStatus int
+	}{
+		{
+			name:       "method not allowed",
+			method:     http.MethodGet,
+			email:      "test@example.com",
+			mockSetup:  func(m pgxmock.PgxPoolIface) {},
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:       "invalid email",
+			method:     http.MethodPost,
+			email:      "invalid-email",
+			mockSetup:  func(m pgxmock.PgxPoolIface) {},
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "success",
+			method:     http.MethodPost,
+			email:      "test@example.com",
+			mockSetup:  func(m pgxmock.PgxPoolIface) {
+				m.ExpectBegin()
+				m.ExpectQuery(`SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token FROM users WHERE email = \$1 FOR UPDATE`).
+					WithArgs("test@example.com").
+					WillReturnRows(pgxmock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
+						AddRow(1, false, 0, time.Now().Add(-2*time.Hour), "old_token"))
+				m.ExpectExec(`UPDATE users SET email_verify_token = \$1, verification_resend_count = verification_resend_count \+ 1, last_verification_resend_at = CURRENT_TIMESTAMP WHERE id = \$2`).
+					WithArgs(pgxmock.AnyArg(), 1).
+					WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+				m.ExpectCommit()
+			},
+			wantStatus: http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock, err := db.SetupTestDB()
+			if err != nil {
+				t.Fatalf("failed to setup mock db: %v", err)
+			}
+			defer mock.Close()
+			app := setupTestApp(t, mock)
+
+			oldPool := db.Pool
+			db.Pool = mock
+			defer func() { db.Pool = oldPool }()
+
+			tt.mockSetup(mock)
+			formData := url.Values{}
+			if tt.email != "" {
+				formData.Set("email", tt.email)
+			}
+			req := httptest.NewRequest(tt.method, "/resend-verification-inline", strings.NewReader(formData.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("Accept", "application/json")
+			req.RemoteAddr = "127.0.0.1:12345"
+
+			rr := httptest.NewRecorder()
+
+			app.ResendVerificationInlineHandler(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Errorf("expected status %d, got %d", tt.wantStatus, rr.Code)
+			}
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("unmet expectations: %v", err)
+			}
+		})
+	}
+}
