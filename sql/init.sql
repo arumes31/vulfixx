@@ -219,6 +219,7 @@ CREATE INDEX IF NOT EXISTS idx_assets_team_id ON assets(team_id);
 CREATE INDEX IF NOT EXISTS idx_user_cve_status_team_id ON user_cve_status(team_id);
 CREATE INDEX IF NOT EXISTS idx_cve_notes_team_id ON cve_notes(team_id);
 CREATE INDEX IF NOT EXISTS idx_cves_vendor ON cves(vendor);
+CREATE INDEX IF NOT EXISTS idx_alert_history_cve_id ON alert_history(cve_id);
 CREATE INDEX IF NOT EXISTS idx_cves_product ON cves(product);
 CREATE INDEX IF NOT EXISTS idx_cves_affected_products ON cves USING GIN (affected_products);
 CREATE INDEX IF NOT EXISTS idx_cves_osv_last_updated ON cves (osv_last_updated ASC NULLS FIRST);
