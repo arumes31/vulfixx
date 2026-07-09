@@ -126,7 +126,7 @@ Vulfixx is hardened with enterprise-grade system improvements designed for high-
 
 - [Docker](https://www.docker.com/get-started)
 - [Docker Compose](https://docs.docker.com/compose/install/)
-- [Go 1.26.3](https://golang.org/dl/) (optional, for local development)
+- [Go 1.26.5](https://golang.org/dl/) (optional, for local development)
 - [act](https://github.com/nektos/act) (optional, for running GitHub Actions locally)
 
 ### Installation
@@ -245,7 +245,7 @@ Or use the automated test script with coverage:
 ### CI/CD Pipeline
 
 This project uses a modern GitHub Actions pipeline (`.github/workflows/docker-build.yml`) for continuous integration:
-- **Environment**: All CI jobs run in a **Go 1.26.3** containerized environment.
+- **Environment**: All CI jobs run in a **Go 1.26.5** containerized environment.
 - **Unit Testing**: Automated Go tests to ensure logic correctness.
 - **Linting**: Strict code quality checks with `golangci-lint` (v2.x).
 - **Security Scanning**:
