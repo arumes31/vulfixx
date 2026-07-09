@@ -25,7 +25,7 @@ require (
 	golang.org/x/sync v0.22.0
 	golang.org/x/time v0.15.0
 	google.golang.org/genai v1.34.0
-	google.golang.org/grpc v1.71.0-dev
+	google.golang.org/grpc v1.82.0
 	google.golang.org/protobuf v1.36.11
 	rsc.io/qr v0.2.0
 )
