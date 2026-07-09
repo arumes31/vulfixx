@@ -20,3 +20,7 @@
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+
+## 2024-05-30 - Focus visible styles for dynamically rendered custom toggles
+**Learning:** When building custom form controls (like CSS-styled checkboxes/toggles) using dynamic Javascript rendering, it is crucial to ensure they maintain the same `focus-visible` utility classes as their statically rendered counterparts so keyboard navigation remains accessible.
+**Action:** Always verify that dynamic UI components include appropriate focus rings (`peer-focus-visible:ring-2` in Tailwind) to maintain consistent keyboard accessibility across modal and inline views.
