@@ -342,13 +342,13 @@ input[type=number] {
 </style>
 <script id="dashboard-data" type="application/json" nonce="{{.Nonce}}">
 {
-  "page": {{.Page}},
-  "totalPages": {{.TotalPages}},
-  "severityCounts": {{.SeverityCounts}},
-  "topCWEs": {{.TopCWEs}},
-  "epssDist": {{.EPSSDist}},
-  "sort": {{.Sort}},
-  "order": {{.Order}}
+  "page": {{marshal .Page}},
+  "totalPages": {{marshal .TotalPages}},
+  "severityCounts": {{marshal .SeverityCounts}},
+  "topCWEs": {{marshal .TopCWEs}},
+  "epssDist": {{marshal .EPSSDist}},
+  "sort": {{marshal .Sort}},
+  "order": {{marshal .Order}}
 }
 </script>
 
