@@ -12,9 +12,13 @@ import (
 	"testing"
 	"time"
 
+	"context"
+
+	"github.com/alicebob/miniredis/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v3"
 	"github.com/pquerna/otp/totp"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestConfirmEmailChangeHandler(t *testing.T) {
@@ -444,4 +448,124 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
+}
+
+func TestResendVerificationInlineHandler(t *testing.T) {
+	tests := []struct {
+		name           string
+		method         string
+		email          string
+		setupRedis     func(*redis.Client)
+		setupMock      func(pgxmock.PgxPoolIface)
+		expectedStatus int
+	}{
+		{
+			name:           "Method Not Allowed",
+			method:         http.MethodGet,
+			email:          "test@example.com",
+			setupRedis:     func(rc *redis.Client) {},
+			setupMock:      func(m pgxmock.PgxPoolIface) {},
+			expectedStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:           "Invalid Email",
+			method:         http.MethodPost,
+			email:          "invalid",
+			setupRedis:     func(rc *redis.Client) {},
+			setupMock:      func(m pgxmock.PgxPoolIface) {},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:   "Valid Request",
+			method: http.MethodPost,
+			email:  "test@example.com",
+			setupRedis: func(rc *redis.Client) {
+				// No rate limit keys set
+			},
+			setupMock: func(m pgxmock.PgxPoolIface) {
+				m.ExpectBegin()
+				m.ExpectQuery(`SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token FROM users WHERE email = \$1 FOR UPDATE`).
+					WithArgs("test@example.com").
+					WillReturnRows(pgxmock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
+						AddRow(1, false, 0, nil, "oldtoken"))
+				m.ExpectExec(`UPDATE users SET email_verify_token = \$1, verification_resend_count = verification_resend_count \+ 1, last_verification_resend_at = CURRENT_TIMESTAMP WHERE id = \$2`).
+					WithArgs(pgxmock.AnyArg(), 1).
+					WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+				m.ExpectCommit()
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:   "IP Rate Limited",
+			method: http.MethodPost,
+			email:  "test@example.com",
+			setupRedis: func(rc *redis.Client) {
+				rc.Set(context.Background(), "resend_limit:192.0.2.1", 5, 0)
+			},
+			setupMock:      func(m pgxmock.PgxPoolIface) {},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:   "Email Rate Limited",
+			method: http.MethodPost,
+			email:  "test@example.com",
+			setupRedis: func(rc *redis.Client) {
+				// sha256 of test@example.com is 973dfe463ec85785f5f95af5ba3906eedb2d931c24e69824a89ea65dba4e813b
+				rc.Set(context.Background(), "resend_email_limit:973dfe463ec85785f5f95af5ba3906eedb2d931c24e69824a89ea65dba4e813b", 3, 0)
+			},
+			setupMock:      func(m pgxmock.PgxPoolIface) {},
+			expectedStatus: http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock, err := db.SetupTestDB()
+			if err != nil {
+				t.Fatalf("failed to setup mock db: %v", err)
+			}
+			defer mock.Close()
+
+			mr, err := miniredis.Run()
+			if err != nil {
+				t.Fatalf("failed to start miniredis: %v", err)
+			}
+			defer mr.Close()
+
+			rc := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+			defer rc.Close()
+
+			tt.setupRedis(rc)
+
+			app := setupTestApp(t, mock)
+			app.Redis = rc
+
+			oldPool := db.Pool
+			db.Pool = mock
+			t.Cleanup(func() { db.Pool = oldPool })
+
+			tt.setupMock(mock)
+
+			form := url.Values{}
+			if tt.email != "" {
+				form.Set("email", tt.email)
+			}
+
+			req := httptest.NewRequest(tt.method, "/resend-inline", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("X-Forwarded-For", "192.0.2.1")
+			req.Header.Set("Accept", "application/json")
+			w := httptest.NewRecorder()
+
+			app.ResendVerificationInlineHandler(w, req)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d", tt.expectedStatus, w.Code)
+			}
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("unmet database expectations: %v", err)
+			}
+		})
+	}
 }
