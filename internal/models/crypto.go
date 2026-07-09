@@ -9,14 +9,21 @@ import (
 	"errors"
 	"io"
 	"os"
+	"sync"
 
 	"golang.org/x/crypto/hkdf"
 )
+
+var cryptoGcmCache sync.Map
 
 func getCipher() (cipher.AEAD, error) {
 	rawKey := os.Getenv("SESSION_KEY")
 	if len(rawKey) == 0 {
 		return nil, errors.New("missing SESSION_KEY")
+	}
+
+	if val, ok := cryptoGcmCache.Load(rawKey); ok {
+		return val.(cipher.AEAD), nil
 	}
 
 	// Derive a 32-byte key using HKDF
@@ -34,7 +41,14 @@ func getCipher() (cipher.AEAD, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cipher.NewGCM(block)
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	cryptoGcmCache.Store(rawKey, gcm)
+	return gcm, nil
 }
 
 func EncryptWebhook(plaintext string) (string, error) {
