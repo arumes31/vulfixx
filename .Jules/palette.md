@@ -20,3 +20,7 @@
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+
+## 2024-07-10 - Add native autocomplete for TOTP inputs
+**Learning:** Missing `autocomplete="one-time-code"` on TOTP inputs forces users to manually enter codes or switch back and forth with their authenticator app.
+**Action:** Always add `autocomplete="one-time-code"` to TOTP inputs to allow mobile OS and password managers to natively autofill codes directly from SMS or authenticator apps, vastly improving UX and reducing errors.
