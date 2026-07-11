@@ -18,7 +18,7 @@ jobs:
         with:
           go-version-file: 'go.mod'
       - name: Run Benchmarks
-        run: go test -bench=. ./internal/... | tee bench_output.txt
+        run: GOTOOLCHAIN=local go test -bench=. ./internal/... | tee bench_output.txt
       - name: Check Latency Thresholds
         run: |
           if grep -q "Benchmark" bench_output.txt; then

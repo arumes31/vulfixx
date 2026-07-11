@@ -56,7 +56,7 @@ jobs:
       - name: Install dependencies
         run: apk add --no-cache git build-base
       - name: Run tests
-        run: go test -v -race ./...
+        run: GOTOOLCHAIN=local go test -v -race ./...
 
   lint:
     name: Lint Codebase
@@ -69,7 +69,7 @@ jobs:
       - name: Run golangci-lint
         run: |
           go install -v github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.5
-          GOFLAGS="-buildvcs=false" $(go env GOPATH)/bin/golangci-lint run --timeout=10m
+          GOFLAGS="-buildvcs=false" GOTOOLCHAIN=local $(go env GOPATH)/bin/golangci-lint run --timeout=10m
 
   gsec:
     name: Gsec (Static Analysis)
@@ -82,7 +82,7 @@ jobs:
       - name: Install Gosec
         run: apk add --no-cache git && go install github.com/securego/gosec/v2/cmd/gosec@latest
       - name: Run Gosec Security Scanner
-        run: gosec ./...
+        run: GOTOOLCHAIN=local gosec ./...
 
   govul:
     name: Govul (Vulnerability Check)
@@ -95,7 +95,7 @@ jobs:
       - name: Install Govulncheck
         run: apk add --no-cache git && go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: Run Govulncheck
-        run: govulncheck ./...
+        run: GOTOOLCHAIN=local govulncheck ./...
 
   godep:
     name: Godep (Dependency Scan)
