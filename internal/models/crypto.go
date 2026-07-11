@@ -69,8 +69,7 @@ func DecryptWebhook(cryptoText string) (string, error) {
 	if len(ciphertext) < nonceSize {
 		return "", errors.New("ciphertext too short")
 	}
-	nonce := ciphertext[:nonceSize]
-	ciphertext = ciphertext[nonceSize:]
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
 		return "", err
