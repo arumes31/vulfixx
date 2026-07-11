@@ -19,9 +19,9 @@ import (
 func (app *App) Routes(cfg *config.Config) (http.Handler, error) {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
+	r.Use(app.ProxyMiddleware)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(app.ProxyMiddleware)
 	r.Use(app.SecurityHeadersMiddleware)
 	r.Use(middleware.Timeout(60 * time.Second))
 
