@@ -1,0 +1,4 @@
+## 2025-02-14 - Fix template.JS XSS Vulnerability
+**Vulnerability:** Explicit casting to `template.JS` in Go HTML templates allows unescaped JSON injection, which can be exploited for Cross-Site Scripting (XSS).
+**Learning:** `html/template` in Go natively handles escaping of structs and maps rendered within `<script>` blocks (including `<script type="application/json">`). Explicitly calling `json.Marshal` and then wrapping the result in `template.JS` bypasses the context-aware escaping provided by `html/template` and introduces security risks if the data contains unsanitized user input.
+**Prevention:** Remove custom `marshal` template functions that cast data to `template.JS`. Instead, pass the data directly into the template and rely on `html/template`'s native rendering capabilities to safely escape values based on their context.
