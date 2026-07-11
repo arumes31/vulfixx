@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"sync"
 )
 
 var (
@@ -17,15 +18,35 @@ var (
 	ErrDecryption      = errors.New("decryption failed")
 )
 
-// getEncryptionKey derives a 32-byte key from the ENCRYPTION_KEY environment variable.
-// If the variable is empty, it returns an error.
-func getEncryptionKey() ([]byte, error) {
+var aeadCache sync.Map
+
+// getAEAD retrieves or creates a cipher.AEAD for the current ENCRYPTION_KEY.
+// We cache it using a sync.Map keyed by the environment variable value to
+// avoid recomputing the AES block and GCM instances on every encryption/decryption,
+// while remaining safe for isolated tests that alter the ENCRYPTION_KEY.
+func getAEAD() (cipher.AEAD, error) {
 	keyStr := os.Getenv("ENCRYPTION_KEY")
 	if keyStr == "" {
 		return nil, errors.New("ENCRYPTION_KEY is empty; keyStr must not be empty")
 	}
+
+	if cached, ok := aeadCache.Load(keyStr); ok {
+		return cached.(cipher.AEAD), nil
+	}
+
 	hash := sha256.Sum256([]byte(keyStr))
-	return hash[:], nil
+	block, err := aes.NewCipher(hash[:])
+	if err != nil {
+		return nil, err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	aeadCache.Store(keyStr, gcm)
+	return gcm, nil
 }
 
 // Encrypt encrypts plain text using AES-256-GCM.
@@ -34,16 +55,7 @@ func Encrypt(plainText string) (string, error) {
 		return "", ErrEmptyPlainText
 	}
 
-	key, err := getEncryptionKey()
-	if err != nil {
-		return "", err
-	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
+	gcm, err := getAEAD()
 	if err != nil {
 		return "", err
 	}
@@ -68,16 +80,7 @@ func Decrypt(cipherTextStr string) (string, error) {
 		return "", ErrDecryption
 	}
 
-	key, err := getEncryptionKey()
-	if err != nil {
-		return "", err
-	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
+	gcm, err := getAEAD()
 	if err != nil {
 		return "", err
 	}
