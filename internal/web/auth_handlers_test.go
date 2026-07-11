@@ -445,3 +445,76 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 		}
 	})
 }
+
+func TestResendVerificationInlineHandler(t *testing.T) {
+	tests := []struct {
+		name         string
+		method       string
+		body         string
+		setupMock    func(pgxmock.PgxPoolIface)
+		expectedCode int
+	}{
+		{
+			name:         "GetMethod",
+			method:       http.MethodGet,
+			body:         "",
+			setupMock:    func(mock pgxmock.PgxPoolIface) {},
+			expectedCode: http.StatusMethodNotAllowed,
+		},
+		{
+			name:   "ValidRequest",
+			method: http.MethodPost,
+			body:   "email=test@example.com",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectBegin()
+
+				lastResend := time.Now().Add(-2 * time.Hour)
+				mock.ExpectQuery(regexp.QuoteMeta("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token FROM users WHERE email = $1 FOR UPDATE")).
+					WithArgs("test@example.com").
+					WillReturnRows(pgxmock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
+						AddRow(1, false, 0, &lastResend, "old_token"))
+
+				mock.ExpectExec(regexp.QuoteMeta("UPDATE users SET email_verify_token = $1, verification_resend_count = verification_resend_count + 1, last_verification_resend_at = CURRENT_TIMESTAMP WHERE id = $2")).
+					WithArgs(pgxmock.AnyArg(), 1).
+					WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+				mock.ExpectCommit()
+			},
+			expectedCode: http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock, err := db.SetupTestDB()
+			if err != nil {
+				t.Fatalf("failed to setup mock db: %v", err)
+			}
+			defer mock.Close()
+			app := setupTestApp(t, mock)
+
+			oldPool := db.Pool
+			db.Pool = mock
+			defer func() { db.Pool = oldPool }()
+
+			tt.setupMock(mock)
+
+			req, _ := http.NewRequest(tt.method, "/resend-verification-inline", strings.NewReader(tt.body))
+			if tt.body != "" {
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			}
+			req.Header.Set("X-Requested-With", "XMLHttpRequest")
+
+			rr := httptest.NewRecorder()
+			app.ResendVerificationInlineHandler(rr, req)
+
+			if rr.Code != tt.expectedCode {
+				t.Errorf("expected %d, got %d", tt.expectedCode, rr.Code)
+			}
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
+		})
+	}
+}
