@@ -6,3 +6,7 @@
 5fac2fc5cca9ba6f453a768bc11a572a2bda11b3:container/nimbusroute/data/config.json:generic-api-key:32
 5fac2fc5cca9ba6f453a768bc11a572a2bda11b3:container/nimbusroute/data/config.json:generic-api-key:42
 5fac2fc5cca9ba6f453a768bc11a572a2bda11b3:container/nimbusroute/data/config.json:generic-api-key:164
+
+[allowlist.paths]
+path = ".jules/"
+path = ".Jules/"
