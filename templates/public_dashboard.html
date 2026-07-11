@@ -858,7 +858,7 @@ input[type=number] {
 
 {{define "cve_rows"}}
     {{range .CVEs}}
-    <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer focus:bg-white/[0.05] focus:outline-none" 
+    <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer focus:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
         data-cve-url="/cve/{{.CVEID}}" 
         data-cursor-id="{{.ID}}"
         data-cursor-published="{{if not .PublishedDate.IsZero}}{{.PublishedDate.Format "2006-01-02T15:04:05Z07:00"}}{{end}}"

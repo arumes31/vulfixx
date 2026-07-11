@@ -20,3 +20,7 @@
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+
+## 2026-06-25 - [Keyboard accessible table rows]
+**Learning:** Clickable table rows (`<tr>` with JS click handlers) that act as navigation elements often lack `tabindex="0"` and explicit focus states, making them completely inaccessible to keyboard-only users.
+**Action:** Always add `tabindex="0"`, a descriptive `aria-label`, and `focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset` to interactive table rows for keyboard accessibility.
