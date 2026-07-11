@@ -177,6 +177,10 @@ func classifyVendorAdvisories(references []string) []string {
 		"security-guidance", "fixed", "patch",
 	}
 
+	if len(references) == 0 {
+		return []string{}
+	}
+
 	return slices.DeleteFunc(slices.Clone(references), func(ref string) bool {
 		lower := strings.ToLower(ref)
 		for _, kw := range keywords {
