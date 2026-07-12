@@ -446,7 +446,6 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 	})
 }
 
-
 func TestResendVerificationInlineHandler(t *testing.T) {
 	mock, err := db.SetupTestDB()
 	if err != nil {
