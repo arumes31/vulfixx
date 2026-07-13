@@ -231,6 +231,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_status ON user_cve_status (use
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_team_status ON user_cve_status (team_id, cve_id) WHERE team_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_notes ON cve_notes (user_id, cve_id) WHERE team_id IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_team_notes ON cve_notes (team_id, cve_id) WHERE team_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_alert_history_cve_id ON alert_history(cve_id);
 
 -- Threat Associations
 CREATE TABLE IF NOT EXISTS cve_threat_associations (
