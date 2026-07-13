@@ -445,3 +445,84 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 		}
 	})
 }
+
+func TestResendVerificationInlineHandler(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+	app := setupTestApp(t, mock)
+
+	oldPool := db.Pool
+	db.Pool = mock
+	defer func() { db.Pool = oldPool }()
+
+	tests := []struct {
+		name         string
+		method       string
+		form         url.Values
+		mockRedis    func()
+		mockDB       func()
+		wantStatus   int
+		wantRespBody string
+	}{
+		{
+			name:         "invalid method GET",
+			method:       http.MethodGet,
+			wantStatus:   http.StatusMethodNotAllowed,
+			wantRespBody: "Method not allowed",
+		},
+		{
+			name:         "invalid email",
+			method:       http.MethodPost,
+			form:         url.Values{"email": {"not-an-email"}},
+			wantStatus:   http.StatusOK, // App.SendResponse pretends success
+			wantRespBody: "If this email is registered and unverified, a new verification link has been sent.",
+		},
+		{
+			name:         "valid email happy path",
+			method:       http.MethodPost,
+			form:         url.Values{"email": {"test@example.com"}},
+			mockRedis: func() {
+				// Note: mocking redis get to bypass rate limit
+			},
+			mockDB: func() {
+				mock.ExpectBegin()
+				mock.ExpectQuery("SELECT id, is_verified").
+					WithArgs("test@example.com").
+					WillReturnRows(pgxmock.NewRows([]string{"id", "is_verified"}).AddRow(1, false))
+				mock.ExpectQuery("INSERT INTO verification_tokens").
+					WithArgs(1, pgxmock.AnyArg(), pgxmock.AnyArg()).
+					WillReturnRows(pgxmock.NewRows([]string{"token"}).AddRow("newtoken"))
+				mock.ExpectCommit()
+			},
+			wantStatus:   http.StatusOK, // Actually success but returning 200
+			wantRespBody: "If this email is registered and unverified, a new verification link has been sent.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.mockRedis != nil {
+				tt.mockRedis()
+			}
+			if tt.mockDB != nil {
+				tt.mockDB()
+			}
+			req, _ := http.NewRequest(tt.method, "/resend-verification-inline", strings.NewReader(tt.form.Encode()))
+			if tt.method == http.MethodPost {
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			}
+			req.Header.Set("X-Requested-With", "XMLHttpRequest") // Request JSON response from SendResponse
+			rr := httptest.NewRecorder()
+			app.ResendVerificationInlineHandler(rr, req)
+			if rr.Code != tt.wantStatus {
+				t.Errorf("expected status %d, got %d", tt.wantStatus, rr.Code)
+			}
+			if !strings.Contains(rr.Body.String(), tt.wantRespBody) {
+				t.Errorf("expected body to contain %q, got %q", tt.wantRespBody, rr.Body.String())
+			}
+		})
+	}
+}

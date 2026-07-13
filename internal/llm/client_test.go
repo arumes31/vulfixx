@@ -969,3 +969,64 @@ func TestDurationUntilUTCMidnight(t *testing.T) {
 		t.Errorf("durationUntilUTCMidnight = %v, want (0, 24h]", d)
 	}
 }
+
+func TestGoogleFailoverQuotaExceeded(t *testing.T) {
+	origIncr := googleFailoverRPDIncr
+	defer func() { googleFailoverRPDIncr = origIncr }()
+
+	tests := []struct {
+		name      string
+		rpdEnv    string
+		incrCount int64
+		incrErr   error
+		want      bool
+	}{
+		{
+			name:      "quota disabled",
+			rpdEnv:    "0",
+			incrCount: 1,
+			want:      false,
+		},
+		{
+			name:      "below quota",
+			rpdEnv:    "10",
+			incrCount: 5,
+			want:      false,
+		},
+		{
+			name:      "at quota exactly",
+			rpdEnv:    "10",
+			incrCount: 10,
+			want:      false,
+		},
+		{
+			name:      "exceeds quota",
+			rpdEnv:    "10",
+			incrCount: 11,
+			want:      true,
+		},
+		{
+			name:      "redis error allowed",
+			rpdEnv:    "10",
+			incrErr:   context.DeadlineExceeded,
+			want:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("GOOGLE_FAILOVER_RPD", tt.rpdEnv)
+			googleFailoverRPDIncr = func(context.Context, string) (int64, error) {
+				return tt.incrCount, tt.incrErr
+			}
+			f := googleFailover{
+				model:    "test",
+				redisKey: "test",
+				rpdEnvs:  []string{"GOOGLE_FAILOVER_RPD"},
+			}
+			if got := googleFailoverQuotaExceeded(context.Background(), f); got != tt.want {
+				t.Errorf("googleFailoverQuotaExceeded() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
