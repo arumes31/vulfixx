@@ -4,3 +4,7 @@
 ## 2024-06-27 - Pre-compile regular expressions
 **Learning:** Compiling regex in tight loops or frequently called functions is a performance anti-pattern. Pre-compiling them at the package level saves CPU overhead.
 **Action:** Always declare regular expressions as package-level variables with `regexp.MustCompile` instead of inside loops.
+
+## 2024-07-14 - Add index on alert_history table
+**Learning:** `alert_worker.go` queries `alert_history` for each CVE frequently to see who has been alerted. This uses `cve_id`, which is a foreign key without an index, resulting in sequential scans. Adding an index on `cve_id` for `alert_history` will improve performance on `alert_worker.go`.
+**Action:** Add index on `alert_history` table in a new migration to speed up `alert_worker.go`.
