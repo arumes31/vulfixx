@@ -20,3 +20,6 @@
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+## 2024-07-14 - Add missing ARIA labels to dashboard filters
+**Learning:** In paired form layouts (like Vendor/Product or min/max ranges), individual inputs often lack distinct `aria-label`s, creating ambiguity for screen readers despite proximal visual text labels.
+**Action:** When adding inputs in paired layouts, ensure every input explicitly provides an `aria-label` or `aria-labelledby` referencing its specific purpose rather than assuming visual context is sufficient.
