@@ -1,9 +1,12 @@
 package web
 
 import (
+	"context"
+	"crypto/sha256"
 	"cve-tracker/internal/auth"
 	"cve-tracker/internal/db"
 	"database/sql"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -444,4 +447,136 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
+}
+
+func TestResendVerificationInlineHandler(t *testing.T) {
+	tests := []struct {
+		name           string
+		method         string
+		formEmail      string
+		setupMock      func(mock pgxmock.PgxPoolIface)
+		setupRedis     func(rdb db.RedisProvider, t *testing.T)
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			name:           "Method Not Allowed",
+			method:         http.MethodGet,
+			expectedStatus: http.StatusMethodNotAllowed, // Sends response with false success
+			expectedBody:   `"success":false`,
+		},
+		{
+			name:           "Invalid Email",
+			method:         http.MethodPost,
+			formEmail:      "not-an-email",
+			expectedStatus: http.StatusOK, // Pretend success
+			expectedBody:   `"success":true`,
+		},
+		{
+			name:      "Rate Limited by IP",
+			method:    http.MethodPost,
+			formEmail: "test@example.com",
+			setupRedis: func(rdb db.RedisProvider, t *testing.T) {
+				err := rdb.Set(context.Background(), "resend_limit:192.0.2.1", 5, 0).Err()
+				if err != nil {
+					t.Fatalf("failed to set redis key: %v", err)
+				}
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   `"success":true`,
+		},
+		{
+			name:      "Rate Limited by Email",
+			method:    http.MethodPost,
+			formEmail: "test@example.com",
+			setupRedis: func(rdb db.RedisProvider, t *testing.T) {
+				emailHash := sha256.Sum256([]byte("test@example.com"))
+				emailRlKey := "resend_email_limit:" + hex.EncodeToString(emailHash[:])
+				err := rdb.Set(context.Background(), emailRlKey, 3, 0).Err()
+				if err != nil {
+					t.Fatalf("failed to set redis key: %v", err)
+				}
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   `"success":true`,
+		},
+		{
+			name:      "DB error in ResendVerificationToken",
+			method:    http.MethodPost,
+			formEmail: "test@example.com",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectBegin()
+				mock.ExpectQuery(regexp.QuoteMeta("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token FROM users WHERE email = $1 FOR UPDATE")).
+					WithArgs("test@example.com").
+					WillReturnError(sql.ErrNoRows)
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   `"success":true`,
+		},
+		{
+			name:      "Success enqueues to Redis",
+			method:    http.MethodPost,
+			formEmail: "test@example.com",
+			setupMock: func(mock pgxmock.PgxPoolIface) {
+				mock.ExpectBegin()
+				mock.ExpectQuery(regexp.QuoteMeta("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token FROM users WHERE email = $1 FOR UPDATE")).
+					WithArgs("test@example.com").
+					WillReturnRows(pgxmock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
+						AddRow(1, false, 0, nil, "old_token"))
+
+				mock.ExpectExec("(?is)UPDATE users\\s+SET email_verify_token = \\$1,\\s+verification_resend_count = verification_resend_count \\+ 1,\\s+last_verification_resend_at = CURRENT_TIMESTAMP\\s+WHERE id = \\$2").
+					WithArgs(pgxmock.AnyArg(), 1).
+					WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+				mock.ExpectCommit()
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   `"success":true`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock, err := db.SetupTestDB()
+			if err != nil {
+				t.Fatalf("failed to setup mock db: %v", err)
+			}
+			defer mock.Close()
+
+			oldPool := db.Pool
+			db.Pool = mock
+			defer func() { db.Pool = oldPool }()
+
+			app := setupTestApp(t, mock)
+
+			if tt.setupMock != nil {
+				tt.setupMock(mock)
+			}
+			if tt.setupRedis != nil {
+				tt.setupRedis(app.Redis, t)
+			}
+
+			form := url.Values{}
+			if tt.formEmail != "" {
+				form.Add("email", tt.formEmail)
+			}
+
+			req := httptest.NewRequest(tt.method, "/resend-inline", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("X-Real-IP", "192.0.2.1")
+			req.Header.Set("X-Requested-With", "XMLHttpRequest")
+			rr := httptest.NewRecorder()
+
+			app.ResendVerificationInlineHandler(rr, req)
+
+			if status := rr.Code; status != tt.expectedStatus {
+				t.Errorf("handler returned wrong status code: got %v want %v", status, tt.expectedStatus)
+			}
+			if !strings.Contains(rr.Body.String(), tt.expectedBody) {
+				t.Errorf("handler returned unexpected body: got %v want it to contain %v", rr.Body.String(), tt.expectedBody)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
+		})
+	}
 }
