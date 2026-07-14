@@ -1,13 +1,13 @@
 module cve-tracker
 
-go 1.26.4
+go 1.26.5
 
 require (
 	filippo.io/csrf v0.2.1
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/alicebob/miniredis/v2 v2.38.0
-	github.com/getsentry/sentry-go v0.47.0
+	github.com/getsentry/sentry-go v0.48.0
 	github.com/go-chi/chi/v5 v5.3.1
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/gorilla/sessions v1.4.0
