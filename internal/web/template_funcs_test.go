@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"html/template"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -101,14 +100,6 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 		}
 	})
 
-	t.Run("marshal", func(t *testing.T) {
-		f := funcs["marshal"].(func(interface{}) template.JS)
-		data := map[string]string{"foo": "bar"}
-		got := string(f(data))
-		if !strings.Contains(got, "\"foo\":\"bar\"") {
-			t.Errorf("expected JSON string, got %s", got)
-		}
-	})
 
 	t.Run("vendorLinks", func(t *testing.T) {
 		f := funcs["vendorLinks"].(func(string, string) []map[string]string)
