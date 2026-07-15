@@ -1,7 +1,6 @@
 package web
 
 import (
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"net/url"
@@ -203,14 +202,7 @@ func (a *App) GetTemplateFuncs() template.FuncMap {
 			}
 			return "bg-blue-500"
 		},
-		"marshal": func(v interface{}) template.JS {
-			// Return template.JS so html/template inserts the JSON as a raw JS
-			// value in <script> contexts instead of escaping it as a string
-			// literal. json.Marshal escapes <, >, & by default, keeping the
-			// output safe to embed inside a script element.
-			a, _ := json.Marshal(v)
-			return template.JS(a) // #nosec G203
-		},
+
 		"vendorLinks": func(cveID string, description string) []map[string]string {
 			links := []map[string]string{}
 			desc := strings.ToLower(description)

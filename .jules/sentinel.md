@@ -1,0 +1,5 @@
+
+## 2026-07-15 - XSS Vulnerability via json.Marshal in HTML Templates
+**Vulnerability:** The application defined a custom `marshal` template function that used `json.Marshal` and cast the output to `template.JS`. When used inside `<script type="application/json">` or standard `<script>` tags, this bypassed Go's `html/template` context-aware escaping engine.
+**Learning:** Using `json.Marshal` manually and coercing it to `template.JS` prevents the templating engine from applying necessary security escaping rules, potentially exposing the application to Cross-Site Scripting (XSS) vulnerabilities if the serialized data contains user-controlled strings (like `</script><script>alert(1)</script>`).
+**Prevention:** Avoid custom serialization functions for passing data to JavaScript contexts in Go templates. `html/template` natively supports marshaling maps and structs securely to JSON when evaluating template expressions directly inside `<script>` or `<script type="application/json">` contexts. Always rely on the built-in templating context awareness rather than bypassing it with manual type casts.

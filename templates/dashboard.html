@@ -232,10 +232,10 @@
 
 <script id="dashboard-data" type="application/json" nonce="{{.Nonce}}">
 {
-    "severityCounts": {{marshal .SeverityCounts}},
-    "statusCounts": {{marshal .StatusCounts}},
-    "topCWEs": {{marshal .TopCWEs}},
-    "csrfToken": {{marshal .csrfToken}}
+    "severityCounts": {{.SeverityCounts}},
+    "statusCounts": {{.StatusCounts}},
+    "topCWEs": {{.TopCWEs}},
+    "csrfToken": {{.csrfToken}}
 }
 </script>
 
