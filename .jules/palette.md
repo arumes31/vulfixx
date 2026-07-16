@@ -23,3 +23,6 @@
 ## 2026-07-16 - Replace native confirm() with vulfixx.modal
 **Learning:** Found an accessibility and UX issue where native browser `confirm()` dialogs were used for destructive actions (e.g., deleting users, monitors, system wipe). These native dialogs lack visual consistency with the application's design system and can disrupt the user experience, especially on mobile devices or for users with certain assistive technologies who expect a custom, styled modal experience.
 **Action:** Always use the existing custom modal system (`vulfixx.modal`) instead of the native browser `confirm()` dialog for user confirmations, ensuring visual consistency and maintaining the app's custom styling and accessibility features.
+## $(date +%Y-%m-%d) - Upgrading Go toolchain to fix vulnerability
+**Learning:** Found a CI failure on vulnerability scans. The Govul action failed because Go 1.26.4 is vulnerable to GO-2026-5856.
+**Action:** Upgraded Go version in go.mod, Dockerfile, and .github/workflows/docker-build.yml to 1.26.5 to resolve the issue.
