@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"cve-tracker/internal/auth"
 	"cve-tracker/internal/db"
 	"database/sql"
@@ -444,4 +445,118 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
+}
+
+func TestResendVerificationInlineHandler(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+	app := setupTestApp(t, mock)
+
+	oldPool := db.Pool
+	db.Pool = mock
+	defer func() { db.Pool = oldPool }()
+
+	tests := []struct {
+		name       string
+		method     string
+		form       url.Values
+		mockSetup  func()
+		redisSetup func()
+		wantCode   int
+		wantBody   string
+	}{
+		{
+			name:     "MethodNotAllowed",
+			method:   http.MethodGet,
+			wantCode: http.StatusMethodNotAllowed,
+			wantBody: `"success":false`,
+		},
+		{
+			name:     "InvalidEmail",
+			method:   http.MethodPost,
+			form:     url.Values{"email": {"not-an-email"}},
+			wantCode: http.StatusOK,
+			wantBody: `"success":true`,
+		},
+		{
+			name:   "IPRateLimitExceeded",
+			method: http.MethodPost,
+			form:   url.Values{"email": {"test@example.com"}},
+			redisSetup: func() {
+				app.Redis.Set(context.Background(), "resend_limit:", 5, time.Hour)
+			},
+			wantCode: http.StatusOK,
+			wantBody: `"success":true`,
+		},
+		{
+			name:   "SuccessButUnverified",
+			method: http.MethodPost,
+			form:   url.Values{"email": {"test@example.com"}},
+			mockSetup: func() {
+				mock.ExpectBegin()
+				mock.ExpectQuery("SELECT id, is_email_verified").
+					WithArgs("test@example.com").
+					WillReturnError(sql.ErrNoRows)
+				mock.ExpectRollback()
+			},
+			wantCode: http.StatusOK,
+			wantBody: `"success":true`,
+		},
+		{
+			name:   "SuccessTokenGenerated",
+			method: http.MethodPost,
+			form:   url.Values{"email": {"test@example.com"}},
+			mockSetup: func() {
+				mock.ExpectBegin()
+				rows := pgxmock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
+					AddRow(1, false, 0, nil, nil)
+				mock.ExpectQuery("SELECT id, is_email_verified").
+					WithArgs("test@example.com").
+					WillReturnRows(rows)
+				mock.ExpectExec("UPDATE users SET email_verify_token").
+					WithArgs(pgxmock.AnyArg(), 1).
+					WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+				mock.ExpectCommit()
+			},
+			redisSetup: func() {
+				app.Redis.FlushDB(context.Background())
+			},
+			wantCode: http.StatusOK,
+			wantBody: `"success":true`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app.Redis.FlushDB(context.Background())
+			if tt.redisSetup != nil {
+				tt.redisSetup()
+			}
+			if tt.mockSetup != nil {
+				tt.mockSetup()
+			}
+
+			req, _ := http.NewRequest(tt.method, "/resend-verification-inline", strings.NewReader(tt.form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("Accept", "application/json")
+			req.Header.Set("X-Requested-With", "XMLHttpRequest")
+			rr := httptest.NewRecorder()
+
+			app.ResendVerificationInlineHandler(rr, req)
+
+			if rr.Code != tt.wantCode {
+				t.Errorf("expected code %d, got %d, body: %s", tt.wantCode, rr.Code, rr.Body.String())
+			}
+			if tt.wantBody != "" && !strings.Contains(rr.Body.String(), tt.wantBody) {
+				t.Errorf("expected body to contain %q, got %q", tt.wantBody, rr.Body.String())
+			}
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations in %s: %s", tt.name, err)
+			}
+		})
+	}
 }

@@ -969,3 +969,69 @@ func TestDurationUntilUTCMidnight(t *testing.T) {
 		t.Errorf("durationUntilUTCMidnight = %v, want (0, 24h]", d)
 	}
 }
+
+func TestGoogleFailoverQuotaExceeded(t *testing.T) {
+	tests := []struct {
+		name       string
+		limit      int
+		incrCount  int64
+		incrErr    error
+		wantResult bool
+	}{
+		{
+			name:       "LimitIsZero",
+			limit:      0,
+			incrCount:  0,
+			incrErr:    nil,
+			wantResult: false, // <= 0 disables tracking
+		},
+		{
+			name:       "IncrError",
+			limit:      100,
+			incrCount:  0,
+			incrErr:    errors.New("redis err"),
+			wantResult: false, // fails open
+		},
+		{
+			name:       "UnderQuota",
+			limit:      100,
+			incrCount:  50,
+			incrErr:    nil,
+			wantResult: false,
+		},
+		{
+			name:       "QuotaReached",
+			limit:      100,
+			incrCount:  100,
+			incrErr:    nil,
+			wantResult: false, // > limit triggers fail, not >=
+		},
+		{
+			name:       "QuotaExceeded",
+			limit:      100,
+			incrCount:  101,
+			incrErr:    nil,
+			wantResult: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			origIncr := googleFailoverRPDIncr
+			defer func() { googleFailoverRPDIncr = origIncr }()
+
+			googleFailoverRPDIncr = func(ctx context.Context, keyPrefix string) (int64, error) {
+				return tt.incrCount, tt.incrErr
+			}
+
+			f := googleFailover{
+				defRPD: tt.limit,
+			}
+
+			got := googleFailoverQuotaExceeded(context.Background(), f)
+			if got != tt.wantResult {
+				t.Errorf("expected %v, got %v", tt.wantResult, got)
+			}
+		})
+	}
+}
