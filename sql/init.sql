@@ -243,3 +243,4 @@ CREATE TABLE IF NOT EXISTS cve_threat_associations (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cve_threats_unique ON cve_threat_associations(cve_id, entity_name, entity_type);
 CREATE INDEX IF NOT EXISTS idx_cve_threats_cve_id ON cve_threat_associations(cve_id);
+CREATE INDEX IF NOT EXISTS idx_alert_history_cve_id ON alert_history(cve_id);

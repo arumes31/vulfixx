@@ -4,3 +4,6 @@
 ## 2024-06-27 - Pre-compile regular expressions
 **Learning:** Compiling regex in tight loops or frequently called functions is a performance anti-pattern. Pre-compiling them at the package level saves CPU overhead.
 **Action:** Always declare regular expressions as package-level variables with `regexp.MustCompile` instead of inside loops.
+## 2026-07-16 - Missing database indexes on foreign keys
+**Learning:** In PostgreSQL, foreign keys do not automatically create indexes. A missing index on `alert_history.cve_id` causes sequential scans and N+1 performance degradation in workers when fetching alert history per CVE.
+**Action:** Always verify indexes are explicitly created for frequently queried fields like foreign keys.
