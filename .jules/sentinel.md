@@ -1,0 +1,4 @@
+## 2026-07-16 - Admin CSRF Token Mismatch
+**Vulnerability:** The admin delete user form included the gorilla CSRF token field (`gorilla.csrf.Token`) via `{{$.csrfField}}` instead of the custom admin CSRF token (`csrf_token`) generated and expected by the `AdminDeleteUserHandler`. This resulted in rendering errors and meant the form was not properly protected by the intended CSRF token.
+**Learning:** When a custom CSRF protection mechanism is implemented for specific routes (like the admin section), the template must correctly pass that specific token, rather than relying on a global CSRF middleware field that is not checked by the specific handler.
+**Prevention:** Ensure that templates rendering forms for handlers with custom CSRF validation include the correct token field (e.g., `<input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">`) and verify form submissions with tests that simulate the expected token structure.
