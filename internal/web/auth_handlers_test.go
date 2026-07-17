@@ -494,7 +494,7 @@ func TestResendVerificationInlineHandler(t *testing.T) {
 			method: "POST",
 			form:   url.Values{"email": {"test@example.com"}},
 			setupRedis: func(mr *miniredis.Miniredis) {
-				mr.Set("resend_limit:192.0.2.1", "5")
+				_ = mr.Set("resend_limit:192.0.2.1", "5")
 			},
 			wantCode: http.StatusOK,
 			wantBody: genericMsg,
@@ -505,7 +505,7 @@ func TestResendVerificationInlineHandler(t *testing.T) {
 			form:   url.Values{"email": {"test@example.com"}},
 			setupRedis: func(mr *miniredis.Miniredis) {
 				// sha256 of test@example.com is 973dfe463ec85785f5f95af5ba3906eedb2d931c24e69824a89ea65dba4e813b
-				mr.Set("resend_email_limit:973dfe463ec85785f5f95af5ba3906eedb2d931c24e69824a89ea65dba4e813b", "3")
+				_ = mr.Set("resend_email_limit:973dfe463ec85785f5f95af5ba3906eedb2d931c24e69824a89ea65dba4e813b", "3")
 			},
 			wantCode: http.StatusOK,
 			wantBody: genericMsg,
