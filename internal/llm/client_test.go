@@ -969,3 +969,61 @@ func TestDurationUntilUTCMidnight(t *testing.T) {
 		t.Errorf("durationUntilUTCMidnight = %v, want (0, 24h]", d)
 	}
 }
+
+func TestGoogleFailoverQuotaExceeded(t *testing.T) {
+	tests := []struct {
+		name          string
+		failoverName  string
+		mockIncr      func(ctx context.Context, key string) (int64, error)
+		expectedLimit int
+		expectedResp  bool
+	}{
+		{
+			name:         "limit <= 0 should return false immediately",
+			failoverName: "gemini31flashlite", // mapped limit is 0
+			mockIncr: func(ctx context.Context, key string) (int64, error) {
+				t.Fatalf("should not be called")
+				return 0, nil
+			},
+			expectedResp: false,
+		},
+		{
+			name:         "redis error should fail open and return false",
+			failoverName: "gemini35flash", // mapped limit is 20
+			mockIncr: func(ctx context.Context, key string) (int64, error) {
+				return 0, errors.New("redis dead")
+			},
+			expectedResp: false,
+		},
+		{
+			name:         "below limit should return false",
+			failoverName: "gemini35flash", // limit 20
+			mockIncr: func(ctx context.Context, key string) (int64, error) {
+				return 15, nil
+			},
+			expectedResp: false,
+		},
+		{
+			name:         "above limit should return true",
+			failoverName: "gemini35flash", // limit 20
+			mockIncr: func(ctx context.Context, key string) (int64, error) {
+				return 21, nil
+			},
+			expectedResp: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			origIncr := googleFailoverRPDIncr
+			defer func() { googleFailoverRPDIncr = origIncr }()
+			googleFailoverRPDIncr = tt.mockIncr
+
+			f, _ := googleFailoverFor(tt.failoverName)
+			got := googleFailoverQuotaExceeded(context.Background(), f)
+			if got != tt.expectedResp {
+				t.Errorf("expected %v, got %v", tt.expectedResp, got)
+			}
+		})
+	}
+}

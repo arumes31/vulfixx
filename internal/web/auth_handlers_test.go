@@ -12,9 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v3"
 	"github.com/pquerna/otp/totp"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestConfirmEmailChangeHandler(t *testing.T) {
@@ -444,4 +446,158 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
+}
+
+func TestResendVerificationInlineHandler(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	// Since we need to interact with Redis for rate limits, we use miniredis.
+	mr := miniredis.RunT(t)
+
+	genericMsg := "If this email is registered and unverified, a new verification link has been sent."
+
+	tests := []struct {
+		name       string
+		method     string
+		form       url.Values
+		setupRedis func(mr *miniredis.Miniredis)
+		mockDB     func()
+		wantCode   int
+		wantBody   string
+	}{
+		{
+			name:     "Method Not Allowed",
+			method:   "GET",
+			wantCode: http.StatusMethodNotAllowed,
+			wantBody: `Method not allowed`,
+		},
+		{
+			name:     "Empty Form",
+			method:   "POST",
+			form:     url.Values{"other": {"field"}}, // Empty email but valid form parsing
+			wantCode: http.StatusOK,                  // Validate.Var fails for missing email, generic response is sent
+			wantBody: genericMsg,
+		},
+		{
+			name:     "Invalid Email",
+			method:   "POST",
+			form:     url.Values{"email": {"not-an-email"}},
+			wantCode: http.StatusOK,
+			wantBody: genericMsg,
+		},
+		{
+			name:   "IP Rate Limit Exceeded",
+			method: "POST",
+			form:   url.Values{"email": {"test@example.com"}},
+			setupRedis: func(mr *miniredis.Miniredis) {
+				mr.Set("resend_limit:192.0.2.1", "5")
+			},
+			wantCode: http.StatusOK,
+			wantBody: genericMsg,
+		},
+		{
+			name:   "Email Rate Limit Exceeded",
+			method: "POST",
+			form:   url.Values{"email": {"test@example.com"}},
+			setupRedis: func(mr *miniredis.Miniredis) {
+				// sha256 of test@example.com is 973dfe463ec85785f5f95af5ba3906eedb2d931c24e69824a89ea65dba4e813b
+				mr.Set("resend_email_limit:973dfe463ec85785f5f95af5ba3906eedb2d931c24e69824a89ea65dba4e813b", "3")
+			},
+			wantCode: http.StatusOK,
+			wantBody: genericMsg,
+		},
+		{
+			name:   "Verification Error Generic Response",
+			method: "POST",
+			form:   url.Values{"email": {"test@example.com"}},
+			mockDB: func() {
+				// Let auth.ResendVerificationToken fail (e.g., user not found or verified)
+				mock.ExpectBegin()
+				mock.ExpectQuery(`SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token FROM users WHERE email = \$1`).
+					WithArgs("test@example.com").
+					WillReturnError(sql.ErrNoRows)
+				mock.ExpectRollback()
+			},
+			wantCode: http.StatusOK,
+			wantBody: genericMsg,
+		},
+		{
+			name:   "Successful Enqueue with redis",
+			method: "POST",
+			form:   url.Values{"email": {"success@example.com"}},
+			mockDB: func() {
+				mock.ExpectBegin()
+				mock.ExpectQuery(`SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token FROM users WHERE email = \$1 FOR UPDATE`).
+					WithArgs("success@example.com").
+					WillReturnRows(pgxmock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
+						AddRow(1, false, 0, time.Now().Add(-24*time.Hour), "old-token"))
+				mock.ExpectExec(`UPDATE users SET email_verify_token = \$1, verification_resend_count = verification_resend_count \+ 1, last_verification_resend_at = CURRENT_TIMESTAMP WHERE id = \$2`).
+					WithArgs(pgxmock.AnyArg(), 1).
+					WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+				mock.ExpectCommit()
+			},
+			wantCode: http.StatusOK,
+			wantBody: genericMsg,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mr.FlushAll()
+			if tt.setupRedis != nil {
+				tt.setupRedis(mr)
+			}
+
+			// Reset mock expectations for every test
+			var err error
+			mock, err = db.SetupTestDB()
+			if err != nil {
+				t.Fatalf("failed to setup mock db: %v", err)
+			}
+			app := setupTestApp(t, mock)
+			app.Redis = redis.NewClient(&redis.Options{Addr: mr.Addr()})
+			defer app.Redis.Close()
+
+			if tt.mockDB != nil {
+				oldPool := db.Pool
+				db.Pool = mock
+				defer func() { db.Pool = oldPool }()
+				tt.mockDB()
+			}
+
+			var req *http.Request
+			if tt.form != nil {
+				req, _ = http.NewRequest(tt.method, "/resend-verification-inline", strings.NewReader(tt.form.Encode()))
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			} else {
+				req, _ = http.NewRequest(tt.method, "/resend-verification-inline", nil)
+			}
+			req.RemoteAddr = "192.0.2.1:1234"
+
+			// Needs Accept: application/json for App.SendResponse to not redirect
+			req.Header.Set("Accept", "application/json")
+
+			rr := httptest.NewRecorder()
+			app.ResendVerificationInlineHandler(rr, req)
+
+			if rr.Code != tt.wantCode {
+				t.Errorf("expected code %d, got %d", tt.wantCode, rr.Code)
+			}
+
+			gotBody := strings.TrimSpace(rr.Body.String())
+			if !strings.Contains(gotBody, tt.wantBody) {
+				t.Errorf("expected body to contain %s, got %s", tt.wantBody, gotBody)
+			}
+
+			if tt.mockDB != nil {
+				if err := mock.ExpectationsWereMet(); err != nil {
+					t.Errorf("there were unfulfilled expectations: %s", err)
+				}
+			}
+		})
+	}
 }
