@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"maps"
 	"net/http"
 
 	"context"
@@ -425,10 +426,7 @@ func (w *Worker) parseFortiGuardRSS(r io.Reader) (map[string]struct {
 		for _, cve := range cveIDs {
 			uniqueCVEIDs[cve] = true
 		}
-		cveIDs = []string{}
-		for cve := range uniqueCVEIDs {
-			cveIDs = append(cveIDs, cve)
-		}
+		cveIDs = slices.Collect(maps.Keys(uniqueCVEIDs))
 
 		advisoryMap[advisoryID] = struct {
 			cveIDs []string
@@ -791,7 +789,7 @@ func TestFilterRelevantAdvisories(t *testing.T) {
 
 	w := NewWorker(mock, nil, nil, nil)
 
-	advisoryMap := map[string]struct{
+	advisoryMap := map[string]struct {
 		cveIDs []string
 		url    string
 	}{
