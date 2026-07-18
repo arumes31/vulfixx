@@ -394,12 +394,34 @@ var knownVendorProducts = []struct {
 	{"Grafana", []string{"Grafana"}},
 }
 
+
+// knownVendorProductsOpt pre-computes lowercased vendors to avoid repeated ToLower calls
+var knownVendorProductsOpt []struct {
+	vendor      string
+	lowerVendor string
+	products    []string
+}
+
+func init() {
+	for _, entry := range knownVendorProducts {
+		knownVendorProductsOpt = append(knownVendorProductsOpt, struct {
+			vendor      string
+			lowerVendor string
+			products    []string
+		}{
+			vendor:      entry.vendor,
+			lowerVendor: strings.ToLower(entry.vendor),
+			products:    entry.products,
+		})
+	}
+}
+
 // detectProductFromDescription uses keyword matching to guess vendor/product from a description.
 func detectProductFromDescription(desc string) (string, string) {
 	// Pass 1: product keyword match. Prefer the longest matching keyword so
 	// specific names win over their prefixes (e.g. "IOS XE" over "IOS").
 	bestVendor, bestProduct := "", ""
-	for _, entry := range knownVendorProducts {
+	for _, entry := range knownVendorProductsOpt {
 		for _, product := range entry.products {
 			if strings.Contains(desc, product) && len(product) > len(bestProduct) {
 				bestVendor, bestProduct = entry.vendor, product
@@ -412,31 +434,32 @@ func detectProductFromDescription(desc string) (string, string) {
 
 	// Pass 2: vendor name appears in the description.
 	lowerDesc := strings.ToLower(desc)
-	for _, entry := range knownVendorProducts {
-		if strings.Contains(lowerDesc, strings.ToLower(entry.vendor)) {
+	for _, entry := range knownVendorProductsOpt {
+		if strings.Contains(lowerDesc, entry.lowerVendor) {
 			return entry.vendor, ""
 		}
 	}
 
-	// Pass 3: "in <vendor> <Product>" pattern, e.g. "detected in alexta69 MeTube".
+	// Only compute fields once!
 	words := strings.Fields(desc)
+
+	// Pass 3: "in <vendor> <Product>" pattern, e.g. "detected in alexta69 MeTube".
 	for i := 0; i+2 < len(words); i++ {
-		if !strings.EqualFold(words[i], "in") {
-			continue
-		}
-		vendorWord := strings.Trim(words[i+1], ".,;:()")
-		productWord := strings.Trim(words[i+2], ".,;:()")
-		if len(vendorWord) > 2 && len(productWord) > 0 && productWord[0] >= 'A' && productWord[0] <= 'Z' {
-			return capitalize(vendorWord), capitalize(productWord)
+		w := words[i]
+		if len(w) == 2 && (w[0] == 'i' || w[0] == 'I') && (w[1] == 'n' || w[1] == 'N') {
+			vendorWord := strings.Trim(words[i+1], ".,;:()")
+			productWord := strings.Trim(words[i+2], ".,;:()")
+			if len(vendorWord) > 2 && len(productWord) > 0 && productWord[0] >= 'A' && productWord[0] <= 'Z' {
+				return capitalize(vendorWord), capitalize(productWord)
+			}
 		}
 	}
 
 	// Pass 4: generic "<Vendor> <Product>" capitalized-pair heuristic.
-	fields := strings.Fields(desc)
-	for i, word := range fields {
-		if i+1 < len(fields) && len(word) > 2 && word[0] >= 'A' && word[0] <= 'Z' {
+	for i, word := range words {
+		if i+1 < len(words) && len(word) > 2 && word[0] >= 'A' && word[0] <= 'Z' {
 			// Check if next word could be a product
-			nextWord := fields[i+1]
+			nextWord := words[i+1]
 			if len(nextWord) > 0 && nextWord[0] >= 'A' && nextWord[0] <= 'Z' {
 				return word, nextWord
 			}
