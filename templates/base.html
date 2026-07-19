@@ -324,10 +324,21 @@
                 actions.forEach(a => {
                     const btn = document.createElement('button');
                     btn.textContent = a.label;
-                    btn.className = `px-6 py-2 rounded-lg font-bold text-xs uppercase tracking-widest transition-all ${a.primary ? 'bg-primary text-on-primary hover:bg-primary/80 shadow-lg shadow-primary/20' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`;
+                    btn.className = `flex items-center justify-center gap-2 px-6 py-2 rounded-lg font-bold text-xs uppercase tracking-widest transition-all ${a.primary ? 'bg-primary text-on-primary hover:bg-primary/80 shadow-lg shadow-primary/20' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`;
                     btn.onclick = () => {
                         if (typeof a.onClick === 'function') {
-                            a.onClick();
+                            const result = a.onClick();
+                            if (result instanceof Promise) {
+                                const originalText = btn.textContent;
+                                btn.disabled = true;
+                                btn.classList.add('opacity-50', 'cursor-not-allowed');
+                                btn.innerHTML = `<span class="material-symbols-outlined animate-spin" aria-hidden="true" style="animation-duration: 3s;">progress_activity</span>${originalText}`;
+                                result.finally(() => {
+                                    btn.disabled = false;
+                                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                                    btn.textContent = originalText;
+                                });
+                            }
                         }
                     };
                     actionsContainer.appendChild(btn);

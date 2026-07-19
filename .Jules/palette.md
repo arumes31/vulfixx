@@ -19,4 +19,7 @@
 **Action:** Always assign a unique `id` to every `<input>` and `<select>` and explicitly link them to `<label for="[id]">`. For dynamic forms inside modals, use a prefix like `edit_` to ensure IDs remain globally unique on the page.
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
-**Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+
+## 2026-07-19 - Adding loading states to async modal actions
+**Learning:** Found that modal action buttons executing asynchronous API calls lack visual feedback. This causes users to not know if their action was registered, leading to potential double-submissions and a degraded UX.
+**Action:** When implementing modal action buttons, always check if the callback returns a Promise. If so, automatically handle the loading state by disabling the button and showing a spinner icon during the execution.
