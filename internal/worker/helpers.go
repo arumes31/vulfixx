@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"slices"
 )
 
 var cveStrictRegex = regexp.MustCompile(`^CVE-\d{4}-\d{4,}$`)
@@ -177,15 +179,15 @@ func classifyVendorAdvisories(references []string) []string {
 		"security-guidance", "fixed", "patch",
 	}
 
-	for _, ref := range references {
+	advisories = slices.DeleteFunc(slices.Clone(references), func(ref string) bool {
 		lower := strings.ToLower(ref)
 		for _, kw := range keywords {
 			if strings.Contains(lower, kw) {
-				advisories = append(advisories, ref)
-				break
+				return false
 			}
 		}
-	}
+		return true
+	})
 	return advisories
 }
 
