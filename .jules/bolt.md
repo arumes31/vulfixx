@@ -4,3 +4,6 @@
 ## 2024-06-27 - Pre-compile regular expressions
 **Learning:** Compiling regex in tight loops or frequently called functions is a performance anti-pattern. Pre-compiling them at the package level saves CPU overhead.
 **Action:** Always declare regular expressions as package-level variables with `regexp.MustCompile` instead of inside loops.
+## 2026-07-19 - Composite Indexes Don't Optimize Trailing Columns
+**Learning:** The `alert_history` table had `UNIQUE(user_id, cve_id)`, but queries like `SELECT user_id FROM alert_history WHERE cve_id = $1` were triggering sequential scans because the leading column (`user_id`) wasn't in the WHERE clause.
+**Action:** Always add explicit indexes on trailing columns of composite constraints if those columns are queried independently, especially in high-throughput worker queues.

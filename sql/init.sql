@@ -227,6 +227,7 @@ CREATE INDEX IF NOT EXISTS idx_cves_vendor_advisories_gin ON cves USING GIN (ven
 
 
 -- Partial Unique Indexes for status and notes
+CREATE INDEX IF NOT EXISTS idx_alert_history_cve_id ON alert_history(cve_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_status ON user_cve_status (user_id, cve_id) WHERE team_id IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_team_status ON user_cve_status (team_id, cve_id) WHERE team_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_user_notes ON cve_notes (user_id, cve_id) WHERE team_id IS NULL;
