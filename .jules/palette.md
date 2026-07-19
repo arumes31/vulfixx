@@ -20,3 +20,7 @@
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+
+## 2026-07-19 - Consistent destructive actions using app modals
+**Learning:** Using native browser `confirm()` dialogs creates an inconsistent, unstyled user experience that ignores the application's design system and theme. In addition, it blocks the main thread. We found instances of native dialogs mixed with the custom `vulfixx.modal()`.
+**Action:** Always utilize the existing custom modal system (`vulfixx.modal`) for any confirmations, particularly destructive actions like deletions or system wipes, to preserve visual consistency and accessibility features.
