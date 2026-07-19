@@ -332,7 +332,14 @@
                                 const originalText = btn.textContent;
                                 btn.disabled = true;
                                 btn.classList.add('opacity-50', 'cursor-not-allowed');
-                                btn.innerHTML = `<span class="material-symbols-outlined animate-spin" aria-hidden="true" style="animation-duration: 3s;">progress_activity</span>${originalText}`;
+                                btn.textContent = '';
+                                const spinner = document.createElement('span');
+                                spinner.className = 'material-symbols-outlined animate-spin';
+                                spinner.setAttribute('aria-hidden', 'true');
+                                spinner.style.animationDuration = '3s';
+                                spinner.textContent = 'progress_activity';
+                                btn.appendChild(spinner);
+                                btn.appendChild(document.createTextNode(originalText));
                                 result.finally(() => {
                                     btn.disabled = false;
                                     btn.classList.remove('opacity-50', 'cursor-not-allowed');

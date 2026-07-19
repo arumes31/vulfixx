@@ -21,5 +21,5 @@
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 
 ## 2026-07-19 - Adding loading states to async modal actions
-**Learning:** Found that modal action buttons executing asynchronous API calls lack visual feedback. This causes users to not know if their action was registered, leading to potential double-submissions and a degraded UX.
-**Action:** When implementing modal action buttons, always check if the callback returns a Promise. If so, automatically handle the loading state by disabling the button and showing a spinner icon during the execution.
+**Learning:** Found that assigning template strings to `innerHTML` when adding a spinner icon triggers CodeQL warnings for potential XSS.
+**Action:** When injecting dynamic DOM elements, always use safe DOM APIs like `document.createElement()` and `appendChild()` instead of `innerHTML` to ensure security scanners pass and to prevent any potential XSS vulnerabilities.
