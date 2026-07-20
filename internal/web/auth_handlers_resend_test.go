@@ -136,7 +136,7 @@ func TestResendVerificationInlineHandler(t *testing.T) {
 
 			oldAsynq := app.AsynqClient
 			if tt.setupAsynq {
-			    // Handled inside auth handlers
+			    app.AsynqClient = nil
 			}
 			defer func() { app.AsynqClient = oldAsynq }()
 
