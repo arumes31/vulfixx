@@ -31,6 +31,7 @@ func (a *App) SitemapHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var buf bytes.Buffer
+	buf.Grow(150 * 1000)
 	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
 	buf.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
 
@@ -42,7 +43,10 @@ func (a *App) SitemapHandler(w http.ResponseWriter, r *http.Request) {
 
 	pages := []string{"", "/login", "/register"}
 	for _, p := range pages {
-		fmt.Fprintf(&buf, "  <url>\n    <loc>%s%s</loc>\n    <changefreq>daily</changefreq>\n    <priority>0.8</priority>\n  </url>\n", escapedBaseURL, p)
+		buf.WriteString("  <url>\n    <loc>")
+		buf.WriteString(escapedBaseURL)
+		buf.WriteString(p)
+		buf.WriteString("</loc>\n    <changefreq>daily</changefreq>\n    <priority>0.8</priority>\n  </url>\n")
 	}
 
 	// Recent/Critical CVEs (Top 1000)
@@ -54,6 +58,7 @@ func (a *App) SitemapHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Sitemap error: %v", err)
 	} else {
+		timeBuf := make([]byte, 0, 10)
 		defer rows.Close()
 		for rows.Next() {
 			var id string
@@ -61,10 +66,15 @@ func (a *App) SitemapHandler(w http.ResponseWriter, r *http.Request) {
 			if err := rows.Scan(&id, &updated); err != nil {
 				log.Printf("Error scanning sitemap row: %v", err)
 			} else {
-				var locBuf bytes.Buffer
-				_ = xml.EscapeText(&locBuf, []byte(id))
-				escapedID := locBuf.String()
-				fmt.Fprintf(&buf, "  <url>\n    <loc>%s/cve/%s</loc>\n    <lastmod>%s</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.6</priority>\n  </url>\n", escapedBaseURL, escapedID, updated.Format("2006-01-02"))
+				buf.WriteString("  <url>\n    <loc>")
+				buf.WriteString(escapedBaseURL)
+				buf.WriteString("/cve/")
+				xml.EscapeText(&buf, []byte(id))
+				buf.WriteString("</loc>\n    <lastmod>")
+				timeBuf = timeBuf[:0]
+				timeBuf = updated.AppendFormat(timeBuf, "2006-01-02")
+				buf.Write(timeBuf)
+				buf.WriteString("</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.6</priority>\n  </url>\n")
 			}
 		}
 		if err := rows.Err(); err != nil {

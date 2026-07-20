@@ -4,3 +4,6 @@
 ## 2024-06-27 - Pre-compile regular expressions
 **Learning:** Compiling regex in tight loops or frequently called functions is a performance anti-pattern. Pre-compiling them at the package level saves CPU overhead.
 **Action:** Always declare regular expressions as package-level variables with `regexp.MustCompile` instead of inside loops.
+## 2026-07-20 - Avoid fmt.Fprintf in tight loops
+**Learning:** Using `fmt.Fprintf` inside a hot loop (like rendering large sitemaps) introduces significant performance overhead due to reflection, formatting logic, and string allocations.
+**Action:** Replace `fmt.Fprintf` with `WriteString` on a pre-allocated `bytes.Buffer`. Use `AppendFormat` for dates and pass slices directly to writers (like `xml.EscapeText`) instead of constructing intermediate strings.
