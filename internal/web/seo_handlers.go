@@ -69,7 +69,7 @@ func (a *App) SitemapHandler(w http.ResponseWriter, r *http.Request) {
 				buf.WriteString("  <url>\n    <loc>")
 				buf.WriteString(escapedBaseURL)
 				buf.WriteString("/cve/")
-				xml.EscapeText(&buf, []byte(id))
+				_ = xml.EscapeText(&buf, []byte(id))
 				buf.WriteString("</loc>\n    <lastmod>")
 				timeBuf = timeBuf[:0]
 				timeBuf = updated.AppendFormat(timeBuf, "2006-01-02")
