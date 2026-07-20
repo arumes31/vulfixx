@@ -257,7 +257,7 @@
     <div id="onboarding-overlay" class="onboarding-overlay"></div>
 
     <script nonce="{{.Nonce}}">
-        const vulfixx = {
+        window.vulfixx = {
             nonce: '{{.Nonce}}',
             toast: (message, type = 'info') => {
                 const container = document.getElementById('toast-container');

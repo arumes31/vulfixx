@@ -192,10 +192,17 @@
 
 <script nonce="{{.Nonce}}">
     function initSettings() {
-        document.getElementById('delete-operator-form')?.addEventListener('submit', (e) => {
-            if (!confirm('CRITICAL WARNING: Are you certain you want to initiate complete system wipe for this operator?')) {
-                e.preventDefault();
-            }
+        document.getElementById('delete-operator-form')?.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const form = this;
+            window.vulfixx.modal(
+                'Purge Operator',
+                'CRITICAL WARNING: Are you certain you want to initiate complete system wipe for this operator?',
+                [
+                    { label: 'Cancel', onClick: window.vulfixx.closeModal },
+                    { label: 'Purge', primary: true, onClick: () => form.submit() }
+                ]
+            );
         });
     };
 

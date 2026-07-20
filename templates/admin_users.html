@@ -78,11 +78,17 @@
     function initAdminUsers() {
         document.querySelectorAll('.delete-user-form').forEach(form => {
             form.addEventListener('submit', (e) => {
+                e.preventDefault();
                 const btn = form.querySelector('button');
                 const email = btn?.dataset.email || 'this operator';
-                if (!confirm(`WARNING: Permanently purge operator ${email} from the system?`)) {
-                    e.preventDefault();
-                }
+                window.vulfixx.modal(
+                    'Delete User',
+                    `WARNING: Permanently purge operator ${email} from the system?`,
+                    [
+                        { label: 'Cancel', onClick: window.vulfixx.closeModal },
+                        { label: 'Delete', primary: true, onClick: () => form.submit() }
+                    ]
+                );
             });
         });
     }
