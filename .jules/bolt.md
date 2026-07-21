@@ -4,3 +4,6 @@
 ## 2024-06-27 - Pre-compile regular expressions
 **Learning:** Compiling regex in tight loops or frequently called functions is a performance anti-pattern. Pre-compiling them at the package level saves CPU overhead.
 **Action:** Always declare regular expressions as package-level variables with `regexp.MustCompile` instead of inside loops.
+## 2026-07-21 - Optimize data export loops
+**Learning:** Allocating slices and using reflection-based formatting like `fmt.Sprintf` inside large data export loops (like CSV generation) is a performance anti-pattern due to high allocation overhead.
+**Action:** Always pre-allocate slices outside the loop and reuse them by index assignment. Use `strconv` functions over `fmt.Sprintf` for primitive types, and use time formatting constants like `time.DateOnly`.
