@@ -1,0 +1,4 @@
+## 2026-07-21 - [Template Literal XSS in Subscriptions Modal]
+**Vulnerability:** The target infrastructure keyword in the edit subscription modal (`subData.keyword`) was directly interpolated into an HTML string via a JavaScript template literal and assigned to `innerHTML` without prior HTML escaping, leading to a Stored DOM XSS.
+**Learning:** Even though the server might sanitize or validate input, inserting user-controlled JSON data directly into the DOM using `innerHTML` on the client-side creates a persistent XSS vector if that data contains unescaped HTML characters.
+**Prevention:** Always escape user-controlled variables when interpolating them into HTML strings that will be assigned to `innerHTML`, or prefer using `textContent` or safer DOM manipulation methods (like `document.createElement`). Implemented a global `vulfixx.escapeHTML()` utility for this purpose.

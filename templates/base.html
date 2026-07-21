@@ -259,6 +259,15 @@
     <script nonce="{{.Nonce}}">
         const vulfixx = {
             nonce: '{{.Nonce}}',
+        escapeHTML: (str) => {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        },
             toast: (message, type = 'info') => {
                 const container = document.getElementById('toast-container');
                 const toast = document.createElement('div');
