@@ -445,3 +445,94 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 		}
 	})
 }
+
+func TestResendVerificationInlineHandler(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+	app := setupTestApp(t, mock)
+
+	// auth.ResendVerificationToken uses db.Pool
+	oldPool := db.Pool
+	db.Pool = mock
+	defer func() { db.Pool = oldPool }()
+
+	tests := []struct {
+		name           string
+		method         string
+		body           string
+		mockSetup      func(pgxmock.PgxPoolIface)
+		expectedStatus int
+	}{
+		{
+			name:           "GET_MethodNotAllowed",
+			method:         http.MethodGet,
+			body:           "",
+			mockSetup:      func(m pgxmock.PgxPoolIface) {},
+			expectedStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:           "POST_InvalidForm",
+			method:         http.MethodPost,
+			body:           "%zz",
+			mockSetup:      func(m pgxmock.PgxPoolIface) {},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "POST_InvalidEmail",
+			method:         http.MethodPost,
+			body:           "email=not-an-email",
+			mockSetup:      func(m pgxmock.PgxPoolIface) {},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "POST_Success",
+			method:         http.MethodPost,
+			body:           "email=test@example.com",
+			mockSetup:      func(m pgxmock.PgxPoolIface) {
+				m.ExpectBegin()
+				now := time.Now().Add(-2 * time.Hour)
+				oldToken := "old_token"
+				m.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token FROM users WHERE email = \\$1 FOR UPDATE").
+					WithArgs("test@example.com").
+					WillReturnRows(pgxmock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
+						AddRow(1, false, 0, &now, &oldToken))
+
+				m.ExpectExec("UPDATE users SET email_verify_token = \\$1, \\s*verification_resend_count = verification_resend_count \\+ 1, \\s*last_verification_resend_at = CURRENT_TIMESTAMP \\s*WHERE id = \\$2").
+					WithArgs(pgxmock.AnyArg(), 1).
+					WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+				m.ExpectCommit()
+			},
+			expectedStatus: http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.mockSetup(mock)
+
+			var req *http.Request
+			if tt.body != "" {
+				req = httptest.NewRequest(tt.method, "/resend-inline", strings.NewReader(tt.body))
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			} else {
+				req = httptest.NewRequest(tt.method, "/resend-inline", nil)
+			}
+			req.Header.Set("X-Requested-With", "XMLHttpRequest")
+
+			rr := httptest.NewRecorder()
+			app.ResendVerificationInlineHandler(rr, req)
+
+			if rr.Code != tt.expectedStatus {
+				t.Errorf("expected %d, got %d", tt.expectedStatus, rr.Code)
+			}
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
+		})
+	}
+}
