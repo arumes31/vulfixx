@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/github/actions/workflow/status/arumes31/vulfixx/docker-build.yml?branch=v2_test&style=for-the-badge&logo=github" alt="Build Status">
   <img src="https://img.shields.io/github/actions/workflow/status/arumes31/vulfixx/go-licenses.yml?branch=v2_test&label=Licenses&style=for-the-badge&logo=github" alt="License Check Status">
-  <img src="https://img.shields.io/badge/Go-1.26.3-00ADD8?style=for-the-badge&logo=go" alt="Go Version">
+  <img src="https://img.shields.io/badge/Go-1.26.5-00ADD8?style=for-the-badge&logo=go" alt="Go Version">
   <img src="https://img.shields.io/badge/Security-Gosec_Passed-brightgreen?style=for-the-badge&logo=shield" alt="Security Status">
   <img src="https://img.shields.io/github/license/arumes31/vulfixx?style=for-the-badge" alt="License">
 </p>
@@ -126,7 +126,7 @@ Vulfixx is hardened with enterprise-grade system improvements designed for high-
 
 - [Docker](https://www.docker.com/get-started)
 - [Docker Compose](https://docs.docker.com/compose/install/)
-- [Go 1.26.3](https://golang.org/dl/) (optional, for local development)
+- [Go 1.26.5](https://golang.org/dl/) (optional, for local development)
 - [act](https://github.com/nektos/act) (optional, for running GitHub Actions locally)
 
 ### Installation
@@ -245,7 +245,7 @@ Or use the automated test script with coverage:
 ### CI/CD Pipeline
 
 This project uses a modern GitHub Actions pipeline (`.github/workflows/docker-build.yml`) for continuous integration:
-- **Environment**: All CI jobs run in a **Go 1.26.3** containerized environment.
+- **Environment**: All CI jobs run in a **Go 1.26.5** containerized environment.
 - **Unit Testing**: Automated Go tests to ensure logic correctness.
 - **Linting**: Strict code quality checks with `golangci-lint` (v2.x).
 - **Security Scanning**:
