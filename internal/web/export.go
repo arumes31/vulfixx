@@ -65,6 +65,9 @@ func (a *App) ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 	csvWriter := csv.NewWriter(w)
 	var skipped int
 	var total int
+
+	// Pre-allocate the row slice outside the loop to avoid allocating memory for a new slice
+	// on every iteration. This reduces garbage collection overhead and improves performance.
 	row := make([]string, 6)
 	for rows.Next() {
 		var cveID, description string
@@ -79,6 +82,8 @@ func (a *App) ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		total++
+		// Reusing the pre-allocated slice and using strconv instead of fmt.Sprintf
+		// avoids reflection and reduces memory allocations per row.
 		row[0] = cveID
 		row[1] = description
 		row[2] = strconv.FormatFloat(cvssScore, 'f', 1, 64)
