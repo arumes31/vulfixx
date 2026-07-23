@@ -1,9 +1,12 @@
 package web
 
 import (
+	"context"
+	"crypto/sha256"
 	"cve-tracker/internal/auth"
 	"cve-tracker/internal/db"
 	"database/sql"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -444,4 +447,124 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
+}
+
+func TestResendVerificationInlineHandler(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	oldPool := db.Pool
+	db.Pool = mock
+	defer func() { db.Pool = oldPool }()
+
+	app := setupTestApp(t, mock)
+
+	tests := []struct {
+		name         string
+		method       string
+		email        string
+		setupRedis   func()
+		setupMock    func()
+		expectedCode int
+		expectedMsg  string
+	}{
+		{
+			name:         "MethodNotAllowed",
+			method:       http.MethodGet,
+			email:        "",
+			expectedCode: http.StatusMethodNotAllowed,
+		},
+		{
+			name:         "InvalidEmail",
+			method:       http.MethodPost,
+			email:        "not-an-email",
+			expectedCode: http.StatusOK,
+			expectedMsg:  "If this email is registered and unverified, a new verification link has been sent.",
+		},
+		{
+			name:   "ExceedsIPRateLimit",
+			method: http.MethodPost,
+			email:  "test@example.com",
+			setupRedis: func() {
+				app.Redis.Set(context.Background(), "resend_limit:192.0.2.1", 5, 0)
+			},
+			expectedCode: http.StatusOK,
+			expectedMsg:  "If this email is registered and unverified, a new verification link has been sent.",
+		},
+		{
+			name:   "ExceedsEmailRateLimit",
+			method: http.MethodPost,
+			email:  "test@example.com",
+			setupRedis: func() {
+				app.Redis.Del(context.Background(), "resend_limit:192.0.2.1")
+				emailHash := sha256.Sum256([]byte("test@example.com"))
+				emailRlKey := "resend_email_limit:" + hex.EncodeToString(emailHash[:])
+				app.Redis.Set(context.Background(), emailRlKey, 3, 0)
+			},
+			expectedCode: http.StatusOK,
+			expectedMsg:  "If this email is registered and unverified, a new verification link has been sent.",
+		},
+		{
+			name:   "SuccessEnqueue",
+			method: http.MethodPost,
+			email:  "test@example.com",
+			setupRedis: func() {
+				app.Redis.FlushAll(context.Background())
+			},
+			setupMock: func() {
+				mock.ExpectBegin()
+				mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token FROM users WHERE email = \\$1 FOR UPDATE").
+					WithArgs("test@example.com").
+					WillReturnRows(pgxmock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
+						AddRow(1, false, 0, nil, nil))
+				mock.ExpectExec(`UPDATE users\s+SET email_verify_token = \$1,\s+verification_resend_count = verification_resend_count \+ 1,\s+last_verification_resend_at = CURRENT_TIMESTAMP\s+WHERE id = \$2`).
+					WithArgs(pgxmock.AnyArg(), 1).
+					WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+				mock.ExpectCommit()
+			},
+			expectedCode: http.StatusOK,
+			expectedMsg:  "If this email is registered and unverified, a new verification link has been sent.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setupRedis != nil {
+				tt.setupRedis()
+			}
+			if tt.setupMock != nil {
+				tt.setupMock()
+			}
+
+			form := url.Values{}
+			if tt.email != "" {
+				form.Add("email", tt.email)
+			}
+
+			req := httptest.NewRequest(tt.method, "/resend-verification-inline", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("X-Requested-With", "XMLHttpRequest") // trigger JSON response in SendResponse
+			req.RemoteAddr = "192.0.2.1:1234"
+
+			rr := httptest.NewRecorder()
+			app.ResendVerificationInlineHandler(rr, req)
+
+			if rr.Code != tt.expectedCode {
+				t.Errorf("expected status code %d, got %d", tt.expectedCode, rr.Code)
+			}
+
+			if !strings.Contains(rr.Body.String(), tt.expectedMsg) && tt.expectedMsg != "" {
+				t.Errorf("expected msg %q, got body: %s", tt.expectedMsg, rr.Body.String())
+			}
+
+			if tt.setupMock != nil {
+				if err := mock.ExpectationsWereMet(); err != nil {
+					t.Errorf("unmet mock expectations: %v", err)
+				}
+			}
+		})
+	}
 }
