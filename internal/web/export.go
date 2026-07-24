@@ -3,9 +3,9 @@ package web
 import (
 	"bytes"
 	"encoding/csv"
-	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -78,14 +78,13 @@ func (a *App) ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		total++
-		row := []string{
-			cveID,
-			description,
-			fmt.Sprintf("%.1f", cvssScore),
-			fmt.Sprintf("%t", cisaKEV),
-			publishedDate.Format("2006-01-02"),
-			priority,
-		}
+		row := make([]string, 6)
+		row[0] = cveID
+		row[1] = description
+		row[2] = strconv.FormatFloat(cvssScore, 'f', 1, 64)
+		row[3] = strconv.FormatBool(cisaKEV)
+		row[4] = publishedDate.Format(time.DateOnly)
+		row[5] = priority
 		if err := csvWriter.Write(row); err != nil {
 			log.Printf("Error writing CSV row for %s: %v", cveID, err)
 			return

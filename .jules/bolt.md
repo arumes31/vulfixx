@@ -4,3 +4,6 @@
 ## 2024-06-27 - Pre-compile regular expressions
 **Learning:** Compiling regex in tight loops or frequently called functions is a performance anti-pattern. Pre-compiling them at the package level saves CPU overhead.
 **Action:** Always declare regular expressions as package-level variables with `regexp.MustCompile` instead of inside loops.
+## 2026-07-24 - Optimize CSV Generation
+**Learning:** Using `fmt.Sprintf` and dynamically allocating slices inside high-frequency data loops (like CSV row generation) incurs unnecessary reflection overhead and allocations.
+**Action:** Always pre-allocate slices using `make([]type, size)` and assign elements by index. Replace `fmt.Sprintf` with type-specific functions from the `strconv` package (e.g., `strconv.FormatFloat`, `strconv.FormatBool`) to eliminate reflection and reduce memory allocations in hot paths.
