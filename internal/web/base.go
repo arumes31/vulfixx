@@ -582,6 +582,13 @@ func (a *App) SendResponse(w http.ResponseWriter, r *http.Request, success bool,
 		http.Error(w, errMsg, statusCode)
 		return
 	}
+	redirect = strings.ReplaceAll(redirect, "\r", "")
+	redirect = strings.ReplaceAll(redirect, "\n", "")
+	redirect = strings.ReplaceAll(redirect, "%0D", "")
+	redirect = strings.ReplaceAll(redirect, "%0d", "")
+	redirect = strings.ReplaceAll(redirect, "%0A", "")
+	redirect = strings.ReplaceAll(redirect, "%0a", "")
+
 	if redirect == "" {
 		redirect = "/"
 	}
@@ -589,6 +596,13 @@ func (a *App) SendResponse(w http.ResponseWriter, r *http.Request, success bool,
 }
 
 func SafeRedirect(redirect string, rHost string) string {
+	redirect = strings.ReplaceAll(redirect, "\r", "")
+	redirect = strings.ReplaceAll(redirect, "\n", "")
+	redirect = strings.ReplaceAll(redirect, "%0D", "")
+	redirect = strings.ReplaceAll(redirect, "%0d", "")
+	redirect = strings.ReplaceAll(redirect, "%0A", "")
+	redirect = strings.ReplaceAll(redirect, "%0a", "")
+
 	if redirect == "" {
 		return "/dashboard"
 	}
