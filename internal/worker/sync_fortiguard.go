@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -482,14 +483,7 @@ func parseFortiGuardAdvisory(doc *goquery.Document, url string) (*FortiGuardAdvi
 		if cveID := cveIDRegex.FindString(s.Text()); cveID != "" {
 			cveID = strings.ToUpper(cveID)
 			// Check if already in slice
-			found := false
-			for _, existing := range advisory.CVEIDs {
-				if existing == cveID {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if !slices.Contains(advisory.CVEIDs, cveID) {
 				advisory.CVEIDs = append(advisory.CVEIDs, cveID)
 			}
 		}

@@ -11,6 +11,7 @@ import (
 	"math"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -314,11 +315,8 @@ func isEmailDomainBlacklisted(email string) bool {
 		}
 	}
 
-	for _, blocked := range blacklist {
+	return slices.ContainsFunc(blacklist, func(blocked string) bool {
 		blocked = strings.ToLower(strings.TrimSpace(blocked))
-		if domain == blocked || strings.HasSuffix(domain, "."+blocked) {
-			return true
-		}
-	}
-	return false
+		return domain == blocked || strings.HasSuffix(domain, "."+blocked)
+	})
 }
