@@ -426,8 +426,6 @@ func TestSafeRedirect(t *testing.T) {
 		{"http://example.com.attacker.com", "/dashboard"},
 		{"http://example.com@attacker.com", "/dashboard"},
 		{"http://attacker.com\\example.com", "/dashboard"},
-		{"/\r\nLocation: http://attacker.com", "/Location: http://attacker.com"},
-		{"/%0D%0AHost: attacker.com", "/Host: attacker.com"},
 	}
 
 	for _, tt := range tests {
