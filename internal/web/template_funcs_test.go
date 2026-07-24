@@ -102,7 +102,7 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 	})
 
 	t.Run("marshal", func(t *testing.T) {
-		f := funcs["marshal"].(func(interface{}) template.JS)
+		f := funcs["marshal"].(func(interface{}) string)
 		data := map[string]string{"foo": "bar"}
 		got := string(f(data))
 		if !strings.Contains(got, "\"foo\":\"bar\"") {
