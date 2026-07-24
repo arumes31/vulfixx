@@ -20,3 +20,7 @@
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+
+## 2026-07-24 - Replace native confirms with custom modals
+**Learning:** Native browser `confirm()` dialogues lack the consistent styling of the rest of the application, provide poor keyboard accessibility in some browsers, and pause execution abruptly.
+**Action:** Always replace native `confirm()` and `alert()` calls with the design system's existing `vulfixx.modal` object to ensure consistent UX and improved accessibility, keeping in mind to prefix calls with `window.` if necessary for block-scoped access.
