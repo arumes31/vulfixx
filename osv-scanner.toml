@@ -1,0 +1,13 @@
+# Suppressions for `osv-scanner -r .` — the "Godep (Dependency Scan)" CI gate.
+#
+# osv-scanner matches advisories against dependency versions without call-graph
+# analysis, so it reports findings that are not reachable from this module.
+# govulncheck does perform reachability analysis and reports zero vulnerabilities.
+#
+# Only advisories that cannot be resolved by upgrading belong here. Anything with
+# a fixed version should be upgraded instead of suppressed. Re-check these entries
+# whenever the affected dependency is upgraded.
+
+[[IgnoredVulns]]
+id = "GO-2026-5932"
+reason = "golang.org/x/crypto/openpgp is unmaintained and unsafe by design; the advisory has no fixed version, so upgrading cannot clear it. This module imports only golang.org/x/crypto/argon2 and golang.org/x/crypto/hkdf — openpgp is never imported, and govulncheck confirms it is unreachable."
