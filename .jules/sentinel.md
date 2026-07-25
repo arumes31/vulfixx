@@ -1,0 +1,4 @@
+## 2025-05-18 - Enforce native `html/template` escaping for JSON in script tags
+**Vulnerability:** XSS vulnerability through unsafe casting of user-supplied data into `template.JS(...)` for usage within `<script>` blocks.
+**Learning:** `html/template` provides context-aware escaping. When variables are embedded inside `<script>` or `<script type="application/json">` blocks, complex types (like maps/structs) and primitives are automatically JSON-encoded, with dangerous characters (`<`, `>`) safely escaped into unicode equivalents by its internal `jsValEscaper`.
+**Prevention:** Do not manually use `json.Marshal` combined with forceful `template.JS(...)` casting. Always pass the native Go struct or map directly to the `html/template` variable (`{{.Variable}}`) to leverage its secure, built-in escaping.
