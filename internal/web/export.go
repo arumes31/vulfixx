@@ -3,9 +3,9 @@ package web
 import (
 	"bytes"
 	"encoding/csv"
-	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -65,6 +65,8 @@ func (a *App) ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 	csvWriter := csv.NewWriter(w)
 	var skipped int
 	var total int
+	// Bolt: Pre-allocate slice outside the loop to avoid allocations on every iteration
+	rowSlice := make([]string, 6)
 	for rows.Next() {
 		var cveID, description string
 		var cvssScore float64
@@ -78,15 +80,14 @@ func (a *App) ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		total++
-		row := []string{
-			cveID,
-			description,
-			fmt.Sprintf("%.1f", cvssScore),
-			fmt.Sprintf("%t", cisaKEV),
-			publishedDate.Format("2006-01-02"),
-			priority,
-		}
-		if err := csvWriter.Write(row); err != nil {
+		rowSlice[0] = cveID
+		rowSlice[1] = description
+		// Bolt: Use strconv instead of fmt.Sprintf to avoid reflection overhead in tight loops
+		rowSlice[2] = strconv.FormatFloat(cvssScore, 'f', 1, 64)
+		rowSlice[3] = strconv.FormatBool(cisaKEV)
+		rowSlice[4] = publishedDate.Format(time.DateOnly)
+		rowSlice[5] = priority
+		if err := csvWriter.Write(rowSlice); err != nil {
 			log.Printf("Error writing CSV row for %s: %v", cveID, err)
 			return
 		}
