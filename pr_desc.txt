@@ -1,4 +1,4 @@
-💡 What: Added standard HTML `autocomplete` attributes to email, password, and TOTP input fields across all authentication forms (login, register, settings, resend verification). Also added missing `aria-label`s to form toggles and 'close' actions.
-🎯 Why: Enhances UX by allowing password managers (like 1Password, Bitwarden) and native browser autofill to correctly identify and populate credentials, saving users time and preventing typos. Screen readers are also able to announce toggles contextually.
+💡 What: Added standard HTML `autocomplete` attributes to email, password, and TOTP input fields across all authentication forms (login, register, settings, resend verification).
+🎯 Why: Enhances UX by allowing password managers (like 1Password, Bitwarden) and native browser autofill to correctly identify and populate credentials, saving users time and preventing typos.
 📸 Before/After: Inputs previously lacked contextual metadata, causing password managers to fail. They now have correct contextual attributes (`email`, `current-password`, `new-password`, `one-time-code`).
-♿ Accessibility: Helps users with cognitive or motor disabilities by reducing the need to manually type complex credentials or 2FA codes, and correctly announces checkbox toggle actions.
+♿ Accessibility: Helps users with cognitive or motor disabilities by reducing the need to manually type complex credentials or 2FA codes.
