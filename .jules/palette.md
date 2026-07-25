@@ -20,3 +20,6 @@
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+## 2026-07-25 - Enhance Password Manager Compatibility
+**Learning:** Missing autocomplete attributes on authentication forms broke password managers and browser autofill features, degrading UX.
+**Action:** Applied standard 'email', 'current-password', 'new-password', and 'one-time-code' autocomplete attributes across all auth forms to improve accessibility and user experience.

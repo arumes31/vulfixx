@@ -41,7 +41,7 @@
                                 <span class="material-symbols-outlined text-gray-400" aria-hidden="true">mail</span>
                                 <span class="text-xs font-bold text-gray-300">Email</span>
                             </div>
-                            <input type="checkbox" name="enable_email" value="true" checked class="sr-only peer">
+                            <input type="checkbox" name="enable_email" aria-label="Enable Email Notifications" value="true" checked class="sr-only peer">
                             <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-primary after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6 peer-focus-visible:ring-2 peer-focus-visible:ring-primary peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#10141a]"></div>
                         </label>
 
@@ -50,7 +50,7 @@
                                 <span class="material-symbols-outlined text-gray-400" aria-hidden="true">webhook</span>
                                 <span class="text-xs font-bold text-gray-300">Webhook</span>
                             </div>
-                            <input type="checkbox" name="enable_webhook" value="true" class="sr-only peer">
+                            <input type="checkbox" name="enable_webhook" aria-label="Enable Webhook Notifications" value="true" class="sr-only peer">
                             <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-blue-500 after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#10141a]"></div>
                         </label>
 
@@ -59,7 +59,7 @@
                                 <span class="material-symbols-outlined text-gray-400" aria-hidden="true">tag</span>
                                 <span class="text-xs font-bold text-gray-300">Slack</span>
                             </div>
-                            <input type="checkbox" name="enable_slack" value="true" class="sr-only peer">
+                            <input type="checkbox" name="enable_slack" aria-label="Enable Slack Notifications" value="true" class="sr-only peer">
                             <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-green-500 after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6 peer-focus-visible:ring-2 peer-focus-visible:ring-green-500 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#10141a]"></div>
                         </label>
 
@@ -68,7 +68,7 @@
                                 <span class="material-symbols-outlined text-gray-400" aria-hidden="true">group_work</span>
                                 <span class="text-xs font-bold text-gray-300">Teams</span>
                             </div>
-                            <input type="checkbox" name="enable_teams" value="true" class="sr-only peer">
+                            <input type="checkbox" name="enable_teams" aria-label="Enable Teams Notifications" value="true" class="sr-only peer">
                             <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-purple-500 after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6 peer-focus-visible:ring-2 peer-focus-visible:ring-purple-500 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#10141a]"></div>
                         </label>
 
@@ -77,7 +77,7 @@
                                 <span class="material-symbols-outlined text-gray-400" aria-hidden="true">notifications_active</span>
                                 <span class="text-xs font-bold text-gray-300">Browser Push</span>
                             </div>
-                            <input type="checkbox" name="enable_browser_push" value="true" class="sr-only peer">
+                            <input type="checkbox" name="enable_browser_push" aria-label="Enable Browser Push Notifications" value="true" class="sr-only peer">
                             <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-orange-500 after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6 peer-focus-visible:ring-2 peer-focus-visible:ring-orange-500 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#10141a]"></div>
                         </label>
                     </div>
@@ -335,7 +335,7 @@
                     <span class="material-symbols-outlined text-gray-400" aria-hidden="true">${icon}</span>
                     <span class="text-xs font-bold text-gray-300">${label}</span>
                 </div>
-                <input type="checkbox" name="${name}" value="true" ${checked ? 'checked' : ''} class="sr-only peer">
+                <input type="checkbox" name="${name}" aria-label="Enable ${label} Notifications" value="true" ${checked ? 'checked' : ''} class="sr-only peer">
                 <div class="w-10 h-5 bg-gray-800 rounded-full relative transition-all peer-checked:bg-${color} after:content-[''] after:absolute after:top-1 after:left-1 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition-all peer-checked:after:left-6"></div>
             </label>
         `;

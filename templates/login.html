@@ -42,18 +42,18 @@
         {{if .RequireTOTP}}
             <div class="space-y-2">
                 <label for="totp_code" class="text-xs font-label font-bold tracking-widest uppercase text-gray-500 block">TOTP Code</label>
-                <input id="totp_code" type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456" autofocus
+                <input id="totp_code" type="text" name="totp_code" autocomplete="one-time-code" required maxlength="6" pattern="\d{6}" placeholder="123456" autofocus
                        class="w-full bg-white/5 border border-white/10 px-4 py-4 rounded-2xl text-white focus:outline-none focus:border-primary transition-all font-mono tracking-widest placeholder:text-white/10 text-center">
             </div>
         {{else}}
             <div class="space-y-2">
                 <label for="email" class="text-xs font-label font-bold tracking-widest uppercase text-gray-500 block">Email Operator</label>
-                <input id="email" type="email" name="email" required placeholder="operator@system.core" autofocus
+                <input id="email" type="email" name="email" autocomplete="email" required placeholder="operator@system.core" autofocus
                        class="w-full bg-white/5 border border-white/10 px-4 py-4 rounded-2xl text-white focus:outline-none focus:border-primary transition-all placeholder:text-white/10">
             </div>
             <div class="space-y-2">
                 <label for="password" class="text-xs font-label font-bold tracking-widest uppercase text-gray-500 block">Passphrase</label>
-                <input id="password" type="password" name="password" required placeholder="••••••••"
+                <input id="password" type="password" name="password" autocomplete="current-password" required placeholder="••••••••"
                        class="w-full bg-white/5 border border-white/10 px-4 py-4 rounded-2xl text-white focus:outline-none focus:border-primary transition-all placeholder:text-white/10 font-mono tracking-widest">
             </div>
         {{end}}
