@@ -19,6 +19,11 @@ func TestParseFeedDate(t *testing.T) {
 		wantYear   int
 	}{
 		{"RSS 2.0 pubDate with zone", []string{"Thu, 02 May 2024 00:00:00 GMT"}, false, 2024},
+		// Oracle spells the month out and doubles the space. Live verification found
+		// every Oracle item falling back to now() and monopolising the news rail.
+		{"Oracle full month, double space, no zone", []string{"Tue, 21 July 2026  12:30:54"}, false, 2026},
+		{"Oracle full month with zone", []string{"Wed, 10 June 2026 18:00:00 -0700"}, false, 2026},
+		{"full month without weekday", []string{"21 July 2026 12:30:54"}, false, 2026},
 		{"RSS 2.0 pubDate numeric zone", []string{"Mon, 15 Jan 2026 09:30:00 +0100"}, false, 2026},
 		{"Atom RFC3339", []string{"2026-03-04T11:22:33Z"}, false, 2026},
 		{"dc:date bare", []string{"2025-12-01"}, false, 2025},

@@ -53,10 +53,16 @@ type RailIntel struct {
 	TopPoC    []RailCVE `json:"top_poc"`
 }
 
+// IsEmpty reports whether every section is empty, so callers can omit the rail
+// entirely. Templates cannot do this themselves: a struct value is always truthy.
+func (r RailIntel) IsEmpty() bool {
+	return len(r.LatestKEV) == 0 && len(r.TopEPSS) == 0 && len(r.TopPoC) == 0
+}
+
 // cachedRail returns a cached value, or computes and stores one. A cache or query
 // failure degrades to an empty rail rather than failing the page, because a decorative
 // gutter must never take the dashboard down.
-func cachedRail[T any](ctx context.Context, a *App, key string, load func(context.Context) (T, error)) T {
+func cachedRail[T any](ctx context.Context, a *App, key string, load func(context.Context) (T, error), isEmpty func(T) bool) T {
 	var zero T
 
 	if a.Redis != nil {
@@ -74,7 +80,10 @@ func cachedRail[T any](ctx context.Context, a *App, key string, load func(contex
 		return zero
 	}
 
-	if a.Redis != nil {
+	// Never cache an empty result. On a fresh install, or before the first advisory
+	// sync completes, that would pin an empty rail in place for the whole TTL even
+	// once the data lands.
+	if a.Redis != nil && !isEmpty(value) {
 		if encoded, err := json.Marshal(value); err == nil {
 			_ = a.Redis.Set(ctx, key, encoded, railCacheTTL).Err()
 		}
@@ -204,8 +213,21 @@ func buildRailList(cves []RailCVE, metric string) RailListData {
 // it, so the rails never appear on Settings, Assets or the CVE detail page. base.html
 // keys off the presence of these values, so omitting the call omits the rails.
 func (a *App) attachRailData(ctx context.Context, renderData map[string]interface{}, loggedIn bool) {
-	renderData["RailNews"] = cachedRail(ctx, a, railNewsCacheKey, a.loadNewsRail)
-	if !loggedIn {
-		renderData["RailIntel"] = cachedRail(ctx, a, railIntelCacheKey, a.loadIntelRail)
+	news := cachedRail(ctx, a, railNewsCacheKey, a.loadNewsRail,
+		func(n []NewsItem) bool { return len(n) == 0 })
+	if len(news) > 0 {
+		renderData["RailNews"] = news
+	}
+
+	if loggedIn {
+		return
+	}
+
+	intel := cachedRail(ctx, a, railIntelCacheKey, a.loadIntelRail, RailIntel.IsEmpty)
+	// Only set the key when there is something to show. A struct value is always
+	// truthy to text/template, so assigning an empty RailIntel would render three
+	// "No data" panels instead of hiding the rail.
+	if !intel.IsEmpty() {
+		renderData["RailIntel"] = intel
 	}
 }

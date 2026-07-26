@@ -27,6 +27,11 @@
      is 1536px, which is too narrow. */
   --breakpoint-3xl: 120rem;
 
+  /* Authenticated pages lose 256px to the fixed sidebar, so the gutter only reaches
+     280px at 2096px. Rails there start at 4xl instead, which keeps the promise that
+     the centre column never moves when a rail appears. */
+  --breakpoint-4xl: 132rem;
+
   --font-sans: "Inter", sans-serif;
   --font-display: "Space Grotesk", sans-serif;
   --font-label: "Inter", sans-serif;

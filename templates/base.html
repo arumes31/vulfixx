@@ -225,29 +225,38 @@
          3xl (1920px) and up, where there is room without narrowing the centre column.
          The rails render only when a handler supplied their data, so pages that do not
          call attachRailData are byte-identical to before. */}}
-    <div class="w-full flex justify-center gap-6">
+    {{/* A three-track grid with main explicitly in track 2. The outer tracks are 1fr
+         each, so they stay equal whether zero, one or two rails render — which is what
+         keeps the centre column from shifting when a rail appears. Explicit col-start
+         matters: a display:none rail is not placed at all, and without it main would
+         fall into track 1.
+
+         Public rails need 1280 + 2x(280+24) = 1888px, so they start at 3xl (1920).
+         The authenticated page loses 256px to the fixed sidebar, so its single rail
+         needs 2096px before the gutter reaches 280px; that is the 4xl breakpoint. */}}
+    <div class="w-full grid grid-cols-[1fr_auto_1fr] gap-6">
         {{if and (not .UserLoggedIn) .RailNews}}
         <aside aria-label="Security news"
-               class="hidden 3xl:block w-70 shrink-0 sticky top-24 self-start max-h-[calc(100vh-8rem)] overflow-y-auto pt-10 pb-10">
+               class="hidden 3xl:block col-start-1 justify-self-end w-70 sticky top-24 self-start max-h-[calc(100vh-8rem)] overflow-y-auto py-10 pl-6">
             {{template "rail_news" .}}
         </aside>
         {{end}}
 
-        <main class="flex-1 p-6 md:p-10 max-w-7xl mx-auto w-full pb-24 md:pb-10">
+        <main class="col-start-2 p-6 md:p-10 max-w-7xl w-full pb-24 md:pb-10">
             {{template "content" .}}
         </main>
 
         {{if .UserLoggedIn}}
             {{if .RailNews}}
             <aside aria-label="Security news"
-                   class="hidden 3xl:block w-70 shrink-0 sticky top-24 self-start max-h-[calc(100vh-8rem)] overflow-y-auto pt-10 pb-10">
+                   class="hidden 4xl:block col-start-3 w-70 sticky top-24 self-start max-h-[calc(100vh-8rem)] overflow-y-auto py-10 pr-6">
                 {{template "rail_news" .}}
             </aside>
             {{end}}
         {{else}}
             {{if .RailIntel}}
             <aside aria-label="CVE intelligence"
-                   class="hidden 3xl:block w-70 shrink-0 sticky top-24 self-start max-h-[calc(100vh-8rem)] overflow-y-auto pt-10 pb-10">
+                   class="hidden 3xl:block col-start-3 w-70 sticky top-24 self-start max-h-[calc(100vh-8rem)] overflow-y-auto py-10 pr-6">
                 {{template "rail_intel" .}}
             </aside>
             {{end}}

@@ -114,6 +114,48 @@ func TestRailPartialsRender(t *testing.T) {
 	})
 }
 
+// A struct is always truthy to text/template, so an empty RailIntel assigned into
+// renderData would render three "No data" panels instead of hiding the rail. Live
+// verification hit exactly that.
+func TestRailIntelIsEmpty(t *testing.T) {
+	if !(RailIntel{}).IsEmpty() {
+		t.Error("zero RailIntel should be empty")
+	}
+	if (RailIntel{LatestKEV: []RailCVE{{CVEID: "X"}}}).IsEmpty() {
+		t.Error("RailIntel with a KEV entry should not be empty")
+	}
+	if (RailIntel{TopEPSS: []RailCVE{{CVEID: "X"}}}).IsEmpty() {
+		t.Error("RailIntel with an EPSS entry should not be empty")
+	}
+	if (RailIntel{TopPoC: []RailCVE{{CVEID: "X"}}}).IsEmpty() {
+		t.Error("RailIntel with a PoC entry should not be empty")
+	}
+}
+
+// attachRailData must omit the keys entirely when there is nothing to show, so
+// base.html's {{if .RailNews}} / {{if .RailIntel}} guards actually hide the rails.
+func TestAttachRailDataOmitsEmptyRails(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("setup mock db: %v", err)
+	}
+	defer mock.Close()
+	app := setupTestApp(t, mock)
+
+	// No query expectations registered, so every rail load fails and yields nothing.
+	for _, loggedIn := range []bool{false, true} {
+		renderData := map[string]interface{}{}
+		app.attachRailData(t.Context(), renderData, loggedIn)
+
+		if _, ok := renderData["RailNews"]; ok {
+			t.Errorf("loggedIn=%v: RailNews should be absent when there is no data", loggedIn)
+		}
+		if _, ok := renderData["RailIntel"]; ok {
+			t.Errorf("loggedIn=%v: RailIntel should be absent when there is no data", loggedIn)
+		}
+	}
+}
+
 func TestBuildRailList(t *testing.T) {
 	tests := []struct {
 		metric    string

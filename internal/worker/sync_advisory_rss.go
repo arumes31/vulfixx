@@ -97,6 +97,12 @@ var feedDateLayouts = []string{
 	time.RFC3339,
 	time.RFC822Z,
 	time.RFC822,
+	// Oracle's feed spells the month out in full ("Tue, 21 July 2026 12:30:54"),
+	// which none of the RFC layouts accept. Without these every Oracle item falls
+	// back to the fetch time and monopolises the news rail.
+	"Mon, 02 January 2006 15:04:05 -0700",
+	"Mon, 02 January 2006 15:04:05",
+	"02 January 2006 15:04:05",
 	"2006-01-02T15:04:05Z0700",
 	"2006-01-02 15:04:05",
 	"2006-01-02",
@@ -119,7 +125,9 @@ func stripHTMLTags(s string) string {
 // fetch time rather than dropping the item.
 func parseFeedDate(candidates ...string) time.Time {
 	for _, raw := range candidates {
-		raw = strings.TrimSpace(raw)
+		// Collapse internal runs of whitespace as well as trimming: Oracle emits
+		// "Tue, 21 July 2026  12:30:54" with a double space, which no layout matches.
+		raw = strings.Join(strings.Fields(raw), " ")
 		if raw == "" {
 			continue
 		}
