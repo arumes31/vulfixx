@@ -200,7 +200,10 @@
 {{end}}
 
 <!-- Main Content Area -->
-<div class="{{if .UserLoggedIn}}md:ml-64{{end}} flex-1 min-h-screen flex flex-col relative overflow-hidden">
+{{/* overflow-x-clip rather than overflow-hidden: clip contains horizontal overflow
+     without establishing a scroll container, which would stop the sticky side rails
+     below from following the scroll. */}}
+<div class="{{if .UserLoggedIn}}md:ml-64{{end}} flex-1 min-h-screen flex flex-col relative overflow-x-clip">
     <!-- Subtle Background Glow -->
     <div class="fixed inset-0 bg-[radial-gradient(circle_at_50%_-20%,#00daf310,transparent_50%)] pointer-events-none"></div>
     <!-- Mobile Top Header -->
@@ -218,9 +221,38 @@
     </header>
     {{end}}
 
-    <main class="flex-1 p-6 md:p-10 max-w-7xl mx-auto w-full pb-24 md:pb-10">
-        {{template "content" .}}
-    </main>
+    {{/* Side rails sit in the dead gutter beside the content column and only exist at
+         3xl (1920px) and up, where there is room without narrowing the centre column.
+         The rails render only when a handler supplied their data, so pages that do not
+         call attachRailData are byte-identical to before. */}}
+    <div class="w-full flex justify-center gap-6">
+        {{if and (not .UserLoggedIn) .RailNews}}
+        <aside aria-label="Security news"
+               class="hidden 3xl:block w-70 shrink-0 sticky top-24 self-start max-h-[calc(100vh-8rem)] overflow-y-auto pt-10 pb-10">
+            {{template "rail_news" .}}
+        </aside>
+        {{end}}
+
+        <main class="flex-1 p-6 md:p-10 max-w-7xl mx-auto w-full pb-24 md:pb-10">
+            {{template "content" .}}
+        </main>
+
+        {{if .UserLoggedIn}}
+            {{if .RailNews}}
+            <aside aria-label="Security news"
+                   class="hidden 3xl:block w-70 shrink-0 sticky top-24 self-start max-h-[calc(100vh-8rem)] overflow-y-auto pt-10 pb-10">
+                {{template "rail_news" .}}
+            </aside>
+            {{end}}
+        {{else}}
+            {{if .RailIntel}}
+            <aside aria-label="CVE intelligence"
+                   class="hidden 3xl:block w-70 shrink-0 sticky top-24 self-start max-h-[calc(100vh-8rem)] overflow-y-auto pt-10 pb-10">
+                {{template "rail_intel" .}}
+            </aside>
+            {{end}}
+        {{end}}
+    </div>
 
     <!-- Mobile Bottom Navigation -->
     {{if .UserLoggedIn}}
@@ -776,4 +808,82 @@
     </script>
 </body>
 </html>
+{{end}}
+
+{{/* Rail partials live here rather than in their own files: InitTemplatesWithFuncs
+     parses each page as base.html plus that single page, so a separate partial file
+     would be registered as its own page template and be invisible to every other. */}}
+
+{{define "rail_news"}}
+<div class="glass rounded-2xl border border-white/10 overflow-hidden">
+    <div class="flex items-center gap-2 px-4 py-3 border-b border-white/5">
+        <span class="material-symbols-outlined text-primary text-[16px]" aria-hidden="true">rss_feed</span>
+        <h2 class="text-[10px] font-black tracking-widest uppercase text-gray-400">Security News</h2>
+    </div>
+    <ul class="divide-y divide-white/5">
+        {{range .RailNews}}
+        <li class="px-4 py-3 hover:bg-white/2 transition-colors">
+            <div class="flex items-center justify-between gap-2 mb-1">
+                <span class="text-[9px] font-black tracking-widest uppercase text-primary/70 truncate">{{.FeedName}}</span>
+                <time datetime="{{.PublishedAt.Format "2006-01-02T15:04:05Z07:00"}}"
+                      class="text-[9px] font-mono text-gray-600 shrink-0">{{.PublishedAt.Format "Jan 02"}}</time>
+            </div>
+            <a href="{{safeURL .Link}}" target="_blank" rel="noopener noreferrer"
+               class="block text-xs text-gray-200 hover:text-primary transition-colors leading-snug">{{.Title}}</a>
+            {{if .CVEIDs}}
+            <div class="flex flex-wrap gap-1 mt-2">
+                {{range .CVEIDs}}
+                <a href="/cve/{{.}}" class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary/80 hover:bg-primary/20 transition-colors">{{.}}</a>
+                {{end}}
+            </div>
+            {{end}}
+        </li>
+        {{else}}
+        <li class="px-4 py-6 text-center text-[10px] font-label tracking-widest uppercase text-gray-600">
+            No advisories yet
+        </li>
+        {{end}}
+    </ul>
+</div>
+{{end}}
+
+{{define "rail_cve_list"}}
+<ul class="divide-y divide-white/5">
+    {{range .Items}}
+    <li class="flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-white/2 transition-colors">
+        <a href="/cve/{{.CVEID}}" class="text-[11px] font-mono text-gray-200 hover:text-primary transition-colors truncate">{{.CVEID}}</a>
+        <span class="text-[10px] font-mono font-bold shrink-0 {{.MetricClass}}">{{.MetricText}}</span>
+    </li>
+    {{else}}
+    <li class="px-4 py-4 text-center text-[10px] font-label tracking-widest uppercase text-gray-600">No data</li>
+    {{end}}
+</ul>
+{{end}}
+
+{{define "rail_intel"}}
+<div class="space-y-4">
+    <div class="glass rounded-2xl border border-white/10 overflow-hidden">
+        <div class="flex items-center gap-2 px-4 py-3 border-b border-white/5">
+            <span class="material-symbols-outlined text-error text-[16px]" aria-hidden="true">gpp_maybe</span>
+            <h2 class="text-[10px] font-black tracking-widest uppercase text-gray-400">Latest in KEV</h2>
+        </div>
+        {{template "rail_cve_list" railList .RailIntel.LatestKEV "cvss"}}
+    </div>
+
+    <div class="glass rounded-2xl border border-white/10 overflow-hidden">
+        <div class="flex items-center gap-2 px-4 py-3 border-b border-white/5">
+            <span class="material-symbols-outlined text-tertiary text-[16px]" aria-hidden="true">trending_up</span>
+            <h2 class="text-[10px] font-black tracking-widest uppercase text-gray-400">Highest EPSS</h2>
+        </div>
+        {{template "rail_cve_list" railList .RailIntel.TopEPSS "epss"}}
+    </div>
+
+    <div class="glass rounded-2xl border border-white/10 overflow-hidden">
+        <div class="flex items-center gap-2 px-4 py-3 border-b border-white/5">
+            <span class="material-symbols-outlined text-primary text-[16px]" aria-hidden="true">code</span>
+            <h2 class="text-[10px] font-black tracking-widest uppercase text-gray-400">Exploit Activity</h2>
+        </div>
+        {{template "rail_cve_list" railList .RailIntel.TopPoC "poc"}}
+    </div>
+</div>
 {{end}}

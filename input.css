@@ -22,6 +22,11 @@
   --color-on-error: #690005;
   --color-outline-variant: #424655;
 
+  /* Side rails live in the gutter beside the 80rem content column. Two 280px rails
+     plus gaps need 1888px, so they only fit from 1920px up. Tailwind's built-in 2xl
+     is 1536px, which is too narrow. */
+  --breakpoint-3xl: 120rem;
+
   --font-sans: "Inter", sans-serif;
   --font-display: "Space Grotesk", sans-serif;
   --font-label: "Inter", sans-serif;

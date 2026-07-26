@@ -90,7 +90,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("CWE distribution error: %v", err)
 	}
 
-	a.RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
+	dashboardData := map[string]interface{}{
 		"CVEs":           cves,
 		"Total":          metrics.Total,
 		"KevCount":       metrics.Kev,
@@ -110,7 +110,11 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"StatusCounts":   StatusCounts{Active: metrics.StatActive, InProgress: metrics.StatProg, Resolved: metrics.StatRes, Ignored: metrics.StatIgn},
 		"TopCWEs":        topCWEs,
 		"csrfToken":      csrf.Token(r),
-	})
+	}
+	// Authenticated pages get the news rail only; the fixed sidebar owns the left gutter.
+	a.attachRailData(r.Context(), dashboardData, true)
+
+	a.RenderTemplate(w, r, "dashboard.html", dashboardData)
 }
 func (a *App) UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -456,6 +460,11 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	stats := a.fetchPublicDashboardStats(r.Context(), whereClause, args)
 
 	renderData := a.preparePublicDashboardRenderData(r, filters, metrics, cves, stats)
+
+	// Attach before the cache save: tryServePublicDashboardFromCache returns early on a
+	// hit, so rails left out here would be missing from every cached render.
+	_, loggedIn := a.GetUserID(r)
+	a.attachRailData(r.Context(), renderData, loggedIn)
 
 	if r.URL.RawQuery == "" || r.URL.RawQuery == "page=1" {
 		a.savePublicDashboardToCache(r.Context(), filters, metrics, cves, stats, renderData)
