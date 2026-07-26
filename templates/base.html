@@ -234,7 +234,7 @@
          Public rails need 1280 + 2x(280+24) = 1888px, so they start at 3xl (1920).
          The authenticated page loses 256px to the fixed sidebar, so its single rail
          needs 2096px before the gutter reaches 280px; that is the 4xl breakpoint. */}}
-    <div class="w-full grid grid-cols-[1fr_auto_1fr] gap-6">
+    <div class="w-full flex-1 {{if .UserLoggedIn}}4xl:grid 4xl:grid-cols-[1fr_80rem_1fr] 4xl:gap-6{{else}}3xl:grid 3xl:grid-cols-[1fr_80rem_1fr] 3xl:gap-6{{end}}">
         {{if and (not .UserLoggedIn) .RailNews}}
         <aside aria-label="Security news"
                class="hidden 3xl:block col-start-1 justify-self-end w-70 sticky top-24 self-start max-h-[calc(100vh-8rem)] overflow-y-auto py-10 pl-6">
@@ -242,14 +242,14 @@
         </aside>
         {{end}}
 
-        <main class="col-start-2 p-6 md:p-10 max-w-7xl w-full pb-24 md:pb-10">
+        <main class="p-6 md:p-10 max-w-7xl mx-auto w-full pb-24 md:pb-10 {{if .UserLoggedIn}}4xl:col-start-2{{else}}3xl:col-start-2{{end}}">
             {{template "content" .}}
         </main>
 
         {{if .UserLoggedIn}}
             {{if .RailNews}}
             <aside aria-label="Security news"
-                   class="hidden 4xl:block col-start-3 w-70 sticky top-24 self-start max-h-[calc(100vh-8rem)] overflow-y-auto py-10 pr-6">
+                   class="hidden 4xl:block col-start-3 justify-self-start w-70 sticky top-24 self-start max-h-[calc(100vh-8rem)] overflow-y-auto py-10 pr-6">
                 {{template "rail_news" .}}
             </aside>
             {{end}}

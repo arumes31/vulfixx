@@ -91,21 +91,52 @@ type AtomFeed struct {
 // feedDateLayouts covers what the 12 configured feeds actually emit: RFC 1123 with and
 // without a numeric zone (RSS 2.0 pubDate), RFC 3339 (Atom, dc:date), and a couple of
 // non-conforming variants seen in the wild.
+// feedDateLayouts is applied AFTER the leading weekday is stripped, which removes the
+// need for variants covering "Mon, " vs "Mon " vs absent. Day is "2" rather than "02"
+// because Go's "2" accepts both one- and two-digit days; the padded form does not.
+// Between them these cover every shape the 12 configured feeds emit: full and
+// abbreviated month names, two- and four-digit years, numeric and named zones, and
+// bare ISO dates.
 var feedDateLayouts = []string{
-	time.RFC1123Z,
-	time.RFC1123,
+	"2 Jan 2006 15:04:05 -0700",
+	"2 Jan 2006 15:04:05 MST",
+	"2 Jan 2006 15:04:05",
+	"2 Jan 2006 15:04 -0700",
+	"2 Jan 2006 15:04 MST",
+	"2 Jan 06 15:04:05 -0700",
+	"2 Jan 06 15:04:05 MST",
+	"2 Jan 06 15:04 -0700",
+	"2 January 2006 15:04:05 -0700",
+	"2 January 2006 15:04:05 MST",
+	"2 January 2006 15:04:05",
+	"2 January 2006",
+	"2 Jan 2006",
 	time.RFC3339,
-	time.RFC822Z,
-	time.RFC822,
-	// Oracle's feed spells the month out in full ("Tue, 21 July 2026 12:30:54"),
-	// which none of the RFC layouts accept. Without these every Oracle item falls
-	// back to the fetch time and monopolises the news rail.
-	"Mon, 02 January 2006 15:04:05 -0700",
-	"Mon, 02 January 2006 15:04:05",
-	"02 January 2006 15:04:05",
 	"2006-01-02T15:04:05Z0700",
+	"2006-01-02T15:04:05",
 	"2006-01-02 15:04:05",
 	"2006-01-02",
+}
+
+// weekdayPrefixes are stripped before parsing. Feeds vary on whether a comma follows
+// and whether the weekday is present at all; normalising here keeps the layout list
+// from combinatorially exploding.
+var weekdayPrefixes = map[string]struct{}{
+	"mon": {}, "tue": {}, "wed": {}, "thu": {}, "fri": {}, "sat": {}, "sun": {},
+	"monday": {}, "tuesday": {}, "wednesday": {}, "thursday": {},
+	"friday": {}, "saturday": {}, "sunday": {},
+}
+
+// trimWeekday removes a leading weekday token, with or without a trailing comma.
+func trimWeekday(s string) string {
+	first, rest, found := strings.Cut(s, " ")
+	if !found {
+		return s
+	}
+	if _, ok := weekdayPrefixes[strings.ToLower(strings.TrimSuffix(first, ","))]; ok {
+		return rest
+	}
+	return s
 }
 
 // htmlTagRegex matches a single HTML element. Feed descriptions frequently arrive as
@@ -127,7 +158,7 @@ func parseFeedDate(candidates ...string) time.Time {
 	for _, raw := range candidates {
 		// Collapse internal runs of whitespace as well as trimming: Oracle emits
 		// "Tue, 21 July 2026  12:30:54" with a double space, which no layout matches.
-		raw = strings.Join(strings.Fields(raw), " ")
+		raw = trimWeekday(strings.Join(strings.Fields(raw), " "))
 		if raw == "" {
 			continue
 		}

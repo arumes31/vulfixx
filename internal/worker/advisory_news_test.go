@@ -19,11 +19,18 @@ func TestParseFeedDate(t *testing.T) {
 		wantYear   int
 	}{
 		{"RSS 2.0 pubDate with zone", []string{"Thu, 02 May 2024 00:00:00 GMT"}, false, 2024},
-		// Oracle spells the month out and doubles the space. Live verification found
-		// every Oracle item falling back to now() and monopolising the news rail.
+		// Every string below was taken verbatim from a live feed during end-to-end
+		// verification, where each one failed to parse and fell back to now() —
+		// pinning stale advisories to the top of the rail with today's date.
 		{"Oracle full month, double space, no zone", []string{"Tue, 21 July 2026  12:30:54"}, false, 2026},
 		{"Oracle full month with zone", []string{"Wed, 10 June 2026 18:00:00 -0700"}, false, 2026},
+		{"Oracle single-digit day", []string{"Sat, 4 Oct 2025 12:30:54 -0700"}, false, 2025},
+		{"Oracle single-digit day 2015", []string{"Fri, 5 Feb 2015 12:30:54 -0700"}, false, 2015},
+		{"Oracle single-digit day 2013", []string{"Fri, 1 Feb 2013 12:30:54 -0700"}, false, 2013},
+		{"Oracle missing comma after weekday", []string{"Fri 10 Aug 2012 12:14:29 -0700"}, false, 2012},
+		{"CISA two-digit year", []string{"Thu, 23 Jul 26 12:00:00 +0000"}, false, 2026},
 		{"full month without weekday", []string{"21 July 2026 12:30:54"}, false, 2026},
+		{"abbreviated month without weekday", []string{"21 Jul 2026 12:30:54 -0700"}, false, 2026},
 		{"RSS 2.0 pubDate numeric zone", []string{"Mon, 15 Jan 2026 09:30:00 +0100"}, false, 2026},
 		{"Atom RFC3339", []string{"2026-03-04T11:22:33Z"}, false, 2026},
 		{"dc:date bare", []string{"2025-12-01"}, false, 2025},

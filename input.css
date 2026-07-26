@@ -27,10 +27,10 @@
      is 1536px, which is too narrow. */
   --breakpoint-3xl: 120rem;
 
-  /* Authenticated pages lose 256px to the fixed sidebar, so the gutter only reaches
-     280px at 2096px. Rails there start at 4xl instead, which keeps the promise that
-     the centre column never moves when a rail appears. */
-  --breakpoint-4xl: 132rem;
+  /* Authenticated pages lose 256px to the fixed sidebar. Including the 48px of grid
+     gap the row needs 256 + 1280 + 48 + 2x280 = 2144px before both outer tracks reach
+     280px, so the rail there starts at 4xl rather than 3xl. */
+  --breakpoint-4xl: 134rem;
 
   --font-sans: "Inter", sans-serif;
   --font-display: "Space Grotesk", sans-serif;
