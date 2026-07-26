@@ -524,6 +524,11 @@ func TestWorker_SyncAdvisoryRSSPeriodically_Lock(t *testing.T) {
 		WithArgs("advisory_rss_sync").
 		WillReturnError(pgx.ErrNoRows)
 
+	// syncAdvisoryRSS prunes expired news before recording the run.
+	mock.ExpectExec("DELETE FROM advisory_news").
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnResult(pgxmock.NewResult("DELETE", 0))
+
 	mock.ExpectExec("INSERT INTO worker_sync_stats").
 		WithArgs("advisory_rss_sync").
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))

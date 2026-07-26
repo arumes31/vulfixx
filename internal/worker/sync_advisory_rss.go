@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
+	"html"
 	"io"
 	"log/slog"
 	"net/http"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"cve-tracker/internal/models"
@@ -51,6 +53,7 @@ type GenericFeedItem struct {
 	Title       string
 	Link        string
 	Description string
+	Published   time.Time // zero if the feed omitted a usable date
 }
 
 type RSS2Feed struct {
@@ -58,6 +61,8 @@ type RSS2Feed struct {
 		Title       string `xml:"title"`
 		Link        string `xml:"link"`
 		Description string `xml:"description"`
+		PubDate     string `xml:"pubDate"`
+		Date        string `xml:"date"` // dc:date, used by some RSS 2.0 publishers
 	} `xml:"channel>item"`
 }
 
@@ -66,6 +71,7 @@ type RSS1Feed struct {
 		Title       string `xml:"title"`
 		Link        string `xml:"link"`
 		Description string `xml:"description"`
+		Date        string `xml:"date"` // dc:date
 	} `xml:"item"`
 }
 
@@ -75,9 +81,55 @@ type AtomFeed struct {
 		Link  struct {
 			Href string `xml:"href,attr"`
 		} `xml:"link"`
-		Summary string `xml:"summary"`
-		Content string `xml:"content"`
+		Summary   string `xml:"summary"`
+		Content   string `xml:"content"`
+		Updated   string `xml:"updated"`
+		Published string `xml:"published"`
 	} `xml:"entry"`
+}
+
+// feedDateLayouts covers what the 12 configured feeds actually emit: RFC 1123 with and
+// without a numeric zone (RSS 2.0 pubDate), RFC 3339 (Atom, dc:date), and a couple of
+// non-conforming variants seen in the wild.
+var feedDateLayouts = []string{
+	time.RFC1123Z,
+	time.RFC1123,
+	time.RFC3339,
+	time.RFC822Z,
+	time.RFC822,
+	"2006-01-02T15:04:05Z0700",
+	"2006-01-02 15:04:05",
+	"2006-01-02",
+}
+
+// htmlTagRegex matches a single HTML element. Feed descriptions frequently arrive as
+// escaped markup; this is for legibility in the rail, not for safety — html/template
+// escapes the value on render regardless.
+var htmlTagRegex = regexp.MustCompile(`<[^>]*>`)
+
+// stripHTMLTags flattens feed markup to plain text and collapses the resulting
+// whitespace so a summary renders as a single readable line.
+func stripHTMLTags(s string) string {
+	s = htmlTagRegex.ReplaceAllString(s, " ")
+	s = html.UnescapeString(s)
+	return strings.Join(strings.Fields(s), " ")
+}
+
+// parseFeedDate returns the zero time when no layout matches; callers fall back to the
+// fetch time rather than dropping the item.
+func parseFeedDate(candidates ...string) time.Time {
+	for _, raw := range candidates {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		for _, layout := range feedDateLayouts {
+			if t, err := time.Parse(layout, raw); err == nil {
+				return t.UTC()
+			}
+		}
+	}
+	return time.Time{}
 }
 
 func (w *Worker) syncAdvisoryRSSPeriodically(ctx context.Context) {
@@ -119,6 +171,7 @@ func (w *Worker) syncAdvisoryRSS(ctx context.Context) {
 			w.processAdvisoryFeed(ctx, feed)
 		}
 	}
+	w.pruneAdvisoryNews(ctx)
 	w.updateTaskStats(ctx, "advisory_rss_sync")
 	slog.Info("Worker: [SYNC] Generalized Advisory feeds synchronization complete.")
 }
@@ -174,7 +227,12 @@ func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
 	var rss2 RSS2Feed
 	if err := xml.Unmarshal(body, &rss2); err == nil && len(rss2.Items) > 0 {
 		for _, item := range rss2.Items {
-			items = append(items, GenericFeedItem{Title: item.Title, Link: item.Link, Description: item.Description})
+			items = append(items, GenericFeedItem{
+				Title:       item.Title,
+				Link:        item.Link,
+				Description: item.Description,
+				Published:   parseFeedDate(item.PubDate, item.Date),
+			})
 		}
 	} else {
 		// Try Atom
@@ -185,14 +243,24 @@ func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
 				if desc == "" {
 					desc = entry.Content
 				}
-				items = append(items, GenericFeedItem{Title: entry.Title, Link: entry.Link.Href, Description: desc})
+				items = append(items, GenericFeedItem{
+					Title:       entry.Title,
+					Link:        entry.Link.Href,
+					Description: desc,
+					Published:   parseFeedDate(entry.Published, entry.Updated),
+				})
 			}
 		} else {
 			// Try RSS 1.0 (RDF)
 			var rss1 RSS1Feed
 			if err := xml.Unmarshal(body, &rss1); err == nil && len(rss1.Items) > 0 {
 				for _, item := range rss1.Items {
-					items = append(items, GenericFeedItem{Title: item.Title, Link: item.Link, Description: item.Description})
+					items = append(items, GenericFeedItem{
+						Title:       item.Title,
+						Link:        item.Link,
+						Description: item.Description,
+						Published:   parseFeedDate(item.Date),
+					})
 				}
 			} else {
 				slog.Warn("Worker: [WARN] Failed to unmarshal feed", "name", feed.Name)
@@ -200,6 +268,11 @@ func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
 			}
 		}
 	}
+
+	// Persist every item for the news rail before the CVE filter below. Plenty of
+	// advisories are newsworthy without naming a CVE in the title or summary, and
+	// the loop after this one drops those.
+	w.storeAdvisoryNews(ctx, feed, items)
 
 	for _, item := range items {
 		// Extract CVEs from Title and Description
@@ -305,5 +378,100 @@ func (w *Worker) integrateAdvisoryCVE(ctx context.Context, cveID string, item Ge
 		if err := tx.Commit(ctx); err != nil {
 			slog.Error("Worker: [ERROR] Failed to commit transaction for FortiGuard vendor_advisories update", "cve_id", cveID, "error", err)
 		}
+	}
+}
+
+// advisoryNewsRetention bounds how much feed history the news rail keeps. At roughly a
+// dozen feeds publishing a handful of items a day this settles at a few hundred rows.
+const advisoryNewsRetention = 30 * 24 * time.Hour
+
+// advisoryNewsSummaryLimit truncates summaries at storage time. Feed descriptions are
+// occasionally whole articles, and the rail only ever shows a couple of lines.
+const advisoryNewsSummaryLimit = 400
+
+// storeAdvisoryNews persists feed items for the dashboard news rail. Unlike
+// integrateAdvisoryCVE this keeps items that mention no CVE, because they are still
+// news. Conflicts on link are ignored, so re-reading a feed is a no-op.
+func (w *Worker) storeAdvisoryNews(ctx context.Context, feed AdvisoryFeed, items []GenericFeedItem) {
+	now := time.Now().UTC()
+
+	// Column-oriented so the whole feed goes in one round trip via unnest, rather
+	// than one statement per item.
+	titles := make([]string, 0, len(items))
+	links := make([]string, 0, len(items))
+	summaries := make([]string, 0, len(items))
+	published := make([]time.Time, 0, len(items))
+	cveCSVs := make([]string, 0, len(items))
+
+	seen := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		title := strings.TrimSpace(item.Title)
+		link := strings.TrimSpace(item.Link)
+		if title == "" || link == "" {
+			continue
+		}
+		// A feed repeating a link within one document would make the insert fail
+		// on "affect row a second time"; ON CONFLICT does not cover that.
+		if _, dup := seen[link]; dup {
+			continue
+		}
+		seen[link] = struct{}{}
+
+		at := item.Published
+		if at.IsZero() {
+			// Feed omitted a parseable date. Use fetch time so the item still shows,
+			// rather than dropping it or sorting it to the epoch.
+			at = now
+		}
+		// Feeds occasionally post-date items, which would pin them to the top of the
+		// rail indefinitely.
+		if at.After(now) {
+			at = now
+		}
+		// Deliberately no lower bound here. Retention is pruneAdvisoryNews's job, and
+		// filtering on age at write time would make ingestion depend on wall-clock
+		// time and silently drop a legitimately older advisory.
+
+		summary := stripHTMLTags(item.Description)
+		if len(summary) > advisoryNewsSummaryLimit {
+			summary = summary[:advisoryNewsSummaryLimit]
+		}
+
+		cves := slices.Compact(slices.Sorted(slices.Values(
+			cveRegex.FindAllString(title+" "+item.Description, -1))))
+
+		titles = append(titles, title)
+		links = append(links, link)
+		summaries = append(summaries, summary)
+		published = append(published, at)
+		cveCSVs = append(cveCSVs, strings.Join(cves, ","))
+	}
+
+	if len(links) == 0 {
+		return
+	}
+
+	if _, err := w.Pool.Exec(ctx, `
+		INSERT INTO advisory_news (feed_name, title, link, summary, published_at, cve_ids)
+		SELECT $1, t.title, t.link, t.summary, t.published_at,
+		       CASE WHEN t.cve_csv = '' THEN '{}'::text[] ELSE string_to_array(t.cve_csv, ',') END
+		FROM unnest($2::text[], $3::text[], $4::text[], $5::timestamptz[], $6::text[])
+		     AS t(title, link, summary, published_at, cve_csv)
+		ON CONFLICT (link) DO NOTHING
+	`, feed.Name, titles, links, summaries, published, cveCSVs); err != nil {
+		slog.Error("Worker: [ERROR] Failed to store advisory news", "feed", feed.Name, "count", len(links), "error", err)
+		return
+	}
+
+	slog.Debug("Worker: [SYNC] Stored advisory news items", "feed", feed.Name, "count", len(links))
+}
+
+// pruneAdvisoryNews drops items past the retention window. Called once per sync rather
+// than per feed.
+func (w *Worker) pruneAdvisoryNews(ctx context.Context) {
+	cutoff := time.Now().UTC().Add(-advisoryNewsRetention)
+	if _, err := w.Pool.Exec(ctx,
+		`DELETE FROM advisory_news WHERE published_at < $1`, cutoff); err != nil {
+		slog.Error("Worker: [ERROR] Failed to prune advisory news", "error", err)
 	}
 }
