@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/forms";
 
 @theme {
   --color-background: #10141a;
@@ -81,6 +82,24 @@
     background: #424655;
   }
 
+  /* Native date pickers render a light panel and a dark calendar glyph by
+     default, which is unreadable against the dark theme. color-scheme tells the
+     UA to draw the picker chrome and the indicator in dark mode. Applied
+     globally so every date field matches without a per-input utility. */
+  input[type="date"] {
+    color-scheme: dark;
+  }
+
+  /* The forms plugin applies `appearance: none` to checkboxes/radios and paints
+     the checked state with `currentColor`, which makes `accent-color` inert and
+     defaults the tick to the plugin's blue-600. Default `color` to the theme
+     accent so controls that only carry `accent-*` (rather than `text-primary`)
+     keep the cyan they had before the plugin was loaded. Utilities still win. */
+  input[type="checkbox"],
+  input[type="radio"] {
+    color: var(--color-primary);
+  }
+
   input:-webkit-autofill,
   input:-webkit-autofill:hover,
   input:-webkit-autofill:focus,
@@ -131,12 +150,6 @@
   .tactical-input-container:focus-within {
     border-color: rgba(0, 218, 243, 0.5);
     background: rgba(0, 218, 243, 0.05);
-  }
-
-  /* Checkboxes (KEV / PoC toggles) — tint to match the primary accent
-     since the forms plugin is not loaded. */
-  input[type="checkbox"] {
-    accent-color: #00daf3;
   }
 
   /* Skeleton Loading */
