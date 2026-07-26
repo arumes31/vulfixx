@@ -95,3 +95,10 @@ container/nimbusroute/data/*
 # Ignore generated coverage html reports
 coverage_base.html
 coverage*.html
+
+# graphify knowledge-graph output is regenerated from the repo, never source
+graphify-out/
+graphify/
+
+# Local Claude Code tooling config
+.claudeignore
