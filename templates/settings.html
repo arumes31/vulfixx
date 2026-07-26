@@ -41,11 +41,11 @@
                     {{.csrfField}}
                     <div class="space-y-2">
                         <label for="new_email" class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-gray-500 block">New Email Address</label>
-                        <input id="new_email" type="email" name="new_email" required class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 transition-all">
+                        <input id="new_email" type="email" name="new_email" autocomplete="email" required class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 transition-all">
                     </div>
                     <div class="space-y-2">
                         <label for="id_password" class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-gray-500 block">Current Passphrase</label>
-                        <input id="id_password" type="password" name="password" required class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 transition-all font-mono">
+                        <input id="id_password" type="password" name="password" autocomplete="current-password" required class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 transition-all font-mono">
                     </div>
                     <button type="submit" class="bg-primary text-on-primary font-label font-bold uppercase tracking-widest text-[10px] py-3 px-8 rounded-xl transition-all duration-200 mt-2 shadow-lg shadow-primary/20 hover:bg-primary/80 active:scale-95">
                         Commit Identity
@@ -93,7 +93,7 @@
                                     {{.csrfField}}
                                     <div class="space-y-2">
                                         <label for="totp_code" class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-on-surface-variant block">Verification Code</label>
-                                        <input id="totp_code" type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456" class="w-48 bg-white/5 border border-white/10 px-3 py-2 rounded-xl text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-tertiary/40 focus:border-tertiary/50 transition-all font-mono tracking-[0.3em] text-center">
+                                        <input id="totp_code" type="text" name="totp_code" autocomplete="one-time-code" required maxlength="6" pattern="\d{6}" placeholder="123456" class="w-48 bg-white/5 border border-white/10 px-3 py-2 rounded-xl text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-tertiary/40 focus:border-tertiary/50 transition-all font-mono tracking-[0.3em] text-center">
                                     </div>
                                     <button type="submit" class="bg-surface-container-high hover:bg-tertiary hover:text-on-primary border border-outline-variant/50 hover:border-tertiary text-on-surface font-label font-bold uppercase tracking-widest text-xs py-2 px-6 rounded transition-all duration-200">
                                         Verify & Enable
@@ -137,20 +137,20 @@
                 {{.csrfField}}
                 <div class="space-y-2">
                     <label for="current_password" class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-gray-500 block">Current Passphrase</label>
-                    <input id="current_password" type="password" name="current_password" required class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 transition-all font-mono">
+                    <input id="current_password" type="password" name="current_password" autocomplete="current-password" required class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 transition-all font-mono">
                 </div>
                 <div class="space-y-2 mt-6">
                     <label for="new_password" class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-gray-500 block">New Passphrase (min 8 chars)</label>
-                    <input id="new_password" type="password" name="new_password" required minlength="8" class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 transition-all font-mono">
+                    <input id="new_password" type="password" name="new_password" autocomplete="new-password" required minlength="8" class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 transition-all font-mono">
                 </div>
                 <div class="space-y-2">
                     <label for="confirm_password" class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-gray-500 block">Confirm New</label>
-                    <input id="confirm_password" type="password" name="confirm_password" required minlength="8" class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 transition-all font-mono">
+                    <input id="confirm_password" type="password" name="confirm_password" autocomplete="new-password" required minlength="8" class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 transition-all font-mono">
                 </div>
                 {{if .IsTOTPEnabled}}
                 <div class="space-y-2 mt-6">
                     <label for="totp_code_update" class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-tertiary block">TOTP Authorization</label>
-                    <input id="totp_code_update" type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456" class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-tertiary/40 focus:border-tertiary/50 transition-all font-mono tracking-widest text-center">
+                    <input id="totp_code_update" type="text" name="totp_code" autocomplete="one-time-code" required maxlength="6" pattern="\d{6}" placeholder="123456" class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-tertiary/40 focus:border-tertiary/50 transition-all font-mono tracking-widest text-center">
                 </div>
                 {{end}}
                 <button type="submit" class="bg-primary text-on-primary font-label font-bold uppercase tracking-widest text-[10px] py-3 px-8 rounded-xl transition-all duration-200 mt-6 shadow-lg shadow-primary/20 hover:bg-primary/80 active:scale-95">
@@ -180,7 +180,7 @@
                 {{.csrfField}}
                 <div class="space-y-2">
                     <label for="delete_password" class="text-[10px] font-label font-bold tracking-[0.15em] uppercase text-error block">Authorization Passphrase</label>
-                    <input id="delete_password" type="password" name="password" required class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-error/40 focus:border-error/50 transition-all font-mono">
+                    <input id="delete_password" type="password" name="password" autocomplete="current-password" required class="w-full bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-error/40 focus:border-error/50 transition-all font-mono">
                 </div>
                 <button type="submit" class="bg-error-container/80 hover:bg-error hover:text-on-error border border-error text-[#ffdad6] font-label font-bold uppercase tracking-widest text-xs py-2 px-6 rounded transition-all duration-200 mt-2">
                     Purge Operator
