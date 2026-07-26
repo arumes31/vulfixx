@@ -111,7 +111,7 @@
             <div class="flex flex-col justify-end xl:col-span-2">
                 <label for="filter-min-cvss" class="hud-label ml-1">CVSS Range</label>
                 <div class="tactical-input-container flex items-center gap-2 px-2">
-                    <input id="filter-min-cvss" type="number" step="0.1" name="min_cvss" value="{{.MinCvss}}" placeholder="0.0" class="w-full bg-transparent border-none px-2 py-3 text-sm text-white focus:outline-none text-center placeholder:text-gray-700">
+                    <input id="filter-min-cvss" type="number" step="0.1" name="min_cvss" value="{{.MinCvss}}" placeholder="0.0" class="w-full bg-transparent border-none px-2 py-3 text-sm text-white focus:outline-none text-center placeholder:text-gray-700" aria-label="Min CVSS">
                     <span class="text-gray-700 font-bold">-</span>
                     <input id="filter-max-cvss" type="number" step="0.1" name="max_cvss" value="{{.MaxCvss}}" aria-label="Max CVSS" placeholder="10.0" class="w-full bg-transparent border-none px-2 py-3 text-sm text-white focus:outline-none text-center placeholder:text-gray-700">
                 </div>
@@ -120,7 +120,7 @@
             <div class="flex flex-col justify-end xl:col-span-2">
                 <label for="filter-min-epss" class="hud-label ml-1">EPSS Range</label>
                 <div class="tactical-input-container flex items-center gap-2 px-2">
-                    <input id="filter-min-epss" type="number" step="0.01" name="min_epss" value="{{.MinEpss}}" placeholder="0.0" class="w-full bg-transparent border-none px-2 py-3 text-sm text-white focus:outline-none text-center placeholder:text-gray-700">
+                    <input id="filter-min-epss" type="number" step="0.01" name="min_epss" value="{{.MinEpss}}" placeholder="0.0" class="w-full bg-transparent border-none px-2 py-3 text-sm text-white focus:outline-none text-center placeholder:text-gray-700" aria-label="Min EPSS">
                     <span class="text-gray-700 font-bold">-</span>
                     <input id="filter-max-epss" type="number" step="0.01" name="max_epss" value="{{.MaxEpss}}" aria-label="Max EPSS" placeholder="1.0" class="w-full bg-transparent border-none px-2 py-3 text-sm text-white focus:outline-none text-center placeholder:text-gray-700">
                 </div>
@@ -130,7 +130,7 @@
                 <label for="filter-start-date" class="hud-label ml-1">Published Date Range</label>
                 <div class="flex items-center gap-2 h-[50px]">
                     <div class="tactical-input-container flex-1 h-full flex items-center">
-                        <input type="date" id="filter-start-date" name="start_date" value="{{.StartDate}}" class="w-full bg-transparent border-none px-4 py-2 text-[11px] text-white focus:outline-none [color-scheme:dark]" title="Start Date">
+                        <input type="date" id="filter-start-date" name="start_date" value="{{.StartDate}}" class="w-full bg-transparent border-none px-4 py-2 text-[11px] text-white focus:outline-none [color-scheme:dark]" title="Start Date" aria-label="Start Date">
                     </div>
                     <span class="text-gray-700 font-bold">-</span>
                     <div class="tactical-input-container flex-1 h-full flex items-center">

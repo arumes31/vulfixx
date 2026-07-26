@@ -12,7 +12,6 @@ import (
 
 var cveRegex = regexp.MustCompile(`CVE-\d{4}-\d+`)
 
-
 const (
 	VendorFortiGuard = "fortiguard"
 	VendorCisco      = "cisco"
@@ -394,6 +393,16 @@ var knownVendorProducts = []struct {
 	{"Grafana", []string{"Grafana"}},
 }
 
+// lowerVendorNames mirrors knownVendorProducts by index, holding vendor names already
+// folded to lower case so Pass 2 below does not re-allocate them on every call.
+var lowerVendorNames = func() []string {
+	names := make([]string, len(knownVendorProducts))
+	for i, entry := range knownVendorProducts {
+		names[i] = strings.ToLower(entry.vendor)
+	}
+	return names
+}()
+
 // detectProductFromDescription uses keyword matching to guess vendor/product from a description.
 func detectProductFromDescription(desc string) (string, string) {
 	// Pass 1: product keyword match. Prefer the longest matching keyword so
@@ -412,14 +421,16 @@ func detectProductFromDescription(desc string) (string, string) {
 
 	// Pass 2: vendor name appears in the description.
 	lowerDesc := strings.ToLower(desc)
-	for _, entry := range knownVendorProducts {
-		if strings.Contains(lowerDesc, strings.ToLower(entry.vendor)) {
+	for i, entry := range knownVendorProducts {
+		if strings.Contains(lowerDesc, lowerVendorNames[i]) {
 			return entry.vendor, ""
 		}
 	}
 
-	// Pass 3: "in <vendor> <Product>" pattern, e.g. "detected in alexta69 MeTube".
+	// Passes 3 and 4 both walk the same tokens.
 	words := strings.Fields(desc)
+
+	// Pass 3: "in <vendor> <Product>" pattern, e.g. "detected in alexta69 MeTube".
 	for i := 0; i+2 < len(words); i++ {
 		if !strings.EqualFold(words[i], "in") {
 			continue
@@ -432,11 +443,10 @@ func detectProductFromDescription(desc string) (string, string) {
 	}
 
 	// Pass 4: generic "<Vendor> <Product>" capitalized-pair heuristic.
-	fields := strings.Fields(desc)
-	for i, word := range fields {
-		if i+1 < len(fields) && len(word) > 2 && word[0] >= 'A' && word[0] <= 'Z' {
+	for i, word := range words {
+		if i+1 < len(words) && len(word) > 2 && word[0] >= 'A' && word[0] <= 'Z' {
 			// Check if next word could be a product
-			nextWord := fields[i+1]
+			nextWord := words[i+1]
 			if len(nextWord) > 0 && nextWord[0] >= 'A' && nextWord[0] <= 'Z' {
 				return word, nextWord
 			}

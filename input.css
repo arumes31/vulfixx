@@ -39,6 +39,22 @@
     color: #dfe2eb;
   }
 
+  /* Many controls set focus:outline-none for the mouse aesthetic, which leaves
+     keyboard users with no focus indicator. :focus-visible restores a visible ring
+     only for keyboard/AT navigation, so pointer interaction is unaffected. */
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:not([tabindex="-1"]):focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px var(--color-surface-container, #10131a),
+      0 0 0 4px var(--color-primary, #00daf3);
+    border-radius: 0.375rem;
+  }
+
   .material-symbols-outlined {
     font-variation-settings:
       "FILL" 0,

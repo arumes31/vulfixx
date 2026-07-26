@@ -55,6 +55,7 @@ type testCVE struct {
 
 func main() {
 	if err := runMain(); err != nil {
+		fmt.Fprintln(os.Stderr, "fatal:", err)
 		os.Exit(1)
 	}
 }
