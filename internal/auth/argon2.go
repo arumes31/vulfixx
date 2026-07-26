@@ -14,21 +14,30 @@ import (
 const (
 	argon2idPrefix = "$argon2id$"
 	argon2idFormat = "$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s"
+
+	// Argon2id cost parameters. Raising any of these invalidates nothing — existing
+	// hashes carry their own parameters in the encoded string and still verify — but
+	// it does raise the cost of every new hash.
+	argon2idMemoryKiB   = 64 * 1024
+	argon2idIterations  = 3
+	argon2idParallelism = 4
+	argon2idKeyLength   = 32
+	argon2idSaltLength  = 16
 )
 
 // hashPasswordArgon2id hashes the password using Argon2id algorithm.
 func hashPasswordArgon2id(password string) (string, error) {
-	salt := make([]byte, 16)
+	salt := make([]byte, argon2idSaltLength)
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
 
-	hash := argon2.IDKey([]byte(password), salt, 3, 65536, 4, 32)
+	hash := argon2.IDKey([]byte(password), salt, argon2idIterations, argon2idMemoryKiB, argon2idParallelism, argon2idKeyLength)
 
 	b64Salt := base64.RawStdEncoding.EncodeToString(salt)
 	b64Hash := base64.RawStdEncoding.EncodeToString(hash)
 
-	return fmt.Sprintf(argon2idFormat, argon2.Version, 65536, 3, 4, b64Salt, b64Hash), nil
+	return fmt.Sprintf(argon2idFormat, argon2.Version, argon2idMemoryKiB, argon2idIterations, argon2idParallelism, b64Salt, b64Hash), nil
 }
 
 // verifyPasswordArgon2id verifies the password against a stored Argon2id hash.

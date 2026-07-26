@@ -7,9 +7,13 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
+
+// sitemapMaxURLs caps how many CVE entries the sitemap advertises.
+const sitemapMaxURLs = 1000
 
 func (a *App) RobotsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
@@ -31,6 +35,9 @@ func (a *App) SitemapHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var buf bytes.Buffer
+	// Each <url> entry runs ~150 bytes; pre-size for the full result so the buffer
+	// does not repeatedly double while streaming sitemapMaxURLs rows.
+	buf.Grow(sitemapMaxURLs * 150)
 	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
 	buf.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
 
@@ -45,26 +52,33 @@ func (a *App) SitemapHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(&buf, "  <url>\n    <loc>%s%s</loc>\n    <changefreq>daily</changefreq>\n    <priority>0.8</priority>\n  </url>\n", escapedBaseURL, p)
 	}
 
-	// Recent/Critical CVEs (Top 1000)
+	// Recent/Critical CVEs
 	rows, err := a.Pool.Query(ctx, `
-		SELECT cve_id, updated_at 
-		FROM cves 
-		ORDER BY published_date DESC LIMIT 1000
+		SELECT cve_id, updated_at
+		FROM cves
+		ORDER BY published_date DESC LIMIT `+strconv.Itoa(sitemapMaxURLs)+`
 	`)
 	if err != nil {
 		log.Printf("Sitemap error: %v", err)
 	} else {
 		defer rows.Close()
+		// Reused across rows so formatting the date does not allocate each time.
+		dateBuf := make([]byte, 0, len(time.DateOnly))
 		for rows.Next() {
 			var id string
 			var updated time.Time
 			if err := rows.Scan(&id, &updated); err != nil {
 				log.Printf("Error scanning sitemap row: %v", err)
 			} else {
-				var locBuf bytes.Buffer
-				_ = xml.EscapeText(&locBuf, []byte(id))
-				escapedID := locBuf.String()
-				fmt.Fprintf(&buf, "  <url>\n    <loc>%s/cve/%s</loc>\n    <lastmod>%s</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.6</priority>\n  </url>\n", escapedBaseURL, escapedID, updated.Format("2006-01-02"))
+				buf.WriteString("  <url>\n    <loc>")
+				buf.WriteString(escapedBaseURL)
+				buf.WriteString("/cve/")
+				// Escape straight into buf rather than through a per-row temp buffer.
+				_ = xml.EscapeText(&buf, []byte(id))
+				buf.WriteString("</loc>\n    <lastmod>")
+				dateBuf = updated.AppendFormat(dateBuf[:0], time.DateOnly)
+				buf.Write(dateBuf)
+				buf.WriteString("</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.6</priority>\n  </url>\n")
 			}
 		}
 		if err := rows.Err(); err != nil {

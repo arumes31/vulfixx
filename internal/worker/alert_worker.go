@@ -464,7 +464,12 @@ func (w *Worker) notifyIfNewWithCache(ctx context.Context, userID int, cve *mode
 		}
 	}
 
-	cve.OSINTData = w.fetchOSINTLinks(ctx, cve.CVEID)
+	// OSINT data depends only on the CVE, not the recipient. This runs once per
+	// subscriber for the same *models.CVE, so reuse whatever an earlier iteration
+	// already fetched.
+	if cve.OSINTData == nil {
+		cve.OSINTData = w.fetchOSINTLinks(ctx, cve.CVEID)
+	}
 
 	if !w.bufferAlert(ctx, userID, cve, sub, email, assetName) {
 		w.Redis.Decr(ctx, floodKey)

@@ -9,14 +9,39 @@ import (
 	"errors"
 	"io"
 	"os"
+	"sync"
 
 	"golang.org/x/crypto/hkdf"
+)
+
+// HKDF derivation dominates the cost of every webhook encrypt/decrypt, but the result
+// only changes when SESSION_KEY does. Cache the AEAD, keyed on a digest of the raw key
+// so a key rotation invalidates the entry without holding a second copy of the secret.
+var (
+	cipherCacheMu     sync.RWMutex
+	cipherCacheKeySum [sha256.Size]byte
+	cipherCacheAEAD   cipher.AEAD
 )
 
 func getCipher() (cipher.AEAD, error) {
 	rawKey := os.Getenv("SESSION_KEY")
 	if len(rawKey) == 0 {
 		return nil, errors.New("missing SESSION_KEY")
+	}
+	keySum := sha256.Sum256([]byte(rawKey))
+
+	cipherCacheMu.RLock()
+	if cipherCacheAEAD != nil && cipherCacheKeySum == keySum {
+		cached := cipherCacheAEAD
+		cipherCacheMu.RUnlock()
+		return cached, nil
+	}
+	cipherCacheMu.RUnlock()
+
+	cipherCacheMu.Lock()
+	defer cipherCacheMu.Unlock()
+	if cipherCacheAEAD != nil && cipherCacheKeySum == keySum {
+		return cipherCacheAEAD, nil
 	}
 
 	// Derive a 32-byte key using HKDF
@@ -34,7 +59,14 @@ func getCipher() (cipher.AEAD, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cipher.NewGCM(block)
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	cipherCacheKeySum = keySum
+	cipherCacheAEAD = gcm
+	return gcm, nil
 }
 
 func EncryptWebhook(plaintext string) (string, error) {
