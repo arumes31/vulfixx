@@ -7,3 +7,7 @@
 **Vulnerability:** The application was vulnerable to IP spoofing because it trusted the first (leftmost) IP in the `X-Forwarded-For` header.
 **Learning:** The leftmost IP is provided by the client and can easily be spoofed. The correct approach is to parse from right to left, stopping at the first untrusted proxy.
 **Prevention:** Always iterate `X-Forwarded-For` from right to left and only trust IP addresses provided by known, trusted proxies.
+## 2026-07-27 - Prevent IP Spoofing with Custom Proxy Middleware
+**Vulnerability:** IP spoofing vulnerability due to chi's `middleware.RealIP` which blindly trusts `X-Forwarded-For`.
+**Learning:** This codebase uses a custom `app.ProxyMiddleware` and `app.GetClientIP(r)` to safely parse proxy headers, which `middleware.RealIP` bypasses, leading to potential IP spoofing if used.
+**Prevention:** Always use `app.ProxyMiddleware` and retrieve IPs with `app.GetClientIP(r)`. Do not use `chi`'s built-in `middleware.RealIP`.
