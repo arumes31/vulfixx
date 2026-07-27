@@ -97,7 +97,13 @@
       data-flash-message="{{.FlashMessage}}" 
       data-flash-type="{{.FlashType}}"
       data-user-logged-in="{{.UserLoggedIn}}"
-      data-onboarding-completed="{{.OnboardingCompleted}}">
+      {{/* Deliberately NOT data-onboarding-completed. html/template strips the data-
+           prefix and treats any attribute then beginning with "on" as a JavaScript
+           event-handler context, which runs the value through the JS escaper and pads
+           it to " true ". The === 'true' comparison below then always failed, so the
+           onboarding tour re-ran on every page load and its z-index:200 backdrop
+           swallowed every click. Keep this name free of an "on" prefix. */}}
+      data-tour-completed="{{.OnboardingCompleted}}">
 
 {{if not .UserLoggedIn}}
 <header class="fixed top-0 left-0 right-0 h-20 bg-surface-container-lowest/80 backdrop-blur-xl border-b border-white/5 z-100">
@@ -764,7 +770,7 @@
             });
 
             const userLoggedIn = document.body.dataset.userLoggedIn === 'true';
-            const onboardingCompleted = document.body.dataset.onboardingCompleted === 'true';
+            const onboardingCompleted = document.body.dataset.tourCompleted === 'true';
             if (userLoggedIn && !onboardingCompleted) {
                 vulfixx.startOnboarding();
             }
