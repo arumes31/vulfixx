@@ -23,6 +23,18 @@
   --color-on-error: #690005;
   --color-outline-variant: #424655;
 
+  /* Side rails live in the gutter beside the 80rem content column. Two 280px rails
+     plus gaps need 1888px, so they only fit from 1920px up. Tailwind's built-in 2xl
+     is 1536px, which is too narrow. */
+  --breakpoint-3xl: 120rem;
+
+  /* Authenticated pages lose 256px to the fixed sidebar. Including the 48px of grid
+     gap the row needs 256 + 1280 + 48 + 2x280 = 2144px before both outer tracks reach
+     280px, so the rail there starts at 4xl rather than 3xl. Set to 136rem rather than
+     exactly 134rem so a classic 15px scrollbar cannot leave the rail with negative
+     slack; at exactly 2144 the aside's border box lands flush on the viewport edge. */
+  --breakpoint-4xl: 136rem;
+
   --font-sans: "Inter", sans-serif;
   --font-display: "Space Grotesk", sans-serif;
   --font-label: "Inter", sans-serif;
