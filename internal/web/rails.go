@@ -16,6 +16,10 @@ const (
 	railNewsLimit = 8
 	railCVELimit  = 4
 
+	// Most items per feed in the news rail. Keeps one high-volume publisher from
+	// taking every slot; with a dozen feeds this still leaves plenty of candidates.
+	railNewsPerFeed = 2
+
 	// Advisory feeds sync roughly every 10h and the CVE syncs are hourly at most, so
 	// a short cache still serves almost every request from Redis without going stale
 	// in a way anyone would notice.
@@ -92,12 +96,20 @@ func cachedRail[T any](ctx context.Context, a *App, key string, load func(contex
 }
 
 func (a *App) loadNewsRail(ctx context.Context) ([]NewsItem, error) {
+	// Cap each feed's share before taking the newest overall. Microsoft alone accounts
+	// for roughly 95% of stored items and has the freshest timestamps, so a plain
+	// ORDER BY published_at DESC fills every slot with one source.
 	rows, err := a.Pool.Query(ctx, `
 		SELECT feed_name, title, link, summary, published_at, cve_ids
-		FROM advisory_news
+		FROM (
+			SELECT feed_name, title, link, summary, published_at, cve_ids,
+			       row_number() OVER (PARTITION BY feed_name ORDER BY published_at DESC) AS rn
+			FROM advisory_news
+		) ranked
+		WHERE rn <= $1
 		ORDER BY published_at DESC
-		LIMIT $1
-	`, railNewsLimit)
+		LIMIT $2
+	`, railNewsPerFeed, railNewsLimit)
 	if err != nil {
 		return nil, err
 	}
