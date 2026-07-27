@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -27,9 +28,22 @@ var (
 
 const maxFeedBodySize = 10 << 20 // 10MB
 
+// advisoryFeedKind selects how a feed body is decoded. The zero value is XML, so every
+// existing entry keeps working unchanged.
+type advisoryFeedKind int
+
+const (
+	// feedKindXML covers RSS 2.0, RSS 1.0/RDF and Atom.
+	feedKindXML advisoryFeedKind = iota
+	// feedKindGitHubJSON is the GitHub Advisory Database REST API, which serves JSON
+	// and needs its own Accept header and an optional bearer token.
+	feedKindGitHubJSON
+)
+
 type AdvisoryFeed struct {
 	Name string
 	URL  string
+	Kind advisoryFeedKind
 }
 
 var advisoryFeeds = []AdvisoryFeed{
@@ -40,11 +54,13 @@ var advisoryFeeds = []AdvisoryFeed{
 	// parsed to zero items and contributed nothing. /feed/ is the real endpoint.
 	{Name: "AWS Security Bulletins", URL: "https://aws.amazon.com/security/security-bulletins/feed/"},
 	{Name: "Oracle Security Alerts", URL: "https://www.oracle.com/ocom/groups/public/@otn/documents/webcontent/rss-otn-sec.xml"},
-	// GitHub Advisory Database is intentionally absent. https://github.com/advisories.atom
-	// answers 406 Not Acceptable for every Accept header and with none at all, so it has
-	// been contributing nothing but a failed request every sync. Only the JSON REST API
-	// (api.github.com/advisories) still responds, and this worker's parsers are XML-only,
-	// so restoring it is a feature rather than a URL change.
+	// github.com/advisories.atom now answers 406 Not Acceptable for every Accept header
+	// and with none at all, so this source is read through the REST API instead.
+	{
+		Name: "GitHub Advisory Database",
+		URL:  "https://api.github.com/advisories?per_page=100&sort=published&direction=desc",
+		Kind: feedKindGitHubJSON,
+	},
 	{Name: "CERT-EU Advisories", URL: "https://cert.europa.eu/publications/security-advisories-rss"},
 	{Name: "Cisco PSIRT", URL: "https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisory.xml"},
 	// /rss/psirt.xml is a 404; the PSIRT feed lives at /rss/ir.xml.
@@ -98,6 +114,65 @@ type AtomFeed struct {
 // feedDateLayouts covers what the 12 configured feeds actually emit: RFC 1123 with and
 // without a numeric zone (RSS 2.0 pubDate), RFC 3339 (Atom, dc:date), and a couple of
 // non-conforming variants seen in the wild.
+// githubAdvisory is the subset of api.github.com/advisories this worker consumes.
+type githubAdvisory struct {
+	GHSAID      string `json:"ghsa_id"`
+	CVEID       string `json:"cve_id"`
+	Summary     string `json:"summary"`
+	Description string `json:"description"`
+	HTMLURL     string `json:"html_url"`
+	PublishedAt string `json:"published_at"`
+	Severity    string `json:"severity"`
+}
+
+// parseGitHubAdvisories converts the REST payload into the same GenericFeedItem shape
+// the XML parsers produce, so storage and CVE enrichment downstream are unchanged.
+func parseGitHubAdvisories(body []byte) ([]GenericFeedItem, error) {
+	var advisories []githubAdvisory
+	if err := json.Unmarshal(body, &advisories); err != nil {
+		return nil, err
+	}
+
+	items := make([]GenericFeedItem, 0, len(advisories))
+	for _, a := range advisories {
+		link := strings.TrimSpace(a.HTMLURL)
+		if link == "" {
+			continue
+		}
+
+		title := strings.TrimSpace(a.Summary)
+		if title == "" {
+			title = a.GHSAID // summary is occasionally empty on withdrawn advisories
+		}
+		if title == "" {
+			continue
+		}
+
+		// The REST payload carries the CVE in its own field, but integrateAdvisoryCVE
+		// discovers CVEs by running cveRegex over title+description. Without surfacing
+		// it into the text the advisory would be stored as news yet never enrich the
+		// CVE it is actually about — which is how the old Atom feed behaved, since it
+		// spelled the ID out in the entry body.
+		var desc strings.Builder
+		if a.CVEID != "" {
+			desc.WriteString(a.CVEID)
+			desc.WriteByte(' ')
+		}
+		if a.Severity != "" {
+			desc.WriteString("[" + a.Severity + "] ")
+		}
+		desc.WriteString(a.Description)
+
+		items = append(items, GenericFeedItem{
+			Title:       title,
+			Link:        link,
+			Description: desc.String(),
+			Published:   parseFeedDate(a.PublishedAt),
+		})
+	}
+	return items, nil
+}
+
 // feedDateLayouts is applied AFTER the leading weekday is stripped, which removes the
 // need for variants covering "Mon, " vs "Mon " vs absent. Day is "2" rather than "02"
 // because Go's "2" accepts both one- and two-digit days; the padded form does not.
@@ -229,9 +304,22 @@ func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
 		slog.Error("Worker: [ERROR] Failed to create request for feed", "name", feed.Name, "error", err)
 		return
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-	req.Header.Set("Accept", "application/atom+xml, application/rss+xml, application/xml;q=0.9, */*;q=0.8")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	switch feed.Kind {
+	case feedKindGitHubJSON:
+		// The REST API rejects the browser-style Accept the XML feeds need.
+		req.Header.Set("User-Agent", "vulfixx-advisory-sync")
+		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+		// Unauthenticated callers get 60 requests/hour, ample at one request per 12h
+		// sync, but reuse the token when one is configured for sync_github.
+		if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+	case feedKindXML:
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+		req.Header.Set("Accept", "application/atom+xml, application/rss+xml, application/xml;q=0.9, */*;q=0.8")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	}
 
 	resp, err := w.HTTP.Do(req)
 	if err != nil {
@@ -268,6 +356,22 @@ func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
 	}
 
 	var items []GenericFeedItem
+
+	if feed.Kind == feedKindGitHubJSON {
+		parsed, err := parseGitHubAdvisories(body)
+		if err != nil {
+			slog.Error("Worker: [ERROR] Failed to decode GitHub advisories", "name", feed.Name, "error", err)
+			return
+		}
+		if len(parsed) == 0 {
+			slog.Warn("Worker: [WARN] GitHub advisories returned no usable entries", "name", feed.Name)
+			return
+		}
+		items = parsed
+		w.storeAdvisoryNews(ctx, feed, items)
+		w.integrateAdvisoryItems(ctx, feed, items)
+		return
+	}
 
 	// Try RSS 2.0
 	var rss2 RSS2Feed
@@ -319,7 +423,12 @@ func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
 	// advisories are newsworthy without naming a CVE in the title or summary, and
 	// the loop after this one drops those.
 	w.storeAdvisoryNews(ctx, feed, items)
+	w.integrateAdvisoryItems(ctx, feed, items)
+}
 
+// integrateAdvisoryItems enriches CVEs named by feed items. Items mentioning no CVE are
+// skipped here; storeAdvisoryNews has already kept them for the news rail.
+func (w *Worker) integrateAdvisoryItems(ctx context.Context, feed AdvisoryFeed, items []GenericFeedItem) {
 	for _, item := range items {
 		// Extract CVEs from Title and Description
 		text := item.Title + " " + item.Description
