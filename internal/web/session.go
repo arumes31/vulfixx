@@ -16,6 +16,44 @@ import (
 
 var store sessions.Store
 
+// sessionMaxAge mirrors the MaxAge configured on both stores below. regenerateSession
+// has to restore it explicitly after expiring a session, so it lives here next to the
+// values it must stay in step with.
+const sessionMaxAge = 86400 * 7
+
+// regenerateSession rotates the session identifier after a successful authentication.
+// That is what stops an attacker who planted a session ID before login from riding the
+// same ID into the authenticated session.
+//
+// It exists because the obvious spelling does not work. gorilla's per-request registry
+// caches sessions by name, so this:
+//
+//	session.Options.MaxAge = -1
+//	session.Save(r, w)
+//	newSession, _ := store.Get(r, name)   // returns the SAME *sessions.Session
+//
+// hands back the object that was just marked for deletion, still carrying MaxAge = -1.
+// Saving it emits a second deletion cookie instead of establishing a session, and the
+// user is bounced straight back to the login page.
+//
+// Rotating in place avoids the registry entirely. The first save removes the old record
+// from the store and expires its cookie; clearing ID makes the store mint a fresh one,
+// so the caller's subsequent Save writes a genuinely new session.
+func regenerateSession(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
+	session.Options.MaxAge = -1
+	if err := session.Save(r, w); err != nil {
+		return err
+	}
+
+	// Without clearing ID the "new" session would reuse the identifier just
+	// invalidated, which is exactly the fixation this is meant to prevent.
+	session.ID = ""
+	session.Values = make(map[interface{}]interface{})
+	session.Options.MaxAge = sessionMaxAge
+	session.IsNew = true
+	return nil
+}
+
 func InitSession(key []byte, secure bool) sessions.Store {
 	s := sessions.NewCookieStore(key)
 	s.Options = &sessions.Options{
