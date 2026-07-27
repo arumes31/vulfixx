@@ -122,7 +122,7 @@ func (w *Worker) startIntelligenceEnrichmentTask(ctx context.Context) {
 
 func (w *Worker) enrichSingleCVE(ctx context.Context, id int) {
 	var c models.CVE
-	err := w.Pool.QueryRow(ctx, "SELECT id, cve_id, description, configurations, references FROM cves WHERE id = $1", id).Scan(&c.ID, &c.CVEID, &c.Description, &c.Configurations, &c.References)
+	err := w.Pool.QueryRow(ctx, "SELECT id, cve_id, description, configurations, \"references\" FROM cves WHERE id = $1", id).Scan(&c.ID, &c.CVEID, &c.Description, &c.Configurations, &c.References)
 	if err != nil {
 		return
 	}
@@ -132,7 +132,7 @@ func (w *Worker) enrichSingleCVE(ctx context.Context, id int) {
 func (w *Worker) enrichMissingIntelligence(ctx context.Context) {
 	slog.Info("Worker: [CRON] Starting intelligence enrichment for missing vendor data...")
 	// Suggestion 3: Priority-based selection (highest CVSS first)
-	rows, err := w.Pool.Query(ctx, "SELECT id, cve_id, description, configurations, references FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' ORDER BY cvss_score DESC, cisa_kev DESC LIMIT 1000")
+	rows, err := w.Pool.Query(ctx, "SELECT id, cve_id, description, configurations, \"references\" FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' ORDER BY cvss_score DESC, cisa_kev DESC LIMIT 1000")
 	if err != nil {
 		slog.Error("Worker: [CRON] Error querying CVEs for enrichment", "error", err)
 		return
