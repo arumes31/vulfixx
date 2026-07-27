@@ -304,17 +304,18 @@ func (w *Worker) processAdvisoryFeed(ctx context.Context, feed AdvisoryFeed) {
 		slog.Error("Worker: [ERROR] Failed to create request for feed", "name", feed.Name, "error", err)
 		return
 	}
-	if feed.Kind == feedKindGitHubJSON {
-		// The REST API rejects the browser-style Accept used for the XML feeds.
+	switch feed.Kind {
+	case feedKindGitHubJSON:
+		// The REST API rejects the browser-style Accept the XML feeds need.
 		req.Header.Set("User-Agent", "vulfixx-advisory-sync")
 		req.Header.Set("Accept", "application/vnd.github+json")
 		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-		// Unauthenticated callers get 60 requests/hour, which is ample at one request
-		// per 12h sync, but reuse the token when one is configured for sync_github.
+		// Unauthenticated callers get 60 requests/hour, ample at one request per 12h
+		// sync, but reuse the token when one is configured for sync_github.
 		if token := os.Getenv("GITHUB_TOKEN"); token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}
-	} else {
+	case feedKindXML:
 		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 		req.Header.Set("Accept", "application/atom+xml, application/rss+xml, application/xml;q=0.9, */*;q=0.8")
 		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
