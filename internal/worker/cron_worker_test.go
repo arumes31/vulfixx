@@ -43,7 +43,7 @@ func TestWorker_cronWorker_Coverage(t *testing.T) {
 
 		w := NewWorker(mock, nil, &EmailSenderMock{}, http.DefaultClient)
 
-		mock.ExpectQuery("(?i)SELECT id, cve_id, description, configurations, references FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' ORDER BY cvss_score DESC, cisa_kev DESC LIMIT 1000").WillReturnRows(
+		mock.ExpectQuery("(?i)SELECT id, cve_id, description, configurations, \"references\" FROM cves WHERE vendor IS NULL OR vendor = '' OR product IS NULL OR product = '' ORDER BY cvss_score DESC, cisa_kev DESC LIMIT 1000").WillReturnRows(
 			pgxmock.NewRows([]string{"id", "cve_id", "description", "configurations", "references"}).
 				AddRow(1, "CVE-123", "test", json.RawMessage(`[]`), []string{}),
 		)
@@ -133,7 +133,7 @@ func TestEnrichSingleCVE(t *testing.T) {
 			name:  "Query Error",
 			cveID: 1,
 			setup: func(m pgxmock.PgxPoolIface, id int) {
-				m.ExpectQuery("SELECT id, cve_id, description, configurations, references FROM cves WHERE id = \\$1").
+				m.ExpectQuery("SELECT id, cve_id, description, configurations, \"references\" FROM cves WHERE id = \\$1").
 					WithArgs(id).
 					WillReturnError(sql.ErrConnDone)
 			},
@@ -143,7 +143,7 @@ func TestEnrichSingleCVE(t *testing.T) {
 			cveID: 2,
 			setup: func(m pgxmock.PgxPoolIface, id int) {
 				rows := pgxmock.NewRows([]string{"id", "cve_id", "description", "configurations", "references"})
-				m.ExpectQuery("SELECT id, cve_id, description, configurations, references FROM cves WHERE id = \\$1").
+				m.ExpectQuery("SELECT id, cve_id, description, configurations, \"references\" FROM cves WHERE id = \\$1").
 					WithArgs(id).
 					WillReturnRows(rows)
 			},
@@ -157,7 +157,7 @@ func TestEnrichSingleCVE(t *testing.T) {
 
 				rows := pgxmock.NewRows([]string{"id", "cve_id", "description", "configurations", "references"}).
 					AddRow(id, "CVE-2023-1234", "A description", configData, refData)
-				m.ExpectQuery("SELECT id, cve_id, description, configurations, references FROM cves WHERE id = \\$1").
+				m.ExpectQuery("SELECT id, cve_id, description, configurations, \"references\" FROM cves WHERE id = \\$1").
 					WithArgs(id).
 					WillReturnRows(rows)
 			},
