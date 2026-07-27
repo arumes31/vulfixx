@@ -36,12 +36,19 @@ var advisoryFeeds = []AdvisoryFeed{
 	{Name: "CISA Advisories", URL: "https://www.cisa.gov/cybersecurity-advisories/all.xml"},
 	{Name: "CISA ICS Advisories", URL: "https://www.cisa.gov/cybersecurity-advisories/ics-advisories.xml"},
 	{Name: "Microsoft Security Advisories", URL: "https://api.msrc.microsoft.com/update-guide/rss"},
-	{Name: "AWS Security Bulletins", URL: "https://aws.amazon.com/security/security-bulletins/rss/"},
+	// /security-bulletins/rss/ answers 200 with an HTML page rather than a feed, so it
+	// parsed to zero items and contributed nothing. /feed/ is the real endpoint.
+	{Name: "AWS Security Bulletins", URL: "https://aws.amazon.com/security/security-bulletins/feed/"},
 	{Name: "Oracle Security Alerts", URL: "https://www.oracle.com/ocom/groups/public/@otn/documents/webcontent/rss-otn-sec.xml"},
-	{Name: "GitHub Advisory Database", URL: "https://github.com/advisories.atom"},
+	// GitHub Advisory Database is intentionally absent. https://github.com/advisories.atom
+	// answers 406 Not Acceptable for every Accept header and with none at all, so it has
+	// been contributing nothing but a failed request every sync. Only the JSON REST API
+	// (api.github.com/advisories) still responds, and this worker's parsers are XML-only,
+	// so restoring it is a feature rather than a URL change.
 	{Name: "CERT-EU Advisories", URL: "https://cert.europa.eu/publications/security-advisories-rss"},
 	{Name: "Cisco PSIRT", URL: "https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisory.xml"},
-	{Name: "FortiGuard PSIRT", URL: "https://www.fortiguard.com/rss/psirt.xml"},
+	// /rss/psirt.xml is a 404; the PSIRT feed lives at /rss/ir.xml.
+	{Name: "FortiGuard PSIRT", URL: "https://www.fortiguard.com/rss/ir.xml"},
 	{Name: "Red Hat Security", URL: "https://access.redhat.com/security/data/metrics/rhsa.rss"},
 	{Name: "Ubuntu Security", URL: "https://ubuntu.com/security/notices/rss.xml"},
 	{Name: "ZDI Advisories", URL: "https://www.zerodayinitiative.com/rss/published/"},
