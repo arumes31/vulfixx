@@ -99,15 +99,22 @@ func (a *App) loadNewsRail(ctx context.Context) ([]NewsItem, error) {
 	// Cap each feed's share before taking the newest overall. Microsoft alone accounts
 	// for roughly 95% of stored items and has the freshest timestamps, so a plain
 	// ORDER BY published_at DESC fills every slot with one source.
+	// cve_ids is narrowed to CVEs that actually exist locally. The IDs are scraped out
+	// of advisory titles, and advisories routinely name CVEs before the NVD sync has
+	// imported them — linking those produced chips that 404. The subquery runs over at
+	// most railNewsLimit rows and the whole result is cached, so the cost is trivial.
 	rows, err := a.Pool.Query(ctx, `
-		SELECT feed_name, title, link, summary, published_at, cve_ids
+		SELECT ranked.feed_name, ranked.title, ranked.link, ranked.summary, ranked.published_at,
+		       COALESCE(ARRAY(
+		           SELECT DISTINCT c.cve_id FROM cves c WHERE c.cve_id = ANY(ranked.cve_ids)
+		       ), '{}') AS cve_ids
 		FROM (
 			SELECT feed_name, title, link, summary, published_at, cve_ids,
 			       row_number() OVER (PARTITION BY feed_name ORDER BY published_at DESC) AS rn
 			FROM advisory_news
 		) ranked
-		WHERE rn <= $1
-		ORDER BY published_at DESC
+		WHERE ranked.rn <= $1
+		ORDER BY ranked.published_at DESC
 		LIMIT $2
 	`, railNewsPerFeed, railNewsLimit)
 	if err != nil {

@@ -150,14 +150,16 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		// Clear rate limit on success
 		a.Redis.Del(r.Context(), rlKey)
 
-		// Regenerate session to prevent session fixation
-		session.Options.MaxAge = -1
-		if err := session.Save(r, w); err != nil {
+		// Regenerate session to prevent session fixation. preAuthUserID was read from
+		// the old session earlier; regenerateSession clears Values, which is what we
+		// want here since the pre-auth marker must not survive.
+		if err := regenerateSession(r, w, session); err != nil {
 			log.Printf("Error invalidating pre-auth session: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
 		}
-		newSession, _ := a.SessionStore.Get(r, "vulfixx-session")
-		newSession.Values["user_id"] = preAuthUserID
-		newSession.Values["totp_verified"] = true
+		session.Values["user_id"] = preAuthUserID
+		session.Values["totp_verified"] = true
 
 		var isAdmin bool
 		err = a.Pool.QueryRow(r.Context(), "SELECT is_admin FROM users WHERE id = $1", preAuthUserID).Scan(&isAdmin)
@@ -166,14 +168,14 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
-		newSession.Values["is_admin"] = isAdmin
+		session.Values["is_admin"] = isAdmin
 
-		if err := newSession.Save(r, w); err != nil {
+		if err := session.Save(r, w); err != nil {
 			log.Printf("Error saving new session: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
-		a.EnforceConcurrentSessions(r.Context(), preAuthUserID, newSession.ID)
+		a.EnforceConcurrentSessions(r.Context(), preAuthUserID, session.ID)
 		a.LogActivity(r.Context(), preAuthUserID, "login", "Successful 2FA login", a.GetClientIP(r), r.UserAgent())
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
 		return
@@ -227,26 +229,19 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Regenerate session to prevent session fixation
-	session.Options.MaxAge = -1
-	if err := session.Save(r, w); err != nil {
+	if err := regenerateSession(r, w, session); err != nil {
 		log.Printf("Error invalidating old session: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	newSession, err := a.SessionStore.Get(r, "vulfixx-session")
-	if err != nil {
-		log.Printf("Error getting new session: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	newSession.Values["user_id"] = user.ID
-	newSession.Values["is_admin"] = user.IsAdmin
-	if err := newSession.Save(r, w); err != nil {
+	session.Values["user_id"] = user.ID
+	session.Values["is_admin"] = user.IsAdmin
+	if err := session.Save(r, w); err != nil {
 		log.Printf("Error saving new session: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	a.EnforceConcurrentSessions(r.Context(), user.ID, newSession.ID)
+	a.EnforceConcurrentSessions(r.Context(), user.ID, session.ID)
 	a.LogActivity(r.Context(), user.ID, "login", "Successful login", clientIP, r.UserAgent())
 
 	http.Redirect(w, r, "/dashboard", http.StatusFound)
