@@ -90,7 +90,7 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("CWE distribution error: %v", err)
 	}
 
-	a.RenderTemplate(w, r, "dashboard.html", map[string]interface{}{
+	dashboardData := map[string]interface{}{
 		"CVEs":           cves,
 		"Total":          metrics.Total,
 		"KevCount":       metrics.Kev,
@@ -110,7 +110,11 @@ func (a *App) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		"StatusCounts":   StatusCounts{Active: metrics.StatActive, InProgress: metrics.StatProg, Resolved: metrics.StatRes, Ignored: metrics.StatIgn},
 		"TopCWEs":        topCWEs,
 		"csrfToken":      csrf.Token(r),
-	})
+	}
+	// Authenticated pages get the news rail only; the fixed sidebar owns the left gutter.
+	a.attachRailData(r.Context(), dashboardData, true)
+
+	a.RenderTemplate(w, r, "dashboard.html", dashboardData)
 }
 func (a *App) UpdateCVEStatusHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -465,6 +469,12 @@ func (a *App) PublicDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		a.renderAJAX(w, renderData)
 		return
 	}
+
+	// Attached after the cache save on purpose: the page cache serialises a typed
+	// struct with no rail fields, so anything added before the save is dropped. Rails
+	// carry their own Redis cache, so doing this per-render is cheap.
+	_, loggedIn := a.GetUserID(r)
+	a.attachRailData(r.Context(), renderData, loggedIn)
 
 	a.RenderTemplate(w, r, "public_dashboard.html", renderData)
 }
@@ -1329,6 +1339,12 @@ func (a *App) tryServePublicDashboardFromCache(w http.ResponseWriter, r *http.Re
 					a.renderAJAX(w, renderData)
 					return true
 				}
+				// The page cache stores a typed struct that has no rail fields, so
+				// renderData is rebuilt from scratch above. Rails have their own Redis
+				// cache and must be attached per-render here, or every cache hit — which
+				// is nearly every request on the default landing page — ships without them.
+				_, loggedIn := a.GetUserID(r)
+				a.attachRailData(r.Context(), renderData, loggedIn)
 				a.RenderTemplate(w, r, "public_dashboard.html", renderData)
 				return true
 			}

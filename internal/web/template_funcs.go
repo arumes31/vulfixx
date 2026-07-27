@@ -202,6 +202,8 @@ func (a *App) GetTemplateFuncs() template.FuncMap {
 			}
 			return "bg-blue-500"
 		},
+		// railList pre-formats a CVE intelligence rail section; see buildRailList.
+		"railList": buildRailList,
 		"vendorLinks": func(cveID string, description string) []map[string]string {
 			links := []map[string]string{}
 			desc := strings.ToLower(description)

@@ -68,6 +68,9 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		w := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
 		// 1. Check if CVE exists - case where it doesn't
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO advisory_news`)).
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), "references", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-9999").
@@ -75,6 +78,9 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		mock.ExpectRollback()
 
 		// Update task stats at the very end
+		mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM advisory_news`)).
+			WithArgs(pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("DELETE", 0))
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
 			WithArgs("advisory_rss_sync").
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -126,6 +132,9 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		w := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
 		// 1. Check if CVE exists - case where it DOES exist
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO advisory_news`)).
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), "references", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-9999").
@@ -140,6 +149,9 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		mock.ExpectCommit()
 
 		// Update task stats at the very end
+		mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM advisory_news`)).
+			WithArgs(pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("DELETE", 0))
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
 			WithArgs("advisory_rss_sync").
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -193,6 +205,9 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		}
 		wRDF := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO advisory_news`)).
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), "references", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-5678").
@@ -205,6 +220,9 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 
 		mock.ExpectCommit()
 
+		mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM advisory_news`)).
+			WithArgs(pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("DELETE", 0))
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
 			WithArgs("advisory_rss_sync").
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -263,6 +281,9 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		mock.MatchExpectationsInOrder(false)
 
 		// Expectations for CVE-2024-0001
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO advisory_news`)).
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), "references", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-0001").
@@ -284,6 +305,9 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()
 
+		mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM advisory_news`)).
+			WithArgs(pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("DELETE", 0))
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
 			WithArgs("advisory_rss_sync").
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -339,6 +363,9 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		}
 		wDup := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO advisory_news`)).
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), "references", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-1111").
@@ -348,6 +375,9 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 
 		// No UPDATE should happen because reference already exists
 
+		mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM advisory_news`)).
+			WithArgs(pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("DELETE", 0))
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
 			WithArgs("advisory_rss_sync").
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -387,6 +417,9 @@ func TestWorkerSync_AdvisoryRSS(t *testing.T) {
 		wErr := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
 		// Expect only stats update, as all feeds will "fail" but worker continues
+		mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM advisory_news`)).
+			WithArgs(pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("DELETE", 0))
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
 			WithArgs("advisory_rss_sync").
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -470,6 +503,9 @@ func TestWorkerSync_FortiGuardAdvisoryID(t *testing.T) {
 		w := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
 		// Expect the row lock SELECT
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO advisory_news`)).
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), "references", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-1234").
@@ -497,6 +533,9 @@ func TestWorkerSync_FortiGuardAdvisoryID(t *testing.T) {
 		mock.ExpectCommit()
 
 		// Update task stats
+		mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM advisory_news`)).
+			WithArgs(pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("DELETE", 0))
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
 			WithArgs("advisory_rss_sync").
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -541,6 +580,9 @@ func TestWorkerSync_FortiGuardAdvisoryID(t *testing.T) {
 		}
 		w := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO advisory_news`)).
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), "references", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-1234").
@@ -565,6 +607,9 @@ func TestWorkerSync_FortiGuardAdvisoryID(t *testing.T) {
 
 		mock.ExpectCommit()
 
+		mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM advisory_news`)).
+			WithArgs(pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("DELETE", 0))
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
 			WithArgs("advisory_rss_sync").
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -623,6 +668,9 @@ func TestWorkerSync_FortiGuardAdvisoryID(t *testing.T) {
 		}
 		w := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO advisory_news`)).
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), "references", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-5678").
@@ -637,6 +685,9 @@ func TestWorkerSync_FortiGuardAdvisoryID(t *testing.T) {
 
 		mock.ExpectCommit()
 
+		mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM advisory_news`)).
+			WithArgs(pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("DELETE", 0))
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
 			WithArgs("advisory_rss_sync").
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -684,6 +735,9 @@ func TestWorkerSync_FortiGuardAdvisoryID(t *testing.T) {
 		w := NewWorker(mock, rdb, &EmailSenderMock{}, httpClient)
 
 		// CVE already has the reference URL
+		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO advisory_news`)).
+			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 		mock.ExpectBegin()
 		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, cve_id, COALESCE(description, ''), COALESCE(cvss_score, 0), COALESCE(vendor, ''), COALESCE(product, ''), "references", COALESCE(epss_score, 0) FROM cves WHERE cve_id = $1 FOR UPDATE`)).
 			WithArgs("CVE-2024-1234").
@@ -707,6 +761,9 @@ func TestWorkerSync_FortiGuardAdvisoryID(t *testing.T) {
 		// Transaction should be committed (fortiguardUpdated path)
 		mock.ExpectCommit()
 
+		mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM advisory_news`)).
+			WithArgs(pgxmock.AnyArg()).
+			WillReturnResult(pgxmock.NewResult("DELETE", 0))
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO worker_sync_stats`)).
 			WithArgs("advisory_rss_sync").
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
