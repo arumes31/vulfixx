@@ -19,7 +19,14 @@ import (
 func (app *App) Routes(cfg *config.Config) (http.Handler, error) {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP) //nolint:staticcheck
+	// Deliberately NOT middleware.RealIP. It rewrites r.RemoteAddr from X-Forwarded-For
+	// with no trusted-proxy check at all, which is why chi deprecated it. Running it
+	// ahead of ProxyMiddleware fully defeated that middleware: ProxyMiddleware decides
+	// whether to trust XFF by asking isTrustedProxy(r.RemoteAddr), so once RealIP had
+	// overwritten RemoteAddr with a client-supplied value, an attacker could send
+	// "X-Forwarded-For: 127.0.0.1", be judged a trusted loopback proxy, and pin their
+	// apparent client IP to anything they liked — bypassing rate limiting and poisoning
+	// activity logs. ProxyMiddleware below does the same job with the trust check intact.
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(app.ProxyMiddleware)
