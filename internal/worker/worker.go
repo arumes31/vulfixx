@@ -155,7 +155,7 @@ func (w *Worker) enqueueAlertsForCVE(ctx context.Context, cve models.CVE) error 
 	}
 
 	if w.AsynqClient != nil {
-		task := asynq.NewTask("task:cve_alert", alertJob)
+		task := asynq.NewTask(TaskCVEAlert, alertJob)
 		_, err := w.AsynqClient.EnqueueContext(ctx, task)
 		if err != nil {
 			return fmt.Errorf("failed to enqueue asynq alert for %s: %w", cve.CVEID, err)

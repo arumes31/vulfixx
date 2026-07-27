@@ -2,6 +2,7 @@ package web
 
 import (
 	"cve-tracker/internal/auth"
+	"cve-tracker/internal/worker"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -326,7 +327,7 @@ func (a *App) ChangeEmailHandler(w http.ResponseWriter, r *http.Request) {
 
 	var enqueueErr error
 	if a.AsynqClient != nil {
-		task := asynq.NewTask("task:email_change", combinedPayload)
+		task := asynq.NewTask(worker.TaskEmailChange, combinedPayload)
 		_, enqueueErr = a.AsynqClient.EnqueueContext(r.Context(), task)
 	} else {
 		if a.Redis == nil {

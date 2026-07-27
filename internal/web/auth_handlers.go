@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"cve-tracker/internal/auth"
 	"cve-tracker/internal/security"
+	"cve-tracker/internal/worker"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -348,7 +349,7 @@ func (a *App) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	var enqueueErr error
 	if a.AsynqClient != nil {
-		task := asynq.NewTask("task:email_verification", payload)
+		task := asynq.NewTask(worker.TaskEmailVerification, payload)
 		_, enqueueErr = a.AsynqClient.EnqueueContext(r.Context(), task)
 	} else {
 		enqueueErr = a.Redis.LPush(r.Context(), "email_verification_queue", payload).Err()
@@ -440,7 +441,7 @@ func (a *App) ResendVerificationHandler(w http.ResponseWriter, r *http.Request) 
 
 	var enqueueErr error
 	if a.AsynqClient != nil {
-		task := asynq.NewTask("task:email_verification", payload)
+		task := asynq.NewTask(worker.TaskEmailVerification, payload)
 		_, enqueueErr = a.AsynqClient.EnqueueContext(r.Context(), task)
 	} else {
 		enqueueErr = a.Redis.LPush(r.Context(), "email_verification_queue", payload).Err()
@@ -523,7 +524,7 @@ func (a *App) ResendVerificationInlineHandler(w http.ResponseWriter, r *http.Req
 
 	var enqueueErr error
 	if a.AsynqClient != nil {
-		task := asynq.NewTask("task:email_verification", payload)
+		task := asynq.NewTask(worker.TaskEmailVerification, payload)
 		_, enqueueErr = a.AsynqClient.EnqueueContext(r.Context(), task)
 	} else {
 		enqueueErr = a.Redis.LPush(r.Context(), "email_verification_queue", payload).Err()

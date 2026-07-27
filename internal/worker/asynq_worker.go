@@ -14,6 +14,12 @@ import (
 )
 
 const (
+	TaskCVEAlert          = "task:cve_alert"
+	TaskEmailVerification = "task:email_verification"
+	TaskEmailChange       = "task:email_change"
+)
+
+const (
 	defaultRedisAddr         = "localhost:6379"
 	defaultRedisSentinelAddr = "localhost:26379"
 	defaultAsynqConcurrency  = 10
@@ -94,9 +100,9 @@ func (w *Worker) StartAsynqServer(ctx context.Context, opts ...asynq.RedisConnOp
 	})
 
 	mux := asynq.NewServeMux()
-	mux.HandleFunc("task:cve_alert", w.handleCVEAlertTask)
-	mux.HandleFunc("task:email_verification", w.handleEmailVerificationTask)
-	mux.HandleFunc("task:email_change", w.handleEmailChangeTask)
+	mux.HandleFunc(TaskCVEAlert, w.handleCVEAlertTask)
+	mux.HandleFunc(TaskEmailVerification, w.handleEmailVerificationTask)
+	mux.HandleFunc(TaskEmailChange, w.handleEmailChangeTask)
 
 	slog.Info("Worker: Starting Asynq server...")
 	if err := srv.Start(mux); err != nil {

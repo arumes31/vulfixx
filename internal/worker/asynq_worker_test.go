@@ -67,7 +67,7 @@ func TestAsynqWorker_Flow(t *testing.T) {
 		})
 
 		mux := asynq.NewServeMux()
-		mux.HandleFunc("task:cve_alert", w.handleCVEAlertTask)
+		mux.HandleFunc(TaskCVEAlert, w.handleCVEAlertTask)
 
 		// Start Asynq server
 		if err := srv.Start(mux); err != nil {
@@ -93,7 +93,7 @@ func TestAsynqWorker_Flow(t *testing.T) {
 			"token": "asynq-token-123",
 		})
 
-		task := asynq.NewTask("task:email_verification", payload)
+		task := asynq.NewTask(TaskEmailVerification, payload)
 		_, err := asynqClient.Enqueue(task)
 		if err != nil {
 			t.Fatalf("failed to enqueue: %v", err)
@@ -101,7 +101,7 @@ func TestAsynqWorker_Flow(t *testing.T) {
 
 		srv := asynq.NewServer(redisOpt, asynq.Config{Concurrency: 1})
 		mux := asynq.NewServeMux()
-		mux.HandleFunc("task:email_verification", w.handleEmailVerificationTask)
+		mux.HandleFunc(TaskEmailVerification, w.handleEmailVerificationTask)
 
 		if err := srv.Start(mux); err != nil {
 			t.Fatalf("failed to start: %v", err)
@@ -127,7 +127,7 @@ func TestAsynqWorker_Flow(t *testing.T) {
 			"new_token": "asynq-token-new",
 		})
 
-		task := asynq.NewTask("task:email_change", payload)
+		task := asynq.NewTask(TaskEmailChange, payload)
 		_, err := asynqClient.Enqueue(task)
 		if err != nil {
 			t.Fatalf("failed to enqueue: %v", err)
@@ -135,7 +135,7 @@ func TestAsynqWorker_Flow(t *testing.T) {
 
 		srv := asynq.NewServer(redisOpt, asynq.Config{Concurrency: 1})
 		mux := asynq.NewServeMux()
-		mux.HandleFunc("task:email_change", w.handleEmailChangeTask)
+		mux.HandleFunc(TaskEmailChange, w.handleEmailChangeTask)
 
 		if err := srv.Start(mux); err != nil {
 			t.Fatalf("failed to start: %v", err)
