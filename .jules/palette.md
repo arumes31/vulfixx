@@ -20,3 +20,7 @@
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+
+## 2026-07-28 - Add autocomplete attributes to TOTP fields
+**Learning:** Missing standard HTML autocomplete attributes on authentication forms prevent password managers and browsers from assisting users, hurting accessibility and convenience.
+**Action:** Always add standard HTML `autocomplete` attributes (e.g., `one-time-code`, `email`, `current-password`) to authentication form inputs to ensure seamless compatibility with assistive tools and auto-fill functionalities.
