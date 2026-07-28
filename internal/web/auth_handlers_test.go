@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"cve-tracker/internal/auth"
 	"cve-tracker/internal/db"
 	"database/sql"
@@ -444,4 +445,77 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
+}
+
+func TestResendVerificationInlineHandler(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	app := setupTestApp(t, mock)
+
+	tests := []struct {
+		name         string
+		method       string
+		form         url.Values
+		mockSetup    func()
+		wantCode     int
+		wantResponse string
+	}{
+		{
+			name:         "invalid method",
+			method:       http.MethodGet,
+			wantCode:     http.StatusMethodNotAllowed, // Sends SendResponse JSON
+			wantResponse: `"error":"Method not allowed"`,
+		},
+		{
+			name:         "invalid email",
+			method:       http.MethodPost,
+			form:         url.Values{"email": {"invalid-email"}},
+			wantCode:     http.StatusOK,
+			wantResponse: `"message":"If this email is registered and unverified, a new verification link has been sent."`,
+		},
+		{
+			name:   "valid email",
+			method: http.MethodPost,
+			form:   url.Values{"email": {"test@example.com"}},
+			wantCode:     http.StatusOK,
+			wantResponse: `"message":"If this email is registered and unverified, a new verification link has been sent."`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clear redis keys between runs to avoid rate limits
+			app.Redis.FlushDB(context.Background())
+
+			if tt.mockSetup != nil {
+				tt.mockSetup()
+			}
+
+			req := httptest.NewRequest(tt.method, "/auth/resend-verification-inline", strings.NewReader(tt.form.Encode()))
+			if tt.method == http.MethodPost {
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			}
+			req.Header.Set("X-Requested-With", "XMLHttpRequest") // Ensure SendResponse replies with JSON
+			req.RemoteAddr = "192.168.1.1:1234"
+			rr := httptest.NewRecorder()
+
+			app.ResendVerificationInlineHandler(rr, req)
+
+			if rr.Code != tt.wantCode {
+				t.Errorf("expected status %d, got %d", tt.wantCode, rr.Code)
+			}
+
+			if tt.wantResponse != "" && !strings.Contains(rr.Body.String(), tt.wantResponse) {
+				t.Errorf("expected response to contain %q, got %q", tt.wantResponse, rr.Body.String())
+			}
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
+		})
+	}
 }

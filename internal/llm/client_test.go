@@ -969,3 +969,62 @@ func TestDurationUntilUTCMidnight(t *testing.T) {
 		t.Errorf("durationUntilUTCMidnight = %v, want (0, 24h]", d)
 	}
 }
+
+func TestGoogleFailoverQuotaExceeded(t *testing.T) {
+	orig := googleFailoverRPDIncr
+	t.Cleanup(func() { googleFailoverRPDIncr = orig })
+
+	tests := []struct {
+		name       string
+		limit      int
+		mockCount  int64
+		mockErr    error
+		wantResult bool
+	}{
+		{
+			name:       "unlimited",
+			limit:      0,
+			wantResult: false,
+		},
+		{
+			name:       "under limit",
+			limit:      10,
+			mockCount:  5,
+			wantResult: false,
+		},
+		{
+			name:       "at limit",
+			limit:      10,
+			mockCount:  10,
+			wantResult: false,
+		},
+		{
+			name:       "over limit",
+			limit:      10,
+			mockCount:  11,
+			wantResult: true,
+		},
+		{
+			name:       "redis error",
+			limit:      10,
+			mockErr:    errors.New("redis err"),
+			wantResult: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("GOOGLE_FAILOVER_DAILY_LIMIT", fmt.Sprintf("%d", tt.limit))
+			googleFailoverRPDIncr = func(context.Context, string) (int64, error) {
+				return tt.mockCount, tt.mockErr
+			}
+			f := googleFailover{
+				model:   "test-model",
+				rpdEnvs: []string{"GOOGLE_FAILOVER_DAILY_LIMIT"},
+			}
+			if got := googleFailoverQuotaExceeded(context.Background(), f); got != tt.wantResult {
+				t.Errorf("googleFailoverQuotaExceeded() = %v, want %v", got, tt.wantResult)
+			}
+		})
+	}
+}
