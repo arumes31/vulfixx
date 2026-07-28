@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,17 +35,17 @@ func daysSince(t interface{}) string {
 		if hours < 1 {
 			return "just now"
 		}
-		return fmt.Sprintf("%d hour%s ago", hours, pluralS(hours))
+		return strconv.Itoa(hours) + " hour" + pluralS(hours) + " ago"
 	}
 	if days < 30 {
-		return fmt.Sprintf("%d day%s ago", days, pluralS(days))
+		return strconv.Itoa(days) + " day" + pluralS(days) + " ago"
 	}
 	if days < 365 {
 		months := days / 30
-		return fmt.Sprintf("%d month%s ago", months, pluralS(months))
+		return strconv.Itoa(months) + " month" + pluralS(months) + " ago"
 	}
 	years := days / 365
-	return fmt.Sprintf("%d year%s ago", years, pluralS(years))
+	return strconv.Itoa(years) + " year" + pluralS(years) + " ago"
 }
 
 func pluralS(n int) string {
@@ -208,24 +209,24 @@ func (a *App) GetTemplateFuncs() template.FuncMap {
 			links := []map[string]string{}
 			desc := strings.ToLower(description)
 			if strings.Contains(desc, "microsoft") || strings.Contains(desc, "windows") || strings.Contains(desc, "office") {
-				links = append(links, map[string]string{"name": "Microsoft Security", "url": fmt.Sprintf("https://msrc.microsoft.com/update-guide/vulnerability/%s", cveID), "icon": "lan"})
+				links = append(links, map[string]string{"name": "Microsoft Security", "url": "https://msrc.microsoft.com/update-guide/vulnerability/" + cveID, "icon": "lan"})
 			}
 			if strings.Contains(desc, "red hat") || strings.Contains(desc, "redhat") || strings.Contains(desc, "fedora") || strings.Contains(desc, "rhel") {
-				links = append(links, map[string]string{"name": "RedHat Advisory", "url": fmt.Sprintf("https://access.redhat.com/security/cve/%s", cveID), "icon": "security"})
+				links = append(links, map[string]string{"name": "RedHat Advisory", "url": "https://access.redhat.com/security/cve/" + cveID, "icon": "security"})
 			}
 			if strings.Contains(desc, "cisco") {
-				links = append(links, map[string]string{"name": "Cisco Advisory", "url": fmt.Sprintf("https://tools.cisco.com/security/center/content/CiscoSecurityAdvisory/%s", cveID), "icon": "router"})
+				links = append(links, map[string]string{"name": "Cisco Advisory", "url": "https://tools.cisco.com/security/center/content/CiscoSecurityAdvisory/" + cveID, "icon": "router"})
 			}
 			if strings.Contains(desc, "ubuntu") || strings.Contains(desc, "canonical") {
-				links = append(links, map[string]string{"name": "Ubuntu Security", "url": fmt.Sprintf("https://ubuntu.com/security/%s", cveID), "icon": "terminal"})
+				links = append(links, map[string]string{"name": "Ubuntu Security", "url": "https://ubuntu.com/security/" + cveID, "icon": "terminal"})
 			}
 			if strings.Contains(desc, "vmware") || strings.Contains(desc, "vcenter") || strings.Contains(desc, "esxi") {
-				links = append(links, map[string]string{"name": "VMware Advisory", "url": fmt.Sprintf("https://www.vmware.com/security/advisories/%s.html", cveID), "icon": "layers"})
+				links = append(links, map[string]string{"name": "VMware Advisory", "url": "https://www.vmware.com/security/advisories/" + cveID + ".html", "icon": "layers"})
 			}
 			if strings.Contains(desc, "fortinet") || strings.Contains(desc, "fortigate") ||
 				strings.Contains(desc, "fortios") || strings.Contains(desc, "fortimanager") ||
 				strings.Contains(desc, "fortianalyzer") || strings.Contains(desc, "forticlient") {
-				links = append(links, map[string]string{"name": "FortiGuard PSIRT", "url": fmt.Sprintf("https://www.fortiguard.com/psirt?cve=%s", cveID), "icon": "shield"})
+				links = append(links, map[string]string{"name": "FortiGuard PSIRT", "url": "https://www.fortiguard.com/psirt?cve=" + cveID, "icon": "shield"})
 			}
 			return links
 		},
