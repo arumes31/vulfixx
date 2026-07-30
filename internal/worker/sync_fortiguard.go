@@ -647,9 +647,15 @@ func (w *Worker) updateCVEsWithAdvisory(ctx context.Context, advisory *FortiGuar
 
 		// Enrich AffectedProducts with Fortinet products, skipping entries that
 		// already exist so repeated syncs stay idempotent.
-		existingProducts := make(map[string]bool, len(cve.AffectedProducts))
+		type productKey struct {
+			Vendor      string
+			Product     string
+			Version     string
+			Unconfirmed bool
+		}
+		existingProducts := make(map[productKey]bool, len(cve.AffectedProducts))
 		for _, p := range cve.AffectedProducts {
-			existingProducts[fmt.Sprintf("%s|%s|%s|%t", p.Vendor, p.Product, p.Version, p.Unconfirmed)] = true
+			existingProducts[productKey{p.Vendor, p.Product, p.Version, p.Unconfirmed}] = true
 		}
 		for _, fgProduct := range advisory.AffectedProducts {
 			candidate := models.AffectedProduct{
@@ -658,7 +664,7 @@ func (w *Worker) updateCVEsWithAdvisory(ctx context.Context, advisory *FortiGuar
 				Version:     fgProduct.VersionRange,
 				Unconfirmed: false,
 			}
-			key := fmt.Sprintf("%s|%s|%s|%t", candidate.Vendor, candidate.Product, candidate.Version, candidate.Unconfirmed)
+			key := productKey{candidate.Vendor, candidate.Product, candidate.Version, candidate.Unconfirmed}
 			if existingProducts[key] {
 				continue
 			}
