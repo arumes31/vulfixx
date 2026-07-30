@@ -20,3 +20,7 @@
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+
+## 2026-07-30 - [Optimize 2FA/TOTP Input UX]
+**Learning:** Using standard text inputs for 6-digit TOTP codes forces users on mobile devices to switch to the numeric keyboard manually, and prevents password managers/browsers from suggesting auto-filled 2FA codes from SMS or authenticator extensions.
+**Action:** Always add `inputmode="numeric"` to trigger the numeric keypad on mobile devices, and `autocomplete="one-time-code"` to enable browser/OS-level OTP autofill capabilities on 2FA verification fields.

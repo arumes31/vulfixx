@@ -42,7 +42,7 @@
         {{if .RequireTOTP}}
             <div class="space-y-2">
                 <label for="totp_code" class="text-xs font-label font-bold tracking-widest uppercase text-gray-500 block">TOTP Code</label>
-                <input id="totp_code" type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456" autofocus
+                <input id="totp_code" type="text" name="totp_code" required maxlength="6" pattern="\d{6}" placeholder="123456" autofocus inputmode="numeric" autocomplete="one-time-code"
                        class="w-full bg-white/5 border border-white/10 px-4 py-4 rounded-2xl text-white focus:outline-none focus:border-primary transition-all font-mono tracking-widest placeholder:text-white/10 text-center">
             </div>
         {{else}}
