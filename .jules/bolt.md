@@ -4,3 +4,6 @@
 ## 2024-06-27 - Pre-compile regular expressions
 **Learning:** Compiling regex in tight loops or frequently called functions is a performance anti-pattern. Pre-compiling them at the package level saves CPU overhead.
 **Action:** Always declare regular expressions as package-level variables with `regexp.MustCompile` instead of inside loops.
+## 2026-07-31 - Optimize Map Keys in Tight Loops
+**Learning:** Using `fmt.Sprintf` to concatenate strings for deduplication map keys inside loops causes significant heap allocation overhead and slows down processing.
+**Action:** Always use a struct with comparable fields as the map key instead of constructing string keys via `fmt.Sprintf` or concatenation when deduplicating compound data.
