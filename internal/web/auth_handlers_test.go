@@ -445,3 +445,78 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 		}
 	})
 }
+
+func TestResendVerificationInlineHandler(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	tests := []struct {
+		name         string
+		method       string
+		body         string
+		setupMock    func(app *App, mock pgxmock.PgxPoolIface)
+		expectedCode int
+	}{
+		{
+			name:         "non-POST request",
+			method:       http.MethodGet,
+			expectedCode: http.StatusMethodNotAllowed,
+		},
+		{
+			name:         "invalid form",
+			method:       http.MethodPost,
+			body:         "%=&", // Invalid URL encoded form
+			expectedCode: http.StatusBadRequest,
+		},
+		{
+			name:         "invalid email",
+			method:       http.MethodPost,
+			body:         "email=invalid",
+			expectedCode: http.StatusOK,
+		},
+		{
+			name:   "success",
+			method: http.MethodPost,
+			body:   "email=test@example.com",
+			setupMock: func(app *App, mock pgxmock.PgxPoolIface) {
+				mock.ExpectBegin()
+				mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token").
+					WithArgs("test@example.com").
+					WillReturnRows(pgxmock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
+						AddRow(1, false, 0, nil, nil))
+				mock.ExpectExec("UPDATE users").
+					WithArgs(pgxmock.AnyArg(), 1).
+					WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+				mock.ExpectCommit()
+			},
+			expectedCode: http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := setupTestApp(t, mock)
+			if tt.setupMock != nil {
+				tt.setupMock(app, mock)
+			}
+			req := httptest.NewRequest(tt.method, "/resend-verification-inline", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("X-Requested-With", "XMLHttpRequest") // Ensure JSON response from SendResponse
+			rr := httptest.NewRecorder()
+
+			// auth.ResendVerificationToken uses db.Pool
+			oldPool := db.Pool
+			db.Pool = mock
+			defer func() { db.Pool = oldPool }()
+
+			app.ResendVerificationInlineHandler(rr, req)
+
+			if rr.Code != tt.expectedCode {
+				t.Errorf("expected code %d, got %d", tt.expectedCode, rr.Code)
+			}
+		})
+	}
+}
