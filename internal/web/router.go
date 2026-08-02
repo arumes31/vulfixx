@@ -97,7 +97,7 @@ func (app *App) Routes(cfg *config.Config) (http.Handler, error) {
 		// Admin routes
 		r.Group(func(r chi.Router) {
 			r.Use(app.AdminMiddleware)
-			r.HandleFunc("/admin/users", app.AdminUserManagementHandler)
+			r.Method("GET", "/admin/users", app.RateLimitMiddleware(http.HandlerFunc(app.AdminUserManagementHandler)))
 			r.Method("POST", "/admin/users/delete", app.RateLimitMiddleware(http.HandlerFunc(app.AdminDeleteUserHandler)))
 		})
 	})
