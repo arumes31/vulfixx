@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,17 +35,18 @@ func daysSince(t interface{}) string {
 		if hours < 1 {
 			return "just now"
 		}
-		return fmt.Sprintf("%d hour%s ago", hours, pluralS(hours))
+		// ⚡ Bolt: Using strconv + concat instead of fmt.Sprintf for faster execution and 0 allocations
+		return strconv.Itoa(hours) + " hour" + pluralS(hours) + " ago"
 	}
 	if days < 30 {
-		return fmt.Sprintf("%d day%s ago", days, pluralS(days))
+		return strconv.Itoa(days) + " day" + pluralS(days) + " ago"
 	}
 	if days < 365 {
 		months := days / 30
-		return fmt.Sprintf("%d month%s ago", months, pluralS(months))
+		return strconv.Itoa(months) + " month" + pluralS(months) + " ago"
 	}
 	years := days / 365
-	return fmt.Sprintf("%d year%s ago", years, pluralS(years))
+	return strconv.Itoa(years) + " year" + pluralS(years) + " ago"
 }
 
 func pluralS(n int) string {
@@ -76,19 +78,20 @@ func epssPercentileLabel(score float64) string {
 	}
 	// EPSS score is a probability (0-1); express it as an exploitation probability
 	pct := score * 100
+	// ⚡ Bolt: Using strconv.FormatFloat instead of fmt.Sprintf reduces reflection overhead in template rendering loops
 	if pct >= 50 {
-		return fmt.Sprintf("%.1f%% probability — Extremely likely to be exploited", pct)
+		return strconv.FormatFloat(pct, 'f', 1, 64) + "% probability — Extremely likely to be exploited"
 	}
 	if pct >= 10 {
-		return fmt.Sprintf("%.1f%% probability — Very high exploit likelihood", pct)
+		return strconv.FormatFloat(pct, 'f', 1, 64) + "% probability — Very high exploit likelihood"
 	}
 	if pct >= 1 {
-		return fmt.Sprintf("%.2f%% probability — High exploit likelihood", pct)
+		return strconv.FormatFloat(pct, 'f', 2, 64) + "% probability — High exploit likelihood"
 	}
 	if pct >= 0.1 {
-		return fmt.Sprintf("%.4f%% probability — Moderate exploit likelihood", pct)
+		return strconv.FormatFloat(pct, 'f', 4, 64) + "% probability — Moderate exploit likelihood"
 	}
-	return fmt.Sprintf("%.4f%% probability — Low exploit likelihood", pct)
+	return strconv.FormatFloat(pct, 'f', 4, 64) + "% probability — Low exploit likelihood"
 }
 
 func exploitationSummary(cisaKEV, cisaRansomware, exploitAvailable bool, greynoiseHits int, githubPocCount int) string {
@@ -206,26 +209,27 @@ func (a *App) GetTemplateFuncs() template.FuncMap {
 		"railList": buildRailList,
 		"vendorLinks": func(cveID string, description string) []map[string]string {
 			links := []map[string]string{}
+			// ⚡ Bolt: Using string concatenation for URLs avoids fmt.Sprintf reflection overhead
 			desc := strings.ToLower(description)
 			if strings.Contains(desc, "microsoft") || strings.Contains(desc, "windows") || strings.Contains(desc, "office") {
-				links = append(links, map[string]string{"name": "Microsoft Security", "url": fmt.Sprintf("https://msrc.microsoft.com/update-guide/vulnerability/%s", cveID), "icon": "lan"})
+				links = append(links, map[string]string{"name": "Microsoft Security", "url": "https://msrc.microsoft.com/update-guide/vulnerability/" + cveID, "icon": "lan"})
 			}
 			if strings.Contains(desc, "red hat") || strings.Contains(desc, "redhat") || strings.Contains(desc, "fedora") || strings.Contains(desc, "rhel") {
-				links = append(links, map[string]string{"name": "RedHat Advisory", "url": fmt.Sprintf("https://access.redhat.com/security/cve/%s", cveID), "icon": "security"})
+				links = append(links, map[string]string{"name": "RedHat Advisory", "url": "https://access.redhat.com/security/cve/" + cveID, "icon": "security"})
 			}
 			if strings.Contains(desc, "cisco") {
-				links = append(links, map[string]string{"name": "Cisco Advisory", "url": fmt.Sprintf("https://tools.cisco.com/security/center/content/CiscoSecurityAdvisory/%s", cveID), "icon": "router"})
+				links = append(links, map[string]string{"name": "Cisco Advisory", "url": "https://tools.cisco.com/security/center/content/CiscoSecurityAdvisory/" + cveID, "icon": "router"})
 			}
 			if strings.Contains(desc, "ubuntu") || strings.Contains(desc, "canonical") {
-				links = append(links, map[string]string{"name": "Ubuntu Security", "url": fmt.Sprintf("https://ubuntu.com/security/%s", cveID), "icon": "terminal"})
+				links = append(links, map[string]string{"name": "Ubuntu Security", "url": "https://ubuntu.com/security/" + cveID, "icon": "terminal"})
 			}
 			if strings.Contains(desc, "vmware") || strings.Contains(desc, "vcenter") || strings.Contains(desc, "esxi") {
-				links = append(links, map[string]string{"name": "VMware Advisory", "url": fmt.Sprintf("https://www.vmware.com/security/advisories/%s.html", cveID), "icon": "layers"})
+				links = append(links, map[string]string{"name": "VMware Advisory", "url": "https://www.vmware.com/security/advisories/" + cveID + ".html", "icon": "layers"})
 			}
 			if strings.Contains(desc, "fortinet") || strings.Contains(desc, "fortigate") ||
 				strings.Contains(desc, "fortios") || strings.Contains(desc, "fortimanager") ||
 				strings.Contains(desc, "fortianalyzer") || strings.Contains(desc, "forticlient") {
-				links = append(links, map[string]string{"name": "FortiGuard PSIRT", "url": fmt.Sprintf("https://www.fortiguard.com/psirt?cve=%s", cveID), "icon": "shield"})
+				links = append(links, map[string]string{"name": "FortiGuard PSIRT", "url": "https://www.fortiguard.com/psirt?cve=" + cveID, "icon": "shield"})
 			}
 			return links
 		},
