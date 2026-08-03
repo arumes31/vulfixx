@@ -1,5 +1,0 @@
-🎯 **What:** The `migrate()` method in `internal/db/schema.go` contained a call to `goose.SetDialect` which could not be practically mocked, leaving its error handling path untested.
-
-📊 **Coverage:** This PR extracts `goose.SetDialect` into a package-level variable `gooseSetDialect` (following the existing pattern for `sqlOpener` and `gooseUp`). This allows us to inject a mock failure and explicitly test the error case in `TestMigrate_GooseSetDialectFailure` where the dialect fails to set. It also tests the new default `gooseSetDialect` wrapper within `TestDefaultSchemaWrappers`.
-
-✨ **Result:** Increased `internal/db/schema.go` test coverage from 92.3% to 100%, completing the testing profile for database migrations.

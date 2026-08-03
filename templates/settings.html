@@ -31,7 +31,7 @@
                 </div>
                 {{end}}
                 {{if .EmailSuccess}}
-                <div class="bg-primary/10 border border-primary/30 text-primary px-4 py-3 rounded-md text-sm mb-6 flex items-start gap-2">
+                <div role="status" aria-live="polite" class="bg-primary/10 border border-primary/30 text-primary px-4 py-3 rounded-md text-sm mb-6 flex items-start gap-2">
                     <span class="material-symbols-outlined text-[18px]" aria-hidden="true">check_circle</span>
                     <span>{{.EmailSuccess}}</span>
                 </div>
@@ -127,7 +127,7 @@
             </div>
             {{end}}
             {{if .PasswordSuccess}}
-            <div class="bg-primary/10 border border-primary/30 text-primary px-4 py-3 rounded-md text-sm mb-6 flex items-start gap-2">
+            <div role="status" aria-live="polite" class="bg-primary/10 border border-primary/30 text-primary px-4 py-3 rounded-md text-sm mb-6 flex items-start gap-2">
                 <span class="material-symbols-outlined text-[18px]" aria-hidden="true">check_circle</span>
                 <span>{{.PasswordSuccess}}</span>
             </div>
