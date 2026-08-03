@@ -969,3 +969,65 @@ func TestDurationUntilUTCMidnight(t *testing.T) {
 		t.Errorf("durationUntilUTCMidnight = %v, want (0, 24h]", d)
 	}
 }
+
+func TestGoogleFailoverQuotaExceeded(t *testing.T) {
+	oldIncr := googleFailoverRPDIncr
+	defer func() { googleFailoverRPDIncr = oldIncr }()
+
+	tests := []struct {
+		name          string
+		limit         int
+		incrCount     int64
+		incrErr       error
+		expectedExced bool
+	}{
+		{
+			name:          "limit disabled",
+			limit:         0,
+			expectedExced: false,
+		},
+		{
+			name:          "redis error",
+			limit:         100,
+			incrCount:     0,
+			incrErr:       errors.New("redis down"),
+			expectedExced: false,
+		},
+		{
+			name:          "quota exceeded",
+			limit:         10,
+			incrCount:     11,
+			incrErr:       nil,
+			expectedExced: true,
+		},
+		{
+			name:          "under quota",
+			limit:         10,
+			incrCount:     5,
+			incrErr:       nil,
+			expectedExced: false,
+		},
+		{
+			name:          "exact quota",
+			limit:         10,
+			incrCount:     10,
+			incrErr:       nil,
+			expectedExced: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			googleFailoverRPDIncr = func(ctx context.Context, keyPrefix string) (int64, error) {
+				return tt.incrCount, tt.incrErr
+			}
+			f := googleFailover{
+				defRPD: tt.limit,
+			}
+			exceeded := googleFailoverQuotaExceeded(context.Background(), f)
+			if exceeded != tt.expectedExced {
+				t.Errorf("expected %v, got %v", tt.expectedExced, exceeded)
+			}
+		})
+	}
+}

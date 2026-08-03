@@ -445,3 +445,128 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 		}
 	})
 }
+
+
+func TestResendVerificationInlineHandler(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+
+	app := setupTestApp(t, mock)
+
+	// Since we mock redis we must prepare the IP and email keys
+	email := "test@example.com"
+	clientIP := "192.0.2.1"
+
+	// Precalculate hash
+	emailHash := "556d7ea40d257a052f53d4c382ce6a84eb1b12b596280453303a2908c84d62fb"
+
+	tests := []struct {
+		name       string
+		method     string
+		email      string
+		mockRedis  func(req *http.Request)
+		mockDB     func()
+		wantStatus int
+		wantBody   string
+	}{
+		{
+			name:       "method not allowed",
+			method:     "GET",
+			email:      "",
+			mockRedis:  func(req *http.Request) {},
+			mockDB:     func() {},
+			wantStatus: http.StatusMethodNotAllowed,
+			wantBody:   `"error":"Method not allowed"`,
+		},
+		{
+			name:       "invalid email",
+			method:     "POST",
+			email:      "not-an-email",
+			mockRedis:  func(req *http.Request) {},
+			mockDB:     func() {},
+			wantStatus: http.StatusOK,
+			wantBody:   `"message":"If this email is registered and unverified, a new verification link has been sent."`,
+		},
+		{
+			name:       "ip rate limited",
+			method:     "POST",
+			email:      email,
+			mockRedis:  func(req *http.Request) {
+				app.Redis.Set(req.Context(), "resend_limit:"+clientIP, "5", 0)
+			},
+			mockDB:     func() {},
+			wantStatus: http.StatusOK,
+			wantBody:   `"success":true`,
+		},
+		{
+			name:       "email rate limited",
+			method:     "POST",
+			email:      email,
+			mockRedis:  func(req *http.Request) {
+				app.Redis.Set(req.Context(), "resend_email_limit:"+emailHash, "3", 0)
+			},
+			mockDB:     func() {},
+			wantStatus: http.StatusOK,
+			wantBody:   `"success":true`,
+		},
+		{
+			name:       "success enqueue",
+			method:     "POST",
+			email:      email,
+			mockRedis:  func(req *http.Request) {
+				app.Redis.Set(req.Context(), "resend_limit:"+clientIP, "0", 0)
+				app.Redis.Set(req.Context(), "resend_email_limit:"+emailHash, "0", 0)
+			},
+			mockDB:     func() {
+				mock.ExpectQuery(`SELECT id, is_email_verified, email_verify_token, email_verify_sent_at FROM users WHERE email = \$1`).
+					WithArgs(email).
+					WillReturnRows(pgxmock.NewRows([]string{"id", "is_email_verified", "email_verify_token", "email_verify_sent_at"}).
+						AddRow(1, false, "oldtoken", time.Now().Add(-2*time.Hour)))
+
+				mock.ExpectExec(`UPDATE users SET email_verify_token = \$1, email_verify_sent_at = NOW\(\) WHERE id = \$2`).
+					WithArgs(pgxmock.AnyArg(), 1).
+					WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+			},
+			wantStatus: http.StatusOK,
+			wantBody:   `"success":true`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// auth.ResendVerificationToken uses db.Pool
+			oldPool := db.Pool
+			db.Pool = mock
+			defer func() { db.Pool = oldPool }()
+
+			form := url.Values{}
+			if tt.email != "" {
+				form.Add("email", tt.email)
+			}
+			req, err := http.NewRequest(tt.method, "/resend-verification-inline", strings.NewReader(form.Encode()))
+			if err != nil {
+				t.Fatalf("failed to create request: %v", err)
+			}
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("X-Requested-With", "XMLHttpRequest")
+			req.Header.Set("X-Forwarded-For", clientIP)
+
+			app.Redis.FlushAll(req.Context())
+			tt.mockRedis(req)
+			tt.mockDB()
+
+			rr := httptest.NewRecorder()
+			app.ResendVerificationInlineHandler(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Errorf("expected status %d, got %d", tt.wantStatus, rr.Code)
+			}
+			if !strings.Contains(rr.Body.String(), tt.wantBody) {
+				t.Errorf("expected body to contain %q, got %q", tt.wantBody, rr.Body.String())
+			}
+		})
+	}
+}
