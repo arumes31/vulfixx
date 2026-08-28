@@ -160,8 +160,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           load: ${{ github.event_name == 'pull_request' }}
-          provenance: mode=max
-          sbom: true
+          provenance: ${{ github.event_name != 'pull_request' && 'mode=max' || 'false' }}
+          sbom: ${{ github.event_name != 'pull_request' }}
 
       - name: Scan pull request image
         if: github.event_name == 'pull_request'
