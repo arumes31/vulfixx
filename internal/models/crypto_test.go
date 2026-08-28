@@ -1,32 +1,20 @@
 package models
 
 import (
-	"os"
 	"strings"
 	"testing"
 )
 
 func TestEncryptDecryptWebhook(t *testing.T) {
-	// Backup original SESSION_KEY, preserving whether it was set at all so
-	// the environment is restored to its exact prior state.
-	originalKey, hadKey := os.LookupEnv("SESSION_KEY")
-	defer func() {
-		if hadKey {
-			os.Setenv("SESSION_KEY", originalKey)
-		} else {
-			os.Unsetenv("SESSION_KEY")
-		}
-	}()
-
 	// Test missing session key
-	os.Setenv("SESSION_KEY", "")
+	t.Setenv("SESSION_KEY", "")
 	_, err := EncryptWebhook("secret")
 	if err == nil || !strings.Contains(err.Error(), "missing SESSION_KEY") {
 		t.Errorf("Expected 'missing SESSION_KEY' error, got %v", err)
 	}
 
 	// Set session key for remaining tests
-	os.Setenv("SESSION_KEY", "super-secret-key-12345")
+	t.Setenv("SESSION_KEY", "super-secret-key-12345")
 
 	tests := []struct {
 		name      string
@@ -71,19 +59,10 @@ func TestEncryptDecryptWebhook(t *testing.T) {
 }
 
 func TestDecryptWebhookErrors(t *testing.T) {
-	originalKey, hadKey := os.LookupEnv("SESSION_KEY")
-	defer func() {
-		if hadKey {
-			os.Setenv("SESSION_KEY", originalKey)
-		} else {
-			os.Unsetenv("SESSION_KEY")
-		}
-	}()
-	os.Setenv("SESSION_KEY", "super-secret-key-12345")
+	t.Setenv("SESSION_KEY", "super-secret-key-12345")
 
 	t.Run("missing SESSION_KEY", func(t *testing.T) {
-		os.Setenv("SESSION_KEY", "")
-		defer os.Setenv("SESSION_KEY", "super-secret-key-12345")
+		t.Setenv("SESSION_KEY", "")
 		_, err := DecryptWebhook("some-encrypted-data")
 		if err == nil || !strings.Contains(err.Error(), "missing SESSION_KEY") {
 			t.Errorf("Expected 'missing SESSION_KEY' error, got %v", err)
@@ -112,8 +91,7 @@ func TestDecryptWebhookErrors(t *testing.T) {
 		encrypted, _ := EncryptWebhook("secret data")
 
 		// Change the key
-		os.Setenv("SESSION_KEY", "different-secret-key")
-		defer os.Setenv("SESSION_KEY", "super-secret-key-12345")
+		t.Setenv("SESSION_KEY", "different-secret-key")
 
 		_, err := DecryptWebhook(encrypted)
 		if err == nil {

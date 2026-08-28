@@ -4,17 +4,12 @@ import (
 	"cve-tracker/internal/models"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 )
 
 func TestNotifier_Security(t *testing.T) {
-	os.Setenv("TEST_MODE", "1") // Allow localhost for initial request
-	os.Setenv("WEBHOOK_SECRET", "test_secret")
-	defer func() {
-		os.Unsetenv("TEST_MODE")
-		os.Unsetenv("WEBHOOK_SECRET")
-	}()
+	t.Setenv("TEST_MODE", "1") // Allow localhost for initial request
+	t.Setenv("WEBHOOK_SECRET", "test_secret")
 
 	var leakedSignature string
 	var leakedHost string
@@ -62,7 +57,7 @@ func TestNotifier_Security(t *testing.T) {
 		defer tsInner.Close()
 
 		rsInner := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			os.Setenv("TEST_MODE", "0") // Block next hop
+			t.Setenv("TEST_MODE", "0") // Block next hop
 			http.Redirect(w, r, tsInner.URL, http.StatusFound)
 		}))
 		defer rsInner.Close()

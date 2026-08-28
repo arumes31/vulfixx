@@ -3,7 +3,6 @@ package web
 import (
 	"fmt"
 	"html/template"
-	"os"
 	"testing"
 	"time"
 
@@ -229,12 +228,12 @@ func TestTemplateFuncs_Logic(t *testing.T) {
 	t.Run("GetBaseURL", func(t *testing.T) {
 		f := funcs["GetBaseURL"].(func() string)
 
-		os.Setenv("BASE_URL", "https://example.com/")
+		t.Setenv("BASE_URL", "https://example.com/")
 		if f() != "https://example.com" {
 			t.Errorf("expected https://example.com, got %s", f())
 		}
 
-		os.Setenv("BASE_URL", "")
+		t.Setenv("BASE_URL", "")
 		if f() != "http://localhost:8080" {
 			t.Errorf("expected http://localhost:8080, got %s", f())
 		}

@@ -313,12 +313,12 @@ func (w *Worker) fetchRedditMentions(ctx context.Context, cveID string) (int, []
 	}
 
 	if resp == nil {
-		return 0, nil, fmt.Errorf("Reddit API returned nil response")
+		return 0, nil, fmt.Errorf("Reddit API returned nil response") //nolint:staticcheck // Reddit is a proper name.
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return 0, nil, fmt.Errorf("Reddit API returned status %d", resp.StatusCode)
+		return 0, nil, fmt.Errorf("Reddit API returned status %d", resp.StatusCode) //nolint:staticcheck // Reddit is a proper name.
 	}
 
 	var rResp struct {

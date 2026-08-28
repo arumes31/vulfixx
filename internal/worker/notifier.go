@@ -262,7 +262,7 @@ func (w *Worker) sendEmailAlert(email string, cve *models.CVE, sev, color, token
 	advisories := classifyVendorAdvisories(cve.References)
 	validAdvisories := slices.DeleteFunc(slices.Clone(advisories), func(adv string) bool {
 		u, err := url.Parse(adv)
-		return !(err == nil && (u.Scheme == "http" || u.Scheme == "https"))
+		return err != nil || (u.Scheme != "http" && u.Scheme != "https")
 	})
 
 	epssDisplay := "N/A"

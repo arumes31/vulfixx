@@ -3,13 +3,11 @@ package web
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 )
 
 func TestProxyMiddleware(t *testing.T) {
-	os.Setenv("TRUSTED_PROXIES", "127.0.0.1, 10.0.0.0/8, 192.168.1.100")
-	defer os.Unsetenv("TRUSTED_PROXIES")
+	t.Setenv("TRUSTED_PROXIES", "127.0.0.1, 10.0.0.0/8, 192.168.1.100")
 
 	app := &App{}
 

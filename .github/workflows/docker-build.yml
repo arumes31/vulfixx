@@ -18,9 +18,10 @@ jobs:
   test:
     name: Run Backend Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
-        image: postgres:15-alpine
+        image: postgres:15-alpine@sha256:fe0737ba566a2c5b2a28f34433c0a423261900ec17b9bf7ad115e1aae7e57f1b
         env:
           POSTGRES_USER: cveuser
           POSTGRES_PASSWORD: cvepass
@@ -33,7 +34,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
       redis:
-        image: redis:7-alpine
+        image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
         ports:
           - 6379:6379
         options: >-
@@ -42,7 +43,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     container:
-      image: golang:1.26.5-alpine
+      image: golang:1.27-alpine@sha256:4c9fe60190a2a3350ddc51de80d0224b8a6698d12bdfc999fee45ea9d6c46dbc
     env:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -52,7 +53,7 @@ jobs:
       REDIS_URL: redis:6379
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install dependencies
         run: apk add --no-cache git build-base
       - name: Run tests
@@ -61,52 +62,56 @@ jobs:
   lint:
     name: Lint Codebase
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     container:
-      image: golang:1.26.5
+      image: golang:1.27-alpine@sha256:4c9fe60190a2a3350ddc51de80d0224b8a6698d12bdfc999fee45ea9d6c46dbc
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Run golangci-lint
         run: |
-          go install -v github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.5
+          go install -v github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
           GOFLAGS="-buildvcs=false" $(go env GOPATH)/bin/golangci-lint run --timeout=10m
 
   gsec:
     name: Gsec (Static Analysis)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     container:
-      image: golang:1.26.5-alpine
+      image: golang:1.27-alpine@sha256:4c9fe60190a2a3350ddc51de80d0224b8a6698d12bdfc999fee45ea9d6c46dbc
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Gosec
-        run: apk add --no-cache git && go install github.com/securego/gosec/v2/cmd/gosec@latest
+        run: apk add --no-cache git && go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0
       - name: Run Gosec Security Scanner
         run: gosec ./...
 
   govul:
     name: Govul (Vulnerability Check)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     container:
-      image: golang:1.26.5-alpine
+      image: golang:1.27-alpine@sha256:4c9fe60190a2a3350ddc51de80d0224b8a6698d12bdfc999fee45ea9d6c46dbc
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Govulncheck
-        run: apk add --no-cache git && go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: apk add --no-cache git && go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
       - name: Run Govulncheck
         run: govulncheck ./...
 
   godep:
     name: Godep (Dependency Scan)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     container:
-      image: golang:1.26.5-alpine
+      image: golang:1.27-alpine@sha256:4c9fe60190a2a3350ddc51de80d0224b8a6698d12bdfc999fee45ea9d6c46dbc
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install OSV Scanner
-        run: apk add --no-cache git && go install github.com/google/osv-scanner/cmd/osv-scanner@latest
+        run: apk add --no-cache git && go install github.com/google/osv-scanner/cmd/osv-scanner@v1.9.2
       - name: Run OSV Scanner
         run: osv-scanner -r .
 
@@ -114,19 +119,20 @@ jobs:
     name: Build & Push Image
     needs: [test, lint, gsec, govul, godep]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Log in to the Container registry
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -134,7 +140,7 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -145,7 +151,7 @@ jobs:
             type=sha
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
@@ -153,24 +159,37 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          load: ${{ github.event_name == 'pull_request' }}
+          provenance: ${{ github.event_name != 'pull_request' && 'mode=max' || 'false' }}
+          sbom: ${{ github.event_name != 'pull_request' }}
+
+      - name: Scan pull request image
+        if: github.event_name == 'pull_request'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
 
   build-ollama:
     name: Build & Push Ollama Init Image
     needs: [test, lint, gsec, govul, godep]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Log in to the Container registry
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -178,7 +197,7 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Ollama Init
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}-ollama
           tags: |
@@ -189,7 +208,7 @@ jobs:
             type=sha
 
       - name: Build and push Ollama Init image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: ./addons/ollama-init
           push: ${{ github.event_name != 'pull_request' }}
@@ -197,3 +216,5 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true

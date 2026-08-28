@@ -2,7 +2,6 @@ package security
 
 import (
 	"net"
-	"os"
 	"testing"
 )
 
@@ -36,11 +35,10 @@ func TestIsIPSafe(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.ip, func(t *testing.T) {
 			if tt.testMode {
-				os.Setenv("TEST_MODE", "1")
+				t.Setenv("TEST_MODE", "1")
 			} else {
-				os.Unsetenv("TEST_MODE")
+				t.Setenv("TEST_MODE", "")
 			}
-			defer os.Unsetenv("TEST_MODE")
 
 			ip := net.ParseIP(tt.ip)
 			if got := IsIPSafe(ip); got != tt.want {

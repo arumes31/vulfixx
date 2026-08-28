@@ -52,12 +52,12 @@ func (c *algoliaHNClient) FetchMentions(ctx context.Context, query string) (int,
 	}
 
 	if resp == nil {
-		return 0, nil, fmt.Errorf("HN API returned nil response")
+		return 0, nil, fmt.Errorf("HN API returned nil response") //nolint:staticcheck // HN is a proper name.
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return 0, nil, fmt.Errorf("Hacker News API returned status %d", resp.StatusCode)
+		return 0, nil, fmt.Errorf("Hacker News API returned status %d", resp.StatusCode) //nolint:staticcheck // Hacker News is a proper name.
 	}
 
 	var hnResp struct {

@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
@@ -117,8 +116,7 @@ func TestWorker_DeliveryLogging(t *testing.T) {
 }
 
 func TestWorker_SlackTeamsDelivery(t *testing.T) {
-	os.Setenv("TEST_MODE", "1")
-	defer os.Unsetenv("TEST_MODE")
+	t.Setenv("TEST_MODE", "1")
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -139,12 +137,8 @@ func TestWorker_SlackTeamsDelivery(t *testing.T) {
 }
 
 func TestWorker_SignedWebhookDelivery(t *testing.T) {
-	os.Setenv("TEST_MODE", "1")
-	os.Setenv("WEBHOOK_SECRET", "test_signing_key_123")
-	defer func() {
-		os.Unsetenv("TEST_MODE")
-		os.Unsetenv("WEBHOOK_SECRET")
-	}()
+	t.Setenv("TEST_MODE", "1")
+	t.Setenv("WEBHOOK_SECRET", "test_signing_key_123")
 
 	var receivedSignature, receivedTimestamp string
 	var receivedPayload []byte

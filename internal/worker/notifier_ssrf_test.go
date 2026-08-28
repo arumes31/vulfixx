@@ -6,17 +6,12 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 )
 
 func TestWebhookSSRF_Vulnerabilities(t *testing.T) {
-	os.Setenv("TEST_MODE", "0")
-	os.Setenv("WEBHOOK_SECRET", "test_secret")
-	defer func() {
-		os.Unsetenv("TEST_MODE")
-		os.Unsetenv("WEBHOOK_SECRET")
-	}()
+	t.Setenv("TEST_MODE", "0")
+	t.Setenv("WEBHOOK_SECRET", "test_secret")
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -51,12 +46,8 @@ func TestWebhookSSRF_AllowedPorts(t *testing.T) {
 	// We can't easily test "Success" because it will still block 127.0.0.1 if TEST_MODE=0.
 	// So we use TEST_MODE=1 to check if the port restriction is NOT triggered for these ports.
 
-	os.Setenv("TEST_MODE", "1")
-	os.Setenv("WEBHOOK_SECRET", "test_secret")
-	defer func() {
-		os.Unsetenv("TEST_MODE")
-		os.Unsetenv("WEBHOOK_SECRET")
-	}()
+	t.Setenv("TEST_MODE", "1")
+	t.Setenv("WEBHOOK_SECRET", "test_secret")
 
 	w := &Worker{HTTP: http.DefaultClient, WebhookSecret: "test_secret"}
 	cve := &models.CVE{CVEID: "CVE-2024-TEST", Description: "Test", CVSSScore: 5.0}
@@ -73,12 +64,8 @@ func TestWebhookSSRF_AllowedPorts(t *testing.T) {
 }
 
 func TestWebhookSSRF_Redirects(t *testing.T) {
-	os.Setenv("TEST_MODE", "1") // Allow loopback and non-standard ports
-	os.Setenv("WEBHOOK_SECRET", "test_secret")
-	defer func() {
-		os.Unsetenv("TEST_MODE")
-		os.Unsetenv("WEBHOOK_SECRET")
-	}()
+	t.Setenv("TEST_MODE", "1") // Allow loopback and non-standard ports
+	t.Setenv("WEBHOOK_SECRET", "test_secret")
 
 	var targetCalled bool
 	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -1,27 +1,26 @@
-version: '3.8'
-
 services:
   app:
     image: ghcr.io/arumes31/vulfixx:latest
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       - DB_HOST=db
       - DB_USER=cveuser
-      - DB_PASSWORD=cvepass
+      - DB_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
       - DB_NAME=cvetracker
       - DB_PORT=5432
       - REDIS_URL=redis:6379
-      - SESSION_KEY=${SESSION_KEY:-supersecretkey-change-me-in-prod}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
+      - SESSION_KEY=${SESSION_KEY:?SESSION_KEY is required}
       - SMTP_HOST=${SMTP_HOST:-smtp.example.com}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USER=${SMTP_USER:-user@example.com}
       - SMTP_PASS=${SMTP_PASS:-password}
       - BASE_URL=${BASE_URL:-http://localhost:8080}
-      - CSRF_KEY=${CSRF_KEY:-MOCK_CSRF_KEY_32_BYTES_FOR_TEST!}
+      - CSRF_KEY=${CSRF_KEY:?CSRF_KEY is required}
       - ADMIN_EMAIL=${ADMIN_EMAIL}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - ADMIN_TOTP_SECRET=${ADMIN_TOTP_SECRET}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      - ADMIN_TOTP_SECRET=${ADMIN_TOTP_SECRET:?ADMIN_TOTP_SECRET is required}
       - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
       - LLM_ENDPOINT=${LLM_ENDPOINT:-http://ollama:11434}
       - LLM_MODEL=${LLM_MODEL:-phi3-vulfixx}
@@ -49,23 +48,29 @@ services:
       - db
       - redis
     restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
 
   db:
-    image: postgres:15-alpine
+    image: postgres:15-alpine@sha256:fe0737ba566a2c5b2a28f34433c0a423261900ec17b9bf7ad115e1aae7e57f1b
     environment:
       - POSTGRES_USER=cveuser
-      - POSTGRES_PASSWORD=cvepass
+      - POSTGRES_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
       - POSTGRES_DB=cvetracker
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - ./data/redis:/data
     restart: unless-stopped
