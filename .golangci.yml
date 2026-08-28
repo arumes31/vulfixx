@@ -1,5 +1,15 @@
-issues:
-  exclude-rules:
+version: "2"
+
+linters:
+  exclusions:
+    rules:
     - linters:
         - staticcheck
       text: "SA1019:.*csrf"
+    - linters:
+        - staticcheck
+      path: internal/auth/auth.go
+      text: "ST1005: error strings"
+    - linters:
+        - errcheck
+      text: "Error return value of `.*\\.Close` is not checked"

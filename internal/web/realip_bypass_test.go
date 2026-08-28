@@ -20,16 +20,8 @@ import (
 //
 // This exercises the real ProxyMiddleware rather than a stand-in.
 func TestProxyMiddlewareRejectsSpoofedForwardedFor(t *testing.T) {
-	original, had := os.LookupEnv("TRUSTED_PROXIES")
-	t.Cleanup(func() {
-		if had {
-			os.Setenv("TRUSTED_PROXIES", original)
-		} else {
-			os.Unsetenv("TRUSTED_PROXIES")
-		}
-	})
 	// Empty means "trust loopback only", the default deployment posture.
-	os.Setenv("TRUSTED_PROXIES", "")
+	t.Setenv("TRUSTED_PROXIES", "")
 
 	app := &App{}
 

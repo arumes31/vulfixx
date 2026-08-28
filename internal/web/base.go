@@ -262,7 +262,7 @@ func (a *App) RenderTemplate(w http.ResponseWriter, r *http.Request, name string
 	if data != nil {
 		v := reflect.ValueOf(data)
 		isNilPtr := false
-		if v.Kind() == reflect.Ptr {
+		if v.Kind() == reflect.Pointer {
 			if v.IsNil() {
 				isNilPtr = true
 			} else {

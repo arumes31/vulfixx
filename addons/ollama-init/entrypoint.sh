@@ -4,7 +4,7 @@
 /bin/ollama serve &
 
 # Wait for Ollama to be ready
-until curl -s http://localhost:11434/api/tags > /dev/null; do
+until ollama list > /dev/null 2>&1; do
   echo "Waiting for Ollama to start..."
   sleep 2
 done

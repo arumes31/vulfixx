@@ -1,7 +1,6 @@
 package models
 
 import (
-	"os"
 	"sync"
 	"testing"
 )
@@ -10,15 +9,7 @@ import (
 // whatever was there before, including the unset case.
 func setSessionKey(t *testing.T, key string) {
 	t.Helper()
-	original, had := os.LookupEnv("SESSION_KEY")
-	t.Cleanup(func() {
-		if had {
-			os.Setenv("SESSION_KEY", original)
-		} else {
-			os.Unsetenv("SESSION_KEY")
-		}
-	})
-	os.Setenv("SESSION_KEY", key)
+	t.Setenv("SESSION_KEY", key)
 }
 
 func TestGetCipherCachesPerKey(t *testing.T) {
@@ -38,7 +29,7 @@ func TestGetCipherCachesPerKey(t *testing.T) {
 
 	// Rotating the key must invalidate the cache rather than hand back a cipher
 	// derived from the old secret.
-	os.Setenv("SESSION_KEY", "cache-key-two")
+	t.Setenv("SESSION_KEY", "cache-key-two")
 	third, err := getCipher()
 	if err != nil {
 		t.Fatalf("getCipher after rotation: %v", err)
@@ -58,12 +49,12 @@ func TestWebhookCipherRespectsKeyRotation(t *testing.T) {
 		t.Fatalf("EncryptWebhook: %v", err)
 	}
 
-	os.Setenv("SESSION_KEY", "rotation-key-two")
+	t.Setenv("SESSION_KEY", "rotation-key-two")
 	if _, err := DecryptWebhook(ciphertext); err == nil {
 		t.Error("expected decryption to fail after the key was rotated")
 	}
 
-	os.Setenv("SESSION_KEY", "rotation-key-one")
+	t.Setenv("SESSION_KEY", "rotation-key-one")
 	got, err := DecryptWebhook(ciphertext)
 	if err != nil {
 		t.Fatalf("DecryptWebhook with the original key: %v", err)
