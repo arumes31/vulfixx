@@ -1,4 +1,4 @@
-FROM ollama/ollama:0.32.3@sha256:ec24bcaa2a810eb74171ce7c517813ef4821ed678988845e8d76cf62467036d4
+FROM ollama/ollama:0.34.0@sha256:684d8674b4315fa18f4f0e973a118ec2652ed96f67563277839985175858e0ba
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
