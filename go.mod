@@ -1,6 +1,6 @@
 module cve-tracker
 
-go 1.27.0
+go 1.27.2
 
 require (
 	filippo.io/csrf v0.2.1
@@ -71,7 +71,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.46.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/net v0.58.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	google.golang.org/api v0.285.0 // indirect
