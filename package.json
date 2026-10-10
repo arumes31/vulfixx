@@ -8,6 +8,11 @@
     "postcss": "^8.5.23",
     "tailwindcss": "^4.3.3"
   },
+  "overrides": {
+    "@tailwindcss/cli": {
+      "@parcel/watcher": "2.6.0"
+    }
+  },
   "scripts": {
     "build": "tailwindcss -i ./input.css -o ./static/css/output.css",
     "watch": "tailwindcss -i ./input.css -o ./static/css/output.css --watch"
