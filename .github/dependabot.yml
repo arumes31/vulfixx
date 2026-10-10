@@ -20,6 +20,15 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+    groups:
+      codeql-version-updates:
+        applies-to: version-updates
+        patterns:
+          - "github/codeql-action*"
+      codeql-security-updates:
+        applies-to: security-updates
+        patterns:
+          - "github/codeql-action*"
 
   - package-ecosystem: "docker"
     directory: "/"
