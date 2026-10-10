@@ -220,6 +220,13 @@ Vulfixx is hardened with enterprise-grade system improvements designed for high-
 > **Security Warning:** The default seed values for `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and `ADMIN_TOTP_SECRET` are insecure and must be changed before deploying to production. Please generate a strong password and a unique base32 TOTP secret. It is highly recommended to rotate the seeded admin credentials and remove defaults from any production configuration.
 ## Development
 
+### Dependency override
+
+`package.json` pins Tailwind CLI's `@parcel/watcher` dependency to 2.6.0. This
+compatible parent update removes micromatch/braces, including the unpatched
+GHSA-vfj7-8cjw-p6xm. Remove the override once Tailwind CLI selects a safe watcher
+release itself; verify both CSS builds and watch-mode rebuilds when changing it.
+
 ### Running Tests
 
 To run the Go test suite:

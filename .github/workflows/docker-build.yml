@@ -43,7 +43,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     container:
-      image: golang:1.27-alpine@sha256:4c9fe60190a2a3350ddc51de80d0224b8a6698d12bdfc999fee45ea9d6c46dbc
+      image: golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d
     env:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -64,13 +64,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     container:
-      image: golang:1.27-alpine@sha256:4c9fe60190a2a3350ddc51de80d0224b8a6698d12bdfc999fee45ea9d6c46dbc
+      image: golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Run golangci-lint
         run: |
-          go install -v github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+          go install -v github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
           GOFLAGS="-buildvcs=false" $(go env GOPATH)/bin/golangci-lint run --timeout=10m
 
   gsec:
@@ -78,12 +78,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     container:
-      image: golang:1.27-alpine@sha256:4c9fe60190a2a3350ddc51de80d0224b8a6698d12bdfc999fee45ea9d6c46dbc
+      image: golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Gosec
-        run: apk add --no-cache git && go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0
+        run: apk add --no-cache git && go install github.com/securego/gosec/v2/cmd/gosec@7b1b5cebe007d62fb58eacb90fc571112939ec30
       - name: Run Gosec Security Scanner
         run: gosec ./...
 
@@ -92,7 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     container:
-      image: golang:1.27-alpine@sha256:4c9fe60190a2a3350ddc51de80d0224b8a6698d12bdfc999fee45ea9d6c46dbc
+      image: golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -106,14 +106,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     container:
-      image: golang:1.27-alpine@sha256:4c9fe60190a2a3350ddc51de80d0224b8a6698d12bdfc999fee45ea9d6c46dbc
+      image: golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install OSV Scanner
-        run: apk add --no-cache git && go install github.com/google/osv-scanner/cmd/osv-scanner@v1.9.2
+        run: apk add --no-cache git && go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.6.0
       - name: Run OSV Scanner
-        run: osv-scanner -r .
+        run: osv-scanner scan source -r .
 
   build:
     name: Build & Push Image
