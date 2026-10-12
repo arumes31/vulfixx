@@ -22,7 +22,7 @@ require (
 	github.com/rs/cors v1.11.1
 	github.com/ulule/limiter/v3 v3.11.2
 	golang.org/x/crypto v0.57.0
-	golang.org/x/sync v0.23.0
+	golang.org/x/sync v0.24.0
 	golang.org/x/time v0.16.0
 	google.golang.org/genai v1.72.0
 	google.golang.org/grpc v1.83.2
