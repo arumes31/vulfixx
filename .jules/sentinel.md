@@ -7,3 +7,8 @@
 **Vulnerability:** The application was vulnerable to IP spoofing because it trusted the first (leftmost) IP in the `X-Forwarded-For` header.
 **Learning:** The leftmost IP is provided by the client and can easily be spoofed. The correct approach is to parse from right to left, stopping at the first untrusted proxy.
 **Prevention:** Always iterate `X-Forwarded-For` from right to left and only trust IP addresses provided by known, trusted proxies.
+
+## 2026-07-28 - Audit of XSS vulnerabilities in WebGUI
+**Vulnerability:** Unsafe flat rendering using `text/template` utility instead of `html/template` can lead to explicit text rendering. Forceful cast of user-supplied string parameters into `template.HTML(...)`, `template.JS(...)`, or `template.CSS(...)` can lead to XSS.
+**Learning:** Use `html/template` which prevents context escaping issues and provides context-aware escaping. Ensure any usage of `template.HTML(...)`, such as in rich email templates, goes through an approved HTML scrubbing library like `bluemonday` immediately before casting to ensure it's sanitized.
+**Prevention:** Replace any `text/template` usage with `html/template`. Ban the use of `template.HTML`, `template.JS`, `template.CSS` without strict inputs sanitation immediately prior to it.
