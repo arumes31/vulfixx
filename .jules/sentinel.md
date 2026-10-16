@@ -7,3 +7,7 @@
 **Vulnerability:** The application was vulnerable to IP spoofing because it trusted the first (leftmost) IP in the `X-Forwarded-For` header.
 **Learning:** The leftmost IP is provided by the client and can easily be spoofed. The correct approach is to parse from right to left, stopping at the first untrusted proxy.
 **Prevention:** Always iterate `X-Forwarded-For` from right to left and only trust IP addresses provided by known, trusted proxies.
+## 2026-10-16 - Audit WebGUI layout for XSS vulnerabilities
+**Vulnerability:** None found in active code. The codebase was already securely utilizing `html/template` instead of `text/template`, and the only `template.HTML` usage was appropriately preceded by `bluemonday` sanitization. However, outdated comments still referenced `text/template`, which could mislead developers.
+**Learning:** Outdated comments referencing unsafe practices can inadvertently encourage their adoption or cause confusion about the established security standards.
+**Prevention:** Regularly audit comments and documentation to ensure they align with the current secure implementation and organizational guidelines.
