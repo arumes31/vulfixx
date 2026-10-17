@@ -969,3 +969,46 @@ func TestDurationUntilUTCMidnight(t *testing.T) {
 		t.Errorf("durationUntilUTCMidnight = %v, want (0, 24h]", d)
 	}
 }
+
+func TestGoogleFailoverQuotaExceeded(t *testing.T) {
+	f, ok := googleFailoverFor("gemini35flash")
+	if !ok {
+		t.Fatal("expected gemini35flash to resolve")
+	}
+	tests := []struct {
+		name       string
+		setupEnv   func()
+		mockRPD    func(context.Context, string) (int64, error)
+		wantResult bool
+	}{
+		{
+			name:       "fails open on redis error",
+			setupEnv:   func() {},
+			mockRPD:    func(context.Context, string) (int64, error) { return 0, errors.New("redis error") },
+			wantResult: false,
+		},
+		{
+			name:       "blocks when quota exceeded",
+			setupEnv:   func() {},
+			mockRPD:    func(context.Context, string) (int64, error) { return 9999, nil },
+			wantResult: true,
+		},
+		{
+			name:       "disabled never blocks and never increments",
+			setupEnv:   func() { t.Setenv("GEMINI35FLASH_RPD", "0") },
+			mockRPD:    func(context.Context, string) (int64, error) { return 0, nil },
+			wantResult: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.setupEnv()
+			old := googleFailoverRPDIncr
+			defer func() { googleFailoverRPDIncr = old }()
+			googleFailoverRPDIncr = tc.mockRPD
+			if got := googleFailoverQuotaExceeded(context.Background(), f); got != tc.wantResult {
+				t.Errorf("expected %v, got %v", tc.wantResult, got)
+			}
+		})
+	}
+}
