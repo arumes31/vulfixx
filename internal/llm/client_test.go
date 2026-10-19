@@ -969,3 +969,56 @@ func TestDurationUntilUTCMidnight(t *testing.T) {
 		t.Errorf("durationUntilUTCMidnight = %v, want (0, 24h]", d)
 	}
 }
+
+func TestGoogleFailoverQuotaExceeded(t *testing.T) {
+	orig := googleFailoverRPDIncr
+	t.Cleanup(func() { googleFailoverRPDIncr = orig })
+
+	tests := []struct {
+		name       string
+		f          googleFailover
+		mockCount  int64
+		mockErr    error
+		wantBlocks bool
+	}{
+		{
+			name:       "limit <= 0 allows",
+			f:          googleFailover{defRPD: 0},
+			wantBlocks: false,
+		},
+		{
+			name:       "redis error allows",
+			f:          googleFailover{model: "gemini-test", defRPD: 10, redisKey: "test"},
+			mockErr:    errors.New("redis err"),
+			wantBlocks: false,
+		},
+		{
+			name:       "under limit allows",
+			f:          googleFailover{model: "gemini-test", defRPD: 10, redisKey: "test"},
+			mockCount:  5,
+			wantBlocks: false,
+		},
+		{
+			name:       "at limit allows",
+			f:          googleFailover{model: "gemini-test", defRPD: 10, redisKey: "test"},
+			mockCount:  10,
+			wantBlocks: false,
+		},
+		{
+			name:       "over limit blocks",
+			f:          googleFailover{model: "gemini-test", defRPD: 10, redisKey: "test"},
+			mockCount:  11,
+			wantBlocks: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			googleFailoverRPDIncr = func(context.Context, string) (int64, error) { return tc.mockCount, tc.mockErr }
+			got := googleFailoverQuotaExceeded(context.Background(), tc.f)
+			if got != tc.wantBlocks {
+				t.Errorf("got blocked = %v, want %v", got, tc.wantBlocks)
+			}
+		})
+	}
+}
