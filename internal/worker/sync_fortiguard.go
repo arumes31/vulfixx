@@ -646,10 +646,10 @@ func (w *Worker) updateCVEsWithAdvisory(ctx context.Context, advisory *FortiGuar
 		cve.VendorAdvisories[models.VendorFortiGuard] = fortiAdvisory
 
 		// Enrich AffectedProducts with Fortinet products, skipping entries that
-		// already exist so repeated syncs stay idempotent.
-		existingProducts := make(map[string]bool, len(cve.AffectedProducts))
+		// already exist so repeated syncs stay idempotent. Using struct as map key instead of fmt.Sprintf eliminates reflection and allocation overhead.
+		existingProducts := make(map[models.AffectedProduct]bool, len(cve.AffectedProducts))
 		for _, p := range cve.AffectedProducts {
-			existingProducts[fmt.Sprintf("%s|%s|%s|%t", p.Vendor, p.Product, p.Version, p.Unconfirmed)] = true
+			existingProducts[p] = true
 		}
 		for _, fgProduct := range advisory.AffectedProducts {
 			candidate := models.AffectedProduct{
@@ -658,11 +658,11 @@ func (w *Worker) updateCVEsWithAdvisory(ctx context.Context, advisory *FortiGuar
 				Version:     fgProduct.VersionRange,
 				Unconfirmed: false,
 			}
-			key := fmt.Sprintf("%s|%s|%s|%t", candidate.Vendor, candidate.Product, candidate.Version, candidate.Unconfirmed)
-			if existingProducts[key] {
+
+			if existingProducts[candidate] {
 				continue
 			}
-			existingProducts[key] = true
+			existingProducts[candidate] = true
 			cve.AffectedProducts = append(cve.AffectedProducts, candidate)
 		}
 
