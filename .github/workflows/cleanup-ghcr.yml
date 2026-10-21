@@ -37,6 +37,7 @@ jobs:
           RUST_LOG: container_retention_policy=INFO
 
   cleanup-workflow-runs:
+    if: github.ref == 'refs/heads/main' && !inputs.dry_run
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
