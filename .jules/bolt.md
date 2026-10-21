@@ -4,3 +4,7 @@
 ## 2024-06-27 - Pre-compile regular expressions
 **Learning:** Compiling regex in tight loops or frequently called functions is a performance anti-pattern. Pre-compiling them at the package level saves CPU overhead.
 **Action:** Always declare regular expressions as package-level variables with `regexp.MustCompile` instead of inside loops.
+
+## 2026-10-20 - Struct as Map Key to Optimize String Concatenation
+**Learning:** Using a struct with comparable fields as a map key is significantly more performant than constructing string keys via fmt.Sprintf or string concatenation, as it eliminates reflection and heap allocation overhead in tight loops.
+**Action:** When deduplicating compound data in Go, always prefer using the struct directly as the map key instead of formatting a string key.
