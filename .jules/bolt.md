@@ -4,3 +4,6 @@
 ## 2024-06-27 - Pre-compile regular expressions
 **Learning:** Compiling regex in tight loops or frequently called functions is a performance anti-pattern. Pre-compiling them at the package level saves CPU overhead.
 **Action:** Always declare regular expressions as package-level variables with `regexp.MustCompile` instead of inside loops.
+## 2026-10-19 - Use struct as map key for deduplication to eliminate fmt.Sprintf overhead
+**Learning:** When deduplicating compound data in Go (e.g., using a map to track seen items), using a struct with comparable fields as the map key is far more efficient than constructing string keys via `fmt.Sprintf` or concatenation. This eliminates reflection and heap allocation overhead in tight loops.
+**Action:** Always prefer using a small, comparable struct as a map key instead of allocating new strings via `fmt.Sprintf` for tracking uniqueness.
