@@ -60,7 +60,7 @@ func TestResendVerificationInlineHandler(t *testing.T) {
 				"email": "test@example.com",
 			},
 			setupRedis: func() {
-				mr.Set("resend_limit:127.0.0.1", "5")
+				_ = mr.Set("resend_limit:127.0.0.1", "5")
 			},
 			wantBody: "If this email is registered and unverified, a new verification link has been sent.",
 		},
