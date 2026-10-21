@@ -445,3 +445,59 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 		}
 	})
 }
+
+func TestResendVerificationInlineHandler(t *testing.T) {
+	mock, err := db.SetupTestDB()
+	if err != nil {
+		t.Fatalf("failed to setup mock db: %v", err)
+	}
+	defer mock.Close()
+	app := setupTestApp(t, mock)
+
+	email := "test@example.com"
+
+	tests := []struct {
+		name       string
+		method     string
+		formEmail  string
+		wantStatus int
+	}{
+		{
+			name:       "invalid method",
+			method:     http.MethodGet,
+			formEmail:  email,
+			wantStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:       "missing email",
+			method:     http.MethodPost,
+			formEmail:  "",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "valid email",
+			method:     http.MethodPost,
+			formEmail:  email,
+			wantStatus: http.StatusOK,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			form := url.Values{}
+			if tc.formEmail != "" {
+				form.Add("email", tc.formEmail)
+			}
+			req := httptest.NewRequest(tc.method, "/resend-verification-inline", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("X-Requested-With", "XMLHttpRequest") // Ensure SendResponse returns JSON
+			w := httptest.NewRecorder()
+
+			app.ResendVerificationInlineHandler(w, req)
+
+			if w.Code != tc.wantStatus {
+				t.Errorf("got status %d, want %d", w.Code, tc.wantStatus)
+			}
+		})
+	}
+}
