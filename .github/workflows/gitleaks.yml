@@ -9,6 +9,13 @@ on:
   schedule:
     - cron: '0 0 * * *' # Run daily to catch any leaks in historical commits
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   scan:
     name: Secret Scanning
@@ -19,6 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0 # Fetch all history for historical scan
 
       - name: Gitleaks Scan
