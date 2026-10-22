@@ -19,7 +19,6 @@ import (
 
 	"github.com/getsentry/sentry-go"
 	"github.com/hibiken/asynq"
-	"github.com/pquerna/otp/totp"
 )
 
 // LoginHandler handles user authentication.
@@ -38,8 +37,8 @@ import (
 func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	clientIP := a.GetClientIP(r)
 	if r.Method == http.MethodGet {
-		rlKeyGet := "login_failures:" + clientIP
-		if count, err := a.Redis.Get(r.Context(), rlKeyGet).Int(); err == nil && count >= 5 {
+		rlKeyGet := loginIPFailureKey(clientIP)
+		if count, err := a.Redis.Get(r.Context(), rlKeyGet).Int(); err == nil && count >= loginIPMaxFailures {
 			a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Too many attempts"})
 			return
 		}
@@ -105,10 +104,16 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Verify rate limit before checking TOTP
-		rlKey := "login_failures:" + clientIP
-		if count, err := a.Redis.Get(r.Context(), rlKey).Int(); err == nil && count >= 5 {
-			a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Too many attempts"})
+		// Verify per-network and per-account rate limits before checking TOTP.
+		// Fail closed if the counters cannot be read.
+		rlKey := loginIPFailureKey(clientIP)
+		acctKey := totpAccountFailureKey(preAuthUserID)
+		if limited, err := a.limitReached(r.Context(), []string{rlKey, acctKey}, []int{loginIPMaxFailures, totpAccountMaxFailures}); limited {
+			msg := "Too many attempts"
+			if err != nil {
+				msg = "Login is temporarily unavailable. Please try again later."
+			}
+			a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": msg})
 			return
 		}
 
@@ -134,12 +139,32 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if !totp.Validate(totpCode, secret) {
-			pipe := a.Redis.Pipeline()
-			pipe.Incr(r.Context(), rlKey)
-			pipe.Expire(r.Context(), rlKey, 15*time.Minute)
-			if _, err := pipe.Exec(r.Context()); err != nil {
-				log.Printf("Redis pipeline error for %s: %v", rlKey, err) // #nosec G706 // #nosec G706
+		// consumeTOTP also rejects replays of an already-used (or older) code.
+		valid, err := a.consumeTOTP(r.Context(), preAuthUserID, totpCode, secret)
+		if err != nil {
+			a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Login is temporarily unavailable. Please try again later."})
+			return
+		}
+		if !valid {
+			a.recordFailures(r.Context(), loginFailureWindow, rlKey, acctKey)
+
+			// Bound guesses per pre-auth session: after preAuthMaxAttempts the
+			// password has to be entered again.
+			attempts, _ := getSessionInt(session.Values["pre_auth_attempts"])
+			attempts++
+			if attempts >= preAuthMaxAttempts {
+				delete(session.Values, "pre_auth_user_id")
+				delete(session.Values, "pre_auth_ts")
+				delete(session.Values, "pre_auth_attempts")
+				if err := session.Save(r, w); err != nil {
+					log.Printf("Error saving session: %v", err)
+				}
+				a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Too many invalid codes. Please sign in again."})
+				return
+			}
+			session.Values["pre_auth_attempts"] = attempts
+			if err := session.Save(r, w); err != nil {
+				log.Printf("Error saving session: %v", err)
 			}
 			a.RenderTemplate(w, r, "login.html", map[string]interface{}{
 				"Error":       "Invalid TOTP code",
@@ -147,8 +172,9 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		// Clear rate limit on success
-		a.Redis.Del(r.Context(), rlKey)
+		// Clear the account counter on success. The per-network counter is left
+		// to expire so a successful login cannot be used to reset a shared budget.
+		a.clearFailures(r.Context(), acctKey)
 
 		// Regenerate session to prevent session fixation. preAuthUserID was read from
 		// the old session earlier; regenerateSession clears Values, which is what we
@@ -181,23 +207,24 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rlKeyLogin := "login_failures:" + clientIP
-	if count, err := a.Redis.Get(r.Context(), rlKeyLogin).Int(); err == nil && count >= 5 {
-		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Too many attempts"})
+	rlKeyLogin := loginIPFailureKey(clientIP)
+	acctKeyLogin := loginAccountFailureKey(email)
+	if limited, err := a.limitReached(r.Context(), []string{rlKeyLogin, acctKeyLogin}, []int{loginIPMaxFailures, loginAccountMaxFailures}); limited {
+		msg := "Too many attempts"
+		if err != nil {
+			msg = "Login is temporarily unavailable. Please try again later."
+		}
+		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": msg})
 		return
 	}
 
 	user, err := auth.Login(r.Context(), email, password)
 	if err != nil {
-		pipe := a.Redis.Pipeline()
-		pipe.Incr(r.Context(), rlKeyLogin)
-		pipe.Expire(r.Context(), rlKeyLogin, 15*time.Minute)
-		if _, err := pipe.Exec(r.Context()); err != nil {
-			log.Printf("Redis pipeline error for %s: %v", rlKeyLogin, err) // #nosec G706
-		}
+		a.recordFailures(r.Context(), loginFailureWindow, rlKeyLogin, acctKeyLogin)
 		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Error": "Invalid credentials"})
 		return
 	}
+	a.clearFailures(r.Context(), acctKeyLogin)
 
 	// Block login for users who have not verified their email. Instead of
 	// establishing a session, re-render the login page with a banner that offers
@@ -271,13 +298,19 @@ func (a *App) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// IP-based rate limit for registration: 5 attempts per hour
+	// IP-based rate limit for registration. Every POST counts, including failed
+	// captcha or validation attempts, so guessing the captcha is not free.
 	clientIP := a.GetClientIP(r)
-	rlKey := "reg_limit:" + clientIP
-	if count, err := a.Redis.Get(r.Context(), rlKey).Int(); err == nil && count >= 5 {
-		a.RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Too many registration attempts. Please try again in an hour."})
+	rlKey := "reg_limit:" + rateLimitSubject(clientIP)
+	if limited, err := a.limitReached(r.Context(), []string{rlKey}, []int{regMaxAttempts}); limited {
+		msg := "Too many registration attempts. Please try again in an hour."
+		if err != nil {
+			msg = "Registration is temporarily unavailable. Please try again later."
+		}
+		a.RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": msg})
 		return
 	}
+	a.recordFailures(r.Context(), time.Hour, rlKey)
 
 	if err := r.ParseForm(); err != nil {
 		a.RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Invalid form"})
@@ -320,14 +353,6 @@ func (a *App) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		a.RenderTemplate(w, r, "register.html", map[string]interface{}{"Error": "Registration failed"})
 		return
-	}
-
-	// Increment IP rate limit
-	pipe := a.Redis.Pipeline()
-	pipe.Incr(r.Context(), rlKey)
-	pipe.Expire(r.Context(), rlKey, 1*time.Hour)
-	if _, err := pipe.Exec(r.Context()); err != nil {
-		log.Printf("Redis pipeline error for %s: %v", rlKey, err) // #nosec G706
 	}
 
 	// Push email verification payload to redis queue
@@ -558,6 +583,9 @@ func (a *App) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+	if userID, ok := getSessionInt(session.Values["user_id"]); ok {
+		a.untrackSession(r.Context(), userID, session.ID)
+	}
 	session.Options.MaxAge = -1
 	if err := session.Save(r, w); err != nil {
 		log.Printf("Error saving session: %v", err)
@@ -597,6 +625,8 @@ func (a *App) ConfirmEmailChangeHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if confirmed {
+		// The login identifier changed: sign out every existing session.
+		a.RevokeUserSessions(r.Context(), confirmedUserID, "")
 		a.LogActivity(r.Context(), confirmedUserID, "email_change", "Successfully changed email", a.GetClientIP(r), r.UserAgent())
 		a.RenderTemplate(w, r, "login.html", map[string]interface{}{"Message": "Email changed successfully! Please login with your new email."})
 	} else {
@@ -754,5 +784,21 @@ func (a *App) ErrorReportHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("FRONTEND ERROR: [%s] %s at %s", errType, msg, url)
+
+	// This endpoint is unauthenticated, so cap how many reports per minute are
+	// forwarded to Sentry overall (not just per IP/fingerprint) to prevent
+	// quota exhaustion and noise from rotating clients.
+	if a.Redis != nil {
+		count, err := a.Redis.Incr(r.Context(), "err_sentry_global").Result()
+		if err != nil {
+			return
+		}
+		if count == 1 {
+			_, _ = a.Redis.Expire(r.Context(), "err_sentry_global", time.Minute).Result()
+		}
+		if count > frontendErrorSentryPerMinute {
+			return
+		}
+	}
 	sentry.CaptureMessage(fmt.Sprintf("Frontend Error: %s", msg))
 }

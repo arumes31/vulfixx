@@ -3,8 +3,10 @@ package web
 import (
 	"context"
 	"cve-tracker/internal/db"
+	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -80,7 +82,7 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 		}
 		respCap.Body.Close()
 
-		if err := app.Redis.Set(context.Background(), "reg_limit:127.0.0.1", 5, 1*time.Hour).Err(); err != nil {
+		if err := app.Redis.Set(context.Background(), "reg_limit:127.0.0.1", regMaxAttempts, 1*time.Hour).Err(); err != nil {
 			t.Fatalf("failed to set redis reg_limit: %v", err)
 		}
 
@@ -97,6 +99,10 @@ func TestAuthFlow_FullLifecycle(t *testing.T) {
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("expected status OK (rendering template with error), got %d", resp.StatusCode)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		if !strings.Contains(string(body), "Too many registration attempts") {
+			t.Errorf("expected registration rate-limit error")
 		}
 	})
 
