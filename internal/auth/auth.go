@@ -194,7 +194,18 @@ func Login(ctx context.Context, email, password string) (*models.User, error) {
 
 // InitAdmin initializes an admin user from environment variables.
 // It requires non-empty email, password, and totpSecret.
+//
+// The password and TOTP secret are only applied when the admin account is
+// created. On later starts an existing account keeps the credentials it has,
+// so a password rotated in the UI is not silently reverted. Use
+// InitAdminWithReset (ADMIN_FORCE_RESET=true) to deliberately overwrite them.
 func InitAdmin(ctx context.Context, email, password, totpSecret string) error {
+	return InitAdminWithReset(ctx, email, password, totpSecret, false)
+}
+
+// InitAdminWithReset is InitAdmin with an explicit opt-in to overwrite the
+// password hash and TOTP secret of an existing admin account.
+func InitAdminWithReset(ctx context.Context, email, password, totpSecret string, forceReset bool) error {
 	if email == "" || password == "" {
 		return nil // No admin config provided, skip seeding
 	}
@@ -213,13 +224,31 @@ func InitAdmin(ctx context.Context, email, password, totpSecret string) error {
 		return err
 	}
 
+	if forceReset {
+		slog.Warn("ADMIN_FORCE_RESET is set: overwriting admin password and TOTP secret from environment")
+		_, err = db.Pool.Exec(ctx, `
+			INSERT INTO users (email, password_hash, is_email_verified, is_admin, totp_secret, is_totp_enabled, rss_feed_token)
+			VALUES ($1, $2, TRUE, TRUE, $3, TRUE, $4)
+			ON CONFLICT (email) DO UPDATE SET
+				password_hash = EXCLUDED.password_hash,
+				is_admin = TRUE,
+				totp_secret = EXCLUDED.totp_secret,
+				is_totp_enabled = TRUE
+		`, email, hashedPassword, totpSecret, rssToken)
+		return err
+	}
+
+	// Seed only: keep the existing password and an already-enrolled TOTP
+	// secret, but still guarantee the account is an admin with 2FA enforced.
 	_, err = db.Pool.Exec(ctx, `
 		INSERT INTO users (email, password_hash, is_email_verified, is_admin, totp_secret, is_totp_enabled, rss_feed_token)
 		VALUES ($1, $2, TRUE, TRUE, $3, TRUE, $4)
 		ON CONFLICT (email) DO UPDATE SET
-			password_hash = EXCLUDED.password_hash,
 			is_admin = TRUE,
-			totp_secret = EXCLUDED.totp_secret,
+			totp_secret = CASE
+				WHEN users.is_totp_enabled AND COALESCE(users.totp_secret, '') <> '' THEN users.totp_secret
+				ELSE EXCLUDED.totp_secret
+			END,
 			is_totp_enabled = TRUE
 	`, email, hashedPassword, totpSecret, rssToken)
 
