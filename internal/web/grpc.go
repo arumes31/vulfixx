@@ -60,8 +60,11 @@ func (s *CVEServiceServerImpl) GetCVE(ctx context.Context, req *proto.CVERequest
 }
 
 // StartGRPCServer initializes and runs a secure or plaintext gRPC server.
-func StartGRPCServer(pool db.DBPool, port string, certFile, keyFile string) (*grpc.Server, error) {
-	lis, err := net.Listen("tcp", ":"+port)
+// bindAddr selects the listen interface; the default configuration binds to
+// loopback because the service is unauthenticated. An empty bindAddr listens
+// on all interfaces.
+func StartGRPCServer(pool db.DBPool, bindAddr, port string, certFile, keyFile string) (*grpc.Server, error) {
+	lis, err := net.Listen("tcp", net.JoinHostPort(bindAddr, port))
 	if err != nil {
 		return nil, fmt.Errorf("failed to listen on gRPC port %s: %w", port, err)
 	}

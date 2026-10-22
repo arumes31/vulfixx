@@ -10,13 +10,14 @@ services:
       - DB_NAME=cvetracker
       - DB_PORT=5432
       - REDIS_URL=redis:6379
-      - APP_ENV=${APP_ENV:-development}
+      # Production is the default; set APP_ENV=development explicitly for local work.
+      - APP_ENV=${APP_ENV:-production}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
       - SESSION_KEY=${SESSION_KEY:?SESSION_KEY is required}
       - SMTP_HOST=${SMTP_HOST:-smtp.example.com}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USER=${SMTP_USER:-user@example.com}
-      - SMTP_PASS=${SMTP_PASS:-password}
+      - SMTP_PASS=${SMTP_PASS:?SMTP_PASS is required}
       - BASE_URL=${BASE_URL:-http://localhost:8080}
       - CSRF_KEY=${CSRF_KEY:?CSRF_KEY is required}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
@@ -44,7 +45,7 @@ services:
       - MISTRAL_MODEL=${MISTRAL_MODEL:-mistral-small-latest}
       - MISTRAL_ENDPOINT=${MISTRAL_ENDPOINT:-https://api.mistral.ai/v1}
       - TRUSTED_PROXIES=${TRUSTED_PROXIES}
-      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:?WEBHOOK_SECRET is required}
     depends_on:
       - db
       - redis
@@ -86,7 +87,6 @@ services:
       - OLLAMA_LOAD_TIMEOUT=600s
       - OLLAMA_NUM_PARALLEL=4
       - OLLAMA_MAX_LOADED_MODELS=1
-      - OLLAMA_DEBUG=1
     restart: unless-stopped
 
 volumes:

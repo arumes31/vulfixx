@@ -43,6 +43,7 @@ type Config struct {
 	AdminEmail        string
 	AdminPassword     string
 	AdminTOTPSecret   string
+	AdminForceReset   bool
 	SecureCookie      bool
 	AppPort           string
 	SentryDSN         string
@@ -62,6 +63,7 @@ type Config struct {
 	OpenAIModel       string
 	OpenAIEndpoint    string
 	GRPCPort          string
+	GRPCBindAddr      string
 	GRPCCertFile      string
 	GRPCKeyFile       string
 	WebhookSecret     string
@@ -90,6 +92,7 @@ func LoadConfig() error {
 		AdminEmail:        getEnv("ADMIN_EMAIL", ""),
 		AdminPassword:     decryptIfEncrypted(getEnv("ADMIN_PASSWORD", "")),
 		AdminTOTPSecret:   decryptIfEncrypted(getEnv("ADMIN_TOTP_SECRET", "")),
+		AdminForceReset:   getEnv("ADMIN_FORCE_RESET", "false") == "true",
 		AppPort:           getEnv("PORT", "8080"),
 		SentryDSN:         decryptIfEncrypted(getEnv("SENTRY_DSN", "")),
 		GeminiAPIKey:      decryptIfEncrypted(getEnv("GEMINI_API_KEY", "")),
@@ -108,8 +111,9 @@ func LoadConfig() error {
 		MistralEndpoint:  getEnv("MISTRAL_ENDPOINT", "https://api.mistral.ai/v1"),
 		OpenAIAPIKey:     decryptIfEncrypted(getEnv("OPENAI_API_KEY", "")),
 		OpenAIModel:      getEnv("OPENAI_MODEL", "kilo-auto/free"),
-		OpenAIEndpoint:   getEnv("OPENAI_ENDPOINT", "http://100.115.58.99:18080/workspace/sys-kilo/v1"),
+		OpenAIEndpoint:   getEnv("OPENAI_ENDPOINT", ""),
 		GRPCPort:         getEnv("GRPC_PORT", "9091"),
+		GRPCBindAddr:     getEnv("GRPC_BIND_ADDR", "127.0.0.1"),
 		GRPCCertFile:     getEnv("GRPC_CERT_FILE", ""),
 		GRPCKeyFile:      getEnv("GRPC_KEY_FILE", ""),
 		WebhookSecret:    getEnv("WEBHOOK_SECRET", ""),

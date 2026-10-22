@@ -15,7 +15,7 @@ services:
       - SMTP_HOST=${SMTP_HOST:-smtp.example.com}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USER=${SMTP_USER:-user@example.com}
-      - SMTP_PASS=${SMTP_PASS:-password}
+      - SMTP_PASS=${SMTP_PASS:?SMTP_PASS is required}
       - BASE_URL=${BASE_URL:-http://localhost:8080}
       - CSRF_KEY=${CSRF_KEY:?CSRF_KEY is required}
       - ADMIN_EMAIL=${ADMIN_EMAIL}
@@ -84,7 +84,6 @@ services:
       - OLLAMA_LOAD_TIMEOUT=600s
       - OLLAMA_NUM_PARALLEL=4
       - OLLAMA_MAX_LOADED_MODELS=1
-      - OLLAMA_DEBUG=1
     restart: unless-stopped
 
 volumes:
