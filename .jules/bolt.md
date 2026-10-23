@@ -4,3 +4,6 @@
 ## 2024-06-27 - Pre-compile regular expressions
 **Learning:** Compiling regex in tight loops or frequently called functions is a performance anti-pattern. Pre-compiling them at the package level saves CPU overhead.
 **Action:** Always declare regular expressions as package-level variables with `regexp.MustCompile` instead of inside loops.
+## 2025-01-23 - Struct as Map Key instead of fmt.Sprintf
+**Learning:** When deduplicating compound data in Go (e.g., tracking seen products by vendor, product, version, and unconfirmed status in a map), constructing a string key using `fmt.Sprintf("%s|%s|%s|%t", ...)` inside a loop introduces significant heap allocation and reflection overhead.
+**Action:** Use a struct with comparable fields as the map key (e.g., `map[ProductKey]bool`) instead of constructing string keys via `fmt.Sprintf` or concatenation. This eliminates reflection and heap allocation overhead in tight loops.
