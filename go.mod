@@ -8,7 +8,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.13.0
 	github.com/alicebob/miniredis/v2 v2.39.0
 	github.com/getsentry/sentry-go v0.49.0
-	github.com/go-chi/chi/v5 v5.3.2
+	github.com/go-chi/chi/v5 v5.4.0
 	github.com/go-playground/validator/v10 v10.30.5
 	github.com/gorilla/sessions v1.4.0
 	github.com/hibiken/asynq v0.26.0
