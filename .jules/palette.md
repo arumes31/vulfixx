@@ -20,3 +20,6 @@
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+## 2024-10-24 - Add ARIA Labels to Select Elements
+**Learning:** Select elements without explicit `<label>` tags (like the team switcher and status dropdowns) fail accessibility tests for screen readers because they lack context.
+**Action:** Always add `aria-label` to standalone `<select>` elements to provide screen reader context when a visual label is omitted for design reasons.
