@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -16,7 +15,8 @@ import (
 
 // fetchOSINTLinks collects links from external platforms (HN, Reddit) for a given CVE.
 func (w *Worker) fetchOSINTLinks(ctx context.Context, cveID string) models.JSONBMap {
-	cacheKey := fmt.Sprintf("osint_links:%s", cveID)
+	// Avoid allocations of fmt.Sprintf
+	cacheKey := "osint_links:" + cveID
 
 	// Try to get from cache first
 	if val, err := w.Redis.Get(ctx, cacheKey).Result(); err == nil {

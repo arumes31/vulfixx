@@ -1600,10 +1600,12 @@ func (a *App) fetchDashboardMetrics(ctx context.Context, userID int, activeTeamI
 		LEFT JOIN user_cve_status ucs ON c.id = ucs.cve_id AND ` + statusJoinCond + `
 		` + whereClause
 
-	// Generate deterministic cache key
-	cacheKeyStr := fmt.Sprintf("%d:%d:%s:%v", userID, activeTeamID, consolidatedMetricsQuery, args)
+	// Generate deterministic cache key avoiding large allocations
+	// Note: We MUST write delimiters (":") between fields to avoid collision vulnerabilities.
+	// Using sha256.New() causes the hash state to escape to the heap, so we use sha256.Sum256 with string concat
+	cacheKeyStr := strconv.Itoa(userID) + ":" + strconv.Itoa(activeTeamID) + ":" + consolidatedMetricsQuery + ":" + fmt.Sprint(args)
 	cacheKeyHash := sha256.Sum256([]byte(cacheKeyStr))
-	cacheKey := fmt.Sprintf("dashboard_metrics_v2:%x", cacheKeyHash)
+	cacheKey := "dashboard_metrics_v2:" + fmt.Sprintf("%x", cacheKeyHash)
 
 	if a.Redis == nil {
 		slog.Warn("fetchDashboardMetricsFromCache: Redis is nil, skipping cache behavior")

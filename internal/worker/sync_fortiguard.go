@@ -707,7 +707,8 @@ func (w *Worker) updateCVEsWithAdvisory(ctx context.Context, advisory *FortiGuar
 
 // getCachedAdvisory retrieves a cached FortiGuard advisory from Redis.
 func (w *Worker) getCachedAdvisory(ctx context.Context, advisoryID string) (*FortiGuardAdvisory, error) {
-	cacheKey := fmt.Sprintf("fortiguard:advisory:%s", advisoryID)
+	// Avoid allocations of fmt.Sprintf
+	cacheKey := "fortiguard:advisory:" + advisoryID
 	cachedData, err := w.Redis.Get(ctx, cacheKey).Bytes()
 	if err != nil {
 		if err == redis.Nil {
@@ -726,7 +727,8 @@ func (w *Worker) getCachedAdvisory(ctx context.Context, advisoryID string) (*For
 
 // cacheAdvisory caches a FortiGuard advisory in Redis.
 func (w *Worker) cacheAdvisory(ctx context.Context, advisory *FortiGuardAdvisory) error {
-	cacheKey := fmt.Sprintf("fortiguard:advisory:%s", advisory.AdvisoryID)
+	// Avoid allocations of fmt.Sprintf
+	cacheKey := "fortiguard:advisory:" + advisory.AdvisoryID
 	advisoryData, err := json.Marshal(advisory)
 	if err != nil {
 		return fmt.Errorf("failed to marshal FortiGuard advisory for caching: %w", err)

@@ -1,5 +1,7 @@
-🎯 **What:** The `migrate()` method in `internal/db/schema.go` contained a call to `goose.SetDialect` which could not be practically mocked, leaving its error handling path untested.
+💡 What: Replaced `fmt.Sprintf` and `sha256.New().Write()` in cache key generation with `strconv` and string concatenation across handlers (Dashboard, OSINT, FortiGuard, Session).
 
-📊 **Coverage:** This PR extracts `goose.SetDialect` into a package-level variable `gooseSetDialect` (following the existing pattern for `sqlOpener` and `gooseUp`). This allows us to inject a mock failure and explicitly test the error case in `TestMigrate_GooseSetDialectFailure` where the dialect fails to set. It also tests the new default `gooseSetDialect` wrapper within `TestDefaultSchemaWrappers`.
+🎯 Why: `fmt.Sprintf` uses reflection and allocates memory for every call, and `sha256.New().Write()` causes the internal hash state to escape to the heap. In hot paths like the Dashboard metrics endpoint or background sync workers, these allocations add up to unnecessary GC pressure and CPU overhead.
 
-✨ **Result:** Increased `internal/db/schema.go` test coverage from 92.3% to 100%, completing the testing profile for database migrations.
+📊 Impact: Reduces memory allocations and CPU cycles for cache key generation. Benchmarks on the Dashboard metrics query cache key generation showed a measurable improvement.
+
+🔬 Measurement: Run `go test -bench=BenchmarkDashboardHandler -run=^$ ./internal/web` to verify performance characteristics of the dashboard handler. Check system memory usage over time as background jobs sync feeds.
