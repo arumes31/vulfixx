@@ -1019,8 +1019,8 @@ func TestGoogleFailoverQuotaExceeded(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			for k, v := range tt.limitEnvs {
-				os.Setenv(k, v)
-				defer os.Unsetenv(k)
+				_ = os.Setenv(k, v)
+				defer func(key string) { _ = os.Unsetenv(key) }(k)
 			}
 
 			googleFailoverRPDIncr = func(ctx context.Context, keyPrefix string) (int64, error) {
