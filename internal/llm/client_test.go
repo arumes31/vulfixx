@@ -969,3 +969,68 @@ func TestDurationUntilUTCMidnight(t *testing.T) {
 		t.Errorf("durationUntilUTCMidnight = %v, want (0, 24h]", d)
 	}
 }
+
+func TestGoogleFailoverQuotaExceeded(t *testing.T) {
+	ctx := context.Background()
+
+	originalRPDIncr := googleFailoverRPDIncr
+	defer func() { googleFailoverRPDIncr = originalRPDIncr }()
+
+	tests := []struct {
+		name      string
+		f         googleFailover
+		mockCount int64
+		mockErr   error
+		expected  bool
+		limitEnvs map[string]string
+	}{
+		{
+			name:      "limit is zero or less, should not be exceeded",
+			f:         googleFailover{defRPD: 0, rpdEnvs: []string{"TEST_RPD_NO_LIMIT"}},
+			expected:  false,
+			limitEnvs: map[string]string{"TEST_RPD_NO_LIMIT": "0"},
+		},
+		{
+			name:     "redis error, should allow call (fail open)",
+			f:        googleFailover{defRPD: 10, redisKey: "test:key"},
+			mockErr:  fmt.Errorf("redis error"),
+			expected: false,
+		},
+		{
+			name:      "count below limit, should not be exceeded",
+			f:         googleFailover{defRPD: 10, redisKey: "test:key"},
+			mockCount: 5,
+			expected:  false,
+		},
+		{
+			name:      "count equal to limit, should not be exceeded",
+			f:         googleFailover{defRPD: 10, redisKey: "test:key"},
+			mockCount: 10,
+			expected:  false,
+		},
+		{
+			name:      "count exceeds limit, should be exceeded",
+			f:         googleFailover{defRPD: 10, redisKey: "test:key"},
+			mockCount: 11,
+			expected:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for k, v := range tt.limitEnvs {
+				os.Setenv(k, v)
+				defer os.Unsetenv(k)
+			}
+
+			googleFailoverRPDIncr = func(ctx context.Context, keyPrefix string) (int64, error) {
+				return tt.mockCount, tt.mockErr
+			}
+
+			result := googleFailoverQuotaExceeded(ctx, tt.f)
+			if result != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}

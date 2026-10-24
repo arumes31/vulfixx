@@ -4,6 +4,7 @@ import (
 	"cve-tracker/internal/auth"
 	"cve-tracker/internal/db"
 	"database/sql"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -444,4 +445,121 @@ func TestAuthHandlers_TOTP_Detailed(t *testing.T) {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
+}
+
+func TestResendVerificationInlineHandler(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer mock.Close()
+
+	oldPool := db.Pool
+	db.Pool = mock
+	defer func() { db.Pool = oldPool }()
+
+	app := setupTestApp(t, mock)
+
+	tests := []struct {
+		name           string
+		method         string
+		email          string
+		setupMock      func(redisClient db.RedisProvider)
+		setupDBMock    func()
+		expectedStatus int
+	}{
+		{
+			name:           "invalid method",
+			method:         http.MethodGet,
+			email:          "test@example.com",
+			setupMock:      func(redisClient db.RedisProvider) {},
+			setupDBMock:    func() {},
+			expectedStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:           "invalid email",
+			method:         http.MethodPost,
+			email:          "invalid-email",
+			setupMock:      func(redisClient db.RedisProvider) {},
+			setupDBMock:    func() {},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:      "valid email - DB failure",
+			method:    http.MethodPost,
+			email:     "test@example.com",
+			setupMock: func(redisClient db.RedisProvider) {},
+			setupDBMock: func() {
+				mock.ExpectBegin().WillReturnError(fmt.Errorf("db error"))
+			},
+			expectedStatus: http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setupMock != nil {
+				tt.setupMock(app.Redis)
+			}
+			if tt.setupDBMock != nil {
+				tt.setupDBMock()
+			}
+
+			formData := url.Values{}
+			if tt.email != "" {
+				formData.Set("email", tt.email)
+			}
+			req := httptest.NewRequest(tt.method, "/resend-verification-inline", strings.NewReader(formData.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("X-Requested-With", "XMLHttpRequest")
+
+			rr := httptest.NewRecorder()
+			app.ResendVerificationInlineHandler(rr, req)
+
+			if rr.Code != tt.expectedStatus {
+				t.Errorf("expected status %v, got %v", tt.expectedStatus, rr.Code)
+			}
+		})
+	}
+}
+
+func TestResendVerificationInlineHandlerSuccess(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+	defer mock.Close()
+
+	oldPool := db.Pool
+	db.Pool = mock
+	defer func() { db.Pool = oldPool }()
+
+	app := setupTestApp(t, mock)
+
+	// Mocking successful token generation and DB transaction
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT id, is_email_verified, COALESCE").
+		WithArgs("test@example.com").
+		WillReturnRows(pgxmock.NewRows([]string{"id", "is_email_verified", "last_resend"}).
+			AddRow(1, false, time.Now().Add(-10*time.Minute)))
+
+	mock.ExpectExec("UPDATE users SET verification_token").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectCommit()
+
+	formData := url.Values{}
+	formData.Set("email", "test@example.com")
+	req := httptest.NewRequest(http.MethodPost, "/resend-verification-inline", strings.NewReader(formData.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+
+	// We need to make sure the IP limit isn't hit
+	req.RemoteAddr = "192.168.1.1:1234"
+
+	rr := httptest.NewRecorder()
+	app.ResendVerificationInlineHandler(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status %v, got %v", http.StatusOK, rr.Code)
+	}
 }
