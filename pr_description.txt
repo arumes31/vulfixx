@@ -5,3 +5,5 @@
 📊 Impact: Reduces memory allocations and CPU cycles for cache key generation. Benchmarks on the Dashboard metrics query cache key generation showed a measurable improvement.
 
 🔬 Measurement: Run `go test -bench=BenchmarkDashboardHandler -run=^$ ./internal/web` to verify performance characteristics of the dashboard handler. Check system memory usage over time as background jobs sync feeds.
+
+🔧 **Additional Fix**: Updated `github.com/go-chi/chi/v5` to `v5.4.0` in `go.mod` to resolve a medium severity vulnerability flagged by OSV scanner (GHSA-j6qf-3m9c-vwj3) during CI.
