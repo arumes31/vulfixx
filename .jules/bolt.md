@@ -4,3 +4,7 @@
 ## 2024-06-27 - Pre-compile regular expressions
 **Learning:** Compiling regex in tight loops or frequently called functions is a performance anti-pattern. Pre-compiling them at the package level saves CPU overhead.
 **Action:** Always declare regular expressions as package-level variables with `regexp.MustCompile` instead of inside loops.
+
+## $(date +%Y-%m-%d) - Optimizing Cache Keys
+**Learning:** Using `fmt.Sprintf` and `sha256.New().Write()` when generating cache keys causes reflection and heap allocation overhead in tight loops.
+**Action:** Replace `fmt.Sprintf` with `strconv` and string concatenation (`+`) when creating string cache keys. When hashing strings, use `sha256.Sum256([]byte(stringConcatStr))` rather than `sha256.New().Write()` to avoid allocations. Remember to explicitly write original delimiters when replacing `fmt.Sprintf` to prevent collision vulnerabilities.

@@ -6,9 +6,9 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"log"
 	"net/netip"
+	"strconv"
 	"strings"
 	"time"
 
@@ -73,7 +73,7 @@ func loginAccountFailureKey(email string) string {
 }
 
 func totpAccountFailureKey(userID int) string {
-	return fmt.Sprintf("totp_failures:%d", userID)
+	return "totp_failures:" + strconv.FormatInt(int64(userID), 10)
 }
 
 // failureCount reads a failure counter. A missing key counts as zero; any other
@@ -173,7 +173,7 @@ func (a *App) consumeTOTP(ctx context.Context, userID int, code, secret string) 
 	if a.Redis == nil {
 		return true, nil
 	}
-	key := fmt.Sprintf("totp_last_step:%d", userID)
+	key := "totp_last_step:" + strconv.FormatInt(int64(userID), 10)
 	res, err := totpReplayScript.Run(ctx, a.Redis, []string{key}, counter, int((5 * time.Minute).Seconds())).Int()
 	if err != nil {
 		log.Printf("Redis error recording TOTP step: %v", err)
