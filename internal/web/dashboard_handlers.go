@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"cve-tracker/internal/models"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1605,7 +1604,7 @@ func (a *App) fetchDashboardMetrics(ctx context.Context, userID int, activeTeamI
 	// Using string concatenation with strconv reduces reflection overhead compared to fmt.Sprintf
 	cacheKeyStr := strconv.Itoa(userID) + ":" + strconv.Itoa(activeTeamID) + ":" + consolidatedMetricsQuery + ":" + fmt.Sprint(args)
 	cacheKeyHash := sha256.Sum256([]byte(cacheKeyStr))
-	cacheKey := "dashboard_metrics_v2:" + hex.EncodeToString(cacheKeyHash[:])
+	cacheKey := "dashboard_metrics_v2:" + fmt.Sprintf("%x", cacheKeyHash)
 
 	if a.Redis == nil {
 		slog.Warn("fetchDashboardMetricsFromCache: Redis is nil, skipping cache behavior")
