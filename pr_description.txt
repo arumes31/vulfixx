@@ -1,5 +1,4 @@
-🎯 **What:** The `migrate()` method in `internal/db/schema.go` contained a call to `goose.SetDialect` which could not be practically mocked, leaving its error handling path untested.
-
-📊 **Coverage:** This PR extracts `goose.SetDialect` into a package-level variable `gooseSetDialect` (following the existing pattern for `sqlOpener` and `gooseUp`). This allows us to inject a mock failure and explicitly test the error case in `TestMigrate_GooseSetDialectFailure` where the dialect fails to set. It also tests the new default `gooseSetDialect` wrapper within `TestDefaultSchemaWrappers`.
-
-✨ **Result:** Increased `internal/db/schema.go` test coverage from 92.3% to 100%, completing the testing profile for database migrations.
+💡 What: Added `tabindex="0"`, an `aria-label`, visible focus states (`focus:bg-white/[0.05] focus:outline-none`), and `keydown` event listeners for the interactive CVE table rows on the dashboard.
+🎯 Why: Table rows acting as navigation links previously could not receive focus and were not actionable via keyboard, completely blocking screen reader and keyboard-only users from interacting with them.
+📸 Before/After: Visual focus state added (lighter background), keyboard navigation (Tab) now stops on rows, and pressing 'Enter' or 'Space' navigates to the CVE detail page.
+♿ Accessibility: Ensures WCAG 2.1.1 (Keyboard) and 2.4.7 (Focus Visible) compliance for the primary data table.
