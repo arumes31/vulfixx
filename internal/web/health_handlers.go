@@ -41,8 +41,13 @@ func (a *App) ReadyzHandler(w http.ResponseWriter, r *http.Request) {
 		isDown = true
 	}
 
-	// Fetch DB Pool Stats if available (Item 16) - wrapped in panic recovery to protect against uninitialized mocks
+	// Fetch DB Pool Stats if available (Item 16) - wrapped in panic recovery to protect against uninitialized mocks.
+	// Pool telemetry is internal detail, so it is only included for signed-in admins;
+	// unauthenticated probes just get the up/down status.
 	func() {
+		if !a.IsAdmin(r) {
+			return
+		}
 		defer func() {
 			if r := recover(); r != nil {
 				// Fallback or ignore panic from mock pool stats

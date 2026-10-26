@@ -6,6 +6,7 @@ import (
 	"cve-tracker/internal/models"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -267,6 +268,7 @@ func TestSubscriptionHandlers_Detailed(t *testing.T) {
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
+		stubWebhookDNS(t, "93.184.216.34")
 		const slackURL = "https://hooks.slack.com/services/T000/B000/XXXXXXXX"
 		form := url.Values{
 			"keyword":           {"kw"},
@@ -364,6 +366,7 @@ func TestSubscriptionHandlers_Detailed(t *testing.T) {
 		defer mock.Close()
 		app := setupTestApp(t, mock)
 
+		stubWebhookDNS(t, "93.184.216.34")
 		payload := map[string]interface{}{
 			"id":               42,
 			"keyword":          "updated-keyword",
@@ -404,6 +407,53 @@ func TestSubscriptionHandlers_Detailed(t *testing.T) {
 			t.Errorf("unmet expectations: %v", err)
 		}
 	})
+}
+
+// stubWebhookDNS makes webhook host resolution deterministic for a test.
+func stubWebhookDNS(t *testing.T, ip string) {
+	t.Helper()
+	orig := lookupWebhookIP
+	lookupWebhookIP = func(string) ([]net.IP, error) { return []net.IP{net.ParseIP(ip)}, nil }
+	t.Cleanup(func() { lookupWebhookIP = orig })
+}
+
+// The update path must apply the same SSRF checks as create, for generic,
+// Slack and Teams URLs, before touching the database.
+func TestUpdateSubscriptionHandler_RejectsInternalWebhooks(t *testing.T) {
+	cases := map[string]string{
+		"webhook_url":       "http://internal.example/hook",
+		"slack_webhook_url": "https://internal.example/slack",
+		"teams_webhook_url": "https://internal.example/teams",
+	}
+	for field, u := range cases {
+		t.Run(field, func(t *testing.T) {
+			t.Setenv("TEST_MODE", "")
+			stubWebhookDNS(t, "100.64.0.10")
+			mock, err := db.SetupTestDB()
+			if err != nil {
+				t.Fatalf("failed to setup mock db: %v", err)
+			}
+			defer mock.Close()
+			app := setupTestApp(t, mock)
+
+			body, _ := json.Marshal(map[string]interface{}{
+				"id": 42, "keyword": "kw", "min_severity": 5.0, field: u,
+			})
+			req, _ := http.NewRequest("POST", "/subscriptions/update", strings.NewReader(string(body)))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Requested-With", "XMLHttpRequest")
+			setSessionUser(t, app, req, 1, false)
+			rr := httptest.NewRecorder()
+			app.UpdateSubscriptionHandler(rr, req)
+
+			if !strings.Contains(rr.Body.String(), "not allowed") {
+				t.Errorf("expected internal webhook rejection, got: %s", rr.Body.String())
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("unexpected DB calls: %v", err)
+			}
+		})
+	}
 }
 
 // encryptedWebhookArg is a pgxmock argument matcher asserting that the stored
