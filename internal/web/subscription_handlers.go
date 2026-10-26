@@ -27,6 +27,53 @@ func escapeLikePattern(s string) string {
 	return s
 }
 
+// lookupWebhookIP resolves webhook hosts; it is a variable so tests can stub DNS.
+var lookupWebhookIP = net.LookupIP
+
+// validateWebhookURL is shared by the create and update paths for generic,
+// Slack and Teams webhook URLs. It requires an absolute http(s) URL whose host
+// resolves only to public addresses, and returns the normalized URL or a
+// user-facing error message. Delivery re-checks the IP at dial time; this is
+// the early, defense-in-depth check.
+func validateWebhookURL(raw string) (string, string) {
+	parsed, err := url.ParseRequestURI(raw)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
+		return "", "A valid HTTP/HTTPS webhook URL is required"
+	}
+
+	// SSRF protection: block internal/loopback IPs
+	ips, err := lookupWebhookIP(parsed.Hostname())
+	if err != nil || len(ips) == 0 {
+		return "", "Invalid webhook host"
+	}
+	for _, ip := range ips {
+		if !security.IsIPSafe(ip) {
+			return "", "Internal or restricted webhook URLs are not allowed"
+		}
+	}
+
+	normalized := parsed.String()
+	if len(normalized) > 2048 {
+		return "", "Webhook URL is too long"
+	}
+	return normalized, ""
+}
+
+// validateSubscriptionWebhooks validates every non-empty webhook URL in place.
+func validateSubscriptionWebhooks(webhookURL, slackURL, teamsURL *string) string {
+	for _, u := range []*string{webhookURL, slackURL, teamsURL} {
+		if *u == "" {
+			continue
+		}
+		normalized, msg := validateWebhookURL(*u)
+		if msg != "" {
+			return msg
+		}
+		*u = normalized
+	}
+	return ""
+}
+
 func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := a.GetUserID(r)
 	if !ok {
@@ -131,37 +178,13 @@ func (a *App) SubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if jsonData.EnableWebhook {
-			if jsonData.WebhookURL == "" {
-				a.SendResponse(w, r, false, "", "", "A webhook URL is required")
-				return
-			}
-			parsed, err := url.ParseRequestURI(jsonData.WebhookURL)
-			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-				a.SendResponse(w, r, false, "", "", "A valid HTTP/HTTPS webhook URL is required")
-				return
-			}
-
-			// SSRF protection: block internal/loopback IPs
-			host := parsed.Hostname()
-			ips, err := net.LookupIP(host)
-			if err != nil {
-				a.SendResponse(w, r, false, "", "", "Invalid webhook host")
-				return
-			}
-			for _, ip := range ips {
-				if !security.IsIPSafe(ip) {
-					a.SendResponse(w, r, false, "", "", "Internal or restricted webhook URLs are not allowed")
-					return
-				}
-			}
-
-			jsonData.WebhookURL = parsed.String()
-
-			if len(jsonData.WebhookURL) > 2048 {
-				a.SendResponse(w, r, false, "", "", "Webhook URL is too long")
-				return
-			}
+		if jsonData.EnableWebhook && jsonData.WebhookURL == "" {
+			a.SendResponse(w, r, false, "", "", "A webhook URL is required")
+			return
+		}
+		if msg := validateSubscriptionWebhooks(&jsonData.WebhookURL, &jsonData.SlackWebhookURL, &jsonData.TeamsWebhookURL); msg != "" {
+			a.SendResponse(w, r, false, "", "", msg)
+			return
 		}
 
 		// Default aggregation_mode if not set
@@ -333,6 +356,12 @@ func (a *App) UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) 
 
 	if err := worker.ValidateComplexFilter(jsonData.FilterLogic); err != nil {
 		a.SendResponse(w, r, false, "", "", "Invalid filter logic: "+err.Error())
+		return
+	}
+
+	// Same URL checks as the create path (scheme, resolvable public host, length).
+	if msg := validateSubscriptionWebhooks(&jsonData.WebhookURL, &jsonData.SlackWebhookURL, &jsonData.TeamsWebhookURL); msg != "" {
+		a.SendResponse(w, r, false, "", "", msg)
 		return
 	}
 

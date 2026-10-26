@@ -692,6 +692,9 @@ func extractWithMistral(ctx context.Context, apiKey, model, endpoint, descriptio
 }
 
 func extractWithOpenAI(ctx context.Context, apiKey, model, endpoint, description string) ([]ProductResult, error) {
+	if endpoint == "" {
+		return nil, errors.New("OPENAI_ENDPOINT is not configured")
+	}
 	systemPrompt := getSystemPrompt()
 
 	if os.Getenv("LLM_DEBUG") == "true" {

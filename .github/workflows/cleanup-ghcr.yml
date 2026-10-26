@@ -1,72 +1,48 @@
-name: Manual GHCR Cleanup
-
+name: GHCR cleanup
 on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Dry run (set to false to actually delete)'
-        default: 'true'
+        description: Report candidates without deleting images
+        type: boolean
+        default: true
         required: true
-
+permissions:
+  contents: read
+concurrency:
+  group: ghcr-retention
+  cancel-in-progress: false
 jobs:
   cleanup:
-    name: Cleanup GHCR Images
-    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       packages: write
-      actions: write
-
     steps:
-      - name: Delete old GHCR images
+      - name: Prune only old unreferenced untagged manifests
+        # v3.1 preserves platform/SBOM/provenance children of retained OCI indexes.
+        # Tagged versions and commit tags remain available for rollback.
+        uses: docker://ghcr.io/snok/container-retention-policy@sha256:884037f146d6ef574b61fbcc59bef490f887322e6b9dc2eefcf364cb4e9b4112
+        with:
+          args: >-
+            --account=user
+            --token=${{ secrets.GITHUB_TOKEN }}
+            --image-names=${{ github.event.repository.name }},${{ github.event.repository.name }}-ollama
+            --tag-selection=untagged
+            --timestamp-to-use=updated_at
+            --cut-off=30d
+            --dry-run=${{ inputs.dry_run }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.event.repository.name }}
-          OWNER: ${{ github.repository_owner }}
-          DRY_RUN: ${{ github.event.inputs.dry_run }}
-        run: |
-          PACKAGES=("$REPO" "$REPO-ollama")
-          
-          for PACKAGE in "${PACKAGES[@]}"; do
-            echo "--- Processing package: $PACKAGE ---"
-            
-            # Fetch versions
-            VERSIONS_JSON=$(gh api -H "Accept: application/vnd.github+json" "/user/packages/container/$PACKAGE/versions?per_page=100" 2>/dev/null || \
-                           gh api -H "Accept: application/vnd.github+json" "/orgs/$OWNER/packages/container/$PACKAGE/versions?per_page=100" 2>/dev/null)
-            
-            if [ -z "$VERSIONS_JSON" ] || [ "$VERSIONS_JSON" == "[]" ]; then
-              echo "No versions found or access denied for $PACKAGE."
-              continue
-            fi
-            
-            # Filter logic:
-            # 1. Exclude versions with "latest" or "main" tags
-            # 2. Sort by creation date descending
-            # 3. Skip the first 10 most recent versions
-            IDS_TO_DELETE=$(echo "$VERSIONS_JSON" | jq -r '
-              sort_by(.created_at) | reverse |
-              map(select(.metadata.container.tags | (contains(["latest"]) | not) and (contains(["main"]) | not))) |
-              .[10:] | .[].id
-            ')
-            
-            if [ -z "$IDS_TO_DELETE" ]; then
-              echo "No versions to delete for $PACKAGE (kept 10 most recent and protected tags: latest, main)."
-              continue
-            fi
-            
-            for ID in $IDS_TO_DELETE; do
-              TAGS=$(echo "$VERSIONS_JSON" | jq -r ".[] | select(.id == $ID) | .metadata.container.tags | join(\", \")")
-              echo "Targeting version ID: $ID (Tags: $TAGS) in $PACKAGE"
-              if [ "$DRY_RUN" == "false" ]; then
-                echo "Deleting version $ID from $PACKAGE..."
-                # Try user delete endpoint first, then org
-                gh api --method DELETE -H "Accept: application/vnd.github+json" "/user/packages/container/$PACKAGE/versions/$ID" 2>/dev/null || \
-                gh api --method DELETE -H "Accept: application/vnd.github+json" "/orgs/$OWNER/packages/container/$PACKAGE/versions/$ID" 2>/dev/null
-              else
-                echo "[DRY RUN] Would delete version $ID from $PACKAGE"
-              fi
-            done
-          done
+          RUST_LOG: container_retention_policy=INFO
 
+  cleanup-workflow-runs:
+    if: github.ref == 'refs/heads/main' && !inputs.dry_run
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+    steps:
       - name: Delete old workflow runs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

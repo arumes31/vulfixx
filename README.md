@@ -78,7 +78,7 @@ If you prefer higher performance, you can use **Google Gemini**:
 ### OpenAI Compatible API Setup
 You can also use custom/local endpoints compatible with the OpenAI Chat Completions API (such as local LLM proxies or custom workspaces):
 1. Configure `LLM_PROVIDER=openai` in your environment.
-2. Set `OPENAI_ENDPOINT` (e.g. `http://100.115.58.99:18080/workspace/sys-kilo/v1`), `OPENAI_MODEL` (e.g. `kilo-auto/free`), and `OPENAI_API_KEY` (optional).
+2. Set `OPENAI_ENDPOINT` (required, no default; e.g. `https://your-openai-compatible-host/v1`), `OPENAI_MODEL` (e.g. `kilo-auto/free`), and `OPENAI_API_KEY` (optional).
 
 ## 🏗️ Architecture
 The application follows a modular architecture designed to prevent monolithic files and improve domain separation.
@@ -115,7 +115,7 @@ Vulfixx is hardened with enterprise-grade system improvements designed for high-
 - **Worker Graceful Shutdown & Atomic Sync Transactions**: Enhanced background synchronization processes (NVD, CISA KEV, RSS Advisory feeds) to run in atomic Postgres database transactions (`pgx.Tx`), ensuring incomplete sync operations are safely rolled back on failure or worker shutdown. All sync loops validate active context cancellation (`ctx.Done()`) at iteration boundaries for clean graceful exits.
 - **Decoupled Task Queue Architecture (Asynq)**: Shifts heavy background tasks (alert evaluations, verification emails, and email changes) off the HTTP flow using `github.com/hibiken/asynq` with automated exponential backoff retries.
 - **High-Performance Routing Layer (Chi)**: Replaced Gorilla Mux with modern standard-compliant `github.com/go-chi/chi/v5` featuring sub-routing, timeout propagation, and custom rate-limiting middleware.
-- **Secure gRPC Query Interface**: Exposes a secondary high-speed gRPC server on port `:9091` to support sub-millisecond external CVE intelligence queries.
+- **Secure gRPC Query Interface**: Exposes a secondary high-speed gRPC server on port `:9091` (bound to `127.0.0.1` by default via `GRPC_BIND_ADDR`; the service is unauthenticated) to support sub-millisecond external CVE intelligence queries.
 - **Real-time Activity Stream (SSE)**: Streams live audit log activities directly to the dashboard utilizing Server-Sent Events (SSE) backed by Redis Pub/Sub.
 - **Optimistic Locking & Concurrency Control**: Uses version columns on target entities to prevent conflicting updates during manual analyst modifications.
 - **Exclusively Argon2id Password Hashing**: Fully eliminated legacy Bcrypt support in favor of the more modern, computationally intensive Argon2id algorithm, hardened with pre-computed timing-safe dummy verification to completely neutralize side-channel user enumeration attempts.
@@ -176,7 +176,7 @@ Vulfixx is hardened with enterprise-grade system improvements designed for high-
 | `SMTP_HOST`| External SMTP server | `smtp.example.com` |
 | `SMTP_PORT`| SMTP server port | `587` |
 | `SMTP_USER`| SMTP username | `user@example.com` |
-| `SMTP_PASS`| SMTP password | `password` |
+| `SMTP_PASS`| SMTP password (required in production; no default in docker-compose) | `(empty)` |
 | `SMTP_MAILFROM`| Sender address for emails (defaults to `SMTP_USER`) | `alerts@example.com` |
 | `SESSION_KEY`| Session signing key | `supersecretkey...` |
 | `CSRF_KEY` | CSRF protection key (32 bytes) | `0123456789...` |
@@ -185,9 +185,12 @@ Vulfixx is hardened with enterprise-grade system improvements designed for high-
 | `ADMIN_EMAIL`| Seed administrator email | `admin@example.com` |
 | `ADMIN_PASSWORD`| Seed administrator password | `change-me` |
 | `ADMIN_TOTP_SECRET`| Seed administrator TOTP secret (base32) | `YOUR_SECRET` |
+| `ADMIN_FORCE_RESET`| Overwrite the existing admin password/TOTP secret from the env on startup (seed values are otherwise only applied when the admin is first created) | `false` |
 | `NVD_API_KEY`| NIST NVD API Key (for higher rate limits) | `(empty)` |
 | `NVD_API_URL`| Custom NVD API endpoint (optional) | `https://...` |
-| `APP_ENV` | Application environment (`development`, `production`) | `production` |
+| `APP_ENV` | Application environment (`development`, `production`). `docker-compose.yml` now also defaults to `production`; set `development` explicitly for local work | `production` |
+| `GRPC_BIND_ADDR` | Listen address of the unauthenticated gRPC service | `127.0.0.1` |
+| `GRPC_PORT` | gRPC service port | `9091` |
 | `PORT` | Application server port | `8080` |
 | `SENTRY_DSN` | Sentry DSN for error reporting | `(empty)` |
 | `LLM_PROVIDER`| LLM provider chain, comma-separated (`ollama`, `gemini`, `mistral`, `openai`) | `ollama` |
@@ -204,7 +207,7 @@ Vulfixx is hardened with enterprise-grade system improvements designed for high-
 | `MISTRAL_ENDPOINT`| Mistral API base URL | `https://api.mistral.ai/v1` |
 | `OPENAI_API_KEY`| API Key for OpenAI Compatible provider | `(empty)` |
 | `OPENAI_MODEL` | Model name for OpenAI Compatible provider | `kilo-auto/free` |
-| `OPENAI_ENDPOINT`| Endpoint for OpenAI Compatible provider | `http://100.115.58.99:18080/workspace/sys-kilo/v1` |
+| `OPENAI_ENDPOINT`| Endpoint for OpenAI Compatible provider (required when `openai` is in `LLM_PROVIDER`) | `(empty)` |
 | `LLM_DEBUG` | Enable raw LLM prompt/response logging (`true`/`false`) | `false` |
 
 ### Ollama Server Tuning (Ollama container only)

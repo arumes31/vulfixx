@@ -58,10 +58,16 @@ func (a *App) GenerateTOTPHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Save secret to db
-	_, err = a.Pool.Exec(r.Context(), "UPDATE users SET totp_secret = $1 WHERE id = $2", key.Secret(), userID)
+	// Save secret to db. Only allowed while 2FA is not yet active: re-enrolling
+	// an enabled account would let anyone holding a session swap the victim's
+	// authenticator without knowing the current code.
+	res, err := a.Pool.Exec(r.Context(), "UPDATE users SET totp_secret = $1 WHERE id = $2 AND is_totp_enabled = FALSE", key.Secret(), userID)
 	if err != nil {
 		http.Error(w, "Error saving TOTP secret", http.StatusInternalServerError)
+		return
+	}
+	if res.RowsAffected() == 0 {
+		http.Redirect(w, r, "/settings?error=2FA+is+already+enabled", http.StatusFound)
 		return
 	}
 
@@ -241,6 +247,14 @@ func (a *App) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Revoke all other sessions so a hijacked session does not survive the
+	// password change; the session making the change stays signed in.
+	currentSessionID := ""
+	if session, err := a.SessionStore.Get(r, "vulfixx-session"); err == nil {
+		currentSessionID = session.ID
+	}
+	a.RevokeUserSessions(r.Context(), userID, currentSessionID)
+
 	a.LogActivity(r.Context(), userID, "password_changed", "Successfully updated account password", a.GetClientIP(r), r.UserAgent())
 
 	a.RenderTemplate(w, r, "settings.html", map[string]interface{}{
@@ -390,7 +404,8 @@ func (a *App) DeleteAccountHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clear session
+	// Clear this and every other session of the deleted account
+	a.RevokeUserSessions(r.Context(), userID, "")
 	session, _ := a.SessionStore.Get(r, "vulfixx-session")
 	session.Options.MaxAge = -1
 	if err := session.Save(r, w); err != nil {

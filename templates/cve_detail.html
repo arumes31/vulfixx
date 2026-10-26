@@ -825,8 +825,14 @@
                                     const valName = metric.v[val] || val;
                                     const pill = document.createElement('div');
                                     pill.className = 'tooltip-trigger text-[9px] font-mono text-gray-400 bg-white/5 px-2 py-0.5 rounded-md border border-white/5 hover:bg-white/10 hover:text-white transition-all';
-                                    pill.innerHTML = '<span class="text-gray-600 mr-1">' + key + ':</span>' + val +
-                                        '<div class="tooltip">' + metric.n + ': ' + valName + '</div>';
+                                    // Build with textContent: the vector string comes from external feed data.
+                                    const keySpan = document.createElement('span');
+                                    keySpan.className = 'text-gray-600 mr-1';
+                                    keySpan.textContent = key + ':';
+                                    const tooltip = document.createElement('div');
+                                    tooltip.className = 'tooltip';
+                                    tooltip.textContent = metric.n + ': ' + valName;
+                                    pill.append(keySpan, document.createTextNode(val), tooltip);
                                     vectorContainer.appendChild(pill);
                                 }
                             }
