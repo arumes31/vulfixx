@@ -4,7 +4,3 @@
 ## 2024-06-27 - Pre-compile regular expressions
 **Learning:** Compiling regex in tight loops or frequently called functions is a performance anti-pattern. Pre-compiling them at the package level saves CPU overhead.
 **Action:** Always declare regular expressions as package-level variables with `regexp.MustCompile` instead of inside loops.
-
-## $(date +%Y-%m-%d) - Use strconv and concatenation instead of fmt.Sprintf for simple cache keys
-**Learning:** Using `fmt.Sprintf` to concatenate simple strings and integers for generating cache keys introduces unnecessary performance overhead due to memory allocation and reflection.
-**Action:** When computing a cache key that only involves simple primitives, use `strconv` functions (like `strconv.Itoa`) and string concatenation (`+`) instead of `fmt.Sprintf`.
