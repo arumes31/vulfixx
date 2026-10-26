@@ -9,3 +9,13 @@ ad00aa0474fb8b5380d60f9280b834d811c3f49e:cmd/cve-tracker/main_test.go:generic-ap
 5fac2fc5cca9ba6f453a768bc11a572a2bda11b3:container/nimbusroute/data/config.json:generic-api-key:32
 5fac2fc5cca9ba6f453a768bc11a572a2bda11b3:container/nimbusroute/data/config.json:generic-api-key:42
 5fac2fc5cca9ba6f453a768bc11a572a2bda11b3:container/nimbusroute/data/config.json:generic-api-key:164
+
+# Historical public CSRF test/example value 0123456789abcdef repeated twice.
+# Current runtime has no hard-coded fallback. Ignore only these six reviewed
+# commit/path/rule/line fingerprints; new occurrences remain scan failures.
+52c70797e1a5361d3c7440a76e7166ab1305c600:internal/config/config.go:generic-api-key:39
+ad00aa0474fb8b5380d60f9280b834d811c3f49e:internal/web/web_test.go:generic-api-key:30
+ad00aa0474fb8b5380d60f9280b834d811c3f49e:internal/web/web_error_test.go:generic-api-key:14
+16eb4e6e7cfed5a9eaaa63d21adef86fc12ab488:.env.example:generic-api-key:13
+62305a5a43893d6508bef14bbaca0f136d902dc0:internal/web/web_error_test.go:generic-api-key:14
+65ebda31ec055d20e8f07d0a2ccd231a7ae621e6:internal/web/web_test.go:generic-api-key:26

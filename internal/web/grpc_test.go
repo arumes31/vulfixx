@@ -113,7 +113,7 @@ func TestGRPC_StartServer(t *testing.T) {
 	defer mock.Close()
 
 	// Insecure server start
-	srv, err := StartGRPCServer(mock, "0", "", "")
+	srv, err := StartGRPCServer(mock, "127.0.0.1", "0", "", "")
 	if err != nil {
 		t.Fatalf("failed to start gRPC server: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestGRPC_StartServer(t *testing.T) {
 	srv.GracefulStop()
 
 	// Secure server start (should fail with invalid cert paths)
-	_, err = StartGRPCServer(mock, "0", "nonexistent_cert.pem", "nonexistent_key.pem")
+	_, err = StartGRPCServer(mock, "127.0.0.1", "0", "nonexistent_cert.pem", "nonexistent_key.pem")
 	if err == nil {
 		t.Fatal("expected error starting secure gRPC server with missing cert files")
 	}

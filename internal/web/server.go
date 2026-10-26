@@ -30,7 +30,7 @@ func NewServer(cfg *config.Config, handler http.Handler, pool db.DBPool) (*Serve
 		IdleTimeout:       120 * time.Second,
 	}
 
-	grpcServer, err := StartGRPCServer(pool, cfg.GRPCPort, cfg.GRPCCertFile, cfg.GRPCKeyFile)
+	grpcServer, err := StartGRPCServer(pool, cfg.GRPCBindAddr, cfg.GRPCPort, cfg.GRPCCertFile, cfg.GRPCKeyFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start gRPC server: %w", err)
 	}

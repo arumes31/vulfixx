@@ -125,6 +125,41 @@ func TestTOTPHandlers_Detailed(t *testing.T) {
 		}
 	})
 
+	// Re-enrolment while 2FA is active must not overwrite the existing secret.
+	t.Run("GenerateTOTPHandler_AlreadyEnabled", func(t *testing.T) {
+		mock, err := db.SetupTestDB()
+		if err != nil {
+			t.Fatalf("failed to setup mock db: %v", err)
+		}
+		defer mock.Close()
+		app := setupTestApp(t, mock)
+
+		userID := 1
+		req := httptest.NewRequest("POST", "/settings/totp/generate", nil)
+		setSessionUser(t, app, req, userID, false)
+
+		mock.ExpectQuery("SELECT email FROM users WHERE id = \\$1").
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"email"}).AddRow("test@example.com"))
+
+		mock.ExpectExec("UPDATE users SET totp_secret = \\$1 WHERE id = \\$2 AND is_totp_enabled = FALSE").
+			WithArgs(pgxmock.AnyArg(), userID).
+			WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+
+		rr := httptest.NewRecorder()
+		app.GenerateTOTPHandler(rr, req)
+
+		if rr.Code != http.StatusFound || !strings.Contains(rr.Header().Get("Location"), "already+enabled") {
+			t.Errorf("expected redirect with already-enabled error, got %d %q", rr.Code, rr.Header().Get("Location"))
+		}
+		if strings.Contains(rr.Body.String(), "Manual Secret") {
+			t.Errorf("new secret must not be shown when 2FA is already enabled")
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
+		}
+	})
+
 	t.Run("VerifyTOTPHandler_Success", func(t *testing.T) {
 		mock, err := db.SetupTestDB()
 		if err != nil {
