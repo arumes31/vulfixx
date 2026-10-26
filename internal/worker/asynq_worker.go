@@ -14,9 +14,9 @@ import (
 )
 
 const (
-	defaultRedisAddr         = "localhost:6379"
-	defaultRedisSentinelAddr = "localhost:26379"
-	defaultAsynqConcurrency  = 10
+	DefaultRedisAddr         = "localhost:6379"
+	DefaultRedisSentinelAddr = "localhost:26379"
+	DefaultAsynqConcurrency  = 10
 )
 
 // GetAsynqRedisConnOpt constructs the Redis connection options for Asynq based on environment variables.
@@ -29,7 +29,7 @@ func GetAsynqRedisConnOpt() asynq.RedisConnOpt {
 			sentinelAddrsStr = os.Getenv("REDIS_URL")
 		}
 		if sentinelAddrsStr == "" {
-			sentinelAddrsStr = defaultRedisSentinelAddr
+			sentinelAddrsStr = DefaultRedisSentinelAddr
 		}
 		sentinelAddrs := strings.Split(sentinelAddrsStr, ",")
 		for i := range sentinelAddrs {
@@ -60,7 +60,7 @@ func GetAsynqRedisConnOpt() asynq.RedisConnOpt {
 
 	url := os.Getenv("REDIS_URL")
 	if url == "" {
-		url = defaultRedisAddr
+		url = DefaultRedisAddr
 	}
 	return asynq.RedisClientOpt{
 		Addr:     url,
@@ -89,7 +89,7 @@ func (w *Worker) StartAsynqServer(ctx context.Context, opts ...asynq.RedisConnOp
 	}
 
 	srv := asynq.NewServer(connOpt, asynq.Config{
-		Concurrency: defaultAsynqConcurrency,
+		Concurrency: DefaultAsynqConcurrency,
 		Logger:      &asynqLogger{},
 	})
 
