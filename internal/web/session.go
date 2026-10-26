@@ -222,3 +222,35 @@ func (a *App) EnforceConcurrentSessions(ctx context.Context, userID int, session
 		}
 	}
 }
+
+// RevokeUserSessions deletes every tracked Redis session of a user except
+// keepSessionID (pass "" to revoke all of them). It is called after credential
+// or account changes so a hijacked session does not outlive a password reset.
+func (a *App) RevokeUserSessions(ctx context.Context, userID int, keepSessionID string) {
+	if a.Redis == nil {
+		return
+	}
+	key := fmt.Sprintf("user_sessions:%d", userID)
+	sessionIDs, err := a.Redis.ZRange(ctx, key, 0, -1).Result()
+	if err != nil {
+		// #nosec G706 -- userID is an integer
+		log.Printf("Error listing sessions for user %d: %v", userID, err)
+		return
+	}
+	for _, sid := range sessionIDs {
+		if sid == keepSessionID {
+			continue
+		}
+		_, _ = a.Redis.Del(ctx, "vulfixx_session:"+sid).Result()
+		_, _ = a.Redis.ZRem(ctx, key, sid).Result()
+	}
+}
+
+// untrackSession removes a session from the user's concurrent-session set,
+// e.g. on logout, so it no longer counts against the session cap.
+func (a *App) untrackSession(ctx context.Context, userID int, sessionID string) {
+	if a.Redis == nil || sessionID == "" {
+		return
+	}
+	_, _ = a.Redis.ZRem(ctx, fmt.Sprintf("user_sessions:%d", userID), sessionID).Result()
+}

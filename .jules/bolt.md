@@ -4,6 +4,3 @@
 ## 2024-06-27 - Pre-compile regular expressions
 **Learning:** Compiling regex in tight loops or frequently called functions is a performance anti-pattern. Pre-compiling them at the package level saves CPU overhead.
 **Action:** Always declare regular expressions as package-level variables with `regexp.MustCompile` instead of inside loops.
-## 2026-10-16 - Optimize cache key string generation
-**Learning:** Generating complex string keys with fmt.Sprintf and reflection in hot paths (like cache key generation) introduces unnecessary CPU and allocation overhead.
-**Action:** Use strconv and direct string concatenation instead of fmt.Sprintf in performance critical key generation.
