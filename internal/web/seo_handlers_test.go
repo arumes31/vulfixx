@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pashagolub/pgxmock/v5"
 )
 
 func TestSitemapHandler_Caching(t *testing.T) {

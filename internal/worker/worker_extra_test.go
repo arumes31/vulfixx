@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pashagolub/pgxmock/v5"
 )
 
 func TestWorker_EnrichmentRows_Comprehensive(t *testing.T) {
@@ -208,7 +208,7 @@ func TestWorker_DetectDuplicates_Comprehensive(t *testing.T) {
 		}
 
 		mock.ExpectBegin()
-		mock.ExpectQuery("SELECT cve_id FROM cves").
+		mock.ExpectBatch().ExpectQuery("SELECT cve_id FROM cves").
 			WithArgs("CWE-79", 1, 7.5, pgxmock.AnyArg()).
 			WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-2023-0002").AddRow("CVE-2023-0003"))
 		mock.ExpectRollback()
