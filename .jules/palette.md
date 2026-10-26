@@ -20,9 +20,3 @@
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
-## 2026-10-25 - Keyboard accessible table rows
-**Learning:** Found an accessibility issue where interactive table rows (used for navigation) lacked keyboard accessibility (tabindex="0" and aria-label) and did not support keyboard interaction (Enter or Space key). This prevents users relying on keyboard navigation from interacting with clickable table rows.
-**Action:** Always ensure interactive rows have `tabindex="0"`, a descriptive `aria-label`, visible focus states (`focus:bg-white/[0.05] focus:outline-none`), and JavaScript event listeners for both `click` and `keydown` events (handling `Enter` and `Space` keys).
-## 2026-10-25 - Avoid mingling backend updates with frontend work
-**Learning:** Found that grouping a backend dependency vulnerability fix (go-chi update) into an accessibility pull request can cause code review rejections due to scope creep and violating persona constraints. However, fixing broken CI is also a priority.
-**Action:** When a backend dependency causes CI to fail during a frontend task, split the resolution into two distinct commits or separate branches if necessary to preserve clean separation of concerns and maintain pull request scope.
