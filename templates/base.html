@@ -697,9 +697,13 @@
                         main.classList.add('page-fade-in');
                         if (pushState) window.history.pushState({ url }, newTitle, url);
                         
-                        // Execute scripts in the new content
+                        // Execute scripts in the new content. Only scripts carrying the fetched
+                        // response's own CSP nonce are trusted; anything else (e.g. markup that
+                        // slipped past server-side escaping) is not re-blessed with our nonce.
+                        const responseNonce = doc.querySelector('head script[nonce]')?.getAttribute('nonce') || '';
                         const scripts = newMain.querySelectorAll('script');
                         for (const oldScript of scripts) {
+                            if (!responseNonce || oldScript.getAttribute('nonce') !== responseNonce) continue;
                             const newScript = document.createElement('script');
                             // Copy all attributes
                             Array.from(oldScript.attributes).forEach(attr => {

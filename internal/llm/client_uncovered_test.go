@@ -8,11 +8,11 @@ import (
 
 func TestGoogleFailoverQuotaExceeded(t *testing.T) {
 	tests := []struct {
-		name        string
-		limit       int
-		count       int64
-		incrErr     error
-		expected    bool
+		name     string
+		limit    int
+		count    int64
+		incrErr  error
+		expected bool
 	}{
 		{
 			name:     "No limit set (<= 0)",
