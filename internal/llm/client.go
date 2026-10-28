@@ -482,9 +482,11 @@ func extractWithGemini(ctx context.Context, apiKey, model, apiVersion, descripti
 	}
 
 	config := &genai.GenerateContentConfig{
-		ResponseMIMEType: "application/json",
-		ResponseSchema:   schema,
-		Temperature:      genai.Ptr[float32](0.0),
+		// Quotas count this extraction once; the SDK must not issue extra billed requests.
+		AutomaticContinuation: genai.Ptr(false),
+		ResponseMIMEType:      "application/json",
+		ResponseSchema:        schema,
+		Temperature:           genai.Ptr[float32](0.0),
 	}
 
 	prompt := getSystemPrompt() + "\n\nDescription: " + description

@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pashagolub/pgxmock/v5"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -152,16 +152,14 @@ func TestWorker_Intelligence(t *testing.T) {
 				AddRow(1, "CVE-2024-0001", "Description 1", 7.5, []byte(`{}`), 0, "CWE-79", time.Now()))
 
 		mock.ExpectBegin()
-		mock.ExpectQuery("SELECT cve_id FROM cves").
+		mock.ExpectBatch().ExpectQuery("SELECT cve_id FROM cves").
 			WithArgs("CWE-79", 1, 7.5, pgxmock.AnyArg()).
 			WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-2024-0002"))
 		mock.ExpectRollback()
 
 		// Mock the transaction and batch update
 		mock.ExpectBegin()
-		// Since pgxmock might not perfectly support SendBatch, we handle both SendBatch and the fallback tx.Exec
-		// If SendBatch is called and returns nil (typical for mock), it falls back to tx.Exec
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE cves SET osint_data = $1 WHERE id = $2")).
+		mock.ExpectBatch().ExpectExec(regexp.QuoteMeta("UPDATE cves SET osint_data = $1 WHERE id = $2")).
 			WithArgs(pgxmock.AnyArg(), 1).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()
