@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/gorilla/sessions"
-	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pashagolub/pgxmock/v5"
 )
 
 type failingSessionStore struct {

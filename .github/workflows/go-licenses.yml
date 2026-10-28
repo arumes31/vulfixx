@@ -35,4 +35,4 @@ jobs:
         
       - name: Check for forbidden licenses
         run: |
-          go-licenses check ./... --ignore "github.com/pashagolub/pgxmock/v3,filippo.io/csrf"
+          go-licenses check ./... --ignore "github.com/pashagolub/pgxmock/v5,filippo.io/csrf"
