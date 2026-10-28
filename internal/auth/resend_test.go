@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pashagolub/pgxmock/v5"
 )
 
 func TestResendVerificationToken(t *testing.T) {
@@ -64,6 +64,7 @@ func TestResendVerificationToken(t *testing.T) {
 	})
 
 	t.Run("WaitTime", func(t *testing.T) {
+		oldToken := "old-token"
 		mock, err := db.SetupTestDB()
 		if err != nil {
 			t.Fatalf("SetupTestDB failed: %v", err)
@@ -75,7 +76,7 @@ func TestResendVerificationToken(t *testing.T) {
 		mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token").
 			WithArgs("wait@test.com").
 			WillReturnRows(mock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
-				AddRow(1, false, 0, &now, "old-token"))
+				AddRow(1, false, 0, &now, &oldToken))
 		mock.ExpectRollback()
 
 		genericMsg := "If this email is registered and unverified, a new verification link will be sent."
@@ -90,6 +91,7 @@ func TestResendVerificationToken(t *testing.T) {
 	})
 
 	t.Run("Success", func(t *testing.T) {
+		oldToken := "old-token"
 		mock, err := db.SetupTestDB()
 		if err != nil {
 			t.Fatalf("SetupTestDB failed: %v", err)
@@ -100,15 +102,18 @@ func TestResendVerificationToken(t *testing.T) {
 		mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token").
 			WithArgs("success@test.com").
 			WillReturnRows(mock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
-				AddRow(1, false, 0, nil, "old-token"))
+				AddRow(1, false, 0, nil, &oldToken))
 		mock.ExpectExec("UPDATE users").
 			WithArgs(pgxmock.AnyArg(), 1).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()
 
-		token, _, _, err := ResendVerificationToken(ctx, "success@test.com")
+		token, previousToken, previousResend, err := ResendVerificationToken(ctx, "success@test.com")
 		if err != nil {
 			t.Errorf("expected no error, got %v", err)
+		}
+		if previousToken != oldToken || previousResend != nil {
+			t.Errorf("unexpected previous verification state: token=%v resend=%v", previousToken, previousResend)
 		}
 		if token == "" {
 			t.Errorf("expected token, got empty string")
@@ -120,6 +125,7 @@ func TestResendVerificationToken(t *testing.T) {
 	})
 
 	t.Run("UpdateFailure", func(t *testing.T) {
+		oldToken := "old-token"
 		mock, err := db.SetupTestDB()
 		if err != nil {
 			t.Fatalf("SetupTestDB failed: %v", err)
@@ -130,7 +136,7 @@ func TestResendVerificationToken(t *testing.T) {
 		mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token").
 			WithArgs("fail@test.com").
 			WillReturnRows(mock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
-				AddRow(1, false, 0, nil, "old-token"))
+				AddRow(1, false, 0, nil, &oldToken))
 		mock.ExpectExec("UPDATE users").
 			WithArgs(pgxmock.AnyArg(), 1).
 			WillReturnError(pgx.ErrNoRows) // any error to trigger log and fail
@@ -146,6 +152,7 @@ func TestResendVerificationToken(t *testing.T) {
 	})
 
 	t.Run("CommitFailure", func(t *testing.T) {
+		oldToken := "old-token"
 		mock, err := db.SetupTestDB()
 		if err != nil {
 			t.Fatalf("SetupTestDB failed: %v", err)
@@ -156,7 +163,7 @@ func TestResendVerificationToken(t *testing.T) {
 		mock.ExpectQuery("SELECT id, is_email_verified, verification_resend_count, last_verification_resend_at, email_verify_token").
 			WithArgs("commitfail@test.com").
 			WillReturnRows(mock.NewRows([]string{"id", "is_email_verified", "verification_resend_count", "last_verification_resend_at", "email_verify_token"}).
-				AddRow(1, false, 0, nil, "old-token"))
+				AddRow(1, false, 0, nil, &oldToken))
 		mock.ExpectExec("UPDATE users").
 			WithArgs(pgxmock.AnyArg(), 1).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))

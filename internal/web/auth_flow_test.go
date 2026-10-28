@@ -12,7 +12,7 @@ import (
 
 	"cve-tracker/internal/auth"
 
-	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pashagolub/pgxmock/v5"
 )
 
 func TestAuthFlow_FullLifecycle(t *testing.T) {
