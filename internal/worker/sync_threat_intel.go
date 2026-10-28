@@ -101,10 +101,9 @@ func (w *Worker) syncThreatIntel(ctx context.Context) {
 
 	// Always overlay curated fallback items to ensure baseline data is present
 	for _, ca := range curatedAssociations {
-		found := slices.ContainsFunc(associations, func(a models.ThreatAssociation) bool {
+		if !slices.ContainsFunc(associations, func(a models.ThreatAssociation) bool {
 			return a.CVEID == ca.CVEID && a.EntityName == ca.EntityName && a.EntityType == ca.EntityType
-		})
-		if !found {
+		}) {
 			associations = append(associations, ca)
 		}
 	}
