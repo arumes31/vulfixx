@@ -9,7 +9,6 @@ import (
 	"net/mail"
 	"net/smtp"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -180,8 +179,11 @@ func classifyVendorAdvisories(references []string) []string {
 
 	for _, ref := range references {
 		lower := strings.ToLower(ref)
-		if slices.ContainsFunc(keywords, func(kw string) bool { return strings.Contains(lower, kw) }) {
-			advisories = append(advisories, ref)
+		for _, kw := range keywords {
+			if strings.Contains(lower, kw) {
+				advisories = append(advisories, ref)
+				break
+			}
 		}
 	}
 	return advisories

@@ -4,9 +4,9 @@ import (
 	"context"
 	"cve-tracker/internal/db"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/gorilla/sessions"
@@ -193,8 +193,7 @@ func (a *App) EnforceConcurrentSessions(ctx context.Context, userID int, session
 	if a.Redis == nil || sessionID == "" {
 		return
 	}
-	// ⚡ Bolt: Using strconv and concatenation instead of fmt.Sprintf to reduce allocation and reflection overhead
-	key := "user_sessions:" + strconv.Itoa(userID)
+	key := fmt.Sprintf("user_sessions:%d", userID)
 	now := time.Now().Unix()
 
 	// Add/update current session ID with timestamp score
@@ -231,8 +230,7 @@ func (a *App) RevokeUserSessions(ctx context.Context, userID int, keepSessionID 
 	if a.Redis == nil {
 		return
 	}
-	// ⚡ Bolt: Using strconv and concatenation instead of fmt.Sprintf to reduce allocation and reflection overhead
-	key := "user_sessions:" + strconv.Itoa(userID)
+	key := fmt.Sprintf("user_sessions:%d", userID)
 	sessionIDs, err := a.Redis.ZRange(ctx, key, 0, -1).Result()
 	if err != nil {
 		// #nosec G706 -- userID is an integer
@@ -254,6 +252,5 @@ func (a *App) untrackSession(ctx context.Context, userID int, sessionID string) 
 	if a.Redis == nil || sessionID == "" {
 		return
 	}
-	// ⚡ Bolt: Using strconv and concatenation instead of fmt.Sprintf to reduce allocation and reflection overhead
-	_, _ = a.Redis.ZRem(ctx, "user_sessions:"+strconv.Itoa(userID), sessionID).Result()
+	_, _ = a.Redis.ZRem(ctx, fmt.Sprintf("user_sessions:%d", userID), sessionID).Result()
 }

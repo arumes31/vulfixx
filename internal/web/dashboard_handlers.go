@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"cve-tracker/internal/models"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1602,10 +1601,9 @@ func (a *App) fetchDashboardMetrics(ctx context.Context, userID int, activeTeamI
 		` + whereClause
 
 	// Generate deterministic cache key
-	// Using strconv and hex.EncodeToString instead of fmt.Sprintf to reduce allocation overhead
-	cacheKeyStr := strconv.Itoa(userID) + ":" + strconv.Itoa(activeTeamID) + ":" + consolidatedMetricsQuery + ":" + fmt.Sprint(args)
+	cacheKeyStr := fmt.Sprintf("%d:%d:%s:%v", userID, activeTeamID, consolidatedMetricsQuery, args)
 	cacheKeyHash := sha256.Sum256([]byte(cacheKeyStr))
-	cacheKey := "dashboard_metrics_v2:" + hex.EncodeToString(cacheKeyHash[:])
+	cacheKey := fmt.Sprintf("dashboard_metrics_v2:%x", cacheKeyHash)
 
 	if a.Redis == nil {
 		slog.Warn("fetchDashboardMetricsFromCache: Redis is nil, skipping cache behavior")
