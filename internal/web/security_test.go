@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/gorilla/sessions"
-	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pashagolub/pgxmock/v5"
 )
 
 func TestSecurityHeadersMiddleware(t *testing.T) {

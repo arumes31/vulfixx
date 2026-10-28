@@ -44,7 +44,9 @@ func runMain() error {
 	if err != nil {
 		return fmt.Errorf("healthcheck request: %w", err)
 	}
-	defer response.Body.Close()
+	if err := response.Body.Close(); err != nil {
+		return fmt.Errorf("close healthcheck response: %w", err)
+	}
 
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("healthcheck returned %s", response.Status)
