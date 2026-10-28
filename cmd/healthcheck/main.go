@@ -10,34 +10,46 @@ import (
 	"time"
 )
 
+const (
+	DefaultPort        = "8080"
+	HealthCheckHost    = "127.0.0.1"
+	HealthCheckPath    = "/healthz"
+	HealthCheckTimeout = 2 * time.Second
+)
+
 func main() {
+	if err := runMain(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+}
+
+func runMain() error {
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080"
+		port = DefaultPort
 	}
 	portNumber, err := strconv.ParseUint(port, 10, 16)
 	if err != nil || portNumber == 0 {
-		_, _ = fmt.Fprintf(os.Stderr, "invalid healthcheck port %q\n", port)
-		os.Exit(1)
+		return fmt.Errorf("invalid healthcheck port %q", port)
 	}
 	healthURL := url.URL{
 		Scheme: "http",
-		Host:   net.JoinHostPort("127.0.0.1", strconv.FormatUint(portNumber, 10)),
-		Path:   "/healthz",
+		Host:   net.JoinHostPort(HealthCheckHost, strconv.FormatUint(portNumber, 10)),
+		Path:   HealthCheckPath,
 	}
-	client := &http.Client{Timeout: 2 * time.Second}
+	client := &http.Client{Timeout: HealthCheckTimeout}
 	// #nosec G704 -- the destination is a fixed loopback address with a validated numeric port.
 	response, err := client.Get(healthURL.String())
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "healthcheck request: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("healthcheck request: %w", err)
 	}
 	if err := response.Body.Close(); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "close healthcheck response: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("close healthcheck response: %w", err)
 	}
+
 	if response.StatusCode != http.StatusOK {
-		_, _ = fmt.Fprintf(os.Stderr, "healthcheck returned %s\n", response.Status)
-		os.Exit(1)
+		return fmt.Errorf("healthcheck returned %s", response.Status)
 	}
+	return nil
 }
