@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pashagolub/pgxmock/v5"
 )
 
 func TestPublicDashboardHandler_DefaultView_CacheMiss(t *testing.T) {

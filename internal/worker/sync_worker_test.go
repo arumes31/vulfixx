@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pashagolub/pgxmock/v5"
 )
 
 func TestWorkerSync_NVD(t *testing.T) {
@@ -109,7 +109,7 @@ func TestWorkerSync_NVD(t *testing.T) {
 
 		mock.ExpectBegin()
 
-		mock.ExpectQuery("(?i)INSERT INTO cves").
+		mock.ExpectBatch().ExpectQuery("(?i)INSERT INTO cves").
 			WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), 7.5, pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), true).
 			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 
@@ -288,7 +288,7 @@ func TestWorkerSync_GitHub(t *testing.T) {
 		mock.ExpectQuery("SELECT cve_id FROM cves").WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-GH-1"))
 
 		mock.ExpectBegin()
-		mock.ExpectExec("UPDATE cves SET github_poc_count = \\$1, github_poc_repos = \\$2 WHERE cve_id = \\$3").WithArgs(42, pgxmock.AnyArg(), "CVE-GH-1").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+		mock.ExpectBatch().ExpectExec("UPDATE cves SET github_poc_count = \\$1, github_poc_repos = \\$2 WHERE cve_id = \\$3").WithArgs(42, pgxmock.AnyArg(), "CVE-GH-1").WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()
 
 		mock.ExpectExec("INSERT INTO worker_sync_stats").WithArgs("github_buzz_sync").WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -330,7 +330,7 @@ func TestWorkerSync_GreyNoise(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"cve_id"}).AddRow("CVE-GN-1"))
 
 		mock.ExpectBegin()
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE cves SET greynoise_hits = $1, greynoise_classification = $2, greynoise_last_updated = NOW() WHERE cve_id = $3")).
+		mock.ExpectBatch().ExpectExec(regexp.QuoteMeta("UPDATE cves SET greynoise_hits = $1, greynoise_classification = $2, greynoise_last_updated = NOW() WHERE cve_id = $3")).
 			WithArgs(5, "benign", "CVE-GN-1").
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()
@@ -372,7 +372,7 @@ func TestWorkerSync_OSV(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "vendor", "product", "affected_products"}).AddRow(1, "CVE-OSV-1", "", "", []byte(`[]`)))
 
 		mock.ExpectBegin()
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE cves SET osv_data = $1, osv_last_updated = NOW(), vendor = $2, product = $3, affected_products = $4 WHERE id = $5")).
+		mock.ExpectBatch().ExpectExec(regexp.QuoteMeta("UPDATE cves SET osv_data = $1, osv_last_updated = NOW(), vendor = $2, product = $3, affected_products = $4 WHERE id = $5")).
 			WithArgs(pgxmock.AnyArg(), "Go", "test-package", pgxmock.AnyArg(), 1).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()
@@ -411,7 +411,7 @@ func TestWorkerSync_OSV(t *testing.T) {
 			WillReturnRows(pgxmock.NewRows([]string{"id", "cve_id", "vendor", "product", "affected_products"}).AddRow(2, "CVE-OSV-NONE", "", "", []byte(`[]`)))
 
 		mock.ExpectBegin()
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE cves SET osv_last_updated = NOW() WHERE id = $1")).
+		mock.ExpectBatch().ExpectExec(regexp.QuoteMeta("UPDATE cves SET osv_last_updated = NOW() WHERE id = $1")).
 			WithArgs(2).
 			WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 		mock.ExpectCommit()

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pashagolub/pgxmock/v5"
 )
 
 func TestWorker_ExploitDetection(t *testing.T) {
@@ -44,7 +44,7 @@ func TestWorker_ExploitDetection(t *testing.T) {
 
 	// Expect UPSERT with 14 arguments (including reference_tags as 13th argument and exploit_available as arg 14)
 	mock.ExpectBegin()
-	mock.ExpectQuery("(?i)INSERT INTO cves").
+	mock.ExpectBatch().ExpectQuery("(?i)INSERT INTO cves").
 		WithArgs(
 			"CVE-EXPLOIT", pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
