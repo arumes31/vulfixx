@@ -114,7 +114,7 @@ func TestRailPartialsRender(t *testing.T) {
 	})
 }
 
-// A struct is always truthy to text/template, so an empty RailIntel assigned into
+// A struct is always truthy to html/template, so an empty RailIntel assigned into
 // renderData would render three "No data" panels instead of hiding the rail. Live
 // verification hit exactly that.
 func TestRailIntelIsEmpty(t *testing.T) {

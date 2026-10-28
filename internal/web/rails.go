@@ -244,7 +244,7 @@ func (a *App) attachRailData(ctx context.Context, renderData map[string]interfac
 
 	intel := cachedRail(ctx, a, railIntelCacheKey, a.loadIntelRail, RailIntel.IsEmpty)
 	// Only set the key when there is something to show. A struct value is always
-	// truthy to text/template, so assigning an empty RailIntel would render three
+	// truthy to html/template, so assigning an empty RailIntel would render three
 	// "No data" panels instead of hiding the rail.
 	if !intel.IsEmpty() {
 		renderData["RailIntel"] = intel
