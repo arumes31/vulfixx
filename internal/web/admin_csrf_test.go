@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pashagolub/pgxmock/v5"
 )
 
 // The delete-operator form is guarded twice: the global gorilla/csrf middleware checks

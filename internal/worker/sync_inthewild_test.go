@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pashagolub/pgxmock/v5"
 )
 
 func TestWorkerSync_InTheWild(t *testing.T) {
