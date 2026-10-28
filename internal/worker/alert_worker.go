@@ -36,6 +36,12 @@ func getPatternRegex(pattern string) (*regexp.Regexp, error) {
 	if len(pattern) > maxPatternLen {
 		return nil, fmt.Errorf("regex pattern too long (%d chars, max %d)", len(pattern), maxPatternLen)
 	}
+
+	// Cache lookup before expensive syntax tree validation and compilation
+	if val, ok := regexCache.Load(pattern); ok {
+		return val.(*regexp.Regexp), nil
+	}
+
 	// Validate the syntax tree to reject patterns with excessive nesting/quantifiers (ReDoS)
 	sre, err := syntax.Parse(pattern, syntax.Perl)
 	if err != nil {
@@ -43,9 +49,6 @@ func getPatternRegex(pattern string) (*regexp.Regexp, error) {
 	}
 	if hasNestedQuantifiers(sre) {
 		return nil, fmt.Errorf("regex pattern has nested quantifiers (ReDoS risk): %s", pattern)
-	}
-	if val, ok := regexCache.Load(pattern); ok {
-		return val.(*regexp.Regexp), nil
 	}
 	re, err := regexp.Compile(pattern)
 	if err == nil {
