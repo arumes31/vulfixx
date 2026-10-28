@@ -4,7 +4,7 @@ import (
 	"context"
 	"cve-tracker/internal/db"
 	"fmt"
-	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pashagolub/pgxmock/v5"
 	"html/template"
 	"net/http"
 	"net/http/httptest"

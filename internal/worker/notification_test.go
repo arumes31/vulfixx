@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pashagolub/pgxmock/v5"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -41,7 +41,7 @@ func TestWorker_FloodProtection(t *testing.T) {
 	// Mock CVE details fetch
 	mock.ExpectQuery("SELECT EXISTS").WithArgs(userID, cve.ID).WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 	mock.ExpectQuery("SELECT cve_id").WithArgs(cve.ID).WillReturnRows(pgxmock.NewRows([]string{"cve_id", "description", "cvss_score", "vector_string", "cisa_kev", "epss_score", "cwe_id", "github_poc_count", "published_date", "references"}).
-		AddRow("CVE-2024-0001", "desc", 7.0, "V", false, 0.1, "CWE-1", 0, time.Now(), []byte("[]")))
+		AddRow("CVE-2024-0001", "desc", 7.0, "V", false, 0.1, "CWE-1", 0, time.Now(), []string{}))
 	mock.ExpectExec("INSERT INTO alert_history").WithArgs(userID, cve.ID).WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	// 1. First alert should pass

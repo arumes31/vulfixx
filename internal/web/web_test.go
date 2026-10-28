@@ -13,7 +13,7 @@ import (
 
 	"cve-tracker/internal/auth"
 
-	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pashagolub/pgxmock/v5"
 )
 
 // - [x] Align `web_test.go` with current session and template logic
