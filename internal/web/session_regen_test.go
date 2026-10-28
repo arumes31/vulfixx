@@ -11,7 +11,7 @@ import (
 	"cve-tracker/internal/db"
 
 	"github.com/gorilla/sessions"
-	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pashagolub/pgxmock/v5"
 )
 
 // regenerateSession must both rotate the identifier and leave the session usable.

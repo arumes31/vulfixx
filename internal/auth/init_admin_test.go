@@ -5,7 +5,7 @@ import (
 	"cve-tracker/internal/db"
 	"testing"
 
-	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pashagolub/pgxmock/v5"
 )
 
 // By default an existing admin keeps its password and enrolled TOTP secret, so

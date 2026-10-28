@@ -8,7 +8,7 @@ import (
 
 	"cve-tracker/internal/db"
 
-	"github.com/pashagolub/pgxmock/v3"
+	"github.com/pashagolub/pgxmock/v5"
 )
 
 func TestParseFeedDate(t *testing.T) {

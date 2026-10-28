@@ -12,9 +12,9 @@ require (
 	github.com/go-playground/validator/v10 v10.30.5
 	github.com/gorilla/sessions v1.4.0
 	github.com/hibiken/asynq v0.26.0
-	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/microcosm-cc/bluemonday v1.0.27
-	github.com/pashagolub/pgxmock/v3 v3.4.0
+	github.com/pashagolub/pgxmock/v5 v5.2.0
 	github.com/pquerna/otp v1.5.0
 	github.com/pressly/goose/v3 v3.28.0
 	github.com/rbcervilla/redisstore/v9 v9.0.0
