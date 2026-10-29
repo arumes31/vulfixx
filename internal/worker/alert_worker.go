@@ -19,14 +19,16 @@ import (
 )
 
 var regexCache sync.Map
+var keywordRegexCache sync.Map
 
+// ⚡ Bolt: Use raw keyword as cache key to avoid regexp.QuoteMeta and string allocation overhead on cache hits
 func getKeywordRegex(keyword string) *regexp.Regexp {
-	pattern := `(?i)\b` + regexp.QuoteMeta(keyword) + `\b`
-	if val, ok := regexCache.Load(pattern); ok {
+	if val, ok := keywordRegexCache.Load(keyword); ok {
 		return val.(*regexp.Regexp)
 	}
+	pattern := `(?i)\b` + regexp.QuoteMeta(keyword) + `\b`
 	re := regexp.MustCompile(pattern)
-	regexCache.Store(pattern, re)
+	keywordRegexCache.Store(keyword, re)
 	return re
 }
 
