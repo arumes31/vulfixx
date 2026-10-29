@@ -18,7 +18,17 @@ import (
 	"time"
 )
 
-const nvdBase = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+const (
+	nvdBase              = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+	DefaultPerYear       = 10
+	NVDClientTimeout     = 60 * time.Second
+	NVDDelayWithoutKey   = 7 * time.Second
+	NVDDelayWithKey      = 1 * time.Second
+	NVDRetryBaseDelay    = 8 * time.Second
+	NVDRetryMaxAttempts  = 4
+	NVDResultsPerPage    = 200
+	NVDMaxStartIndex     = 2000
+)
 
 type nvdCVE struct {
 	ID           string `json:"id"`
@@ -61,7 +71,7 @@ func main() {
 }
 
 func runMain() error {
-	perYear := 10
+	perYear := DefaultPerYear
 	if v := os.Getenv("PER_YEAR"); v != "" {
 		_, _ = fmt.Sscanf(v, "%d", &perYear)
 	}
@@ -78,7 +88,7 @@ func runMain() error {
 	}
 
 	apiKey := os.Getenv("NVD_API_KEY")
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := &http.Client{Timeout: NVDClientTimeout}
 
 	var all []testCVE
 	for _, year := range years {
@@ -128,9 +138,9 @@ func collectYear(client *http.Client, apiKey string, year, want int) []testCVE {
 	multiCount := 0
 	// Page through; NVD caps resultsPerPage at 2000 but we keep pages small and
 	// scan a few hundred entries per year to find ones with clean CPE data.
-	for startIdx := 0; startIdx < 2000 && len(result) < want; startIdx += 200 {
-		url := fmt.Sprintf("%s?pubStartDate=%s&pubEndDate=%s&resultsPerPage=200&startIndex=%d",
-			nvdBase, start, end, startIdx)
+	for startIdx := 0; startIdx < NVDMaxStartIndex && len(result) < want; startIdx += NVDResultsPerPage {
+		url := fmt.Sprintf("%s?pubStartDate=%s&pubEndDate=%s&resultsPerPage=%d&startIndex=%d",
+			nvdBase, start, end, NVDResultsPerPage, startIdx)
 		resp := fetch(client, apiKey, url)
 		if resp == nil || len(resp.Vulnerabilities) == 0 {
 			break
@@ -216,14 +226,14 @@ func distinctProducts(t []truthProduct) int {
 }
 
 func fetch(client *http.Client, apiKey, url string) *nvdResp {
-	for attempt := 0; attempt < 4; attempt++ {
+	for attempt := 0; attempt < NVDRetryMaxAttempts; attempt++ {
 		// NVD rate limits: 5 req/30s without a key, 50 req/30s with one.
 		if attempt > 0 {
-			time.Sleep(time.Duration(attempt) * 8 * time.Second)
+			time.Sleep(time.Duration(attempt) * NVDRetryBaseDelay)
 		} else {
-			delay := 7 * time.Second
+			delay := NVDDelayWithoutKey
 			if apiKey != "" {
-				delay = 1 * time.Second
+				delay = NVDDelayWithKey
 			}
 			time.Sleep(delay)
 		}

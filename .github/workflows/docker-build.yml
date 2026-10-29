@@ -125,7 +125,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install OSV Scanner
-        run: apk add --no-cache git && go install github.com/google/osv-scanner/v2/cmd/osv-scanner@latest
+        run: apk add --no-cache git && go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.6.0
       - name: Run OSV Scanner
         run: osv-scanner scan source -r .
 
