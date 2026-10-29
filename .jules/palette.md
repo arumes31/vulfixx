@@ -20,3 +20,6 @@
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+## 2026-10-29 - Adding aria-labels to toggle buttons
+**Learning:** Adding aria-labels to icon/text toggle buttons improves accessibility for screen readers.
+**Action:** Always ensure that buttons used for toggling functionality have appropriate aria-labels to make their purpose clear to all users.
