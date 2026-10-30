@@ -19,15 +19,15 @@ import (
 )
 
 const (
-	nvdBase              = "https://services.nvd.nist.gov/rest/json/cves/2.0"
-	DefaultPerYear       = 10
-	NVDClientTimeout     = 60 * time.Second
-	NVDDelayWithoutKey   = 7 * time.Second
-	NVDDelayWithKey      = 1 * time.Second
-	NVDRetryBaseDelay    = 8 * time.Second
-	NVDRetryMaxAttempts  = 4
-	NVDResultsPerPage    = 200
-	NVDMaxStartIndex     = 2000
+	nvdBase             = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+	DefaultPerYear      = 10
+	NVDClientTimeout    = 60 * time.Second
+	NVDDelayWithoutKey  = 7 * time.Second
+	NVDDelayWithKey     = 1 * time.Second
+	NVDRetryBaseDelay   = 8 * time.Second
+	NVDRetryMaxAttempts = 4
+	NVDResultsPerPage   = 200
+	NVDMaxStartIndex    = 2000
 )
 
 type nvdCVE struct {

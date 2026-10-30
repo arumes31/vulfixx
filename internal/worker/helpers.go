@@ -171,20 +171,16 @@ func sendMailWithTimeout(host, port, user, password, from string, to []string, m
 }
 
 func classifyVendorAdvisories(references []string) []string {
-	advisories := []string{}
 	keywords := []string{
 		"advisory", "bulletin", "security-advisories", "msrc", "security/notices",
 		"security/advisories", "kb", "security-center", "ghsa", "osv",
 		"security-guidance", "fixed", "patch",
 	}
 
-	for _, ref := range references {
+	return slices.DeleteFunc(slices.Clone(references), func(ref string) bool {
 		lower := strings.ToLower(ref)
-		if slices.ContainsFunc(keywords, func(kw string) bool { return strings.Contains(lower, kw) }) {
-			advisories = append(advisories, ref)
-		}
-	}
-	return advisories
+		return !slices.ContainsFunc(keywords, func(kw string) bool { return strings.Contains(lower, kw) })
+	})
 }
 
 // isValidRedditPermalink checks if a Reddit permalink is safe.
