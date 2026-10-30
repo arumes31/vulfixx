@@ -7,3 +7,7 @@
 ## 2026-10-28 - Optimize cache lookups before expensive validation
 **Learning:** Performing expensive operations like AST construction (`syntax.Parse`) or complex validation prior to checking a cache layer defeats the purpose of caching. The CPU overhead is still incurred on every cache hit.
 **Action:** Always perform cache lookups (like `sync.Map.Load()`) before executing any expensive string parsing, validation, or AST construction to maximize cache performance.
+
+## 2026-10-30 - Optimize string concatenation for integer-based cache keys
+**Learning:** Using `fmt.Sprintf` to construct cache keys with integers (e.g. `fmt.Sprintf("alert_buffer:%d", userID)`) introduces unnecessary overhead from reflection and formatting logic.
+**Action:** Always prefer `strconv.Itoa` or `strconv.FormatInt` and standard string concatenation (e.g. `"alert_buffer:" + strconv.Itoa(userID)`) to construct string keys efficiently.
