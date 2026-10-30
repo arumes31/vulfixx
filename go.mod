@@ -16,7 +16,7 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/pashagolub/pgxmock/v5 v5.2.0
 	github.com/pquerna/otp v1.5.0
-	github.com/pressly/goose/v3 v3.28.0
+	github.com/pressly/goose/v3 v3.29.0
 	github.com/rbcervilla/redisstore/v9 v9.0.0
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/rs/cors v1.11.1
@@ -24,7 +24,7 @@ require (
 	golang.org/x/crypto v0.58.0
 	golang.org/x/sync v0.24.0
 	golang.org/x/time v0.16.0
-	google.golang.org/genai v1.76.0
+	google.golang.org/genai v1.77.0
 	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 	rsc.io/qr v0.2.0
@@ -32,7 +32,7 @@ require (
 
 require (
 	cloud.google.com/go v0.123.0 // indirect
-	cloud.google.com/go/auth v0.24.1 // indirect
+	cloud.google.com/go/auth v0.24.2 // indirect
 	cloud.google.com/go/compute/metadata v0.10.0 // indirect
 	github.com/andybalholm/cascadia v1.3.5 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
@@ -74,6 +74,6 @@ require (
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
-	google.golang.org/api v0.309.0 // indirect
+	google.golang.org/api v0.310.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261026165753-2ffab32bce7e // indirect
 )
