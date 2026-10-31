@@ -443,7 +443,7 @@ func (w *Worker) notifyIfNewWithCache(ctx context.Context, userID int, cve *mode
 	}
 
 	// 21. Alert Flood Protection (Rate limiting per user/hour)
-	floodKey := fmt.Sprintf("flood_protection:%d", userID)
+	floodKey := "flood_protection:" + strconv.Itoa(userID)
 	count, _ := w.Redis.Incr(ctx, floodKey).Result()
 	if count == 1 {
 		w.Redis.Expire(ctx, floodKey, 1*time.Hour)

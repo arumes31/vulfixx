@@ -7,3 +7,6 @@
 ## 2026-10-28 - Optimize cache lookups before expensive validation
 **Learning:** Performing expensive operations like AST construction (`syntax.Parse`) or complex validation prior to checking a cache layer defeats the purpose of caching. The CPU overhead is still incurred on every cache hit.
 **Action:** Always perform cache lookups (like `sync.Map.Load()`) before executing any expensive string parsing, validation, or AST construction to maximize cache performance.
+## 2026-10-28 - Use strconv instead of fmt.Sprintf for simple strings in hot paths
+**Learning:** `fmt.Sprintf` introduces significant CPU and memory overhead due to reflection and dynamic parsing, especially when constructing simple strings like cache keys or IDs. This overhead compounds rapidly in frequently executed paths like alert workers.
+**Action:** Always prefer `strconv.Itoa`, `strconv.FormatInt`, and string concatenation over `fmt.Sprintf` for constructing simple keys and IDs in performance-critical paths.
