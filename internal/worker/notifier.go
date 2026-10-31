@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -378,7 +379,7 @@ func (w *Worker) sendGenericWebhook(webhookURL string, cve *models.CVE, asset, e
 	if secret == "" {
 		return false, "missing WebhookSecret"
 	}
-	timestamp := fmt.Sprintf("%d", time.Now().Unix())
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(timestamp + "." + string(payload)))
 	signature := hex.EncodeToString(mac.Sum(nil))
