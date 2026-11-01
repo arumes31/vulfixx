@@ -21,12 +21,14 @@ import (
 var regexCache sync.Map
 
 func getKeywordRegex(keyword string) *regexp.Regexp {
-	pattern := `(?i)\b` + regexp.QuoteMeta(keyword) + `\b`
-	if val, ok := regexCache.Load(pattern); ok {
+	// ⚡ Bolt: Perform cache lookup using raw keyword BEFORE expensive regexp.QuoteMeta
+	// and string concatenation overhead.
+	if val, ok := regexCache.Load(keyword); ok {
 		return val.(*regexp.Regexp)
 	}
+	pattern := `(?i)\b` + regexp.QuoteMeta(keyword) + `\b`
 	re := regexp.MustCompile(pattern)
-	regexCache.Store(pattern, re)
+	regexCache.Store(keyword, re)
 	return re
 }
 
