@@ -7,3 +7,7 @@
 ## 2026-10-28 - Optimize cache lookups before expensive validation
 **Learning:** Performing expensive operations like AST construction (`syntax.Parse`) or complex validation prior to checking a cache layer defeats the purpose of caching. The CPU overhead is still incurred on every cache hit.
 **Action:** Always perform cache lookups (like `sync.Map.Load()`) before executing any expensive string parsing, validation, or AST construction to maximize cache performance.
+
+## 2026-10-28 - Optimize string-based Redis cache key generation using strconv
+**Learning:** Using `fmt.Sprintf` to generate highly-frequent string keys (like `"alert_buffer:%d"`) introduces unnecessary reflection and heap allocation overhead in Go.
+**Action:** Replace `fmt.Sprintf("key:%d", id)` with string concatenation and `strconv.Itoa(id)` for better performance on hot paths.

@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -24,9 +25,9 @@ func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, s
 		return w.sendAlert(sub, cve, email, assetName)
 	}
 
-	key := fmt.Sprintf("alert_buffer:%d", userID)
+	key := "alert_buffer:" + strconv.Itoa(userID)
 	data := map[string]interface{}{
-		"id":         fmt.Sprintf("%d_%d", time.Now().UnixNano(), userID), // Unique ID for safe LRem
+		"id":         strconv.FormatInt(time.Now().UnixNano(), 10) + "_" + strconv.Itoa(userID), // Unique ID for safe LRem
 		"cve":        cve,
 		"email":      email,
 		"asset_name": assetName,
@@ -42,7 +43,7 @@ func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, s
 		return false
 	}
 
-	processingKey := fmt.Sprintf("alert_processing:%d", userID)
+	processingKey := "alert_processing:" + strconv.Itoa(userID)
 	bufferTime := bufferTimeStandard
 	if sub.AggregationMode == "hourly" {
 		bufferTime = 1 * time.Hour
@@ -78,7 +79,7 @@ func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, s
 				w.processUserBuffer(bgCtx, uid)
 
 				// Re-check buffer length
-				bufferKey := fmt.Sprintf("alert_buffer:%d", uid)
+				bufferKey := "alert_buffer:" + strconv.Itoa(uid)
 				llen, err := w.Redis.LLen(bgCtx, bufferKey).Result()
 				if err != nil || llen == 0 {
 					break
@@ -92,7 +93,7 @@ func (w *Worker) bufferAlert(ctx context.Context, userID int, cve *models.CVE, s
 }
 
 func (w *Worker) processUserBuffer(ctx context.Context, userID int) {
-	key := fmt.Sprintf("alert_buffer:%d", userID)
+	key := "alert_buffer:" + strconv.Itoa(userID)
 	// Atomic: Fetch all and delete
 	pipe := w.Redis.TxPipeline()
 	lrange := pipe.LRange(ctx, key, 0, -1)
