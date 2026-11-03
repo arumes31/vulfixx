@@ -7,3 +7,6 @@
 ## 2026-10-28 - Optimize cache lookups before expensive validation
 **Learning:** Performing expensive operations like AST construction (`syntax.Parse`) or complex validation prior to checking a cache layer defeats the purpose of caching. The CPU overhead is still incurred on every cache hit.
 **Action:** Always perform cache lookups (like `sync.Map.Load()`) before executing any expensive string parsing, validation, or AST construction to maximize cache performance.
+## 2026-11-02 - Optimize cache lookups before expensive string manipulations
+**Learning:** Performing string concatenation or escaping operations (`regexp.QuoteMeta`) before checking a cache layer defeats some of the purpose of caching by incurring CPU and allocation overhead on cache hits.
+**Action:** Always perform cache lookups (like `sync.Map.Load()`) before executing any string escaping or concatenations to construct keys, even for seemingly trivial strings, to maximize cache performance. Use raw inputs for cache keys when possible.

@@ -19,14 +19,18 @@ import (
 )
 
 var regexCache sync.Map
+var keywordRegexCache sync.Map
 
 func getKeywordRegex(keyword string) *regexp.Regexp {
-	pattern := `(?i)\b` + regexp.QuoteMeta(keyword) + `\b`
-	if val, ok := regexCache.Load(pattern); ok {
+	// ⚡ Bolt: Perform cache lookup BEFORE expensive string concatenation and escaping.
+	// This avoids unnecessary allocations and CPU overhead on cache hits.
+	if val, ok := keywordRegexCache.Load(keyword); ok {
 		return val.(*regexp.Regexp)
 	}
+
+	pattern := `(?i)\b` + regexp.QuoteMeta(keyword) + `\b`
 	re := regexp.MustCompile(pattern)
-	regexCache.Store(pattern, re)
+	keywordRegexCache.Store(keyword, re)
 	return re
 }
 
