@@ -17,6 +17,11 @@
 ## 2026-06-07 - Form Input Label Association
 **Learning:** Without explicit `id` attributes on form inputs that match the `for` attribute on corresponding `<label>` elements, screen readers fail to associate the label with the input. Furthermore, using identical IDs in both the primary view and dynamically generated modals causes ID collisions and breaks label resolution.
 **Action:** Always assign a unique `id` to every `<input>` and `<select>` and explicitly link them to `<label for="[id]">`. For dynamic forms inside modals, use a prefix like `edit_` to ensure IDs remain globally unique on the page.
+
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+
+## 2026-11-03 - Accessible dynamic toggle button labels
+**Learning:** When modifying button labels dynamically upon toggling state (e.g., "Compact View" changing to "Standard View"), using `aria-pressed` can create contradictory feedback for screen reader users, who hear the *new action* alongside a "pressed" state, falsely implying the new action is currently active.
+**Action:** For toggle buttons whose labels update to indicate the *next action*, ensure the dynamically updated labels contain clear, descriptive language (e.g., "Switch to Standard View" instead of just "Standard View") and avoid using the `aria-pressed` attribute.
