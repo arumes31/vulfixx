@@ -7,3 +7,7 @@
 ## 2026-10-28 - Optimize cache lookups before expensive validation
 **Learning:** Performing expensive operations like AST construction (`syntax.Parse`) or complex validation prior to checking a cache layer defeats the purpose of caching. The CPU overhead is still incurred on every cache hit.
 **Action:** Always perform cache lookups (like `sync.Map.Load()`) before executing any expensive string parsing, validation, or AST construction to maximize cache performance.
+
+## 2025-02-12 - Regex Cache Key Optimization
+**Learning:** In Go, calling `regexp.QuoteMeta` inside a hot loop or caching mechanism (like `regexCache`) creates unnecessary memory allocations and CPU overhead on cache hits, because the formatting/quoting happens before the cache check.
+**Action:** When caching regular expressions or objects tied to a string, use the raw string (e.g., the original `keyword`) as the cache key. Only compute the full regex pattern (`regexp.QuoteMeta`) on a cache miss before compiling it.
