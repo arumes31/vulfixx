@@ -459,9 +459,14 @@
             },
 
             updateThemeIcon: () => {
+                const isDark = document.documentElement.classList.contains('dark');
                 const icon = document.getElementById('theme-toggle-icon');
+                const text = icon?.nextElementSibling;
                 if (icon) {
-                    icon.textContent = document.documentElement.classList.contains('dark') ? 'light_mode' : 'dark_mode';
+                    icon.textContent = isDark ? 'light_mode' : 'dark_mode';
+                }
+                if (text) {
+                    text.textContent = isDark ? 'Switch to Light Theme' : 'Switch to Dark Theme';
                 }
             },
 
@@ -486,7 +491,7 @@
                 const icon = document.getElementById('compact-toggle-icon');
                 const text = document.getElementById('compact-toggle-text');
                 if (icon) icon.textContent = isCompact ? 'density_small' : 'density_medium';
-                if (text) text.textContent = isCompact ? 'Standard View' : 'Compact View';
+                if (text) text.textContent = isCompact ? 'Switch to Standard View' : 'Switch to Compact View';
             },
 
             initCompact: () => {
