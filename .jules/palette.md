@@ -20,3 +20,7 @@
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+
+## 2026-11-04 - WCAG 2.5.3 (Label in Name) on Mobile Navigation
+**Learning:** Found an accessibility issue where the mobile navigation logout button had visible text "Exit" but an `aria-label` of "Logout". This violates WCAG 2.5.3 (Label in Name), which requires the visible label to match or be at the start of the `aria-label`, leading to confusion for voice control users who say "Click Exit".
+**Action:** Always ensure that `aria-label` attributes on elements with visible text either match the visible text exactly, or start with the visible text (e.g., changing "Logout" to "Exit (Logout)").
