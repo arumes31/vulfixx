@@ -20,13 +20,20 @@ import (
 
 var regexCache sync.Map
 
+// ⚡ Bolt: Use a dedicated cache for raw keywords to avoid allocation overhead
+// from string concatenation and regexp.QuoteMeta on cache hits.
+var keywordRegexCache sync.Map
+
 func getKeywordRegex(keyword string) *regexp.Regexp {
-	pattern := `(?i)\b` + regexp.QuoteMeta(keyword) + `\b`
-	if val, ok := regexCache.Load(pattern); ok {
+	// Fast path: check cache using raw keyword
+	if val, ok := keywordRegexCache.Load(keyword); ok {
 		return val.(*regexp.Regexp)
 	}
+
+	// Slow path: construct pattern and compile
+	pattern := `(?i)\b` + regexp.QuoteMeta(keyword) + `\b`
 	re := regexp.MustCompile(pattern)
-	regexCache.Store(pattern, re)
+	keywordRegexCache.Store(keyword, re)
 	return re
 }
 
