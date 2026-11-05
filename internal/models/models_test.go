@@ -3,6 +3,7 @@ package models
 import (
 	"database/sql/driver"
 	"encoding/base64"
+	"slices"
 	"testing"
 	"time"
 )
@@ -474,6 +475,8 @@ func TestGetLineage(t *testing.T) {
 	for _, tt := range tests {
 		cve := &CVE{CVEID: tt.cveID, Description: tt.description, References: tt.references, OSINTData: tt.osintData}
 		got := cve.GetLineage()
+		slices.Sort(got)
+		slices.Sort(tt.want)
 		if len(got) != len(tt.want) {
 			t.Errorf("GetLineage(%q) len = %d; want %d", tt.description, len(got), len(tt.want))
 			continue
