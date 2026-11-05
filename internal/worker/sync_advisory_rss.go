@@ -438,10 +438,7 @@ func (w *Worker) integrateAdvisoryItems(ctx context.Context, feed AdvisoryFeed, 
 			continue // Strictly follow user request: only sync matched data
 		}
 
-		var uniqueCVEs []string
-		for _, cve := range foundCVEs {
-			uniqueCVEs = append(uniqueCVEs, cve)
-		}
+		uniqueCVEs := slices.Clone(foundCVEs)
 		slices.Sort(uniqueCVEs)
 		uniqueCVEs = slices.Compact(uniqueCVEs)
 
