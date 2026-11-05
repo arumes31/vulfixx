@@ -7,3 +7,6 @@
 ## 2026-10-28 - Optimize cache lookups before expensive validation
 **Learning:** Performing expensive operations like AST construction (`syntax.Parse`) or complex validation prior to checking a cache layer defeats the purpose of caching. The CPU overhead is still incurred on every cache hit.
 **Action:** Always perform cache lookups (like `sync.Map.Load()`) before executing any expensive string parsing, validation, or AST construction to maximize cache performance.
+## 2026-11-05 - Use raw input keys for zero-allocation cache lookups
+**Learning:** Constructing cache keys using string concatenations or `regexp.QuoteMeta` introduces allocation overhead even on cache hits.
+**Action:** To maximize performance when generating cache keys, use raw, unmodified inputs whenever possible. Use dedicated cache maps (e.g., `keywordRegexCache` separate from `regexCache`) to enable zero-allocation lookups using raw input keys, performing necessary transformations only on cache misses.
