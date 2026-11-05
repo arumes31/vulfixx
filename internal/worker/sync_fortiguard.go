@@ -229,15 +229,12 @@ func (w *Worker) fetchFortiGuardRSS(ctx context.Context) (map[string]struct {
 		allText := item.Title + " " + item.Description
 		cveMatches := cveIDRegex.FindAllString(allText, -1)
 		var cveIDs []string
-		seenCVE := make(map[string]bool)
 
 		for _, cveID := range cveMatches {
-			cveID = strings.ToUpper(cveID)
-			if !seenCVE[cveID] {
-				seenCVE[cveID] = true
-				cveIDs = append(cveIDs, cveID)
-			}
+			cveIDs = append(cveIDs, strings.ToUpper(cveID))
 		}
+		slices.Sort(cveIDs)
+		cveIDs = slices.Compact(cveIDs)
 
 		advisoryMap[advisoryID] = struct {
 			cveIDs []string

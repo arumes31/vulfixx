@@ -421,14 +421,8 @@ func (w *Worker) parseFortiGuardRSS(r io.Reader) (map[string]struct {
 		})
 
 		// Remove duplicate CVE IDs
-		uniqueCVEIDs := make(map[string]bool)
-		for _, cve := range cveIDs {
-			uniqueCVEIDs[cve] = true
-		}
-		cveIDs = []string{}
-		for cve := range uniqueCVEIDs {
-			cveIDs = append(cveIDs, cve)
-		}
+		slices.Sort(cveIDs)
+		cveIDs = slices.Compact(cveIDs)
 
 		advisoryMap[advisoryID] = struct {
 			cveIDs []string

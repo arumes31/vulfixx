@@ -506,29 +506,17 @@ type Team struct {
 
 // GetLineage extracts related CVE IDs from the description, references, and OSINT data.
 func (c *CVE) GetLineage() []string {
-	seen := make(map[string]bool)
 	var result []string
-
-	// Don't include self
-	seen[c.CVEID] = true
 
 	// Extract CVE IDs from description
 	for _, match := range cveRegex.FindAllString(c.Description, -1) {
-		upper := strings.ToUpper(match)
-		if !seen[upper] {
-			seen[upper] = true
-			result = append(result, upper)
-		}
+		result = append(result, strings.ToUpper(match))
 	}
 
 	// Extract CVE IDs from references
 	for _, ref := range c.References {
 		for _, match := range cveRegex.FindAllString(ref, -1) {
-			upper := strings.ToUpper(match)
-			if !seen[upper] {
-				seen[upper] = true
-				result = append(result, upper)
-			}
+			result = append(result, strings.ToUpper(match))
 		}
 	}
 
@@ -538,16 +526,21 @@ func (c *CVE) GetLineage() []string {
 			if arr, ok := rc.([]interface{}); ok {
 				for _, item := range arr {
 					if s, ok := item.(string); ok {
-						upper := strings.ToUpper(s)
-						if !seen[upper] {
-							seen[upper] = true
-							result = append(result, upper)
-						}
+						result = append(result, strings.ToUpper(s))
 					}
 				}
 			}
 		}
 	}
+
+	// Use slices to sort and compact (unique)
+	slices.Sort(result)
+	result = slices.Compact(result)
+
+	// Remove self
+	result = slices.DeleteFunc(result, func(id string) bool {
+		return id == c.CVEID
+	})
 
 	return result
 }
@@ -597,19 +590,18 @@ func capitalize(s string) string {
 
 // GetCPEs returns a deduplicated list of CPE criteria strings from the CVE configurations.
 func (c *CVE) GetCPEs() []string {
-	seen := make(map[string]bool)
 	var result []string
 	for _, config := range c.Configurations {
 		for _, node := range config.Nodes {
 			for _, match := range node.CPEMatch {
-				if match.Criteria != "" && !seen[match.Criteria] {
-					seen[match.Criteria] = true
+				if match.Criteria != "" {
 					result = append(result, match.Criteria)
 				}
 			}
 		}
 	}
-	return result
+	slices.Sort(result)
+	return slices.Compact(result)
 }
 
 // TeamWithInviteCode is a Team that includes the invite code in JSON output.
