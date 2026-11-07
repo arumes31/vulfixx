@@ -20,3 +20,7 @@
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+
+## 2026-11-07 - Ensure aria-label matches visible text (WCAG 2.5.3)
+**Learning:** Adding an `aria-label` to an interactive element (like a button) that already contains visible descriptive text creates an accessibility anti-pattern if the `aria-label` does not exactly match or begin with the visible text. This violates WCAG 2.5.3 (Label in Name).
+**Action:** When adding descriptive tooltips to buttons with visible text, use the `title` attribute instead of `aria-label`. Only use `aria-label` when the button is icon-only or when the visible text is insufficient on its own. If you must use `aria-label` on a button with visible text, ensure the `aria-label` string begins with the exact visible text.
