@@ -65,7 +65,7 @@ bench_results/
 coverage
 # Narrowed documentation ignores
 vendor/**/*.md
-docs/**/*.md
+docs/
 !README.md
 !CHANGELOG.md
 !LICENSE
