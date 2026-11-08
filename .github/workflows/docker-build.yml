@@ -181,8 +181,9 @@ jobs:
 
       - name: Scan pull request image
         if: github.event_name == 'pull_request'
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        uses: aquasecurity/trivy-action@master
         with:
+          trivy-version: "latest"
           image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
           exit-code: "1"
           ignore-unfixed: true
