@@ -20,3 +20,7 @@
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+
+## 2026-11-09 - Native mobile experience for TOTP inputs
+**Learning:** Adding `autocomplete="one-time-code"` and `inputmode="numeric"` to TOTP inputs improves mobile usability by automatically triggering numeric keypads and native code autofill.
+**Action:** Always include these attributes when implementing TOTP or 2FA code inputs to ensure a smoother, native-feeling mobile experience.
