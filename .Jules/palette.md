@@ -20,3 +20,6 @@
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+## 2026-11-09 - [Accessible TOTP Inputs]
+**Learning:** When implementing TOTP or 2FA code inputs, using generic text fields without specific autocomplete or inputmode attributes forces users (especially on mobile) to manually switch to a numeric keyboard and manually copy-paste codes from their SMS or authenticator apps, degrading the user experience.
+**Action:** Always add `autocomplete="one-time-code"` and `inputmode="numeric"` to TOTP/2FA input fields to automatically trigger the mobile numeric keypad and enable native OS code autofill functionalities.
