@@ -18,15 +18,17 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-var regexCache sync.Map
+var keywordRegexCache sync.Map
+var patternRegexCache sync.Map
 
 func getKeywordRegex(keyword string) *regexp.Regexp {
-	pattern := `(?i)\b` + regexp.QuoteMeta(keyword) + `\b`
-	if val, ok := regexCache.Load(pattern); ok {
+	// Use raw keyword as cache key to avoid allocation on cache hits
+	if val, ok := keywordRegexCache.Load(keyword); ok {
 		return val.(*regexp.Regexp)
 	}
+	pattern := `(?i)\b` + regexp.QuoteMeta(keyword) + `\b`
 	re := regexp.MustCompile(pattern)
-	regexCache.Store(pattern, re)
+	keywordRegexCache.Store(keyword, re)
 	return re
 }
 
@@ -39,7 +41,7 @@ func getPatternRegex(pattern string) (*regexp.Regexp, error) {
 
 	// ⚡ Bolt: Perform cache lookup BEFORE expensive AST parsing (syntax.Parse) and ReDoS validation.
 	// This avoids unnecessary CPU overhead on cache hits, maximizing cache performance.
-	if val, ok := regexCache.Load(pattern); ok {
+	if val, ok := patternRegexCache.Load(pattern); ok {
 		return val.(*regexp.Regexp), nil
 	}
 
@@ -54,7 +56,7 @@ func getPatternRegex(pattern string) (*regexp.Regexp, error) {
 
 	re, err := regexp.Compile(pattern)
 	if err == nil {
-		regexCache.Store(pattern, re)
+		patternRegexCache.Store(pattern, re)
 	}
 	return re, err
 }
