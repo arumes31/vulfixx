@@ -274,6 +274,12 @@ func ChangePassword(ctx context.Context, userID int, currentPassword, newPasswor
 		return errors.New("invalid current password")
 	}
 
+	// Check the new password before consuming the TOTP step, so a rejected
+	// password does not burn the user's current code.
+	if len(newPassword) < MinPasswordLength {
+		return errors.New("password must be at least 8 characters long")
+	}
+
 	if isTOTPEnabled {
 		if verifyTOTP == nil {
 			return errors.New("invalid TOTP code")
@@ -285,10 +291,6 @@ func ChangePassword(ctx context.Context, userID int, currentPassword, newPasswor
 		if !ok {
 			return errors.New("invalid TOTP code")
 		}
-	}
-
-	if len(newPassword) < MinPasswordLength {
-		return errors.New("password must be at least 8 characters long")
 	}
 
 	newHash, err := HashPassword(newPassword)

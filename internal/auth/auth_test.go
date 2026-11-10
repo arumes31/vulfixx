@@ -238,7 +238,7 @@ func TestAuthErrors(t *testing.T) {
 		}
 		mock.ExpectQuery("SELECT password_hash").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(hashedPassword, true, "JBSWY3DPEHPK3PXP"))
-		err = ChangePassword(ctx, 1, "password", "new", func(string) (bool, error) { return false, nil })
+		err = ChangePassword(ctx, 1, "password", "newpassword", func(string) (bool, error) { return false, nil })
 		if err == nil || err.Error() != "invalid TOTP code" {
 			t.Errorf("expected invalid TOTP error, got %v", err)
 		}
