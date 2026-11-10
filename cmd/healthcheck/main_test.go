@@ -88,3 +88,15 @@ func TestRunMainPreservesHealthcheckFailures(t *testing.T) {
 		})
 	}
 }
+
+func TestHealthcheckMain(t *testing.T) {
+	previous := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = previous })
+	http.DefaultTransport = healthRoundTripper(func(r *http.Request) (*http.Response, error) {
+		body := &healthResponseBody{Reader: strings.NewReader("ok")}
+		return &http.Response{StatusCode: 200, Status: "200 OK", Body: body, Header: make(http.Header)}, nil
+	})
+
+	t.Setenv("PORT", "9000")
+	main()
+}
