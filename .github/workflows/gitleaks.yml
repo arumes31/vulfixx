@@ -7,7 +7,7 @@ on:
     branches: [ main, v2_test ]
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * *' # Run daily to catch any leaks in historical commits
+    - cron: '0 0 * * 0' # Weekly full-history scan; every push/PR is scanned as well
 
 permissions:
   contents: read
