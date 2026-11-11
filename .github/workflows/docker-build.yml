@@ -4,8 +4,18 @@ on:
   push:
     branches: [ "main", "v2_test" ]
     tags: [ 'v*.*.*' ]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".github/ISSUE_TEMPLATE/**"
   pull_request:
     branches: [ "main" ]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".github/ISSUE_TEMPLATE/**"
 
 permissions:
   contents: read
@@ -173,8 +183,9 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Separate cache scopes: both images used the default scope and evicted each other.
+          cache-from: type=gha,scope=vulfixx
+          cache-to: type=gha,mode=max,scope=vulfixx
           load: ${{ github.event_name == 'pull_request' }}
           provenance: ${{ github.event_name != 'pull_request' && 'mode=max' || 'false' }}
           sbom: ${{ github.event_name != 'pull_request' }}
@@ -232,8 +243,8 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=ollama-init
+          cache-to: type=gha,mode=max,scope=ollama-init
           provenance: mode=max
           sbom: true
 
