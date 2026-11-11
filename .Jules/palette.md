@@ -20,3 +20,7 @@
 ## 2026-06-20 - [Accessible mobile navigation]
 **Learning:** Abbreviated mobile navigation text (e.g. 'Dash', 'Subs', 'Set', 'Exit') alongside icons can be confusing or inaccessible for screen reader users without full descriptive context.
 **Action:** Always add explicit, full-word `aria-label` attributes to mobile navigation links or buttons that rely on heavily abbreviated text for layout constraints.
+
+## 2026-11-11 - [Mobile friendly TOTP inputs]
+**Learning:** By default, text inputs for numerical codes (like 2FA/TOTP) will trigger the full alphanumeric keyboard on mobile, leading to poor UX. Furthermore, mobile browsers cannot easily autofill SMS or Authenticator codes without explicit hints.
+**Action:** When implementing TOTP or 2FA code inputs in HTML, always add `autocomplete="one-time-code"` and `inputmode="numeric"` attributes to automatically trigger the mobile numeric keypad and enable native code autofill.
