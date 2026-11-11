@@ -438,12 +438,11 @@ func (w *Worker) integrateAdvisoryItems(ctx context.Context, feed AdvisoryFeed, 
 			continue // Strictly follow user request: only sync matched data
 		}
 
-		uniqueCVEs := make(map[string]bool)
-		for _, cve := range foundCVEs {
-			uniqueCVEs[cve] = true
-		}
+		uniqueCVEs := slices.Clone(foundCVEs)
+		slices.Sort(uniqueCVEs)
+		uniqueCVEs = slices.Compact(uniqueCVEs)
 
-		for cveID := range uniqueCVEs {
+		for _, cveID := range uniqueCVEs {
 			w.integrateAdvisoryCVE(ctx, cveID, item, feed)
 		}
 	}
