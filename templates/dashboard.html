@@ -50,7 +50,7 @@
             <form id="team-switch-form" action="/teams/switch" method="POST" class="flex items-center gap-2 bg-white/5 border border-white/10 p-1 rounded-2xl">
                 {{.CSRFField}}
                 <span class="material-symbols-outlined text-gray-500 ml-2 text-sm" aria-hidden="true">hub</span>
-                <select name="team_id" id="team-selector" class="bg-transparent text-xs font-bold text-primary focus:outline-none pr-4 py-1 cursor-pointer">
+                <select name="team_id" id="team-selector" aria-label="Select Workspace" class="bg-transparent text-xs font-bold text-primary focus:outline-none pr-4 py-1 cursor-pointer">
                     <option value="0" {{if eq .ActiveTeamID 0}}selected{{end}}>Private Workspace</option>
                     {{range .UserTeams}}
                     <option value="{{.ID}}" {{if eq $.ActiveTeamID .ID}}selected{{end}}>Team: {{.Name}}</option>
@@ -150,7 +150,7 @@
                 </thead>
                 <tbody class="divide-y divide-white/5">
                     {{range .CVEs}}
-                    <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer" data-cve-url="/cve/{{.CVEID}}">
+                    <tr class="hover:bg-white/[0.02] transition-colors group cursor-pointer focus:bg-white/[0.05] focus:outline-none" role="link" tabindex="0" aria-label="View details for {{.CVEID}}" data-cve-url="/cve/{{.CVEID}}">
                         <td class="px-6 py-6">
                             <div class="flex flex-col">
                                 <a href="https://nvd.nist.gov/vuln/detail/{{.CVEID}}" target="_blank" rel="noopener noreferrer" class="text-sm font-bold text-primary hover:underline transition-all">{{.CVEID}}</a>
@@ -215,7 +215,7 @@
                             {{end}}
                         </td>
                         <td class="px-6 py-6 text-right">
-                            <select data-id="{{.ID}}" class="status-selector bg-[#181c22] text-[10px] font-black uppercase tracking-widest py-2 px-3 rounded-xl border border-white/10 text-gray-300 focus:outline-none focus:border-primary transition-all hover:bg-white/5 cursor-pointer">
+                            <select data-id="{{.ID}}" aria-label="Status for {{.CVEID}}" class="status-selector bg-[#181c22] text-[10px] font-black uppercase tracking-widest py-2 px-3 rounded-xl border border-white/10 text-gray-300 focus:outline-none focus:border-primary transition-all hover:bg-white/5 cursor-pointer">
                                 <option value="active" {{if eq .Status "active"}}selected{{end}}>Active</option>
                                 <option value="in_progress" {{if eq .Status "in_progress"}}selected{{end}}>Progress</option>
                                 <option value="resolved" {{if eq .Status "resolved"}}selected{{end}}>Resolve</option>
@@ -506,14 +506,18 @@
         }
 
         // Navigate rows safely
+        const navigateRow = (e) => {
+            if (e.target.closest('a, button, select, input, textarea, label, .notes-trigger, .vector-trigger')) return;
+            if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+            if (e.type === 'keydown') e.preventDefault();
+
+            const url = e.currentTarget.getAttribute('data-cve-url');
+            if (url) vulfixx.navigate(url);
+        };
+
         document.querySelectorAll('tr[data-cve-url]').forEach(function(row) {
-            row.addEventListener('click', function(e) {
-                // Ignore if clicking on interactive elements
-                if (e.target.closest('a, button, select, input, textarea, label, .notes-trigger, .vector-trigger')) return;
-                
-                const url = row.getAttribute('data-cve-url');
-                if (url) vulfixx.navigate(url);
-            });
+            row.addEventListener('click', navigateRow);
+            row.addEventListener('keydown', navigateRow);
         });
     }
 
