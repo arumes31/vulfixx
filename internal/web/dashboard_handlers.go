@@ -605,7 +605,8 @@ func (a *App) CVEDetailHandler(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 	}
-		// Let html/template handle JSON encoding and script escaping securely
+	// Pass the native map to html/template so it applies context-aware JSON
+	// encoding and script escaping; no manual marshaling/escaping needed.
 
 	// Fetch user assets if logged in for automatic matching
 	var userAssets []map[string]interface{}
