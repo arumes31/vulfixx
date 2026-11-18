@@ -6,8 +6,20 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
+
+// csvSafe neutralizes spreadsheet formula injection: a cell that starts with
+// =, +, -, @, tab or CR is prefixed with a single quote so spreadsheet
+// applications render it as text instead of evaluating it. CVE descriptions
+// come from upstream advisory feeds and are not trusted for this context.
+func csvSafe(v string) string {
+	if v != "" && strings.ContainsRune("=+-@\t\r", rune(v[0])) {
+		return "'" + v
+	}
+	return v
+}
 
 func (a *App) ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := a.GetUserID(r)
@@ -81,12 +93,12 @@ func (a *App) ExportCVEsHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		total++
-		row[0] = cveID
-		row[1] = description
+		row[0] = csvSafe(cveID)
+		row[1] = csvSafe(description)
 		row[2] = strconv.FormatFloat(cvssScore, 'f', 1, 64)
 		row[3] = strconv.FormatBool(cisaKEV)
 		row[4] = publishedDate.Format(time.DateOnly)
-		row[5] = priority
+		row[5] = csvSafe(priority)
 		if err := csvWriter.Write(row); err != nil {
 			log.Printf("Error writing CSV row for %s: %v", cveID, err)
 			return
