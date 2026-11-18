@@ -7,3 +7,8 @@
 **Vulnerability:** The application was vulnerable to IP spoofing because it trusted the first (leftmost) IP in the `X-Forwarded-For` header.
 **Learning:** The leftmost IP is provided by the client and can easily be spoofed. The correct approach is to parse from right to left, stopping at the first untrusted proxy.
 **Prevention:** Always iterate `X-Forwarded-For` from right to left and only trust IP addresses provided by known, trusted proxies.
+
+## 2026-11-02 - [Remove manual JSON encoding for template rendering]
+**Vulnerability:** XSS risk from manual JSON marshaling and string replacement in templates
+**Learning:** Go's html/template package is context-aware. If you pass a native struct/map to a template inside a `<script>` tag, it automatically applies secure, context-appropriate JSON encoding (handling `</script>` naturally). Manually marshaling to string bypasses this protection, leading to invalid JSON-LD output or XSS vulnerabilities if cast directly.
+**Prevention:** Always pass native Go structs/maps directly into Go templates for script blocks, rather than manually calling `json.Marshal` and doing string replacements.
