@@ -140,7 +140,9 @@ func TestFetch(t *testing.T) {
 			return
 		}
 		resp := nvdResp{TotalResults: 1}
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer ts.Close()
 
