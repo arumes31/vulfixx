@@ -228,7 +228,12 @@ func (a *App) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = auth.ChangePassword(r.Context(), userID, currentPassword, newPassword, totpCode)
+	// Use the same monotonic consumer as login so a TOTP code already accepted
+	// for login (or any earlier step) cannot be replayed to change the password.
+	verifyTOTP := func(secret string) (bool, error) {
+		return a.consumeTOTP(r.Context(), userID, totpCode, secret)
+	}
+	err = auth.ChangePassword(r.Context(), userID, currentPassword, newPassword, verifyTOTP)
 	if err != nil {
 		errMsg := err.Error()
 		// Map known errors to safe user-facing messages; log unknown ones

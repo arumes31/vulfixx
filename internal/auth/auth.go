@@ -13,8 +13,6 @@ import (
 	"log/slog"
 	"strings"
 	"time"
-
-	"github.com/pquerna/otp/totp"
 )
 
 const MinPasswordLength = 8
@@ -255,7 +253,14 @@ func InitAdminWithReset(ctx context.Context, email, password, totpSecret string,
 	return err
 }
 
-func ChangePassword(ctx context.Context, userID int, currentPassword, newPassword, totpCode string) error {
+// TOTPVerifier checks a second-factor code against the user's TOTP secret.
+// Implementations must reject codes whose time step was already consumed (for
+// example by login), so one observed code cannot authorize a second action.
+type TOTPVerifier func(secret string) (bool, error)
+
+// ChangePassword re-authenticates the user with the current password and, when
+// TOTP is enabled, with verifyTOTP. A nil verifier fails closed for TOTP users.
+func ChangePassword(ctx context.Context, userID int, currentPassword, newPassword string, verifyTOTP TOTPVerifier) error {
 	var hash string
 	var isTOTPEnabled bool
 	var secret string
@@ -269,14 +274,23 @@ func ChangePassword(ctx context.Context, userID int, currentPassword, newPasswor
 		return errors.New("invalid current password")
 	}
 
-	if isTOTPEnabled {
-		if !totp.Validate(totpCode, secret) {
-			return errors.New("invalid TOTP code")
-		}
-	}
-
+	// Check the new password before consuming the TOTP step, so a rejected
+	// password does not burn the user's current code.
 	if len(newPassword) < MinPasswordLength {
 		return errors.New("password must be at least 8 characters long")
+	}
+
+	if isTOTPEnabled {
+		if verifyTOTP == nil {
+			return errors.New("invalid TOTP code")
+		}
+		ok, err := verifyTOTP(secret)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errors.New("invalid TOTP code")
+		}
 	}
 
 	newHash, err := HashPassword(newPassword)

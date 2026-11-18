@@ -3,9 +3,9 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/github/actions/workflow/status/arumes31/vulfixx/docker-build.yml?branch=v2_test&style=for-the-badge&logo=github" alt="Build Status">
-  <img src="https://img.shields.io/github/actions/workflow/status/arumes31/vulfixx/go-licenses.yml?branch=v2_test&label=Licenses&style=for-the-badge&logo=github" alt="License Check Status">
-  <img src="https://img.shields.io/badge/Go-1.26.3-00ADD8?style=for-the-badge&logo=go" alt="Go Version">
+  <img src="https://img.shields.io/github/actions/workflow/status/arumes31/vulfixx/docker-build.yml?branch=main&style=for-the-badge&logo=github" alt="Build Status">
+  <img src="https://img.shields.io/github/actions/workflow/status/arumes31/vulfixx/go-licenses.yml?branch=main&label=Licenses&style=for-the-badge&logo=github" alt="License Check Status">
+  <img src="https://img.shields.io/badge/Go-1.27.3-00ADD8?style=for-the-badge&logo=go" alt="Go Version">
   <img src="https://img.shields.io/badge/Security-Gosec_Passed-brightgreen?style=for-the-badge&logo=shield" alt="Security Status">
   <img src="https://img.shields.io/github/license/arumes31/vulfixx?style=for-the-badge" alt="License">
 </p>
@@ -126,7 +126,7 @@ Vulfixx is hardened with enterprise-grade system improvements designed for high-
 
 - [Docker](https://www.docker.com/get-started)
 - [Docker Compose](https://docs.docker.com/compose/install/)
-- [Go 1.26.3](https://golang.org/dl/) (optional, for local development)
+- [Go 1.27.3](https://golang.org/dl/) (optional, for local development)
 - [act](https://github.com/nektos/act) (optional, for running GitHub Actions locally)
 
 ### Installation
@@ -145,24 +145,24 @@ Vulfixx is hardened with enterprise-grade system improvements designed for high-
    - `SESSION_KEY`: A secure random string for session signing.
    - `CSRF_KEY`: A secure random string for CSRF protection (exactly 32 bytes).
 
-    3. Start the application:
-    ```bash
-    docker-compose up --build
-    ```
+3. Start the application:
+   ```bash
+   docker-compose up --build
+   ```
 
-    ### Running with GHCR (GitHub Container Registry)
+### Running with GHCR (GitHub Container Registry)
 
-    If you prefer not to build the image locally, you can use the pre-built image from GHCR:
+If you prefer not to build the image locally, you can use the pre-built image from GHCR:
 
-    ```bash
-    docker-compose -f docker-compose.ghcr.yml up
-    ```
+```bash
+docker-compose -f docker-compose.ghcr.yml up
+```
 
-   The application will be available at `http://localhost:8080`.
+The application will be available at `http://localhost:8080`.
 
-   ## Configuration
+## Configuration
 
-   The application is configured via environment variables in the `docker-compose.yml` file:
+The application is configured via environment variables in the `docker-compose.yml` file:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -255,7 +255,7 @@ Or use the automated test script with coverage:
 ### CI/CD Pipeline
 
 This project uses a modern GitHub Actions pipeline (`.github/workflows/docker-build.yml`) for continuous integration:
-- **Environment**: All CI jobs run in a **Go 1.26.3** containerized environment.
+- **Environment**: All CI jobs run in a **Go 1.27.3** containerized environment.
 - **Unit Testing**: Automated Go tests to ensure logic correctness.
 - **Linting**: Strict code quality checks with `golangci-lint` (v2.x).
 - **Security Scanning**:

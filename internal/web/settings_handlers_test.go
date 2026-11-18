@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"cve-tracker/internal/auth"
 	"cve-tracker/internal/db"
 	"fmt"
@@ -10,9 +11,11 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/pashagolub/pgxmock/v5"
+	"github.com/pquerna/otp/totp"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -286,6 +289,65 @@ func TestChangePasswordHandler(t *testing.T) {
 		}
 		if !strings.Contains(rr.Body.String(), "Invalid or missing 2FA code") {
 			t.Errorf("expected TOTP error")
+		}
+	})
+
+	t.Run("RejectsTOTPCodeAlreadyConsumedByLogin", func(t *testing.T) {
+		mock, err := pgxmock.NewPool()
+		if err != nil {
+			t.Fatalf("failed to create mock pool: %v", err)
+		}
+		defer mock.Close()
+
+		oldPool := db.Pool
+		db.Pool = mock
+		defer func() { db.Pool = oldPool }()
+
+		app := setupTestApp(t, mock)
+		now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+		app.Now = func() time.Time { return now }
+		userID := 1
+		secret := "JBSWY3DPEHPK3PXP"
+		code, err := totp.GenerateCode(secret, now)
+		if err != nil {
+			t.Fatalf("failed to generate code: %v", err)
+		}
+		// Login consumes the code first.
+		if ok, err := app.consumeTOTP(context.Background(), userID, code, secret); !ok || err != nil {
+			t.Fatalf("login consumption should succeed: ok=%v err=%v", ok, err)
+		}
+
+		form := url.Values{
+			"current_password": {"oldpass123"},
+			"new_password":     {"newpass123"},
+			"confirm_password": {"newpass123"},
+			"totp_code":        {code},
+		}
+		req := httptest.NewRequest("POST", "/settings/password", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		setSessionUser(t, app, req, userID, false)
+
+		hashedPassword, _ := auth.HashPassword("oldpass123")
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT email, is_totp_enabled FROM users WHERE id = $1")).
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"email", "is_totp_enabled"}).
+				AddRow("user@example.com", true))
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT password_hash, is_totp_enabled, COALESCE(totp_secret, '') FROM users WHERE id = $1")).
+			WithArgs(userID).
+			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).
+				AddRow(hashedPassword, true, secret))
+
+		expectBaseQueries(mock, userID)
+		rr := httptest.NewRecorder()
+		app.ChangePasswordHandler(rr, req)
+
+		if !strings.Contains(rr.Body.String(), "Invalid or missing 2FA code") {
+			t.Errorf("expected replayed TOTP code to be rejected")
+		}
+		// No UPDATE expectation was registered, so a password write would fail here.
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("unmet expectations: %v", err)
 		}
 	})
 

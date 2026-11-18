@@ -62,7 +62,7 @@ func TestAuthMock(t *testing.T) {
 		WithArgs(pgxmock.AnyArg(), 1).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
-	err = ChangePassword(ctx, 1, "password", "newpassword", "")
+	err = ChangePassword(ctx, 1, "password", "newpassword", nil)
 	if err != nil {
 		t.Fatalf("Failed to change password: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestAuthErrors(t *testing.T) {
 		mock, _ := db.SetupTestDB()
 		defer mock.Close()
 		mock.ExpectQuery("SELECT password_hash").WithArgs(99).WillReturnError(errors.New("not found"))
-		err := ChangePassword(ctx, 99, "old", "new", "")
+		err := ChangePassword(ctx, 99, "old", "new", nil)
 		if err == nil || err.Error() != "user not found" {
 			t.Errorf("expected user not found error, got %v", err)
 		}
@@ -223,7 +223,7 @@ func TestAuthErrors(t *testing.T) {
 		}
 		mock.ExpectQuery("SELECT password_hash").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(hashedPassword, false, ""))
-		err = ChangePassword(ctx, 1, "wrong", "new", "")
+		err = ChangePassword(ctx, 1, "wrong", "new", nil)
 		if err == nil || err.Error() != "invalid current password" {
 			t.Errorf("expected invalid current pass error, got %v", err)
 		}
@@ -238,9 +238,48 @@ func TestAuthErrors(t *testing.T) {
 		}
 		mock.ExpectQuery("SELECT password_hash").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(hashedPassword, true, "JBSWY3DPEHPK3PXP"))
-		err = ChangePassword(ctx, 1, "password", "new", "000000")
+		err = ChangePassword(ctx, 1, "password", "newpassword", func(string) (bool, error) { return false, nil })
 		if err == nil || err.Error() != "invalid TOTP code" {
 			t.Errorf("expected invalid TOTP error, got %v", err)
+		}
+	})
+
+	t.Run("ChangePasswordTOTPEnabledNilVerifierFailsClosed", func(t *testing.T) {
+		mock, _ := db.SetupTestDB()
+		defer mock.Close()
+		hashedPassword, err := HashPassword("password")
+		if err != nil {
+			t.Fatalf("failed to hash password: %v", err)
+		}
+		mock.ExpectQuery("SELECT password_hash").WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(hashedPassword, true, "JBSWY3DPEHPK3PXP"))
+		err = ChangePassword(ctx, 1, "password", "newpassword", nil)
+		if err == nil || err.Error() != "invalid TOTP code" {
+			t.Errorf("expected invalid TOTP error, got %v", err)
+		}
+	})
+
+	t.Run("ChangePasswordTOTPVerifierError", func(t *testing.T) {
+		mock, _ := db.SetupTestDB()
+		defer mock.Close()
+		hashedPassword, err := HashPassword("password")
+		if err != nil {
+			t.Fatalf("failed to hash password: %v", err)
+		}
+		mock.ExpectQuery("SELECT password_hash").WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(hashedPassword, true, "JBSWY3DPEHPK3PXP"))
+		storeErr := errors.New("store down")
+		err = ChangePassword(ctx, 1, "password", "newpassword", func(secret string) (bool, error) {
+			if secret != "JBSWY3DPEHPK3PXP" {
+				t.Errorf("verifier got unexpected secret %q", secret)
+			}
+			return false, storeErr
+		})
+		if !errors.Is(err, storeErr) {
+			t.Errorf("expected verifier error to propagate, got %v", err)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Errorf("password must not be updated: %v", err)
 		}
 	})
 
@@ -253,7 +292,7 @@ func TestAuthErrors(t *testing.T) {
 		}
 		mock.ExpectQuery("SELECT password_hash").WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"password_hash", "is_totp_enabled", "totp_secret"}).AddRow(hashedPassword, false, ""))
-		err = ChangePassword(ctx, 1, "password", "short", "")
+		err = ChangePassword(ctx, 1, "password", "short", nil)
 		if err == nil || err.Error() != "password must be at least 8 characters long" {
 			t.Errorf("expected short password error, got %v", err)
 		}
@@ -499,7 +538,7 @@ func TestExtraCoverage(t *testing.T) {
 		mock.ExpectExec("UPDATE users SET password_hash").
 			WithArgs(pgxmock.AnyArg(), 1).
 			WillReturnError(errors.New("update pass fail"))
-		err = ChangePassword(ctx, 1, "password", "newpassword", "")
+		err = ChangePassword(ctx, 1, "password", "newpassword", nil)
 		if err == nil || err.Error() != "update pass fail" {
 			t.Errorf("expected update pass fail, got %v", err)
 		}

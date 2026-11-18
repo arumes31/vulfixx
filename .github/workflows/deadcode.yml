@@ -3,8 +3,19 @@ name: Deadcode Check
 on:
   push:
     branches: [ "main", "v2_test" ]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".github/ISSUE_TEMPLATE/**"
   pull_request:
     branches: [ "main", "v2_test" ]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".github/ISSUE_TEMPLATE/**"
 
 permissions:
   contents: read
@@ -16,6 +27,8 @@ concurrency:
 jobs:
   deadcode:
     name: Check Dead Code
+    # Draft PRs (mostly Jules bot PRs, ~6/day) run this once they are marked ready.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
