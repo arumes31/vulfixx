@@ -5,7 +5,7 @@ go 1.27.4
 require (
 	filippo.io/csrf v0.2.1
 	github.com/DATA-DOG/go-sqlmock v1.5.2
-	github.com/PuerkitoBio/goquery v1.13.0
+	github.com/PuerkitoBio/goquery v1.14.0
 	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/getsentry/sentry-go v0.50.0
 	github.com/go-chi/chi/v5 v5.5.0
